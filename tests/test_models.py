@@ -1,0 +1,207 @@
+import pytest
+import os
+from unittest.mock import patch, MagicMock, AsyncMock
+from typing import List
+
+from models import (
+    MemoryMessage,
+    MemoryMessagesAndContext,
+    MemoryResponse,
+    SearchPayload,
+    RedisearchResult,
+    OpenAIClientType,
+    OpenAIClientWrapper,
+    parse_redisearch_response,
+)
+
+
+class TestModels:
+    def test_memory_message(self):
+        """Test MemoryMessage model"""
+        msg = MemoryMessage(role="user", content="Hello, world!")
+        assert msg.role == "user"
+        assert msg.content == "Hello, world!"
+
+        # Test serialization
+        data = msg.model_dump()
+        assert data == {"role": "user", "content": "Hello, world!"}
+
+    def test_memory_messages_and_context(self):
+        """Test MemoryMessagesAndContext model"""
+        messages = [
+            MemoryMessage(role="user", content="Hello"),
+            MemoryMessage(role="assistant", content="Hi there"),
+        ]
+
+        # Test without context
+        payload = MemoryMessagesAndContext(messages=messages)
+        assert payload.messages == messages
+        assert payload.context is None
+
+        # Test with context
+        payload = MemoryMessagesAndContext(
+            messages=messages, context="Previous conversation summary"
+        )
+        assert payload.messages == messages
+        assert payload.context == "Previous conversation summary"
+
+    def test_memory_response(self):
+        """Test MemoryResponse model"""
+        messages = [
+            MemoryMessage(role="user", content="Hello"),
+            MemoryMessage(role="assistant", content="Hi there"),
+        ]
+
+        # Test basic response
+        response = MemoryResponse(messages=messages)
+        assert response.messages == messages
+        assert response.context is None
+        assert response.tokens is None
+
+        # Test with all fields
+        response = MemoryResponse(
+            messages=messages, context="Conversation summary", tokens=150
+        )
+        assert response.messages == messages
+        assert response.context == "Conversation summary"
+        assert response.tokens == 150
+
+    def test_search_payload(self):
+        """Test SearchPayload model"""
+        payload = SearchPayload(text="What is the capital of France?")
+        assert payload.text == "What is the capital of France?"
+
+    def test_redisearch_result(self):
+        """Test RedisearchResult model"""
+        result = RedisearchResult(
+            role="assistant", content="Paris is the capital of France", dist=0.75
+        )
+        assert result.role == "assistant"
+        assert result.content == "Paris is the capital of France"
+        assert result.dist == 0.75
+
+
+class TestRedisearchParsing:
+    def test_parse_redisearch_empty_response(self):
+        """Test parsing an empty redisearch response"""
+        # Test with empty response
+        assert parse_redisearch_response([]) == []
+        assert parse_redisearch_response([0]) == []
+
+    def test_parse_redisearch_response(self):
+        """Test parsing a redisearch response"""
+        # Create a mock response similar to what Redis would return
+        mock_response = [
+            2,  # Number of results
+            b"doc1",  # Document ID
+            [  # Document fields
+                b"role",
+                b"user",
+                b"content",
+                b"Hello, world!",
+                b"dist",
+                b"0.25",
+            ],
+            b"doc2",  # Document ID
+            [  # Document fields
+                b"role",
+                b"assistant",
+                b"content",
+                b"Hi there!",
+                b"dist",
+                b"0.75",
+            ],
+        ]
+
+        results = parse_redisearch_response(mock_response)
+
+        assert len(results) == 2
+        assert results[0].role == "user"
+        assert results[0].content == "Hello, world!"
+        assert results[0].dist == 0.25
+        assert results[1].role == "assistant"
+        assert results[1].content == "Hi there!"
+        assert results[1].dist == 0.75
+
+
+@pytest.mark.asyncio
+class TestOpenAIClientWrapper:
+    @patch.dict(
+        os.environ,
+        {
+            "OPENAI_API_KEY": "test-key",
+        },
+    )
+    @patch("models.AsyncOpenAI")
+    async def test_init_regular_openai(self, mock_openai):
+        """Test initializing with regular OpenAI"""
+        # Set up the mock to return an AsyncMock
+        mock_openai.return_value = AsyncMock()
+
+        client = OpenAIClientWrapper()
+
+        # Check client type
+        assert client.client_type == OpenAIClientType.OPENAI
+
+        # Verify the client was created
+        assert mock_openai.called
+
+    @patch.object(OpenAIClientWrapper, "__init__", return_value=None)
+    async def test_create_embedding(self, mock_init):
+        """Test creating embeddings"""
+        # Create a client with mocked init
+        client = OpenAIClientWrapper()
+        client.client_type = OpenAIClientType.OPENAI
+
+        # Mock the embedding client and response
+        mock_response = AsyncMock()
+        mock_response.data = [
+            MagicMock(embedding=[0.1, 0.2, 0.3]),
+            MagicMock(embedding=[0.4, 0.5, 0.6]),
+        ]
+
+        client.embedding_client = AsyncMock()
+        client.embedding_client.embeddings.create = AsyncMock(
+            return_value=mock_response
+        )
+
+        # Test creating embeddings
+        query_vec = ["Hello, world!", "How are you?"]
+        embeddings = await client.create_embedding(query_vec)
+
+        # Verify embeddings were created correctly
+        assert len(embeddings) == 2
+        assert embeddings[0] == [0.1, 0.2, 0.3]
+        assert embeddings[1] == [0.4, 0.5, 0.6]
+
+        # Verify the client was called with correct parameters
+        client.embedding_client.embeddings.create.assert_called_with(
+            model="text-embedding-ada-002", input=query_vec
+        )
+
+    @patch.object(OpenAIClientWrapper, "__init__", return_value=None)
+    async def test_create_chat_completion(self, mock_init):
+        """Test creating chat completions"""
+        # Create a client with mocked init
+        client = OpenAIClientWrapper()
+        client.client_type = OpenAIClientType.OPENAI
+
+        # Mock the completion client and response
+        mock_response = AsyncMock()
+        client.completion_client = AsyncMock()
+        client.completion_client.chat.completions.create = AsyncMock(
+            return_value=mock_response
+        )
+
+        # Test creating chat completion
+        model = "gpt-3.5-turbo"
+        prompt = "Hello, world!"
+        response = await client.create_chat_completion(model, prompt)
+
+        # Verify the response is correct
+        assert response == mock_response
+
+        # Verify the client was called with correct parameters
+        client.completion_client.chat.completions.create.assert_called_with(
+            model=model, messages=[{"role": "user", "content": prompt}]
+        )
