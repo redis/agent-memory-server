@@ -16,23 +16,23 @@ provides memory features for LLM conversations, including short-term memory
 
 1. Clone the repository
 2. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
+```
+pip install -r requirements.txt
+```
 3. Set up environment variables:
-   ```
-   # Required
-   REDIS_URL=redis://localhost:6379
-   
-   # Optional
-   PORT=8000
-   LONG_TERM_MEMORY=true
-   MAX_WINDOW_SIZE=12
-   MODEL=gpt-3.5-turbo
-   
-   # For OpenAI
-   OPENAI_API_KEY=your_openai_api_key
-  ```
+```
+# Required
+REDIS_URL=redis://localhost:6379
+
+# Optional
+PORT=8000
+LONG_TERM_MEMORY=true
+MAX_WINDOW_SIZE=12
+MODEL=gpt-3.5-turbo
+
+# For OpenAI
+OPENAI_API_KEY=your_openai_api_key
+```
 
 ## Usage
 
@@ -52,4 +52,4 @@ python main.py
 - `POST /sessions/{session_id}/retrieval`: Perform semantic search on session memory
 
 ## License
-
+TBD
