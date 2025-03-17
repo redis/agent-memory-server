@@ -1,3 +1,4 @@
+import json
 import logging
 
 import tiktoken
@@ -5,6 +6,7 @@ from redis.asyncio import Redis
 
 from models import (
     AnthropicClientWrapper,
+    MemoryMessage,
     OpenAIClientWrapper,
     get_model_config,
 )
@@ -36,7 +38,7 @@ async def _incremental_summary(
     messages_joined = "\n".join(messages)
     prev_summary = context or ""
 
-    # Prompt template for progressive summarization (from langchain)
+    # Prompt template for progressive summarization
     progressive_prompt = f"""
 Progressively summarize the lines of conversation provided, adding onto the previous summary returning a new summary. If the lines are meaningless just return NONE
 
@@ -110,8 +112,19 @@ async def handle_compaction(
         pipe.get(context_key)
         results = await pipe.execute()
 
-        messages = results[0]
+        messages_raw = results[0]
         context = results[1]
+
+        # Parse messages
+        messages = []
+        for msg_raw in messages_raw:
+            if isinstance(msg_raw, bytes):
+                msg_raw = msg_raw.decode("utf-8")
+            msg_dict = json.loads(msg_raw)
+            messages.append(MemoryMessage(**msg_dict))
+
+        # Get context string
+        context_str = context.decode("utf-8") if isinstance(context, bytes) else context
 
         # Get model configuration for token limits
         model_config = get_model_config(model)
@@ -124,7 +137,7 @@ async def handle_compaction(
         buffer_tokens = 230
         max_message_tokens = max_tokens - summary_max_tokens - buffer_tokens
 
-        # Initialize encoding (currently uses OpenAI's tokenizer, but could be extended for different models)
+        # Initialize encoding
         encoding = tiktoken.get_encoding("cl100k_base")
 
         # Check token count of messages
@@ -132,14 +145,11 @@ async def handle_compaction(
         messages_to_summarize = []
 
         for msg in messages:
-            # Decode message if needed
-            if isinstance(msg, bytes):
-                msg = msg.decode("utf-8")
-
-            msg_tokens = len(encoding.encode(msg))
+            msg_str = json.dumps(msg.model_dump())
+            msg_tokens = len(encoding.encode(msg_str))
             if total_tokens + msg_tokens <= max_message_tokens:
                 total_tokens += msg_tokens
-                messages_to_summarize.append(msg)
+                messages_to_summarize.append(msg_str)
 
         # Skip if no messages to summarize
         if not messages_to_summarize:
@@ -150,7 +160,7 @@ async def handle_compaction(
         summary, _ = await _incremental_summary(
             model,
             client,
-            context.decode("utf-8") if isinstance(context, bytes) else context,
+            context_str,
             messages_to_summarize,
         )
 

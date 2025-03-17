@@ -23,8 +23,8 @@ def get_redis_conn(url: str | None = settings.redis_url, **kwargs) -> Redis:
     if _redis_pool is None:
         if url:
             _redis_pool = ConnectionPool.from_url(url, **kwargs)
-        else:
-            _redis_pool = ConnectionPool(**kwargs)
+            return Redis(connection_pool=_redis_pool)
+        _redis_pool = ConnectionPool(**kwargs)
     return Redis(connection_pool=_redis_pool)
 
 
@@ -58,6 +58,8 @@ async def ensure_redisearch_index(
                     TagField(name="session"),
                     TextField(name="content"),
                     TagField(name="role"),
+                    TagField(name="topics", separator=","),
+                    TagField(name="entities", separator=","),
                     VectorField(
                         name="vector",
                         algorithm="HNSW",
@@ -79,9 +81,8 @@ async def ensure_redisearch_index(
                     f"Created RediSearch index with {vector_dimensions} dimensions and {distance_metric} metric"
                 )
                 return
-            else:
-                # This is an unexpected error
-                raise
+            # This is an unexpected error
+            raise
     except Exception as e:
         logger.error(f"Error ensuring RediSearch index: {e}")
         raise

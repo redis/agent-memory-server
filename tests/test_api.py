@@ -9,7 +9,7 @@ from models import (
     RedisearchResult,
     SearchResults,
 )
-from reducers import handle_compaction
+from summarization import handle_compaction
 
 
 @pytest.fixture

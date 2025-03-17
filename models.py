@@ -18,6 +18,12 @@ class MemoryMessage(BaseModel):
 
     role: str
     content: str
+    topics: list[str] = Field(
+        default_factory=list, description="List of topics associated with this message"
+    )
+    entities: list[str] = Field(
+        default_factory=list, description="List of entities mentioned in this message"
+    )
 
 
 class MemoryMessagesAndContext(BaseModel):

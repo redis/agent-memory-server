@@ -13,7 +13,7 @@ from models import (
     MemoryMessagesAndContext,
     MemoryResponse,
 )
-from reducers import handle_compaction
+from summarization import handle_compaction
 from utils import Keys, get_model_client, get_openai_client, get_redis_conn
 
 
@@ -24,7 +24,7 @@ router = APIRouter()
 
 @router.get("/sessions/", response_model=list[str])
 async def get_sessions(
-    pagination: GetSessionsQuery = Depends(GetSessionsQuery),
+    pagination: GetSessionsQuery = Depends(),
 ):
     """
     Get a list of session IDs, with optional pagination
@@ -55,14 +55,11 @@ async def get_sessions(
         session_ids = await redis.zrange(sessions_key, start, end)
 
         # Convert from bytes to strings if needed
-        session_ids = [
-            s.decode("utf-8") if isinstance(s, bytes) else s for s in session_ids
-        ]
+        return [s.decode("utf-8") if isinstance(s, bytes) else s for s in session_ids]
 
-        return session_ids
     except Exception as e:
         logger.error(f"Error getting sessions: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
 @router.get("/sessions/{session_id}/memory", response_model=MemoryResponse)
@@ -72,7 +69,6 @@ async def get_memory(session_id: str):
 
     Args:
         session_id: The session ID
-        request: FastAPI request
 
     Returns:
         Memory response with messages and context
@@ -103,8 +99,19 @@ async def get_memory(session_id: str):
                 msg_raw = msg_raw.decode("utf-8")
 
             # Parse JSON
-            msg = json.loads(msg_raw)
-            memory_messages.append(MemoryMessage(**msg))
+            msg_dict = json.loads(msg_raw)
+
+            # Convert comma-separated strings back to lists for topics and entities
+            if "topics" in msg_dict:
+                msg_dict["topics"] = (
+                    msg_dict["topics"].split(",") if msg_dict["topics"] else []
+                )
+            if "entities" in msg_dict:
+                msg_dict["entities"] = (
+                    msg_dict["entities"].split(",") if msg_dict["entities"] else []
+                )
+
+            memory_messages.append(MemoryMessage(**msg_dict))
 
         # Extract context and tokens
         context = None
@@ -128,14 +135,15 @@ async def get_memory(session_id: str):
             tokens = int(tokens_str)
 
         # Build response
-        response = MemoryResponse(
-            messages=memory_messages, context=context, tokens=tokens
+        return MemoryResponse(
+            messages=memory_messages,
+            context=context,
+            tokens=tokens,
         )
 
-        return response
     except Exception as e:
         logger.error(f"Error getting memory for session {session_id}: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
 @router.post("/sessions/{session_id}/memory", response_model=AckResponse)
@@ -172,22 +180,22 @@ async def post_memory(
         current_time = int(time.time())
         await redis.zadd(sessions_key, {session_id: current_time})
 
-        # Add messages to session list
-        # TODO: Don't need a pipeline here, lpush takes multiple values.
-        pipe = redis.pipeline()
+        # Convert messages to JSON, handling topics and entities
+        messages_json = []
         for msg in memory_messages.messages:
-            # Convert to dict and serialize
-            msg_json = json.dumps(msg.model_dump())
-            pipe.lpush(messages_key, msg_json)
+            msg_dict = msg.model_dump()
+            # Convert lists to comma-separated strings for TAG fields
+            msg_dict["topics"] = ",".join(msg.topics) if msg.topics else ""
+            msg_dict["entities"] = ",".join(msg.entities) if msg.entities else ""
+            messages_json.append(json.dumps(msg_dict))
 
-        # Execute pipeline
-        await pipe.execute()
+        # Add messages to list
+        await redis.lpush(messages_key, *messages_json)  # type: ignore
 
         # Check if window size is exceeded
         current_size = await redis.llen(messages_key)
         if current_size > settings.window_size:
             # Handle compaction in background
-            # Get the appropriate client for the generation model
             model_client = await get_model_client(settings.generation_model)
             background_tasks.add_task(
                 handle_compaction,
@@ -198,26 +206,21 @@ async def post_memory(
                 redis,
             )
 
-        # If long-term memory is enabled, index messages.
-        #
-        # TODO: Add support for custom policies around when to index and/or
-        # avoid re-indexing duplicate content.
+        # If long-term memory is enabled, index messages
         if settings.long_term_memory:
-            # For embeddings, we always use OpenAI models since Anthropic doesn't support embeddings
             embedding_client = await get_openai_client()
-
             background_tasks.add_task(
                 index_messages,
                 memory_messages.messages,
                 session_id,
-                embedding_client,  # Explicitly use OpenAI client for embeddings
+                embedding_client,
                 redis,
             )
 
         return AckResponse(status="ok")
     except Exception as e:
         logger.error(f"Error adding messages for session {session_id}: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
 @router.delete("/sessions/{session_id}/memory", response_model=AckResponse)
@@ -252,5 +255,4 @@ async def delete_memory(
         return AckResponse(status="ok")
     except Exception as e:
         logger.error(f"Error deleting memory for session {session_id}: {e}")
-        raise
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from e

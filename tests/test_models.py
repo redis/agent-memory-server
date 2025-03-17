@@ -23,10 +23,36 @@ class TestModels:
         msg = MemoryMessage(role="user", content="Hello, world!")
         assert msg.role == "user"
         assert msg.content == "Hello, world!"
+        assert msg.topics == []  # Check default empty list
+        assert msg.entities == []  # Check default empty list
 
         # Test serialization
         data = msg.model_dump()
-        assert data == {"role": "user", "content": "Hello, world!"}
+        assert data == {
+            "role": "user",
+            "content": "Hello, world!",
+            "topics": [],
+            "entities": [],
+        }
+
+        # Test with topics and entities
+        msg_with_metadata = MemoryMessage(
+            role="user",
+            content="Hello, world!",
+            topics=["greeting", "general"],
+            entities=["world"],
+        )
+        assert msg_with_metadata.topics == ["greeting", "general"]
+        assert msg_with_metadata.entities == ["world"]
+
+        # Test serialization with metadata
+        data = msg_with_metadata.model_dump()
+        assert data == {
+            "role": "user",
+            "content": "Hello, world!",
+            "topics": ["greeting", "general"],
+            "entities": ["world"],
+        }
 
     def test_memory_messages_and_context(self):
         """Test MemoryMessagesAndContext model"""

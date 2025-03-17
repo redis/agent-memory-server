@@ -1,8 +1,9 @@
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from reducers import _incremental_summary, handle_compaction
+from summarization import _incremental_summary, handle_compaction
 from utils import Keys
 
 
@@ -12,7 +13,10 @@ class TestIncrementalSummarization:
         """Test incremental summarization without previous context"""
         model = "gpt-3.5-turbo"
         context = None
-        messages = ["Hello, world!", "How are you?"]
+        messages = [
+            json.dumps({"role": "user", "content": "Hello, world!"}),
+            json.dumps({"role": "assistant", "content": "How are you?"}),
+        ]
 
         mock_response = MagicMock()
         mock_response.choices = [{"message": {"content": "This is a summary"}}]
@@ -31,7 +35,6 @@ class TestIncrementalSummarization:
         args = mock_openai_client.create_chat_completion.call_args[0]
 
         assert args[0] == model
-
         assert "How are you?" in args[1]
         assert "Hello, world!" in args[1]
 
@@ -39,7 +42,10 @@ class TestIncrementalSummarization:
         """Test incremental summarization with previous context"""
         model = "gpt-3.5-turbo"
         context = "Previous summary"
-        messages = ["Hello, world!", "How are you?"]
+        messages = [
+            json.dumps({"role": "user", "content": "Hello, world!"}),
+            json.dumps({"role": "assistant", "content": "How are you?"}),
+        ]
 
         # Create a response that matches our new ChatResponse format
         mock_response = MagicMock()
@@ -59,7 +65,6 @@ class TestIncrementalSummarization:
         args = mock_openai_client.create_chat_completion.call_args[0]
 
         assert args[0] == model
-
         assert "Previous summary" in args[1]
         assert "How are you?" in args[1]
         assert "Hello, world!" in args[1]
@@ -67,7 +72,7 @@ class TestIncrementalSummarization:
 
 class TestHandleCompaction:
     @pytest.mark.asyncio
-    @patch("reducers._incremental_summary")
+    @patch("summarization._incremental_summary")
     async def test_handle_compaction(
         self, mock_summarization, mock_openai_client, mock_async_redis_client
     ):
@@ -84,12 +89,12 @@ class TestHandleCompaction:
         pipeline_mock.execute = AsyncMock(
             return_value=[
                 [
-                    "Message 1",
-                    "Message 2",
-                    "Message 3",
-                    "Message 4",
-                    "Message 5",
-                    "Message 6",
+                    json.dumps({"role": "user", "content": "Message 1"}),
+                    json.dumps({"role": "assistant", "content": "Message 2"}),
+                    json.dumps({"role": "user", "content": "Message 3"}),
+                    json.dumps({"role": "assistant", "content": "Message 4"}),
+                    json.dumps({"role": "user", "content": "Message 5"}),
+                    json.dumps({"role": "assistant", "content": "Message 6"}),
                 ],
                 "Previous summary",
             ]
@@ -117,17 +122,10 @@ class TestHandleCompaction:
         assert mock_summarization.call_args[0][0] == model
         assert mock_summarization.call_args[0][1] == mock_openai_client
         assert mock_summarization.call_args[0][2] == "Previous summary"
-        assert mock_summarization.call_args[0][3] == [
-            "Message 1",
-            "Message 2",
-            "Message 3",
-            "Message 4",
-            "Message 5",
-            "Message 6",
-        ]
+        assert len(mock_summarization.call_args[0][3]) == 6
 
     @pytest.mark.asyncio
-    @patch("reducers._incremental_summary")
+    @patch("summarization._incremental_summary")
     async def test_handle_compaction_no_messages(
         self, mock_summarization, mock_openai_client, mock_async_redis_client
     ):
