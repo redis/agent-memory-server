@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 
 import utils
+from models import ModelProvider, MODEL_CONFIGS
 
 load_dotenv()
 
@@ -36,12 +37,58 @@ async def startup_event():
     """Initialize the application on startup"""
     logger.info("Starting Redis Memory Server 🤘")
 
+    # Check for required API keys
+    available_providers = []
+
+    if settings.openai_api_key:
+        available_providers.append(ModelProvider.OPENAI)
+    else:
+        logger.warning("OpenAI API key not set, OpenAI models will not be available")
+
+    if settings.anthropic_api_key:
+        available_providers.append(ModelProvider.ANTHROPIC)
+    else:
+        logger.warning(
+            "Anthropic API key not set, Anthropic models will not be available"
+        )
+
+    # Check if the configured models are available
+    generation_model_config = MODEL_CONFIGS.get(settings.generation_model)
+    embedding_model_config = MODEL_CONFIGS.get(settings.embedding_model)
+
+    if (
+        generation_model_config
+        and generation_model_config.provider not in available_providers
+    ):
+        logger.warning(
+            f"Selected generation model {settings.generation_model} requires {generation_model_config.provider} API key"
+        )
+
+    if (
+        embedding_model_config
+        and embedding_model_config.provider not in available_providers
+    ):
+        logger.warning(
+            f"Selected embedding model {settings.embedding_model} requires {embedding_model_config.provider} API key"
+        )
+
+    # If long-term memory is enabled but OpenAI isn't available, warn user
+    if settings.long_term_memory and ModelProvider.OPENAI not in available_providers:
+        logger.warning(
+            "Long-term memory requires OpenAI for embeddings, but OpenAI API key is not set"
+        )
+
     # Set up RediSearch index if long-term memory is enabled
     if settings.long_term_memory:
         redis = get_redis_conn()
 
-        # For now, just ada support
-        vector_dimensions = 1536
+        # Get embedding dimensions from model config
+        embedding_model_config = MODEL_CONFIGS.get(settings.embedding_model)
+        vector_dimensions = (
+            embedding_model_config.embedding_dimensions
+            if embedding_model_config
+            else 1536
+        )
         distance_metric = "COSINE"
 
         try:
@@ -49,6 +96,25 @@ async def startup_event():
         except Exception as e:
             logger.error(f"Failed to ensure RediSearch index: {e}")
             raise
+
+    # Show available models
+    openai_models = [
+        model
+        for model, config in MODEL_CONFIGS.items()
+        if config.provider == ModelProvider.OPENAI
+        and ModelProvider.OPENAI in available_providers
+    ]
+    anthropic_models = [
+        model
+        for model, config in MODEL_CONFIGS.items()
+        if config.provider == ModelProvider.ANTHROPIC
+        and ModelProvider.ANTHROPIC in available_providers
+    ]
+
+    if openai_models:
+        logger.info(f"Available OpenAI models: {', '.join(openai_models)}")
+    if anthropic_models:
+        logger.info(f"Available Anthropic models: {', '.join(anthropic_models)}")
 
     logger.info(
         "Redis Memory Server initialized",

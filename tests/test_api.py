@@ -7,6 +7,7 @@ from config import Settings
 from long_term_memory import index_messages
 from models import (
     RedisearchResult,
+    SearchResults,
 )
 from reducers import handle_compaction
 
@@ -206,16 +207,18 @@ class TestRetrievalEndpoint:
     @pytest.mark.asyncio
     async def test_retrieval(self, mock_search, client):
         """Test the retrieval endpoint"""
-        mock_search.return_value = [
-            RedisearchResult(role="user", content="Hello, world!", dist=0.25),
-            RedisearchResult(role="assistant", content="Hi there!", dist=0.75),
-        ]
+        mock_search.return_value = SearchResults(
+            docs=[
+                RedisearchResult(role="user", content="Hello, world!", dist=0.25),
+                RedisearchResult(role="assistant", content="Hi there!", dist=0.75),
+            ],
+            total=2,
+        )
 
         # Create payload
         payload = {"text": "What is the capital of France?"}
 
         # Call endpoint with the correct URL format (matching the router definition)
-
         response = await client.post("/sessions/test-session/retrieval", json=payload)
 
         # Check status code
@@ -223,15 +226,17 @@ class TestRetrievalEndpoint:
 
         # Check response structure
         data = response.json()
-        assert isinstance(data, list)
-        assert len(data) == 2
+        assert "docs" in data
+        assert "total" in data
+        assert data["total"] == 2
+        assert len(data["docs"]) == 2
 
         # Check first result
-        assert data[0]["role"] == "user"
-        assert data[0]["content"] == "Hello, world!"
-        assert data[0]["dist"] == 0.25
+        assert data["docs"][0]["role"] == "user"
+        assert data["docs"][0]["content"] == "Hello, world!"
+        assert data["docs"][0]["dist"] == 0.25
 
         # Check second result
-        assert data[1]["role"] == "assistant"
-        assert data[1]["content"] == "Hi there!"
-        assert data[1]["dist"] == 0.75
+        assert data["docs"][1]["role"] == "assistant"
+        assert data["docs"][1]["content"] == "Hi there!"
+        assert data["docs"][1]["dist"] == 0.75

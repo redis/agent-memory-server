@@ -14,9 +14,8 @@ class TestIncrementalSummarization:
         messages = ["Hello, world!", "How are you?"]
 
         mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "This is a summary"
-        mock_response.usage.total_tokens = 150
+        mock_response.choices = [{"message": {"content": "This is a summary"}}]
+        mock_response.total_tokens = 150
 
         mock_openai_client.create_chat_completion.return_value = mock_response
 
@@ -41,10 +40,10 @@ class TestIncrementalSummarization:
         context = "Previous summary"
         messages = ["Hello, world!", "How are you?"]
 
+        # Create a response that matches our new ChatResponse format
         mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "Updated summary"
-        mock_response.usage.total_tokens = 200
+        mock_response.choices = [{"message": {"content": "Updated summary"}}]
+        mock_response.total_tokens = 200
 
         mock_openai_client.create_chat_completion.return_value = mock_response
 

@@ -1,55 +1,106 @@
 # Redis Memory Server
 
-A Python memory server for agents and LLM applications. This application
-provides memory features for LLM conversations, including short-term memory
-(message history) and long-term memory (vector embeddings for semantic search).
+A service that provides memory management for AI applications using Redis.
 
 ## Features
 
-- Short-term memory storage for conversation history
-- Optional long-term memory with semantic search capabilities
-- Automatic context summarization to handle long conversations
-- Integration with OpenAI API (more coming soon)
-- Redis-based storage with vector search
+- Short-term memory management with configurable window size
+- Long-term memory with semantic search capabilities
+- Automatic context summarization using LLMs
+- Support for multiple model providers (OpenAI and Anthropic)
+- Configurable token limits based on selected model
+
+## Configuration
+
+The service can be configured using environment variables:
+
+- `REDIS_URL`: URL for Redis connection (default: `redis://localhost:6379`)
+- `LONG_TERM_MEMORY`: Enable/disable long-term memory (default: `True`)
+- `WINDOW_SIZE`: Maximum number of messages to keep in short-term memory (default: `20`)
+- `OPENAI_API_KEY`: API key for OpenAI
+- `ANTHROPIC_API_KEY`: API key for Anthropic
+- `GENERATION_MODEL`: Model to use for text generation (default: `gpt-4o-mini`)
+- `EMBEDDING_MODEL`: Model to use for text embeddings (default: `text-embedding-3-small`)
+- `PORT`: Port to run the server on (default: `8000`)
+
+## Supported Models
+
+### OpenAI Models
+
+- `gpt-3.5-turbo`: 4K context window
+- `gpt-3.5-turbo-16k`: 16K context window
+- `gpt-4`: 8K context window
+- `gpt-4-32k`: 32K context window
+- `gpt-4o`: 128K context window
+- `gpt-4o-mini`: 128K context window
+
+### Anthropic Models
+
+- `claude-3-opus-20240229`: 200K context window
+- `claude-3-sonnet-20240229`: 200K context window
+- `claude-3-haiku-20240307`: 200K context window
+- `claude-3-5-sonnet-20240620`: 200K context window
+
+**Note**: Embedding operations always use OpenAI models, as Anthropic does not provide embedding API.
 
 ## Installation
 
 1. Clone the repository
-2. Install dependencies:
-```
-pip install -r requirements.txt
-```
-3. Set up environment variables:
-```
-# Required
-REDIS_URL=redis://localhost:6379
-
-# Optional
-PORT=8000
-LONG_TERM_MEMORY=true
-MAX_WINDOW_SIZE=12
-MODEL=gpt-3.5-turbo
-
-# For OpenAI
-OPENAI_API_KEY=your_openai_api_key
-```
+2. Install dependencies: `pip install -r requirements.txt`
+3. Set up environment variables (see Configuration section)
+4. Run the server: `python main.py`
 
 ## Usage
 
-Start the server:
+### Add Messages to Memory
 
 ```
-python main.py
+POST /sessions/{session_id}/memory
 ```
 
-## API Endpoints
+Request body:
+```json
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello, how are you?"
+    },
+    {
+      "role": "assistant",
+      "content": "I'm doing well, thank you for asking!"
+    }
+  ],
+  "context": "Optional previous summary"
+}
+```
 
-- `GET /health`: Health check endpoint
-- `GET /sessions`: Get a list of session IDs
-- `GET /sessions/{session_id}/memory`: Get memory for a session
-- `POST /sessions/{session_id}/memory`: Add messages to a session
-- `DELETE /sessions/{session_id}/memory`: Delete a session's memory
-- `POST /sessions/{session_id}/retrieval`: Perform semantic search on session memory
+### Get Memory
+
+```
+GET /sessions/{session_id}/memory
+```
+
+### Search Memory
+
+```
+POST /sessions/{session_id}/retrieval
+```
+
+Request body:
+```json
+{
+  "text": "What was the conversation about?"
+}
+```
+
+## Development
+
+To run tests:
+
+```
+python -m pytest
+```
 
 ## License
 TBD

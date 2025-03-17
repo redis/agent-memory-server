@@ -4,7 +4,8 @@ from redis.asyncio import ConnectionPool, Redis
 from redis.commands.search.field import TextField, TagField, VectorField
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 from config import settings
-from models import OpenAIClientWrapper
+from models import OpenAIClientWrapper, ModelClientFactory, AnthropicClientWrapper
+from typing import Union
 
 
 REDIS_INDEX_NAME = "memory"
@@ -12,6 +13,8 @@ REDIS_INDEX_NAME = "memory"
 logger = logging.getLogger(__name__)
 _redis_pool = None
 _openai_client = None
+_anthropic_client = None
+_model_clients = {}
 
 
 def get_redis_conn(url: str | None = settings.redis_url, **kwargs) -> Redis:
@@ -85,11 +88,23 @@ async def ensure_redisearch_index(
 
 
 async def get_openai_client(**kwargs) -> OpenAIClientWrapper:
-    """Get OpenAI client"""
+    """Get OpenAI client (legacy function, use get_model_client instead)"""
     global _openai_client
     if _openai_client is None:
         _openai_client = OpenAIClientWrapper(api_key=settings.openai_api_key, **kwargs)
     return _openai_client
+
+
+async def get_model_client(
+    model_name: str,
+) -> Union[OpenAIClientWrapper, AnthropicClientWrapper]:
+    """Get the appropriate client for a model using the factory"""
+    global _model_clients
+
+    if model_name not in _model_clients:
+        _model_clients[model_name] = await ModelClientFactory.get_client(model_name)
+
+    return _model_clients[model_name]
 
 
 class Keys:

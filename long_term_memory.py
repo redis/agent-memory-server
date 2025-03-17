@@ -1,13 +1,15 @@
-from typing import List, Type
+from typing import List, Type, Union, Any
 import nanoid
-import numpy as np
 from redis.asyncio import Redis
 from redis.commands.search.query import Query
 from models import (
     MemoryMessage,
     OpenAIClientWrapper,
+    AnthropicClientWrapper,
     RedisearchResult,
     SearchResults,
+    ModelProvider,
+    get_model_config,
 )
 import logging
 
@@ -19,7 +21,7 @@ logger = logging.getLogger(__name__)
 async def index_messages(
     messages: List[MemoryMessage],
     session_id: str,
-    openai_client: OpenAIClientWrapper,
+    client: OpenAIClientWrapper,  # Only OpenAI supports embeddings currently
     redis_conn: Redis,
 ) -> None:
     """Index messages in Redis for vector search"""
@@ -28,7 +30,7 @@ async def index_messages(
         contents = [msg.content for msg in messages]
 
         # Get embeddings from OpenAI
-        embeddings = await openai_client.create_embedding(contents)
+        embeddings = await client.create_embedding(contents)
 
         # Index each message with its embedding
         for index, embedding in enumerate(embeddings):
@@ -64,7 +66,7 @@ class Unset:
 async def search_messages(
     query: str,
     session_id: str,
-    openai_client: OpenAIClientWrapper,
+    client: OpenAIClientWrapper,  # Only OpenAI supports embeddings currently
     redis_conn: Redis,
     distance_threshold: float | Type[Unset] = Unset,
     limit: int = 10,
@@ -72,8 +74,10 @@ async def search_messages(
     """Search for messages using vector similarity"""
     try:
         # Get embedding for query
-        query_embedding = await openai_client.create_embedding([query])
+        query_embedding = await client.create_embedding([query])
         vector = query_embedding.tobytes()
+
+        # Set up query parameters
         params = {"vec": vector}
 
         if distance_threshold and distance_threshold is not Unset:
@@ -85,6 +89,7 @@ async def search_messages(
             base_query = Query(
                 f"@session:{{{session_id}}}=>[KNN {limit} @vector $vec AS dist]"
             )
+
         q = (
             base_query.return_fields("role", "content", "dist")
             .sort_by("dist", asc=True)
@@ -92,19 +97,38 @@ async def search_messages(
             .dialect(2)
         )
 
+        # Execute search
         raw_results = await redis_conn.ft(REDIS_INDEX_NAME).search(
             q,
             query_params=params,  # type: ignore
         )
 
-        # Parse results
-        results = [
-            RedisearchResult(role=doc.role, content=doc.content, dist=doc.dist)
-            for doc in raw_results.docs
-        ]
+        # Parse results safely
+        results = []
+        total_results = 0
+
+        # Check if raw_results has the expected attributes
+        if hasattr(raw_results, "docs") and isinstance(raw_results.docs, list):
+            for doc in raw_results.docs:
+                if (
+                    hasattr(doc, "role")
+                    and hasattr(doc, "content")
+                    and hasattr(doc, "dist")
+                ):
+                    results.append(
+                        RedisearchResult(
+                            role=doc.role, content=doc.content, dist=float(doc.dist)
+                        )
+                    )
+
+            total_results = getattr(raw_results, "total", len(results))
+        else:
+            # Handle the case where raw_results doesn't have the expected structure
+            logger.warning("Unexpected search result format")
+            total_results = 0
 
         logger.info(f"Found {len(results)} results for query in session {session_id}")
-        return SearchResults(total=raw_results.total, docs=results)
+        return SearchResults(total=total_results, docs=results)
     except Exception as e:
         logger.error(f"Error searching messages: {e}")
         raise

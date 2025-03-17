@@ -15,7 +15,7 @@ from models import (
 )
 from reducers import handle_compaction
 from long_term_memory import index_messages
-from utils import Keys, get_openai_client, get_redis_conn
+from utils import Keys, get_model_client, get_redis_conn, get_openai_client
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,6 @@ async def get_memory(
         Memory response with messages and context
     """
     redis = get_redis_conn()
-    print(f"Redis connection: {redis.connection_pool.connection_kwargs}")
 
     try:
         # Define keys
@@ -191,26 +190,30 @@ async def post_memory(
         current_size = await redis.llen(messages_key)
         if current_size > settings.window_size:
             # Handle compaction in background
+            # Get the appropriate client for the generation model
+            model_client = await get_model_client(settings.generation_model)
             background_tasks.add_task(
                 handle_compaction,
                 session_id,
                 settings.generation_model,
                 settings.window_size,
-                await get_openai_client(),
+                model_client,
                 redis,
             )
 
         # If long-term memory is enabled, index messages.
         # 
         # TODO: Add support for custom policies around when to index and/or
-        # when to "move" memories from short-term to long-term memory, if
-        # that implies deleting them from short-term memory.
+        # avoid re-indexing duplicate content.
         if settings.long_term_memory:
+            # For embeddings, we always use OpenAI models since Anthropic doesn't support embeddings
+            embedding_client = await get_openai_client()
+
             background_tasks.add_task(
                 index_messages,
                 memory_messages.messages,
                 session_id,
-                await get_openai_client(),
+                embedding_client,  # Explicitly use OpenAI client for embeddings
                 redis,
             )
 

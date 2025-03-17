@@ -1,6 +1,12 @@
 import tiktoken
-from typing import List, Optional, Tuple
-from models import OpenAIClientWrapper
+from typing import List, Optional, Tuple, Union
+from models import (
+    OpenAIClientWrapper,
+    AnthropicClientWrapper,
+    ModelClientFactory,
+    get_model_config,
+    ChatResponse,
+)
 from redis.asyncio import Redis
 import logging
 
@@ -9,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 async def _incremental_summary(
     model: str,
-    openai_client: OpenAIClientWrapper,
+    client: Union[OpenAIClientWrapper, AnthropicClientWrapper],
     context: Optional[str],
     messages: List[str],
 ) -> Tuple[str, int]:
@@ -17,8 +23,8 @@ async def _incremental_summary(
     Incrementally summarize messages, building upon a previous summary.
 
     Args:
-        model: The OpenAI model to use
-        openai_client: The OpenAI client wrapper
+        model: The model to use (OpenAI or Anthropic)
+        client: The client wrapper (OpenAI or Anthropic)
         context: Previous summary, if any
         messages: New messages to summarize
 
@@ -52,14 +58,14 @@ New summary:
 """
 
     try:
-        # Get completion from OpenAI
-        response = await openai_client.create_chat_completion(model, progressive_prompt)
+        # Get completion from client
+        response = await client.create_chat_completion(model, progressive_prompt)
 
         # Extract completion text
-        completion = response.choices[0].message.content
+        completion = response.choices[0]["message"]["content"]
 
         # Get token usage
-        tokens_used = response.usage.total_tokens
+        tokens_used = response.total_tokens
 
         logger.info(f"Summarization complete, using {tokens_used} tokens")
         return completion, tokens_used
@@ -72,7 +78,7 @@ async def handle_compaction(
     session_id: str,
     model: str,
     window_size: int,
-    openai_client: OpenAIClientWrapper,
+    client: Union[OpenAIClientWrapper, AnthropicClientWrapper],
     redis_conn: Redis,
 ) -> None:
     """
@@ -85,9 +91,9 @@ async def handle_compaction(
 
     Args:
         session_id: The session ID
-        model: The OpenAI model to use
+        model: The model to use
         window_size: Maximum number of messages to keep
-        openai_client: The OpenAI client wrapper
+        client: The client wrapper (OpenAI or Anthropic)
         redis_conn: Redis connection
     """
     try:
@@ -107,13 +113,18 @@ async def handle_compaction(
         messages = results[0]
         context = results[1]
 
-        # Set up token limits
-        max_tokens = 4096
-        summary_max_tokens = 512
+        # Get model configuration for token limits
+        model_config = get_model_config(model)
+
+        # Set up token limits based on model configuration
+        max_tokens = model_config.max_tokens
+        summary_max_tokens = max(
+            512, max_tokens // 8
+        )  # Use at least 512 tokens or 12.5% of model's context
         buffer_tokens = 230
         max_message_tokens = max_tokens - summary_max_tokens - buffer_tokens
 
-        # Initialize encoding
+        # Initialize encoding (currently uses OpenAI's tokenizer, but could be extended for different models)
         encoding = tiktoken.get_encoding("cl100k_base")
 
         # Check token count of messages
@@ -138,7 +149,7 @@ async def handle_compaction(
         # Generate new summary
         summary, _ = await _incremental_summary(
             model,
-            openai_client,
+            client,
             context.decode("utf-8") if isinstance(context, bytes) else context,
             messages_to_summarize,
         )

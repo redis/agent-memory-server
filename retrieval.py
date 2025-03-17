@@ -30,13 +30,12 @@ async def run_retrieval(
 
     if not settings.long_term_memory:
         raise HTTPException(status_code=400, detail="Long term memory is disabled")
-    
-    openai_client = await get_openai_client()
+
+    # For embeddings, we always use OpenAI models since Anthropic doesn't support embeddings
+    client = await get_openai_client()
 
     try:
-        results = await search_messages(
-            payload.text, session_id, openai_client, redis
-        )
+        results = await search_messages(payload.text, session_id, client, redis)
         return results
     except Exception as e:
         logger.error(f"Error in retrieval API: {e}")

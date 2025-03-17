@@ -102,10 +102,6 @@ async def test_session_setup(async_redis_client):
 
     session_id = "test-session"
 
-    print(
-        f"Test Redis connection: {async_redis_client.connection_pool.connection_kwargs}"
-    )
-
     # Add session to sorted set of sessions
     await async_redis_client.zadd(Keys.sessions_key(), {session_id: int(time.time())})
 

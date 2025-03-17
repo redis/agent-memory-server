@@ -11,5 +11,5 @@ tiktoken>=0.5.1
 structlog>=23.2.0
 async-timeout>=4.0.3
 httpx>=0.25.1 
-numpy>=2.2.3
+numpy>=
 pydantic-settings>=2.8.1
