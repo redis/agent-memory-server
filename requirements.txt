@@ -13,3 +13,4 @@ async-timeout>=4.0.3
 httpx>=0.25.1
 numpy>=2.2.3
 pydantic-settings>=2.8.1
+bertopic>=0.16.4

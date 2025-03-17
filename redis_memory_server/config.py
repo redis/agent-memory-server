@@ -17,5 +17,11 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     port: int = 8000
 
+    # Topic and NER model settings
+    topic_model: str = "MaartenGr/BERTopic_Wikipedia"
+    ner_model: str = "dbmdz/bert-large-cased-finetuned-conll03-english"
+    enable_topic_extraction: bool = True
+    enable_ner: bool = True
+
 
 settings = Settings()

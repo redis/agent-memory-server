@@ -5,23 +5,23 @@ build-backend = "hatchling.build"
 [project]
 name = "redis-memory-server"
 version = "0.1.0"
-description = "A memory system for conversational AI using Redis"
+description = "A Redis-based memory server for LLM applications"
 readme = "README.md"
-requires-python = ">=3.10"
-license = "MIT"
+requires-python = ">=3.8"
+license = { text = "MIT" }
 authors = [
-    { name = "Andrew Brookins", email = "andrew.brookins@example.com" },
+    { name = "Andrew Brookins", email = "andrew.brookins@redis.com" },
 ]
 dependencies = [
-    "fastapi>=0.109.0",
-    "uvicorn>=0.27.0",
-    "redis>=5.0.1",
+    "fastapi>=0.68.0",
+    "uvicorn>=0.15.0",
+    "redis>=4.0.0",
+    "pydantic>=1.8.0",
     "openai>=1.0.0",
-    "anthropic>=0.18.1",
-    "python-dotenv>=1.0.0",
-    "structlog>=24.1.0",
-    "tiktoken>=0.5.2",
-    "numpy>=1.26.0",
+    "anthropic>=0.3.0",
+    "bertopic>=0.14.0",
+    "transformers>=4.30.0",
+    "torch>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -37,6 +37,14 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["redis_memory_server"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/redis_memory_server",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.pytest.ini_options]
 addopts = "-v"

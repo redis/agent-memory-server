@@ -9,6 +9,8 @@ A service that provides memory management for AI applications using Redis.
 - Automatic context summarization using LLMs
 - Support for multiple model providers (OpenAI and Anthropic)
 - Configurable token limits based on selected model
+- Topic extraction using BERTopic
+- Named Entity Recognition using BERT
 
 ## Configuration
 
@@ -22,6 +24,10 @@ The service can be configured using environment variables:
 - `GENERATION_MODEL`: Model to use for text generation (default: `gpt-4o-mini`)
 - `EMBEDDING_MODEL`: Model to use for text embeddings (default: `text-embedding-3-small`)
 - `PORT`: Port to run the server on (default: `8000`)
+- `TOPIC_MODEL`: BERTopic model to use for topic extraction (default: `MaartenGr/BERTopic_Wikipedia`)
+- `NER_MODEL`: BERT model to use for named entity recognition (default: `dbmdz/bert-large-cased-finetuned-conll03-english`)
+- `ENABLE_TOPIC_EXTRACTION`: Enable/disable topic extraction (default: `True`)
+- `ENABLE_NER`: Enable/disable named entity recognition (default: `True`)
 
 ## Supported Models
 
@@ -40,6 +46,11 @@ The service can be configured using environment variables:
 - `claude-3-sonnet-20240229`: 200K context window
 - `claude-3-haiku-20240307`: 200K context window
 - `claude-3-5-sonnet-20240620`: 200K context window
+
+### Topic and NER Models
+
+- Topic Extraction: Uses BERTopic with the specified model (default: Wikipedia-trained model)
+- Named Entity Recognition: Uses BERT model fine-tuned on CoNLL-03 dataset
 
 **Note**: Embedding operations always use OpenAI models, as Anthropic does not provide embedding API.
 
@@ -61,17 +72,20 @@ POST /sessions/{session_id}/memory
 Request body:
 ```json
 {
-  "messages": [
-    {
-      "role": "user",
-      "content": "Hello, how are you?"
-    },
-    {
-      "role": "assistant",
-      "content": "I'm doing well, thank you for asking!"
-    }
-  ],
-  "context": "Optional previous summary"
+    "messages": [
+        {
+            "role": "user",
+            "content": "Hello, how are you?"
+        }
+    ],
+    "context": "Optional context for the conversation"
+}
+```
+
+Response:
+```json
+{
+    "status": "ok"
 }
 ```
 
@@ -81,16 +95,46 @@ Request body:
 GET /sessions/{session_id}/memory
 ```
 
-### Search Memory
-
-```
-POST /sessions/{session_id}/retrieval
-```
-
-Request body:
+Response:
 ```json
 {
-  "text": "What was the conversation about?"
+    "messages": [
+        {
+            "role": "user",
+            "content": "Hello, how are you?",
+            "topics": ["greeting", "well-being"],
+            "entities": []
+        }
+    ],
+    "context": "Optional context for the conversation",
+    "tokens": 123
+}
+```
+
+### List Sessions
+
+```
+GET /sessions/
+```
+
+Response:
+```json
+[
+    "session-1",
+    "session-2"
+]
+```
+
+### Delete Session
+
+```
+DELETE /sessions/{session_id}/memory
+```
+
+Response:
+```json
+{
+    "status": "ok"
 }
 ```
 

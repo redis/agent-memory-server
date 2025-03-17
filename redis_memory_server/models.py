@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from enum import Enum
@@ -287,9 +288,25 @@ class AnthropicClientWrapper:
 
         self.client = anthropic.AsyncAnthropic(api_key=anthropic_api_key)
 
-    async def create_chat_completion(self, model: str, prompt: str) -> ChatResponse:
+    async def create_chat_completion(
+        self,
+        model: str,
+        prompt: str,
+        response_format: dict[str, str] | None = None,
+        functions: list[dict[str, Any]] | None = None,
+        function_call: dict[str, str] | None = None,
+    ) -> ChatResponse:
         """Create a chat completion using the Anthropic API"""
         try:
+            # For Anthropic, we need to handle structured output differently
+            if response_format and response_format.get("type") == "json_object":
+                prompt = f"{prompt}\n\nYou must respond with a valid JSON object."
+
+            if functions and function_call:
+                # Add function schema to prompt
+                schema = functions[0]["parameters"]
+                prompt = f"{prompt}\n\nYou must respond with a JSON object matching this schema:\n{json.dumps(schema, indent=2)}"
+
             response = await self.client.messages.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
@@ -367,12 +384,28 @@ class OpenAIClientWrapper:
         self,
         model: str,
         progressive_prompt: str,
+        response_format: dict[str, str] | None = None,
+        functions: list[dict[str, Any]] | None = None,
+        function_call: dict[str, str] | None = None,
     ) -> ChatResponse:
         """Create a chat completion using the OpenAI API"""
         try:
+            # Build the request parameters
+            request_params = {
+                "model": model,
+                "messages": [{"role": "user", "content": progressive_prompt}],
+            }
+
+            # Add optional parameters if provided
+            if response_format:
+                request_params["response_format"] = response_format
+            if functions:
+                request_params["functions"] = functions
+            if function_call:
+                request_params["function_call"] = function_call
+
             response = await self.completion_client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": progressive_prompt}],
+                **request_params
             )
 
             # Convert to unified format

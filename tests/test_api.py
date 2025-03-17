@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 
 from redis_memory_server.config import Settings
-from redis_memory_server.extraction import handle_extraction
 from redis_memory_server.long_term_memory import index_messages
 from redis_memory_server.models import (
     RedisearchResult,
@@ -141,18 +140,10 @@ class TestMemoryEndpoints:
         assert data["status"] == "ok"
 
         # Check that background tasks were called
-        # We expect 3 tasks:
-        # 1. Topic/entity extraction for first message
-        # 2. Topic/entity extraction for second message
-        # 3. Long-term memory indexing
-        assert mock_add_task.call_count == 3
+        assert mock_add_task.call_count == 1
 
         # Check that the last call was for long-term memory indexing
         assert mock_add_task.call_args_list[-1][0][0] == index_messages
-
-        # Check that the first two calls were for topic/entity extraction
-        assert mock_add_task.call_args_list[0][0][0] == handle_extraction
-        assert mock_add_task.call_args_list[1][0][0] == handle_extraction
 
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
@@ -181,18 +172,10 @@ class TestMemoryEndpoints:
         assert data["status"] == "ok"
 
         # Check that background tasks were called
-        # We expect 3 tasks:
-        # 1. Topic/entity extraction for first message
-        # 2. Topic/entity extraction for second message
-        # 3. Compaction
-        assert mock_add_task.call_count == 3
+        assert mock_add_task.call_count == 1
 
         # Check that the last call was for compaction
         assert mock_add_task.call_args_list[-1][0][0] == handle_compaction
-
-        # Check that the first two calls were for topic/entity extraction
-        assert mock_add_task.call_args_list[0][0][0] == handle_extraction
-        assert mock_add_task.call_args_list[1][0][0] == handle_extraction
 
     @pytest.mark.asyncio
     async def test_delete_memory(self, client, test_session_setup):

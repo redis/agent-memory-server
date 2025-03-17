@@ -1,104 +1,152 @@
-import json
 import logging
+import os
+from typing import Any
 
+from bertopic import BERTopic
+from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
+
+from redis_memory_server.config import settings
 from redis_memory_server.models import (
-    AnthropicClientWrapper,
     MemoryMessage,
-    OpenAIClientWrapper,
 )
 
 
 logger = logging.getLogger(__name__)
 
-EXTRACTION_PROMPT = """Analyze the following message and extract:
-1. Key topics (as single words or short phrases)
-2. Named entities (people, places, organizations, etc.)
+# Set tokenizer parallelism environment variable
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-Message: {message}
-
-Respond in JSON format:
-{{
-    "topics": ["topic1", "topic2", ...],
-    "entities": ["entity1", "entity2", ...]
-}}
-
-Keep topics and entities concise and relevant."""
+# Global model instances
+_topic_model: BERTopic | None = None
+_ner_model: Any | None = None
+_ner_tokenizer: Any | None = None
 
 
-async def extract_topics_and_entities(
-    message: str,
-    model_client: OpenAIClientWrapper | AnthropicClientWrapper,
-) -> tuple[list[str], list[str]]:
+def get_topic_model() -> BERTopic:
     """
-    Extract topics and entities from a message using the LLM.
-
-    Args:
-        message: The message to analyze
-        model_client: The LLM client to use
+    Get or initialize the BERTopic model.
 
     Returns:
-        Tuple of (topics, entities) lists
+        The BERTopic model instance
+    """
+    global _topic_model
+    if _topic_model is None:
+        _topic_model = BERTopic.load(settings.topic_model)
+    return _topic_model  # type: ignore
+
+
+def get_ner_model() -> Any:
+    """
+    Get or initialize the NER model and tokenizer.
+
+    Returns:
+        The NER pipeline instance
+    """
+    global _ner_model, _ner_tokenizer
+    if _ner_model is None:
+        _ner_tokenizer = AutoTokenizer.from_pretrained(settings.ner_model)
+        _ner_model = AutoModelForTokenClassification.from_pretrained(settings.ner_model)
+    return pipeline("ner", model=_ner_model, tokenizer=_ner_tokenizer)
+
+
+def extract_entities(text: str) -> list[str]:
+    """
+    Extract named entities from text using the NER model.
+
+    Args:
+        text: The text to extract entities from
+
+    Returns:
+        List of unique entity names
     """
     try:
-        # Get LLM response
-        response = await model_client.create_chat_completion(
-            "gpt-4o-mini",  # TODO: Make configurable
-            EXTRACTION_PROMPT.format(message=message),
-        )
+        ner = get_ner_model()
+        results = ner(text)
 
-        # Parse JSON response from content field
-        content = response.choices[0]["message"]["content"].strip()
-        result = json.loads(content)
+        # Group tokens by entity
+        current_entity = []
+        entities = []
 
-        # Extract and validate topics and entities
-        topics = result.get("topics", [])
-        entities = result.get("entities", [])
+        for result in results:
+            if result["word"].startswith("##"):
+                # This is a continuation of the previous entity
+                current_entity.append(result["word"][2:])
+            else:
+                # This is a new entity
+                if current_entity:
+                    entities.append("".join(current_entity))
+                current_entity = [result["word"]]
 
-        # Ensure we have lists
-        if not isinstance(topics, list) or not isinstance(entities, list):
-            logger.error("Invalid extraction response format")
-            return [], []
+        # Add the last entity if exists
+        if current_entity:
+            entities.append("".join(current_entity))
 
-        return topics, entities
+        return list(set(entities))  # Remove duplicates
 
     except Exception as e:
-        logger.error(f"Error in topic/entity extraction: {e}")
-        return [], []
+        logger.error(f"Error extracting entities: {e}")
+        return []
+
+
+def extract_topics(text: str) -> list[str]:
+    """
+    Extract topics from text using the BERTopic model.
+
+    Args:
+        text: The text to extract topics from
+
+    Returns:
+        List of topic labels
+    """
+    # Get model instance
+    model = get_topic_model()
+
+    # Get topic indices and probabilities
+    topic_indices, _ = model.transform([text])
+
+    topics = []
+    for idx in topic_indices:
+        # Convert possible numpy integer to Python int
+        idx_int = int(idx)
+        if idx_int != -1:  # Skip outlier topic (-1)
+            topic_info = model.get_topic(idx_int)
+            if topic_info:
+                top_topics = [t[0] for t in topic_info[0:2]]  # type: ignore
+                topics.extend(top_topics)
+
+    return topics
 
 
 async def handle_extraction(
     message: MemoryMessage,
-    model_client: OpenAIClientWrapper | AnthropicClientWrapper,
 ) -> MemoryMessage:
     """
     Handle topic and entity extraction for a message.
 
     Args:
         message: The message to process
-        model_client: The LLM client to use
 
     Returns:
         Updated message with extracted topics and entities
     """
-    # Skip if message already has both topics and entities
-    if message.topics and message.entities:
-        return message
+    # Extract topics if enabled
+    topics = []
+    if settings.enable_topic_extraction:
+        topics = extract_topics(message.content)
 
-    # Extract topics and entities
-    extracted_topics, extracted_entities = await extract_topics_and_entities(
-        message.content, model_client
-    )
+    # Extract entities if enabled
+    entities = []
+    if settings.enable_ner:
+        entities = extract_entities(message.content)
 
     # Merge with existing topics and entities
-    message.topics = (
-        list(set(message.topics + extracted_topics))
-        if message.topics
-        else extracted_topics
-    )
-    message.entities = (
-        list(set(message.entities + extracted_entities))
-        if message.entities
-        else extracted_entities
-    )
+    if topics:
+        message.topics = (
+            list(set(message.topics + topics)) if message.topics else topics
+        )
+    if entities:
+        message.entities = (
+            list(set(message.entities + entities)) if message.entities else entities
+        )
 
     return message

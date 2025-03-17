@@ -189,20 +189,12 @@ async def post_memory(
         # Get model client for extraction
         model_client = await get_model_client(settings.generation_model)
 
+        messages_json = []
+
         # Process messages for topic/entity extraction
-        processed_messages = []
         for msg in memory_messages.messages:
             # Handle extraction in background for each message
-            background_tasks.add_task(
-                handle_extraction,
-                msg,
-                model_client,
-            )
-            processed_messages.append(msg)
-
-        # Convert messages to JSON, handling topics and entities
-        messages_json = []
-        for msg in processed_messages:
+            msg = await handle_extraction(msg)
             msg_dict = msg.model_dump()
             # Convert lists to comma-separated strings for TAG fields
             msg_dict["topics"] = ",".join(msg.topics) if msg.topics else ""
