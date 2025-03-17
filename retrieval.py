@@ -1,11 +1,13 @@
-from fastapi import APIRouter, HTTPException, Request
-from typing import List
 import logging
 
-from models import SearchPayload, SearchResults
-from long_term_memory import search_messages
-from utils import get_redis_conn, get_openai_client
+from fastapi import APIRouter, HTTPException
+
 from config import settings
+from long_term_memory import search_messages
+from models import SearchPayload, SearchResults
+from utils import get_openai_client, get_redis_conn
+
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()

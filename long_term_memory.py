@@ -1,25 +1,23 @@
-from typing import List, Type, Union, Any
+import logging
+
 import nanoid
 from redis.asyncio import Redis
 from redis.commands.search.query import Query
+
 from models import (
     MemoryMessage,
     OpenAIClientWrapper,
-    AnthropicClientWrapper,
     RedisearchResult,
     SearchResults,
-    ModelProvider,
-    get_model_config,
 )
-import logging
-
 from utils import REDIS_INDEX_NAME, Keys
+
 
 logger = logging.getLogger(__name__)
 
 
 async def index_messages(
-    messages: List[MemoryMessage],
+    messages: list[MemoryMessage],
     session_id: str,
     client: OpenAIClientWrapper,  # Only OpenAI supports embeddings currently
     redis_conn: Redis,
@@ -53,7 +51,7 @@ async def index_messages(
             )
 
         logger.info(f"Indexed {len(messages)} messages for session {session_id}")
-        return None
+        return
     except Exception as e:
         logger.error(f"Error indexing messages: {e}")
         raise
@@ -68,7 +66,7 @@ async def search_messages(
     session_id: str,
     client: OpenAIClientWrapper,  # Only OpenAI supports embeddings currently
     redis_conn: Redis,
-    distance_threshold: float | Type[Unset] = Unset,
+    distance_threshold: float | type[Unset] = Unset,
     limit: int = 10,
 ) -> SearchResults:
     """Search for messages using vector similarity"""

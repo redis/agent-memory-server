@@ -1,6 +1,9 @@
-from fastapi import APIRouter
 import time
+
+from fastapi import APIRouter
+
 from models import HealthCheckResponse
+
 
 router = APIRouter()
 

@@ -1,24 +1,24 @@
-import tiktoken
-from typing import List, Optional, Tuple, Union
-from models import (
-    OpenAIClientWrapper,
-    AnthropicClientWrapper,
-    ModelClientFactory,
-    get_model_config,
-    ChatResponse,
-)
-from redis.asyncio import Redis
 import logging
+
+import tiktoken
+from redis.asyncio import Redis
+
+from models import (
+    AnthropicClientWrapper,
+    OpenAIClientWrapper,
+    get_model_config,
+)
+
 
 logger = logging.getLogger(__name__)
 
 
 async def _incremental_summary(
     model: str,
-    client: Union[OpenAIClientWrapper, AnthropicClientWrapper],
-    context: Optional[str],
-    messages: List[str],
-) -> Tuple[str, int]:
+    client: OpenAIClientWrapper | AnthropicClientWrapper,
+    context: str | None,
+    messages: list[str],
+) -> tuple[str, int]:
     """
     Incrementally summarize messages, building upon a previous summary.
 
@@ -78,7 +78,7 @@ async def handle_compaction(
     session_id: str,
     model: str,
     window_size: int,
-    client: Union[OpenAIClientWrapper, AnthropicClientWrapper],
+    client: OpenAIClientWrapper | AnthropicClientWrapper,
     redis_conn: Redis,
 ) -> None:
     """

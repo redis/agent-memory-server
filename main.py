@@ -6,7 +6,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 
 import utils
-from models import ModelProvider, MODEL_CONFIGS
+from models import MODEL_CONFIGS, ModelProvider
+
 
 load_dotenv()
 
@@ -15,6 +16,7 @@ from healthcheck import router as health_router
 from memory import router as memory_router
 from retrieval import router as retrieval_router
 from utils import ensure_redisearch_index, get_redis_conn
+
 
 # Configure logging
 structlog.configure(

@@ -48,4 +48,4 @@ ban-relative-imports = "all"
 # Use double quotes for strings
 quote-style = "double"
 # Use spaces for indentation
-indent-style = "space" 
+indent-style = "space"

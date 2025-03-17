@@ -1,11 +1,11 @@
 import logging
 
 from redis.asyncio import ConnectionPool, Redis
-from redis.commands.search.field import TextField, TagField, VectorField
+from redis.commands.search.field import TagField, TextField, VectorField
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
+
 from config import settings
-from models import OpenAIClientWrapper, ModelClientFactory, AnthropicClientWrapper
-from typing import Union
+from models import AnthropicClientWrapper, ModelClientFactory, OpenAIClientWrapper
 
 
 REDIS_INDEX_NAME = "memory"
@@ -36,7 +36,7 @@ async def ensure_redisearch_index(
 ) -> None:
     """
     Ensure that the RediSearch index exists, create it if it doesn't.
-    
+
     TODO: Replace with RedisVL index.
 
     Args:
@@ -97,7 +97,7 @@ async def get_openai_client(**kwargs) -> OpenAIClientWrapper:
 
 async def get_model_client(
     model_name: str,
-) -> Union[OpenAIClientWrapper, AnthropicClientWrapper]:
+) -> OpenAIClientWrapper | AnthropicClientWrapper:
     """Get the appropriate client for a model using the factory"""
     global _model_clients
 

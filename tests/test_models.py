@@ -1,18 +1,19 @@
-import pytest
 import os
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import numpy as np
-from unittest.mock import patch, MagicMock, AsyncMock
+import pytest
 
 from models import (
     MemoryMessage,
     MemoryMessagesAndContext,
     MemoryResponse,
-    SearchPayload,
-    RedisearchResult,
-    OpenAIClientWrapper,
-    get_model_config,
-    ModelProvider,
     ModelClientFactory,
+    ModelProvider,
+    OpenAIClientWrapper,
+    RedisearchResult,
+    SearchPayload,
+    get_model_config,
 )
 
 
@@ -82,7 +83,7 @@ class TestModels:
         assert result.dist == 0.75
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 class TestOpenAIClientWrapper:
     @patch.dict(
         os.environ,
@@ -193,7 +194,7 @@ def test_get_model_config(model_name, expected_provider, expected_max_tokens):
     assert config.max_tokens == expected_max_tokens
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_model_client_factory():
     """Test the ModelClientFactory"""
     # Test with OpenAI model

@@ -1,11 +1,12 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from reducers import _incremental_summary, handle_compaction
 from utils import Keys
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 class TestIncrementalSummarization:
     async def test_incremental_summarization_no_context(self, mock_openai_client):
         """Test incremental summarization without previous context"""
@@ -65,7 +66,7 @@ class TestIncrementalSummarization:
 
 
 class TestHandleCompaction:
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     @patch("reducers._incremental_summary")
     async def test_handle_compaction(
         self, mock_summarization, mock_openai_client, mock_async_redis_client
@@ -125,7 +126,7 @@ class TestHandleCompaction:
             "Message 6",
         ]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     @patch("reducers._incremental_summary")
     async def test_handle_compaction_no_messages(
         self, mock_summarization, mock_openai_client, mock_async_redis_client

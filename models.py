@@ -326,7 +326,8 @@ class AnthropicClientWrapper:
         embeddings or raise an error if needed
         """
         raise NotImplementedError(
-            "Anthropic does not provide an embedding API. Please use OpenAI for embeddings."
+            "Anthropic does not provide an embedding API. "
+            "Please use OpenAI for embeddings."
         )
 
 

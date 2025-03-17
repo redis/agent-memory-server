@@ -1,29 +1,28 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from redis.asyncio import Redis
-from typing import List, Optional
 import json
 import logging
 import time
-import asyncio
 
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+
+from config import settings
+from long_term_memory import index_messages
 from models import (
+    AckResponse,
+    GetSessionsQuery,
     MemoryMessage,
     MemoryMessagesAndContext,
     MemoryResponse,
-    AckResponse,
-    GetSessionsQuery,
 )
 from reducers import handle_compaction
-from long_term_memory import index_messages
-from utils import Keys, get_model_client, get_redis_conn, get_openai_client
-from config import settings
+from utils import Keys, get_model_client, get_openai_client, get_redis_conn
+
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-@router.get("/sessions/", response_model=List[str])
+@router.get("/sessions/", response_model=list[str])
 async def get_sessions(
     pagination: GetSessionsQuery = Depends(GetSessionsQuery),
 ):
@@ -39,7 +38,7 @@ async def get_sessions(
     # Check page limit
     if pagination.page > 100:
         raise HTTPException(status_code=400, detail="Page must not exceed 100")
-    
+
     redis = get_redis_conn()
 
     # Calculate start and end indices (0-indexed start, inclusive end)
@@ -67,9 +66,7 @@ async def get_sessions(
 
 
 @router.get("/sessions/{session_id}/memory", response_model=MemoryResponse)
-async def get_memory(
-    session_id: str
-):
+async def get_memory(session_id: str):
     """
     Get memory for a session
 
@@ -146,7 +143,7 @@ async def post_memory(
     session_id: str,
     memory_messages: MemoryMessagesAndContext,
     background_tasks: BackgroundTasks,
-    namespace: Optional[str] = None,
+    namespace: str | None = None,
 ):
     """
     Add messages to a session's memory
@@ -202,7 +199,7 @@ async def post_memory(
             )
 
         # If long-term memory is enabled, index messages.
-        # 
+        #
         # TODO: Add support for custom policies around when to index and/or
         # avoid re-indexing duplicate content.
         if settings.long_term_memory:
@@ -226,7 +223,7 @@ async def post_memory(
 @router.delete("/sessions/{session_id}/memory", response_model=AckResponse)
 async def delete_memory(
     session_id: str,
-    namespace: Optional[str] = None,
+    namespace: str | None = None,
 ):
     """
     Delete a session's memory

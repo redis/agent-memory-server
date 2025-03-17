@@ -7,8 +7,7 @@ import pytest
 from fastapi import BackgroundTasks, FastAPI
 from httpx import ASGITransport, AsyncClient
 from redis import Redis
-from redis.asyncio import ConnectionPool
-from redis.asyncio import Redis as AsyncRedis
+from redis.asyncio import ConnectionPool, Redis as AsyncRedis
 from testcontainers.compose import DockerCompose
 
 from healthcheck import router as health_router
@@ -24,16 +23,16 @@ from utils import REDIS_INDEX_NAME, Keys, ensure_redisearch_index
 @pytest.fixture(scope="session")
 def event_loop(request):
     loop = asyncio.get_event_loop()
-    yield loop
+    return loop
 
 
-@pytest.fixture
+@pytest.fixture()
 def memory_message():
     """Create a sample memory message"""
     return MemoryMessage(role="user", content="Hello, world!")
 
 
-@pytest.fixture
+@pytest.fixture()
 def memory_messages():
     """Create a list of sample memory messages"""
     return [
@@ -44,7 +43,7 @@ def memory_messages():
     ]
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_openai_client():
     """Create a mock OpenAI client"""
     client = AsyncMock(spec=OpenAIClientWrapper)
@@ -94,7 +93,7 @@ async def search_index(async_redis_client):
         pass
 
 
-@pytest.fixture
+@pytest.fixture()
 async def test_session_setup(async_redis_client):
     """Set up a test session with Redis data for testing"""
     import json
@@ -159,7 +158,7 @@ def redis_url(redis_container):
     return f"redis://{host}:{port}"
 
 
-@pytest.fixture
+@pytest.fixture()
 def async_redis_client(redis_url):
     """
     An async Redis client that uses the dynamic `redis_url`.
@@ -167,14 +166,14 @@ def async_redis_client(redis_url):
     return AsyncRedis.from_url(redis_url)
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_async_redis_client():
     """Create a mock async Redis client"""
     client = AsyncMock(spec=AsyncRedis)
     return client
 
 
-@pytest.fixture
+@pytest.fixture()
 def redis_client(redis_url):
     """
     A sync Redis client that uses the dynamic `redis_url`.
@@ -182,7 +181,7 @@ def redis_client(redis_url):
     return Redis.from_url(redis_url)
 
 
-@pytest.fixture
+@pytest.fixture()
 def use_test_redis_connection(redis_url: str):
     replacement_pool = ConnectionPool.from_url(redis_url)
     with patch("utils._redis_pool", new=replacement_pool):
@@ -222,7 +221,7 @@ def pytest_collection_modifyitems(
 MockBackgroundTasks = mock.Mock(name="BackgroundTasks", spec=BackgroundTasks)
 
 
-@pytest.fixture
+@pytest.fixture()
 def app(use_test_redis_connection):
     """Create a test FastAPI app with routers"""
     app = FastAPI()
@@ -235,7 +234,7 @@ def app(use_test_redis_connection):
     return app
 
 
-@pytest.fixture
+@pytest.fixture()
 def app_with_mock_background_tasks(use_test_redis_connection):
     """Create a test FastAPI app with routers"""
     app = FastAPI()
@@ -251,7 +250,7 @@ def app_with_mock_background_tasks(use_test_redis_connection):
     return app
 
 
-@pytest.fixture
+@pytest.fixture()
 async def client(app):
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -260,7 +259,7 @@ async def client(app):
         yield client
 
 
-@pytest.fixture
+@pytest.fixture()
 async def client_with_mock_background_tasks(app_with_mock_background_tasks):
     async with AsyncClient(
         transport=ASGITransport(app=app_with_mock_background_tasks),

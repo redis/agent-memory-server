@@ -24,4 +24,4 @@ echo "Setting up pre-commit hooks..."
 pre-commit install
 
 echo "Development environment setup complete!"
-echo "You can now run 'pre-commit run --all-files' to check all files in the repository." 
+echo "You can now run 'pre-commit run --all-files' to check all files in the repository."
