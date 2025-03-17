@@ -21,7 +21,7 @@ target-version = "py312"
 # Enable various rules
 select = ["E", "F", "B", "I", "N", "UP", "C4", "RET", "SIM", "TID"]
 # Exclude COM812 which conflicts with the formatter
-ignore = ["COM812"]
+ignore = ["COM812", "E501"]
 
 # Allow unused variables when underscore-prefixed
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"

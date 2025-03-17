@@ -10,7 +10,7 @@ from utils import REDIS_INDEX_NAME
 
 
 class TestLongTermMemory:
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_index_messages(
         self, memory_messages, mock_openai_client, mock_async_redis_client
     ):
@@ -52,7 +52,7 @@ class TestLongTermMemory:
             # Check that the vector is bytes
             assert isinstance(mapping["vector"], bytes)
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_search_messages(self, mock_openai_client, mock_async_redis_client):
         """Test searching messages"""
         # Set up the mock embedding response
@@ -124,9 +124,9 @@ class TestLongTermMemory:
         assert results.docs[1].dist == 0.75
 
 
-@pytest.mark.requires_api_keys()
+@pytest.mark.requires_api_keys
 class TestLongTermMemoryIntegration:
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_search_messages(self, memory_messages, async_redis_client):
         """Test searching messages"""
 
@@ -146,7 +146,7 @@ class TestLongTermMemoryIntegration:
         assert results.docs[0].role == "user"
         assert results.docs[0].content == "What is the capital of France?"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_search_messages_with_distance_threshold(
         self, memory_messages, async_redis_client
     ):

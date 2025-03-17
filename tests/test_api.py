@@ -12,7 +12,7 @@ from models import (
 from reducers import handle_compaction
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_openai_client_wrapper():
     """Create a mock OpenAIClientWrapper that doesn't need an API key"""
     with patch("models.OpenAIClientWrapper") as mock_wrapper:
@@ -33,7 +33,7 @@ def mock_openai_client_wrapper():
 
 
 class TestHealthEndpoint:
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_health_endpoint(self, client):
         """Test the health endpoint"""
         response = await client.get("/health")
@@ -93,8 +93,8 @@ class TestMemoryEndpoints:
         assert data["context"] == "Sample context"
         assert int(data["tokens"]) == 150  # Convert string to int for comparison
 
-    @pytest.mark.requires_api_keys()
-    @pytest.mark.asyncio()
+    @pytest.mark.requires_api_keys
+    @pytest.mark.asyncio
     async def test_post_memory(self, client):
         """Test the post_memory endpoint"""
         payload = {
@@ -113,8 +113,8 @@ class TestMemoryEndpoints:
         assert "status" in data
         assert data["status"] == "ok"
 
-    @pytest.mark.requires_api_keys()
-    @pytest.mark.asyncio()
+    @pytest.mark.requires_api_keys
+    @pytest.mark.asyncio
     async def test_post_memory_stores_in_long_term_memory(self, client):
         """Test the post_memory endpoint"""
         payload = {
@@ -144,8 +144,8 @@ class TestMemoryEndpoints:
         assert mock_add_task.call_count == 1
         assert mock_add_task.call_args[0][0] == index_messages
 
-    @pytest.mark.requires_api_keys()
-    @pytest.mark.asyncio()
+    @pytest.mark.requires_api_keys
+    @pytest.mark.asyncio
     async def test_post_memory_compacts_long_conversation(self, client):
         """Test the post_memory endpoint"""
         payload = {
@@ -175,7 +175,7 @@ class TestMemoryEndpoints:
         assert mock_add_task.call_count == 1
         assert mock_add_task.call_args[0][0] == handle_compaction
 
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_delete_memory(self, client, test_session_setup):
         """Test the delete_memory endpoint"""
         session_id = test_session_setup
@@ -201,10 +201,10 @@ class TestMemoryEndpoints:
         assert len(data["messages"]) == 0
 
 
-@pytest.mark.requires_api_keys()
+@pytest.mark.requires_api_keys
 class TestRetrievalEndpoint:
     @patch("retrieval.search_messages")
-    @pytest.mark.asyncio()
+    @pytest.mark.asyncio
     async def test_retrieval(self, mock_search, client):
         """Test the retrieval endpoint"""
         mock_search.return_value = SearchResults(

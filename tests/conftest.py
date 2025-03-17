@@ -1,9 +1,11 @@
 import asyncio
+import contextlib
 import os
 from unittest import mock
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI
 from httpx import ASGITransport, AsyncClient
 from redis import Redis
@@ -20,10 +22,12 @@ from retrieval import router as retrieval_router
 from utils import REDIS_INDEX_NAME, Keys, ensure_redisearch_index
 
 
+load_dotenv()
+
+
 @pytest.fixture(scope="session")
 def event_loop(request):
-    loop = asyncio.get_event_loop()
-    return loop
+    return asyncio.get_event_loop()
 
 
 @pytest.fixture()
@@ -46,12 +50,10 @@ def memory_messages():
 @pytest.fixture()
 def mock_openai_client():
     """Create a mock OpenAI client"""
-    client = AsyncMock(spec=OpenAIClientWrapper)
+    return AsyncMock(spec=OpenAIClientWrapper)
 
     # We won't set default side effects here, allowing tests to set their own mocks
     # This prevents conflicts with tests that need specific return values
-
-    return client
 
 
 @pytest.fixture(autouse=True)
@@ -87,10 +89,8 @@ async def search_index(async_redis_client):
 
     # Clean up after tests
     await async_redis_client.flushdb()
-    try:
+    with contextlib.suppress(Exception):
         await async_redis_client.execute_command("FT.DROPINDEX", index_name)
-    except Exception:
-        pass
 
 
 @pytest.fixture()
@@ -169,8 +169,7 @@ def async_redis_client(redis_url):
 @pytest.fixture()
 def mock_async_redis_client():
     """Create a mock async Redis client"""
-    client = AsyncMock(spec=AsyncRedis)
-    return client
+    return AsyncMock(spec=AsyncRedis)
 
 
 @pytest.fixture()
@@ -211,7 +210,10 @@ def pytest_collection_modifyitems(
 
     # Otherwise skip all tests requiring an API key
     skip_api = pytest.mark.skip(
-        reason="Skipping test because API keys are not provided. Use --run-api-tests to run these tests."
+        reason="""
+        Skipping test because API keys are not provided.
+        "Use --run-api-tests to run these tests.
+        """
     )
     for item in items:
         if item.get_closest_marker("requires_api_keys"):

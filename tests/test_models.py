@@ -83,7 +83,7 @@ class TestModels:
         assert result.dist == 0.75
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 class TestOpenAIClientWrapper:
     @patch.dict(
         os.environ,
