@@ -1,13 +1,13 @@
-from typing import Dict, List, Optional, Union, Any
-import numpy as np
-from pydantic import BaseModel, Field
-from openai import AsyncOpenAI, ChatCompletion
-import os
 import logging
+import os
 from enum import Enum
-import asyncio
-from redis.asyncio import ConnectionPool, Redis
+from typing import Any
+
 import anthropic
+import numpy as np
+from openai import AsyncOpenAI
+from pydantic import BaseModel, Field
+
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -23,16 +23,16 @@ class MemoryMessage(BaseModel):
 class MemoryMessagesAndContext(BaseModel):
     """Request payload for adding messages to memory"""
 
-    messages: List[MemoryMessage]
-    context: Optional[str] = None
+    messages: list[MemoryMessage]
+    context: str | None = None
 
 
 class MemoryResponse(BaseModel):
     """Response containing messages and context"""
 
-    messages: List[MemoryMessage]
-    context: Optional[str] = None
-    tokens: Optional[int] = None
+    messages: list[MemoryMessage]
+    context: str | None = None
+    tokens: int | None = None
 
 
 class SearchPayload(BaseModel):
@@ -59,19 +59,19 @@ class RedisearchResult(BaseModel):
     role: str
     content: str
     dist: float
-    
-    
+
+
 class SearchResults(BaseModel):
     """Results from a redisearch query"""
 
-    docs: List[RedisearchResult]
+    docs: list[RedisearchResult]
     total: int
 
 
 class NamespaceQuery(BaseModel):
     """Query parameters for namespace"""
 
-    namespace: Optional[str] = None
+    namespace: str | None = None
 
 
 class GetSessionsQuery(BaseModel):
@@ -79,7 +79,7 @@ class GetSessionsQuery(BaseModel):
 
     page: int = Field(default=1)
     size: int = Field(default=20)
-    namespace: Optional[str] = None
+    namespace: str | None = None
 
 
 class ModelProvider(str, Enum):
@@ -260,7 +260,7 @@ def get_model_config(model_name: str) -> ModelConfig:
 class ChatResponse:
     """Unified wrapper for chat responses from different providers"""
 
-    def __init__(self, choices: List[Any], usage: Dict[str, int]):
+    def __init__(self, choices: list[Any], usage: dict[str, int]):
         self.choices = choices or []
         self.usage = usage or {"total_tokens": 0}
 
@@ -319,7 +319,7 @@ class AnthropicClientWrapper:
             logger.error(f"Error creating chat completion with Anthropic: {e}")
             raise
 
-    async def create_embedding(self, query_vec: List[str]) -> np.ndarray:
+    async def create_embedding(self, query_vec: list[str]) -> np.ndarray:
         """
         Create embeddings for the given texts
         Note: Anthropic doesn't offer an embedding API, so we'll use OpenAI's
@@ -345,22 +345,27 @@ class OpenAIClientWrapper:
 
         if openai_api_base:
             self.completion_client = AsyncOpenAI(
-                api_key=openai_api_key, base_url=openai_api_base
+                api_key=openai_api_key,
+                base_url=openai_api_base,
             )
             self.embedding_client = AsyncOpenAI(
-                api_key=openai_api_key, base_url=openai_api_base
+                api_key=openai_api_key,
+                base_url=openai_api_base,
             )
         else:
             self.completion_client = AsyncOpenAI(api_key=openai_api_key)
             self.embedding_client = AsyncOpenAI(api_key=openai_api_key)
 
     async def create_chat_completion(
-        self, model: str, progressive_prompt: str
+        self,
+        model: str,
+        progressive_prompt: str,
     ) -> ChatResponse:
         """Create a chat completion using the OpenAI API"""
         try:
             response = await self.completion_client.chat.completions.create(
-                model=model, messages=[{"role": "user", "content": progressive_prompt}]
+                model=model,
+                messages=[{"role": "user", "content": progressive_prompt}],
             )
 
             # Convert to unified format
@@ -380,7 +385,7 @@ class OpenAIClientWrapper:
             logger.error(f"Error creating chat completion with OpenAI: {e}")
             raise
 
-    async def create_embedding(self, query_vec: List[str]) -> np.ndarray:
+    async def create_embedding(self, query_vec: list[str]) -> np.ndarray:
         """Create embeddings for the given texts"""
         try:
             embeddings = []
@@ -391,7 +396,8 @@ class OpenAIClientWrapper:
             for i in range(0, len(query_vec), batch_size):
                 batch = query_vec[i : i + batch_size]
                 response = await self.embedding_client.embeddings.create(
-                    model=embedding_model, input=batch
+                    model=embedding_model,
+                    input=batch,
                 )
                 batch_embeddings = [item.embedding for item in response.data]
                 embeddings.extend(batch_embeddings)
@@ -408,13 +414,13 @@ class ModelClientFactory:
     @staticmethod
     async def get_client(
         model_name: str,
-    ) -> Union[OpenAIClientWrapper, AnthropicClientWrapper]:
+    ) -> OpenAIClientWrapper | AnthropicClientWrapper:
         """Get the appropriate client for a model"""
         model_config = get_model_config(model_name)
 
         if model_config.provider == ModelProvider.OPENAI:
             return OpenAIClientWrapper(api_key=os.environ.get("OPENAI_API_KEY"))
-        elif model_config.provider == ModelProvider.ANTHROPIC:
+        if model_config.provider == ModelProvider.ANTHROPIC:
             return AnthropicClientWrapper(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        else:
-            raise ValueError(f"Unsupported model provider: {model_config.provider}")
+
+        raise ValueError(f"Unsupported model provider: {model_config.provider}")

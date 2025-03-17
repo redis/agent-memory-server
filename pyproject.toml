@@ -1,0 +1,51 @@
+[tool.ruff]
+# Exclude a variety of commonly ignored directories
+exclude = [
+    ".git",
+    ".github",
+    ".pytest_cache",
+    "__pycache__",
+    "env",
+    "venv",
+    ".venv",
+    "*.egg-info",
+]
+
+# Same as Black
+line-length = 88
+
+# Assume Python 3.10
+target-version = "py310"
+
+[tool.ruff.lint]
+# Enable various rules
+select = ["E", "F", "B", "I", "N", "UP", "C4", "PT", "RET", "SIM", "TID"]
+# Exclude COM812 which conflicts with the formatter
+ignore = ["COM812"]
+
+# Allow unused variables when underscore-prefixed
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+# Fix code when possible
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.mccabe]
+# Flag functions with high cyclomatic complexity
+max-complexity = 10
+
+[tool.ruff.lint.isort]
+# Group imports by type and organize them alphabetically
+known-first-party = ["redis-memory-server"]
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+combine-as-imports = true
+lines-after-imports = 2
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.format]
+# Use double quotes for strings
+quote-style = "double"
+# Use spaces for indentation
+indent-style = "space" 
