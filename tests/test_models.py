@@ -97,7 +97,7 @@ class TestOpenAIClientWrapper:
         # Set up the mock to return an AsyncMock
         mock_openai.return_value = AsyncMock()
 
-        client = OpenAIClientWrapper()
+        OpenAIClientWrapper()
 
         # Verify the client was created
         assert mock_openai.called
@@ -172,7 +172,7 @@ class TestOpenAIClientWrapper:
 
 
 @pytest.mark.parametrize(
-    "model_name,expected_provider,expected_max_tokens",
+    ("model_name", "expected_provider", "expected_max_tokens"),
     [
         ("gpt-4o", "openai", 128000),
         ("claude-3-sonnet-20240229", "anthropic", 200000),
@@ -198,15 +198,19 @@ def test_get_model_config(model_name, expected_provider, expected_max_tokens):
 async def test_model_client_factory():
     """Test the ModelClientFactory"""
     # Test with OpenAI model
-    with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
-        with patch("models.OpenAIClientWrapper") as mock_openai:
-            mock_openai.return_value = "openai-client"
-            client = await ModelClientFactory.get_client("gpt-4")
-            assert client == "openai-client"
+    with (
+        patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}),
+        patch("models.OpenAIClientWrapper") as mock_openai,
+    ):
+        mock_openai.return_value = "openai-client"
+        client = await ModelClientFactory.get_client("gpt-4")
+        assert client == "openai-client"
 
     # Test with Anthropic model
-    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
-        with patch("models.AnthropicClientWrapper") as mock_anthropic:
-            mock_anthropic.return_value = "anthropic-client"
-            client = await ModelClientFactory.get_client("claude-3-sonnet-20240229")
-            assert client == "anthropic-client"
+    with (
+        patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
+        patch("models.AnthropicClientWrapper") as mock_anthropic,
+    ):
+        mock_anthropic.return_value = "anthropic-client"
+        client = await ModelClientFactory.get_client("claude-3-sonnet-20240229")
+        assert client == "anthropic-client"
