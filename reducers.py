@@ -7,7 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-async def incremental_summarization(
+async def _incremental_summary(
     model: str,
     openai_client: OpenAIClientWrapper,
     context: Optional[str],
@@ -136,7 +136,7 @@ async def handle_compaction(
             return
 
         # Generate new summary
-        summary, _ = await incremental_summarization(
+        summary, _ = await _incremental_summary(
             model,
             openai_client,
             context.decode("utf-8") if isinstance(context, bytes) else context,

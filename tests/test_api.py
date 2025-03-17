@@ -1,18 +1,14 @@
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from httpx import ASGITransport, AsyncClient
 import numpy as np
 import pytest
-from fastapi import BackgroundTasks, FastAPI
 
 from config import Settings
-from healthcheck import router as health_router
-from memory import router as memory_router
+from long_term_memory import index_messages
 from models import (
     RedisearchResult,
 )
-from reducer import handle_compaction
-from long_term_memory import index_messages
+from reducers import handle_compaction
 
 
 @pytest.fixture
@@ -115,7 +111,7 @@ class TestMemoryEndpoints:
         data = response.json()
         assert "status" in data
         assert data["status"] == "ok"
-        
+
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
     async def test_post_memory_stores_in_long_term_memory(self, client):

@@ -1,7 +1,7 @@
 import pytest
 import os
+import numpy as np
 from unittest.mock import patch, MagicMock, AsyncMock
-from typing import List
 
 from models import (
     MemoryMessage,
@@ -11,7 +11,6 @@ from models import (
     RedisearchResult,
     OpenAIClientType,
     OpenAIClientWrapper,
-    parse_redisearch_response,
 )
 
 
@@ -81,49 +80,6 @@ class TestModels:
         assert result.dist == 0.75
 
 
-class TestRedisearchParsing:
-    def test_parse_redisearch_empty_response(self):
-        """Test parsing an empty redisearch response"""
-        # Test with empty response
-        assert parse_redisearch_response([]) == []
-        assert parse_redisearch_response([0]) == []
-
-    def test_parse_redisearch_response(self):
-        """Test parsing a redisearch response"""
-        # Create a mock response similar to what Redis would return
-        mock_response = [
-            2,  # Number of results
-            b"doc1",  # Document ID
-            [  # Document fields
-                b"role",
-                b"user",
-                b"content",
-                b"Hello, world!",
-                b"dist",
-                b"0.25",
-            ],
-            b"doc2",  # Document ID
-            [  # Document fields
-                b"role",
-                b"assistant",
-                b"content",
-                b"Hi there!",
-                b"dist",
-                b"0.75",
-            ],
-        ]
-
-        results = parse_redisearch_response(mock_response)
-
-        assert len(results) == 2
-        assert results[0].role == "user"
-        assert results[0].content == "Hello, world!"
-        assert results[0].dist == 0.25
-        assert results[1].role == "assistant"
-        assert results[1].content == "Hi there!"
-        assert results[1].dist == 0.75
-
-
 @pytest.mark.asyncio
 class TestOpenAIClientWrapper:
     @patch.dict(
@@ -171,8 +127,13 @@ class TestOpenAIClientWrapper:
 
         # Verify embeddings were created correctly
         assert len(embeddings) == 2
-        assert embeddings[0] == [0.1, 0.2, 0.3]
-        assert embeddings[1] == [0.4, 0.5, 0.6]
+        # Convert NumPy array to list or use np.array_equal for comparison
+        assert np.array_equal(
+            embeddings[0], np.array([0.1, 0.2, 0.3], dtype=np.float32)
+        )
+        assert np.array_equal(
+            embeddings[1], np.array([0.4, 0.5, 0.6], dtype=np.float32)
+        )
 
         # Verify the client was called with correct parameters
         client.embedding_client.embeddings.create.assert_called_with(

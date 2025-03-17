@@ -91,7 +91,7 @@ async def search_messages(
             .paging(0, limit)
             .dialect(2)
         )
-        print(params)
+
         raw_results = await redis_conn.ft(REDIS_INDEX_NAME).search(
             q,
             query_params=params,  # type: ignore

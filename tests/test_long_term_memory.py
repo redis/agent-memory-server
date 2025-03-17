@@ -1,5 +1,5 @@
 from re import M
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 import pytest
 import numpy as np
 from redis.commands.search.document import Document
@@ -56,15 +56,18 @@ class TestLongTermMemory:
     async def test_search_messages(self, mock_openai_client, mock_async_redis_client):
         """Test searching messages"""
         # Set up the mock embedding response
-        mock_openai_client.create_embedding.return_value = [[0.1, 0.2, 0.3, 0.4]]
+        mock_openai_client.create_embedding.return_value = np.array(
+            [0.1, 0.2, 0.3, 0.4], dtype=np.float32
+        )
 
         class MockResult:
             def __init__(self, docs):
                 self.total = len(docs)
                 self.docs = docs
 
-        mock_async_redis_client.ft = AsyncMock()
-        mock_async_redis_client.ft.search.return_value = MockResult(
+        # Create a proper mock structure for Redis ft().search()
+        mock_search = AsyncMock()
+        mock_search.return_value = MockResult(
             [
                 Document(
                     id=b"doc1",
@@ -81,6 +84,13 @@ class TestLongTermMemory:
             ]
         )
 
+        # Create a mock FT object that has a search method
+        mock_ft = MagicMock()
+        mock_ft.search = mock_search
+
+        # Setup the ft method to return our mock_ft object
+        mock_async_redis_client.ft = MagicMock(return_value=mock_ft)
+
         # Call search_messages
         query = "What is the meaning of life?"
         session_id = "test-session"
@@ -91,12 +101,17 @@ class TestLongTermMemory:
         # Check that create_embedding was called with the right arguments
         mock_openai_client.create_embedding.assert_called_with([query])
 
-        # Check that redis.execute_command was called with the right arguments
-        mock_async_redis_client.ft.search.assert_called_once()
-        args = mock_async_redis_client.ft.search.call_args[0]
-
         # Check that the index name is correct
-        assert args[1] == REDIS_INDEX_NAME
+        assert mock_async_redis_client.ft.call_count == 1
+        assert mock_async_redis_client.ft.call_args[0][0] == REDIS_INDEX_NAME
+
+        # Check that search was called with the right arguments
+        assert mock_ft.search.call_count == 1
+        args = mock_ft.search.call_args[0]
+        assert (
+            args[0]._query_string
+            == "@session:{test-session}=>[KNN 10 @vector $vec AS dist]"
+        )
 
         # Check that the results are parsed correctly
         assert len(results.docs) == 2
@@ -109,6 +124,7 @@ class TestLongTermMemory:
         assert results.docs[1].dist == 0.75
 
 
+@pytest.mark.requires_api_keys
 class TestLongTermMemoryIntegration:
     @pytest.mark.asyncio
     async def test_search_messages(self, memory_messages, async_redis_client):
@@ -149,7 +165,9 @@ class TestLongTermMemoryIntegration:
             limit=2,
         )
 
-        assert results.total == 2
+        assert results.total == 4
+        assert len(results.docs) == 2
+
         assert results.docs[0].role == "user"
         assert results.docs[0].content == "What is the capital of France?"
         assert results.docs[1].role == "assistant"

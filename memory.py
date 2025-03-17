@@ -13,7 +13,7 @@ from models import (
     AckResponse,
     GetSessionsQuery,
 )
-from reducer import handle_compaction
+from reducers import handle_compaction
 from long_term_memory import index_messages
 from utils import Keys, get_openai_client, get_redis_conn
 from config import settings
