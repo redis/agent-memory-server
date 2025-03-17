@@ -194,7 +194,7 @@ def test_get_model_config(model_name, expected_provider, expected_max_tokens):
     assert config.max_tokens == expected_max_tokens
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_model_client_factory():
     """Test the ModelClientFactory"""
     # Test with OpenAI model
