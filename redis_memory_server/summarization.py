@@ -4,7 +4,7 @@ import logging
 import tiktoken
 from redis.asyncio import Redis
 
-from models import (
+from redis_memory_server.models import (
     AnthropicClientWrapper,
     MemoryMessage,
     OpenAIClientWrapper,

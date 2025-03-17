@@ -2,10 +2,10 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from config import settings
-from long_term_memory import search_messages
-from models import SearchPayload, SearchResults
-from utils import get_openai_client, get_redis_conn
+from redis_memory_server.config import settings
+from redis_memory_server.long_term_memory import search_messages
+from redis_memory_server.models import SearchPayload, SearchResults
+from redis_memory_server.utils import get_openai_client, get_redis_conn
 
 
 logger = logging.getLogger(__name__)
@@ -37,8 +37,7 @@ async def run_retrieval(
     client = await get_openai_client()
 
     try:
-        results = await search_messages(payload.text, session_id, client, redis)
-        return results
+        return await search_messages(payload.text, session_id, client, redis)
     except Exception as e:
         logger.error(f"Error in retrieval API: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from e

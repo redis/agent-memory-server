@@ -4,9 +4,9 @@ import numpy as np
 import pytest
 from redis.commands.search.document import Document
 
-from long_term_memory import index_messages, search_messages
-from models import OpenAIClientWrapper, RedisearchResult
-from utils import REDIS_INDEX_NAME
+from redis_memory_server.long_term_memory import index_messages, search_messages
+from redis_memory_server.models import OpenAIClientWrapper, RedisearchResult
+from redis_memory_server.utils import REDIS_INDEX_NAME
 
 
 class TestLongTermMemory:

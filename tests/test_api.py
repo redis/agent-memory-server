@@ -3,19 +3,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np
 import pytest
 
-from config import Settings
-from long_term_memory import index_messages
-from models import (
+from redis_memory_server.config import Settings
+from redis_memory_server.extraction import handle_extraction
+from redis_memory_server.long_term_memory import index_messages
+from redis_memory_server.models import (
     RedisearchResult,
     SearchResults,
 )
-from summarization import handle_compaction
+from redis_memory_server.summarization import handle_compaction
 
 
 @pytest.fixture
 def mock_openai_client_wrapper():
     """Create a mock OpenAIClientWrapper that doesn't need an API key"""
-    with patch("models.OpenAIClientWrapper") as mock_wrapper:
+    with patch("redis_memory_server.models.OpenAIClientWrapper") as mock_wrapper:
         # Create a mock instance
         mock_instance = AsyncMock()
         mock_wrapper.return_value = mock_instance
@@ -128,8 +129,8 @@ class TestMemoryEndpoints:
         mock_add_task = MagicMock()
 
         with (
-            patch("memory.settings", mock_settings),
-            patch("memory.BackgroundTasks.add_task", mock_add_task),
+            patch("redis_memory_server.memory.settings", mock_settings),
+            patch("redis_memory_server.memory.BackgroundTasks.add_task", mock_add_task),
         ):
             response = await client.post("/sessions/test-session/memory", json=payload)
 
@@ -139,10 +140,19 @@ class TestMemoryEndpoints:
         assert "status" in data
         assert data["status"] == "ok"
 
-        # Check that the background task was called. NOTE: Returns the same
-        # mock instance that the app uses.
-        assert mock_add_task.call_count == 1
-        assert mock_add_task.call_args[0][0] == index_messages
+        # Check that background tasks were called
+        # We expect 3 tasks:
+        # 1. Topic/entity extraction for first message
+        # 2. Topic/entity extraction for second message
+        # 3. Long-term memory indexing
+        assert mock_add_task.call_count == 3
+
+        # Check that the last call was for long-term memory indexing
+        assert mock_add_task.call_args_list[-1][0][0] == index_messages
+
+        # Check that the first two calls were for topic/entity extraction
+        assert mock_add_task.call_args_list[0][0][0] == handle_extraction
+        assert mock_add_task.call_args_list[1][0][0] == handle_extraction
 
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
@@ -159,8 +169,8 @@ class TestMemoryEndpoints:
         mock_add_task = MagicMock()
 
         with (
-            patch("memory.settings", mock_settings),
-            patch("memory.BackgroundTasks.add_task", mock_add_task),
+            patch("redis_memory_server.memory.settings", mock_settings),
+            patch("redis_memory_server.memory.BackgroundTasks.add_task", mock_add_task),
         ):
             response = await client.post("/sessions/test-session/memory", json=payload)
 
@@ -170,10 +180,19 @@ class TestMemoryEndpoints:
         assert "status" in data
         assert data["status"] == "ok"
 
-        # Check that the background task was called. NOTE: Returns the same
-        # mock instance that the app uses.
-        assert mock_add_task.call_count == 1
-        assert mock_add_task.call_args[0][0] == handle_compaction
+        # Check that background tasks were called
+        # We expect 3 tasks:
+        # 1. Topic/entity extraction for first message
+        # 2. Topic/entity extraction for second message
+        # 3. Compaction
+        assert mock_add_task.call_count == 3
+
+        # Check that the last call was for compaction
+        assert mock_add_task.call_args_list[-1][0][0] == handle_compaction
+
+        # Check that the first two calls were for topic/entity extraction
+        assert mock_add_task.call_args_list[0][0][0] == handle_extraction
+        assert mock_add_task.call_args_list[1][0][0] == handle_extraction
 
     @pytest.mark.asyncio
     async def test_delete_memory(self, client, test_session_setup):
@@ -203,7 +222,7 @@ class TestMemoryEndpoints:
 
 @pytest.mark.requires_api_keys
 class TestRetrievalEndpoint:
-    @patch("retrieval.search_messages")
+    @patch("redis_memory_server.retrieval.search_messages")
     @pytest.mark.asyncio
     async def test_retrieval(self, mock_search, client):
         """Test the retrieval endpoint"""

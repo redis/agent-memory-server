@@ -4,8 +4,12 @@ from redis.asyncio import ConnectionPool, Redis
 from redis.commands.search.field import TagField, TextField, VectorField
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 
-from config import settings
-from models import AnthropicClientWrapper, ModelClientFactory, OpenAIClientWrapper
+from redis_memory_server.config import settings
+from redis_memory_server.models import (
+    AnthropicClientWrapper,
+    ModelClientFactory,
+    OpenAIClientWrapper,
+)
 
 
 REDIS_INDEX_NAME = "memory"
@@ -14,7 +18,7 @@ logger = logging.getLogger(__name__)
 _redis_pool = None
 _openai_client = None
 _anthropic_client = None
-_model_clients = {}
+_model_clients = {}  # TODO: Use WeakRefDict
 
 
 def get_redis_conn(url: str | None = settings.redis_url, **kwargs) -> Redis:

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np
 import pytest
 
-from models import (
+from redis_memory_server.models import (
     MemoryMessage,
     MemoryMessagesAndContext,
     MemoryResponse,
@@ -117,7 +117,7 @@ class TestOpenAIClientWrapper:
             "OPENAI_API_KEY": "test-key",
         },
     )
-    @patch("models.AsyncOpenAI")
+    @patch("redis_memory_server.models.AsyncOpenAI")
     async def test_init_regular_openai(self, mock_openai):
         """Test initializing with regular OpenAI"""
         # Set up the mock to return an AsyncMock
@@ -226,7 +226,7 @@ async def test_model_client_factory():
     # Test with OpenAI model
     with (
         patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}),
-        patch("models.OpenAIClientWrapper") as mock_openai,
+        patch("redis_memory_server.models.OpenAIClientWrapper") as mock_openai,
     ):
         mock_openai.return_value = "openai-client"
         client = await ModelClientFactory.get_client("gpt-4")
@@ -235,7 +235,7 @@ async def test_model_client_factory():
     # Test with Anthropic model
     with (
         patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
-        patch("models.AnthropicClientWrapper") as mock_anthropic,
+        patch("redis_memory_server.models.AnthropicClientWrapper") as mock_anthropic,
     ):
         mock_anthropic.return_value = "anthropic-client"
         client = await ModelClientFactory.get_client("claude-3-sonnet-20240229")

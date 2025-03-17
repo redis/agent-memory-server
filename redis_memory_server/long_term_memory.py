@@ -4,13 +4,13 @@ import nanoid
 from redis.asyncio import Redis
 from redis.commands.search.query import Query
 
-from models import (
+from redis_memory_server.models import (
     MemoryMessage,
     OpenAIClientWrapper,
     RedisearchResult,
     SearchResults,
 )
-from utils import REDIS_INDEX_NAME, Keys
+from redis_memory_server.utils import REDIS_INDEX_NAME, Keys
 
 
 logger = logging.getLogger(__name__)

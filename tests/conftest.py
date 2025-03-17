@@ -12,14 +12,14 @@ from redis import Redis
 from redis.asyncio import ConnectionPool, Redis as AsyncRedis
 from testcontainers.compose import DockerCompose
 
-from healthcheck import router as health_router
-from memory import router as memory_router
-from models import (
+from redis_memory_server.healthcheck import router as health_router
+from redis_memory_server.memory import router as memory_router
+from redis_memory_server.models import (
     MemoryMessage,
     OpenAIClientWrapper,
 )
-from retrieval import router as retrieval_router
-from utils import REDIS_INDEX_NAME, Keys, ensure_redisearch_index
+from redis_memory_server.retrieval import router as retrieval_router
+from redis_memory_server.utils import REDIS_INDEX_NAME, Keys, ensure_redisearch_index
 
 
 load_dotenv()
@@ -182,9 +182,10 @@ def redis_client(redis_url):
 
 @pytest.fixture()
 def use_test_redis_connection(redis_url: str):
+    """Replace the Redis connection pool with a test one"""
     replacement_pool = ConnectionPool.from_url(redis_url)
-    with patch("utils._redis_pool", new=replacement_pool):
-        yield
+    with patch("redis_memory_server.utils._redis_pool", new=replacement_pool):
+        yield replacement_pool
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

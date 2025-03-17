@@ -2,7 +2,7 @@ import time
 
 from fastapi import APIRouter
 
-from models import HealthCheckResponse
+from redis_memory_server.models import HealthCheckResponse
 
 
 router = APIRouter()

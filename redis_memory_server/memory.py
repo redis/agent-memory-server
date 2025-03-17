@@ -4,17 +4,23 @@ import time
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
-from config import settings
-from long_term_memory import index_messages
-from models import (
+from redis_memory_server.config import settings
+from redis_memory_server.extraction import handle_extraction
+from redis_memory_server.long_term_memory import index_messages
+from redis_memory_server.models import (
     AckResponse,
     GetSessionsQuery,
     MemoryMessage,
     MemoryMessagesAndContext,
     MemoryResponse,
 )
-from summarization import handle_compaction
-from utils import Keys, get_model_client, get_openai_client, get_redis_conn
+from redis_memory_server.summarization import handle_compaction
+from redis_memory_server.utils import (
+    Keys,
+    get_model_client,
+    get_openai_client,
+    get_redis_conn,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -180,9 +186,23 @@ async def post_memory(
         current_time = int(time.time())
         await redis.zadd(sessions_key, {session_id: current_time})
 
+        # Get model client for extraction
+        model_client = await get_model_client(settings.generation_model)
+
+        # Process messages for topic/entity extraction
+        processed_messages = []
+        for msg in memory_messages.messages:
+            # Handle extraction in background for each message
+            background_tasks.add_task(
+                handle_extraction,
+                msg,
+                model_client,
+            )
+            processed_messages.append(msg)
+
         # Convert messages to JSON, handling topics and entities
         messages_json = []
-        for msg in memory_messages.messages:
+        for msg in processed_messages:
             msg_dict = msg.model_dump()
             # Convert lists to comma-separated strings for TAG fields
             msg_dict["topics"] = ",".join(msg.topics) if msg.topics else ""
@@ -193,10 +213,9 @@ async def post_memory(
         await redis.lpush(messages_key, *messages_json)  # type: ignore
 
         # Check if window size is exceeded
-        current_size = await redis.llen(messages_key)
+        current_size = await redis.llen(messages_key)  # type: ignore
         if current_size > settings.window_size:
             # Handle compaction in background
-            model_client = await get_model_client(settings.generation_model)
             background_tasks.add_task(
                 handle_compaction,
                 session_id,

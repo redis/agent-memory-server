@@ -2,20 +2,15 @@ import os
 
 import structlog
 import uvicorn
-from dotenv import load_dotenv
 from fastapi import FastAPI
 
-import utils
-from models import MODEL_CONFIGS, ModelProvider
-
-
-load_dotenv()
-
-from config import settings
-from healthcheck import router as health_router
-from memory import router as memory_router
-from retrieval import router as retrieval_router
-from utils import ensure_redisearch_index, get_redis_conn
+from redis_memory_server import utils
+from redis_memory_server.config import settings
+from redis_memory_server.healthcheck import router as health_router
+from redis_memory_server.memory import router as memory_router
+from redis_memory_server.models import MODEL_CONFIGS, ModelProvider
+from redis_memory_server.retrieval import router as retrieval_router
+from redis_memory_server.utils import ensure_redisearch_index, get_redis_conn
 
 
 # Configure logging
