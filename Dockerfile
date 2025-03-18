@@ -2,15 +2,20 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install system dependencies including build tools
+RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy application code
-COPY . .
+# Copy project files
+COPY pyproject.toml README.md ./
+COPY redis_memory_server ./redis_memory_server
 
-# Set environment variables
-ENV PORT=8000
+# Install Python dependencies
+RUN pip install --no-cache-dir -e .
 
-# Run the application
-CMD ["python", "main.py"]
+# Run the API server
+CMD ["python", "-m", "redis_memory_server.main"]

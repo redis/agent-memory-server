@@ -1,30 +1,20 @@
 import os
 
-import structlog
 import uvicorn
 from fastapi import FastAPI
 
 from redis_memory_server import utils
 from redis_memory_server.config import settings
 from redis_memory_server.healthcheck import router as health_router
+from redis_memory_server.logging import configure_logging, get_logger
 from redis_memory_server.memory import router as memory_router
 from redis_memory_server.models import MODEL_CONFIGS, ModelProvider
 from redis_memory_server.retrieval import router as retrieval_router
 from redis_memory_server.utils import ensure_redisearch_index, get_redis_conn
 
 
-# Configure logging
-structlog.configure(
-    processors=[
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.stdlib.add_log_level,
-        structlog.processors.JSONRenderer(),
-    ],
-    wrapper_class=structlog.stdlib.BoundLogger,
-    logger_factory=structlog.stdlib.LoggerFactory(),
-)
-
-logger = structlog.get_logger()
+configure_logging()
+logger = get_logger(__name__)
 
 # Create FastAPI app
 app = FastAPI(title="Redis Memory Server")
@@ -148,4 +138,4 @@ def on_start_logger(port: int):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
     on_start_logger(port)
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run("redis_memory_server.main:app", host="0.0.0.0", port=port, reload=False)

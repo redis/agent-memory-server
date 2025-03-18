@@ -1,4 +1,3 @@
-import logging
 import os
 from typing import Any
 
@@ -6,12 +5,13 @@ from bertopic import BERTopic
 from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
 
 from redis_memory_server.config import settings
+from redis_memory_server.logging import get_logger
 from redis_memory_server.models import (
     MemoryMessage,
 )
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Set tokenizer parallelism environment variable
 os.environ["TOKENIZERS_PARALLELISM"] = "false"

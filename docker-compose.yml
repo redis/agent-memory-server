@@ -1,0 +1,46 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - PORT=8000
+      # Add your API keys here or use a .env file
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Optional configurations with defaults
+      - LONG_TERM_MEMORY=True
+      - WINDOW_SIZE=20
+      - GENERATION_MODEL=gpt-4o-mini
+      - EMBEDDING_MODEL=text-embedding-3-small
+      - ENABLE_TOPIC_EXTRACTION=True
+      - ENABLE_NER=True
+    depends_on:
+      - redis
+    volumes:
+      - ./redis_memory_server:/app/redis_memory_server
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis/redis-stack:latest
+    ports:
+      - "16379:6379" # Redis port
+      - "18001:8001" # RedisInsight port
+    volumes:
+      - redis_data:/data
+    command: redis-stack-server --save 60 1 --loglevel warning
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  redis_data:

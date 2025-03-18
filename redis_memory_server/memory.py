@@ -1,11 +1,11 @@
 import json
-import logging
 import time
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from redis_memory_server.config import settings
 from redis_memory_server.extraction import handle_extraction
+from redis_memory_server.logging import get_logger
 from redis_memory_server.long_term_memory import index_messages
 from redis_memory_server.models import (
     AckResponse,
@@ -23,7 +23,7 @@ from redis_memory_server.utils import (
 )
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter()
 

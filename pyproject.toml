@@ -9,19 +9,23 @@ description = "A Redis-based memory server for LLM applications"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
-authors = [
-    { name = "Andrew Brookins", email = "andrew.brookins@redis.com" },
-]
+authors = [{ name = "Andrew Brookins", email = "andrew.brookins@redis.com" }]
 dependencies = [
-    "fastapi>=0.68.0",
-    "uvicorn>=0.15.0",
-    "redis>=4.0.0",
-    "pydantic>=1.8.0",
-    "openai>=1.0.0",
-    "anthropic>=0.3.0",
-    "bertopic>=0.14.0",
+    "fastapi>=0.115.11",
+    "uvicorn>=0.24.0",
+    "redis>=5.0.1",
+    "openai>=1.3.7",
+    "anthropic>=0.15.0",
+    "pydantic>=2.5.2",
+    "python-dotenv>=1.0.0",
+    "tiktoken>=0.5.1",
+    "numpy>=2.1.0",
+    "pydantic-settings>=2.8.1",
+    "bertopic>=0.16.4",
+    "structlog>=25.2.0",
     "transformers>=4.30.0",
-    "torch>=2.0.0",
+    "numba>=0.60.0",
+    "nanoid>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -29,8 +33,7 @@ dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.23.0",
     "pytest-xdist>=3.5.0",
-    "black>=24.1.0",
-    "ruff>=0.2.0",
+    "ruff>=0.3.0",
     "testcontainers>=3.7.0",
     "pre-commit>=3.6.0",
 ]
@@ -39,9 +42,7 @@ dev = [
 packages = ["redis_memory_server"]
 
 [tool.hatch.build.targets.sdist]
-include = [
-    "/redis_memory_server",
-]
+include = ["/redis_memory_server"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
@@ -51,11 +52,6 @@ addopts = "-v"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 asyncio_mode = "auto"
-
-[tool.black]
-line-length = 88
-target-version = ['py310']
-include = '\.pyi?$'
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories
@@ -70,7 +66,6 @@ exclude = [
     "*.egg-info",
 ]
 
-# Same as Black
 line-length = 88
 
 # Assume Python 3.12
@@ -96,7 +91,13 @@ max-complexity = 10
 [tool.ruff.lint.isort]
 # Group imports by type and organize them alphabetically
 known-first-party = ["redis-memory-server"]
-section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
 combine-as-imports = true
 lines-after-imports = 2
 
