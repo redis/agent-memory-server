@@ -4,12 +4,12 @@ A service that provides memory management for AI applications using Redis. This 
 
 ## Features
 
-- **Short-term Memory Management**
+- **Short-Term Memory Management**
   - Configurable window size for recent messages
   - Automatic context summarization using LLMs
   - Token limit management based on model capabilities
 
-- **Long-term Memory**
+- **Long-Term Memory**
   - Semantic search capabilities
   - Automatic message indexing
   - Configurable memory retention
