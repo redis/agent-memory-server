@@ -7,7 +7,7 @@ memory operations in AI applications.
 
 ## Features
 
-- **Short-Term Memory Management**
+- **Short-Term Memory**
   - Configurable window size for recent messages
   - Automatic conversation summarization using LLMs
   - Token limit management based on model capabilities
