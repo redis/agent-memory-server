@@ -127,8 +127,8 @@ class TestMemoryEndpoints:
         mock_add_task = MagicMock()
 
         with (
-            patch("redis_memory_server.memory.settings", mock_settings),
-            patch("redis_memory_server.memory.BackgroundTasks.add_task", mock_add_task),
+            patch("redis_memory_server.api.settings", mock_settings),
+            patch("redis_memory_server.api.BackgroundTasks.add_task", mock_add_task),
         ):
             response = await client.post("/sessions/test-session/memory", json=payload)
 
@@ -159,8 +159,8 @@ class TestMemoryEndpoints:
         mock_add_task = MagicMock()
 
         with (
-            patch("redis_memory_server.memory.settings", mock_settings),
-            patch("redis_memory_server.memory.BackgroundTasks.add_task", mock_add_task),
+            patch("redis_memory_server.api.settings", mock_settings),
+            patch("redis_memory_server.api.BackgroundTasks.add_task", mock_add_task),
         ):
             response = await client.post("/sessions/test-session/memory", json=payload)
 

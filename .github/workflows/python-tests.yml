@@ -30,13 +30,27 @@ jobs:
   test:
     needs: lint
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [3.12, 3.13]
+        redis-version: ['6.2.6-v9', 'latest', '8.0-M03']
+
     steps:
     - uses: actions/checkout@v3
+
+    - name: Set Redis image name
+      run: |
+        if [[ "${{ matrix.redis-version }}" == "8.0-M03" ]]; then
+          echo "REDIS_IMAGE=redis:${{ matrix.redis-version }}" >> $GITHUB_ENV
+        else
+          echo "REDIS_IMAGE=redis/redis-stack-server:${{ matrix.redis-version }}" >> $GITHUB_ENV
+        f
 
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.12'
+        python-version: ${{ matrix.python-version }}
         cache: 'pip'
 
     - name: Install dependencies
