@@ -1,6 +1,6 @@
-# Redis Agentic Memory
+# Redis Agentic Memory Server
 
-Redis Memory Server is a high-performance and flexible server for managing
+Agentic Memory Server is a high-performance and flexible server for managing
 short-term and long-term memory for agents using Redis. It provides both REST
 API endpoints and an MCP (Managed Control Plane) server interface for robust
 memory operations in AI applications.
@@ -70,7 +70,7 @@ The following endpoints are available:
   ```
 
 ## MCP Server Interface
-Redis Memory Server also offers an MCP (Model Context Protocol) server interface powered by FastMCP, providing tool-based memory operations:
+Agentic Memory Server also offers an MCP (Model Context Protocol) server interface powered by FastMCP, providing tool-based memory operations:
 
 - **list_sessions**: Retrieve available memory sessions with optional pagination.
 - **get_session_memory**: Fetch memory (messages and context) for a specific session.

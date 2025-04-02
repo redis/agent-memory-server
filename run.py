@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Run the Redis Memory Server."""
+"""Run the Redis Agentic Memory Server."""
+
+import os
 
 import uvicorn
 
+from redis_memory_server.main import on_start_logger
+
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "redis_memory_server.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-    )
+    port = int(os.environ.get("PORT", "8000"))
+    on_start_logger(port)
+    uvicorn.run("redis_memory_server.main:app", host="0.0.0.0", port=port, reload=False)

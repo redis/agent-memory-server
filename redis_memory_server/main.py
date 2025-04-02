@@ -17,12 +17,12 @@ configure_logging()
 logger = get_logger(__name__)
 
 # Create FastAPI app
-app = FastAPI(title="Redis Memory Server")
+app = FastAPI(title="Redis Agentic Memory Server")
 
 
 async def startup_event():
     """Initialize the application on startup"""
-    logger.info("Starting Redis Memory Server 🤘")
+    logger.info("Starting Redis Agentic Memory Server 🤘")
 
     # Check for required API keys
     available_providers = []
@@ -104,7 +104,7 @@ async def startup_event():
         logger.info(f"Available Anthropic models: {', '.join(anthropic_models)}")
 
     logger.info(
-        "Redis Memory Server initialized",
+        "Redis Agentic Memory Server initialized",
         window_size=settings.window_size,
         generation_model=settings.generation_model,
         embedding_model=settings.embedding_model,
@@ -114,7 +114,7 @@ async def startup_event():
 
 async def shutdown_event():
     """Clean up resources on shutdown"""
-    logger.info("Shutting down Redis Memory Server")
+    logger.info("Shutting down Redis Agentic Memory Server")
     if utils._redis_pool:
         await utils._redis_pool.aclose()
 
@@ -142,7 +142,7 @@ app.mount("/mcp", mcp_app.sse_app())
 def on_start_logger(port: int):
     """Log startup information"""
     print("\n-----------------------------------")
-    print(f"🧠 Redis Memory Server running on port: {port}")
+    print(f"🧠 Redis Agentic Memory Server running on port: {port}")
     print("-----------------------------------\n")
 
 

@@ -22,7 +22,7 @@ from redis_memory_server.models.messages import (
 
 
 logger = logging.getLogger(__name__)
-mcp_app = FastMCP("Redis Memory Server")
+mcp_app = FastMCP("Redis Agentic Memory Server")
 
 
 @mcp_app.tool()
