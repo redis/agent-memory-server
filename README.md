@@ -1,26 +1,96 @@
-# Redis Memory Server
+# Redis Agentic Memory
 
-A service that provides memory management for AI applications using Redis. This server helps manage both short-term and long-term memory for AI conversations, with features like automatic topic extraction, entity recognition, and context summarization.
+Redis Memory Server is a high-performance and flexible server for managing
+short-term and long-term memory for agents using Redis. It provides both REST
+API endpoints and an MCP (Managed Control Plane) server interface for robust
+memory operations in AI applications.
 
 ## Features
 
 - **Short-Term Memory Management**
   - Configurable window size for recent messages
-  - Automatic context summarization using LLMs
+  - Automatic conversation summarization using LLMs
   - Token limit management based on model capabilities
 
 - **Long-Term Memory**
-  - Semantic search capabilities
+  - Semantic search over messages
   - Automatic message indexing
-  - Configurable memory retention
+  - Topic modeling with BERTopic
+  - Named Entity Recognition using BERT
 
 - **Advanced Features**
-  - Topic extraction using BERTopic
-  - Named Entity Recognition using BERT
-  - Support for multiple model providers (OpenAI and Anthropic)
+  - Support for OpenAI and Anthropic model providers
   - Namespace support for session isolation
 
-## Get Started
+
+## REST API Endpoints
+
+The following endpoints are available:
+
+- **GET /health**
+  A simple health check endpoint returning the current server time.
+  Example Response:
+  ```json
+  {"now": 1616173200}
+  ```
+
+- **GET /sessions/**
+  Retrieves a paginated list of session IDs.
+  _Query Parameters:_
+  - `page` (int): Page number (default: 1)
+  - `size` (int): Number of sessions per page (default: 10)
+  - `namespace` (string, optional): Filter sessions by namespace.
+
+- **GET /sessions/{session_id}/memory**
+  Retrieves conversation memory for a session, including messages and context.
+
+- **POST /sessions/{session_id}/memory**
+  Adds messages (and optional context) to a session's memory.
+  _Request Body Example:_
+  ```json
+  {
+    "messages": [
+      {"role": "user", "content": "Hello"},
+      {"role": "assistant", "content": "Hi there"}
+    ],
+    "context": "Optional context"
+  }
+  ```
+
+- **DELETE /sessions/{session_id}/memory**
+  Deletes all stored memory (messages, context, token count) for a session.
+
+- **POST /sessions/{session_id}/search**
+  Performs a semantic search on the messages within a session.
+  _Request Body Example:_
+  ```json
+  {
+    "text": "Search query text"
+  }
+  ```
+
+## MCP Server Interface
+Redis Memory Server also offers an MCP (Model Context Protocol) server interface powered by FastMCP, providing tool-based memory operations:
+
+- **list_sessions**: Retrieve available memory sessions with optional pagination.
+- **get_session_memory**: Fetch memory (messages and context) for a specific session.
+- **add_memory**: Add messages and context to a session's memory.
+- **delete_session_memory**: Remove all memory data for a session.
+- **search_memory**: Perform semantic search across session messages.
+- **memory_prompt**: Generate prompts enriched with memory context and long-term memories.
+
+## Getting Started
+
+### Local Install
+
+1. Install the package and required dependencies:
+   ```bash
+   pip install -e .
+   ```
+
+2. Start both the REST API server and MCP server:
+  ```bash
+  python -m redis_memory_server.main
 
 ### Docker Compose
 
@@ -39,99 +109,6 @@ To start the API using Docker Compose, follow these steps:
 
 6. To stop the containers, press Ctrl+C in the terminal and then run:
    docker-compose down
-
-Happy coding!
-
-
-## API Reference
-
-### API Docs
-
-API documentation is available at:  http://localhost:8000/docs.
-
-### Endpoint Preview
-
-#### List Sessions
-```http
-GET /sessions/
-```
-
-Query Parameters:
-- `page` (int): Page number (default: 1)
-- `size` (int): Items per page (default: 10)
-- `namespace` (string, optional): Filter sessions by namespace
-
-Response:
-```json
-[
-    "session-1",
-    "session-2"
-]
-```
-
-#### Get Memory
-```http
-GET /sessions/{session_id}/memory
-```
-
-Response:
-```json
-{
-    "messages": [
-        {
-            "role": "user",
-            "content": "Hello, how are you?",
-            "topics": ["greeting", "well-being"],
-            "entities": []
-        }
-    ],
-    "context": "Optional context for the conversation",
-    "tokens": 123
-}
-```
-
-#### Add Messages to Memory
-```http
-POST /sessions/{session_id}/memory
-```
-
-Request Body:
-```json
-{
-    "messages": [
-        {
-            "role": "user",
-            "content": "Hello, how are you?"
-        }
-    ],
-    "context": "Optional context for the conversation"
-}
-```
-
-Query Parameters:
-- `namespace` (string, optional): Namespace for the session
-
-Response:
-```json
-{
-    "status": "ok"
-}
-```
-
-#### Delete Session
-```http
-DELETE /sessions/{session_id}/memory
-```
-
-Query Parameters:
-- `namespace` (string, optional): Namespace for the session
-
-Response:
-```json
-{
-    "status": "ok"
-}
-```
 
 ## Configuration
 
@@ -152,39 +129,22 @@ You can configure the service using environment variables:
 | `ENABLE_TOPIC_EXTRACTION` | Enable/disable topic extraction | `True` |
 | `ENABLE_NER` | Enable/disable named entity recognition | `True` |
 
-## Supported Models
 
-### Large Language Models
+## Development
 
-Redis Memory Server supports using OpenAI and Anthropic models for generation, and OpenAI models for embeddings.
+### Installation
 
-### Topic and NER Models
-- **Topic Extraction**: BERTopic with Wikipedia-trained model
-- **Named Entity Recognition**: BERT model fine-tuned on CoNLL-03 dataset
-
-> **Note**: Embedding operations use OpenAI models exclusively, as Anthropic does not provide an embedding API.
-
-## Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/redis-memory-server.git
-cd redis-memory-server
-```
-
-2. Install dependencies:
+1. Install dependencies:
 ```bash
 pip install -e ".[dev]"
 ```
 
-3. Set up environment variables (see Configuration section)
+2. Set up environment variables (see Configuration section)
 
-4. Run the server:
+3. Run the server:
 ```bash
-python -m redis_memory_server
+python -m redis_memory_server.main
 ```
-
-## Development
 
 ### Running Tests
 ```bash
@@ -199,6 +159,7 @@ python -m pytest
 5. Create a Pull Request
 
 ## License
+
 This project derives from original work from the Motorhead project:
 https://github.com/getmetal/motorhead/
 
