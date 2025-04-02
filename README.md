@@ -91,6 +91,7 @@ Agentic Memory Server also offers an MCP (Model Context Protocol) server interfa
 2. Start both the REST API server and MCP server:
   ```bash
   python -m redis_memory_server.main
+  ```
 
 ### Docker Compose
 
