@@ -3,7 +3,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from redis_memory_server.summarization import _incremental_summary, handle_compaction
+from redis_memory_server.models.summarization import (
+    _incremental_summary,
+    handle_compaction,
+)
 from redis_memory_server.utils import Keys
 
 
@@ -72,7 +75,7 @@ class TestIncrementalSummarization:
 
 class TestHandleCompaction:
     @pytest.mark.asyncio
-    @patch("redis_memory_server.summarization._incremental_summary")
+    @patch("redis_memory_server.models.summarization._incremental_summary")
     async def test_handle_compaction(
         self, mock_summarization, mock_openai_client, mock_async_redis_client
     ):
@@ -114,7 +117,7 @@ class TestHandleCompaction:
         )
 
         assert pipeline_mock.lrange.call_count == 1
-        assert pipeline_mock.lrange.call_args[0][0] == Keys.session_key(session_id)
+        assert pipeline_mock.lrange.call_args[0][0] == Keys.messages_key(session_id)
         assert pipeline_mock.lrange.call_args[0][1] == 6
         assert pipeline_mock.lrange.call_args[0][2] == window_size
 
@@ -125,7 +128,7 @@ class TestHandleCompaction:
         assert len(mock_summarization.call_args[0][3]) == 6
 
     @pytest.mark.asyncio
-    @patch("redis_memory_server.summarization._incremental_summary")
+    @patch("redis_memory_server.models.summarization._incremental_summary")
     async def test_handle_compaction_no_messages(
         self, mock_summarization, mock_openai_client, mock_async_redis_client
     ):

@@ -12,14 +12,19 @@ from redis import Redis
 from redis.asyncio import ConnectionPool, Redis as AsyncRedis
 from testcontainers.compose import DockerCompose
 
+from redis_memory_server.api import router as memory_router
 from redis_memory_server.healthcheck import router as health_router
-from redis_memory_server.memory import router as memory_router
-from redis_memory_server.models import (
+from redis_memory_server.models.messages import (
     MemoryMessage,
     OpenAIClientWrapper,
+    index_messages,
 )
-from redis_memory_server.retrieval import router as retrieval_router
-from redis_memory_server.utils import REDIS_INDEX_NAME, Keys, ensure_redisearch_index
+from redis_memory_server.utils import (
+    REDIS_INDEX_NAME,
+    Keys,
+    ensure_redisearch_index,
+    get_openai_client,
+)
 
 
 load_dotenv()
@@ -58,7 +63,7 @@ def mock_openai_client():
 
 @pytest.fixture(autouse=True)
 async def search_index(async_redis_client):
-    """Create a real Redis connection pool for testing"""
+    """Create a Redis connection pool for testing"""
     # TODO: Replace with RedisVL index.
 
     await async_redis_client.flushdb()
@@ -94,7 +99,7 @@ async def search_index(async_redis_client):
 
 
 @pytest.fixture()
-async def test_session_setup(async_redis_client):
+async def session(use_test_redis_connection, async_redis_client):
     """Set up a test session with Redis data for testing"""
     import json
     import time
@@ -110,9 +115,18 @@ async def test_session_setup(async_redis_client):
         {"role": "assistant", "content": "Hi there"},
     ]
 
+    client = await get_openai_client()
+
+    await index_messages(
+        [MemoryMessage(**msg, topics=[], entities=[]) for msg in messages],
+        session_id,
+        client,
+        async_redis_client,
+    )
+
     key = Keys.messages_key(session_id)
     for msg in messages:
-        await async_redis_client.lpush(key, json.dumps(msg))
+        await async_redis_client.rpush(key, json.dumps(msg))
 
     # Add context
     await async_redis_client.set(Keys.context_key(session_id), "Sample context")
@@ -232,7 +246,6 @@ def app(use_test_redis_connection):
     # Include routers
     app.include_router(health_router)
     app.include_router(memory_router)
-    app.include_router(retrieval_router)
 
     return app
 
@@ -245,7 +258,6 @@ def app_with_mock_background_tasks(use_test_redis_connection):
     # Include routers
     app.include_router(health_router)
     app.include_router(memory_router)
-    app.include_router(retrieval_router)
 
     mock_background_tasks = MockBackgroundTasks()
     app.dependency_overrides[BackgroundTasks] = lambda: mock_background_tasks

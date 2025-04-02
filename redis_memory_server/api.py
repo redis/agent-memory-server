@@ -4,17 +4,20 @@ import time
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from redis_memory_server.config import settings
-from redis_memory_server.extraction import handle_extraction
 from redis_memory_server.logging import get_logger
-from redis_memory_server.long_term_memory import index_messages
-from redis_memory_server.models import (
+from redis_memory_server.models.extraction import handle_extraction
+from redis_memory_server.models.messages import (
     AckResponse,
     GetSessionsQuery,
     MemoryMessage,
     MemoryMessagesAndContext,
     MemoryResponse,
+    SearchPayload,
+    SearchResults,
+    index_messages,
+    search_messages,
 )
-from redis_memory_server.summarization import handle_compaction
+from redis_memory_server.models.summarization import handle_compaction
 from redis_memory_server.utils import (
     Keys,
     get_model_client,
@@ -29,11 +32,11 @@ router = APIRouter()
 
 
 @router.get("/sessions/", response_model=list[str])
-async def get_sessions(
+async def list_sessions(
     pagination: GetSessionsQuery = Depends(),
 ):
     """
-    Get a list of session IDs, with optional pagination
+    Get a list of session IDs, with optional pagination.
 
     Args:
         pagination: Pagination parameters (page, size, namespace)
@@ -52,9 +55,7 @@ async def get_sessions(
     end = pagination.page * pagination.size - 1
 
     # Set key based on namespace
-    sessions_key = (
-        f"sessions:{pagination.namespace}" if pagination.namespace else "sessions"
-    )
+    sessions_key = Keys.sessions_key(namespace=pagination.namespace)
 
     try:
         # Get session IDs from Redis
@@ -69,26 +70,35 @@ async def get_sessions(
 
 
 @router.get("/sessions/{session_id}/memory", response_model=MemoryResponse)
-async def get_memory(session_id: str):
+async def get_session_memory(session_id: str, namespace: str | None = None):
     """
-    Get memory for a session
+    Get memory for a session.
+
+    This includes stored conversation history and context.
 
     Args:
         session_id: The session ID
 
     Returns:
-        Memory response with messages and context
+        Conversation history and context
     """
     redis = get_redis_conn()
 
     try:
         # Define keys
-        messages_key = Keys.messages_key(session_id)
-        context_key = Keys.context_key(session_id)
-        token_count_key = Keys.token_count_key(session_id)
+        sessions_key = Keys.sessions_key(namespace=namespace)
+        messages_key = Keys.messages_key(session_id, namespace=namespace)
+        context_key = Keys.context_key(session_id, namespace=namespace)
+        token_count_key = Keys.token_count_key(session_id, namespace=namespace)
+
+        # TODO: Use a hash
+        session_exists = await redis.zscore(sessions_key, session_id)
+        if not session_exists:
+            raise HTTPException(status_code=404, detail="Session not found")
 
         # Get data from Redis in a pipeline
         pipe = redis.pipeline()
+        # TODO: Make window size configurable via API parameter
         pipe.lrange(messages_key, 0, settings.window_size - 1)  # Get messages
         pipe.mget(context_key, token_count_key)  # Get context and token count
         results = await pipe.execute()
@@ -147,6 +157,8 @@ async def get_memory(session_id: str):
             tokens=tokens,
         )
 
+    except HTTPException as e:
+        raise e
     except Exception as e:
         logger.error(f"Error getting memory for session {session_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error") from e
@@ -178,20 +190,17 @@ async def post_memory(
         context_key = Keys.context_key(session_id)
         sessions_key = f"sessions:{namespace}" if namespace else "sessions"
 
-        # Check if new context is provided
         if memory_messages.context is not None:
             await redis.set(context_key, memory_messages.context)
 
-        # Add session to sessions set with timestamp
         current_time = int(time.time())
         await redis.zadd(sessions_key, {session_id: current_time})
 
-        # Get model client for extraction
         model_client = await get_model_client(settings.generation_model)
-
         messages_json = []
 
         # Process messages for topic/entity extraction
+        # TODO: Use a distributed background task
         for msg in memory_messages.messages:
             # Handle extraction in background for each message
             msg = await handle_extraction(msg)
@@ -202,7 +211,7 @@ async def post_memory(
             messages_json.append(json.dumps(msg_dict))
 
         # Add messages to list
-        await redis.lpush(messages_key, *messages_json)  # type: ignore
+        await redis.rpush(messages_key, *messages_json)  # type: ignore
 
         # Check if window size is exceeded
         current_size = await redis.llen(messages_key)  # type: ignore
@@ -218,6 +227,7 @@ async def post_memory(
             )
 
         # If long-term memory is enabled, index messages
+        # TODO: Use a distributed background task
         if settings.long_term_memory:
             embedding_client = await get_openai_client()
             background_tasks.add_task(
@@ -226,6 +236,7 @@ async def post_memory(
                 session_id,
                 embedding_client,
                 redis,
+                namespace,
             )
 
         return AckResponse(status="ok")
@@ -266,4 +277,42 @@ async def delete_memory(
         return AckResponse(status="ok")
     except Exception as e:
         logger.error(f"Error deleting memory for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+
+
+@router.post("/sessions/{session_id}/search", response_model=SearchResults)
+async def search_session_messages(
+    session_id: str,
+    payload: SearchPayload,
+    namespace: str | None = None,
+):
+    """
+    Run a semantic search on the messages in a session
+
+    Args:
+        session_id: The session ID
+        payload: Search payload with text to search for
+        namespace: Optional namespace for the session
+
+    Returns:
+        List of search results
+    """
+    redis = get_redis_conn()
+
+    if not settings.long_term_memory:
+        raise HTTPException(status_code=400, detail="Long term memory is disabled")
+
+    # For embeddings, we always use OpenAI models since Anthropic doesn't support embeddings
+    client = await get_openai_client()
+
+    try:
+        return await search_messages(
+            payload.text,
+            client,
+            redis,
+            session_id=session_id,
+            namespace=namespace,
+        )
+    except Exception as e:
+        logger.error(f"Error in retrieval API: {e}")
         raise HTTPException(status_code=500, detail="Internal server error") from e

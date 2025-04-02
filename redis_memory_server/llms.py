@@ -7,86 +7,10 @@ from typing import Any
 import anthropic
 import numpy as np
 from openai import AsyncOpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
-# Setup logging
 logger = logging.getLogger(__name__)
-
-
-class MemoryMessage(BaseModel):
-    """A message in the memory system"""
-
-    role: str
-    content: str
-    topics: list[str] = Field(
-        default_factory=list, description="List of topics associated with this message"
-    )
-    entities: list[str] = Field(
-        default_factory=list, description="List of entities mentioned in this message"
-    )
-
-
-class MemoryMessagesAndContext(BaseModel):
-    """Request payload for adding messages to memory"""
-
-    messages: list[MemoryMessage]
-    context: str | None = None
-
-
-class MemoryResponse(BaseModel):
-    """Response containing messages and context"""
-
-    messages: list[MemoryMessage]
-    context: str | None = None
-    tokens: int | None = None
-
-
-class SearchPayload(BaseModel):
-    """Payload for semantic search"""
-
-    text: str
-
-
-class HealthCheckResponse(BaseModel):
-    """Response for health check endpoint"""
-
-    now: int
-
-
-class AckResponse(BaseModel):
-    """Generic acknowledgement response"""
-
-    status: str
-
-
-class RedisearchResult(BaseModel):
-    """Result from a redisearch query"""
-
-    role: str
-    content: str
-    dist: float
-
-
-class SearchResults(BaseModel):
-    """Results from a redisearch query"""
-
-    docs: list[RedisearchResult]
-    total: int
-
-
-class NamespaceQuery(BaseModel):
-    """Query parameters for namespace"""
-
-    namespace: str | None = None
-
-
-class GetSessionsQuery(BaseModel):
-    """Query parameters for getting sessions"""
-
-    page: int = Field(default=1)
-    size: int = Field(default=20)
-    namespace: str | None = None
 
 
 class ModelProvider(str, Enum):

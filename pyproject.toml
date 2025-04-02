@@ -26,6 +26,7 @@ dependencies = [
     "transformers>=4.30.0",
     "numba>=0.60.0",
     "nanoid>=2.0.0",
+    "mcp>=1.6.0",
 ]
 
 [project.optional-dependencies]

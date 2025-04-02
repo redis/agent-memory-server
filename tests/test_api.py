@@ -4,12 +4,12 @@ import numpy as np
 import pytest
 
 from redis_memory_server.config import Settings
-from redis_memory_server.long_term_memory import index_messages
-from redis_memory_server.models import (
+from redis_memory_server.models.messages import (
     RedisearchResult,
     SearchResults,
+    index_messages,
 )
-from redis_memory_server.summarization import handle_compaction
+from redis_memory_server.models.summarization import handle_compaction
 
 
 @pytest.fixture
@@ -46,8 +46,8 @@ class TestHealthEndpoint:
 
 
 class TestMemoryEndpoints:
-    async def test_get_sessions_empty(self, client):
-        """Test the get_sessions endpoint with no sessions"""
+    async def test_list_sessions_empty(self, client):
+        """Test the list_sessions endpoint with no sessions"""
         response = await client.get("/sessions/?page=1&size=10")
 
         assert response.status_code == 200
@@ -56,19 +56,19 @@ class TestMemoryEndpoints:
         assert isinstance(data, list)
         assert len(data) == 0
 
-    async def test_get_sessions_with_sessions(self, client, test_session_setup):
-        """Test the get_sessions endpoint with a session"""
+    async def test_list_sessions_with_sessions(self, client, session):
+        """Test the list_sessions endpoint with a session"""
         response = await client.get("/sessions/?page=1&size=10")
         assert response.status_code == 200
 
         data = response.json()
         assert isinstance(data, list)
         assert len(data) == 1
-        assert data[0] == test_session_setup
+        assert data[0] == session
 
-    async def test_get_memory(self, client, test_session_setup):
+    async def test_get_memory(self, client, session):
         """Test the get_memory endpoint"""
-        session_id = test_session_setup
+        session_id = session
 
         response = await client.get(f"/sessions/{session_id}/memory")
 
@@ -81,7 +81,6 @@ class TestMemoryEndpoints:
 
         assert len(data["messages"]) == 2
 
-        # Note: The order may be reversed due to LPUSH in Redis
         roles = [msg["role"] for msg in data["messages"]]
         contents = [msg["content"] for msg in data["messages"]]
         assert "user" in roles
@@ -178,9 +177,9 @@ class TestMemoryEndpoints:
         assert mock_add_task.call_args_list[-1][0][0] == handle_compaction
 
     @pytest.mark.asyncio
-    async def test_delete_memory(self, client, test_session_setup):
+    async def test_delete_memory(self, client, session):
         """Test the delete_memory endpoint"""
-        session_id = test_session_setup
+        session_id = session
 
         response = await client.get(f"/sessions/{session_id}/memory")
 
@@ -198,17 +197,15 @@ class TestMemoryEndpoints:
         assert data["status"] == "ok"
 
         response = await client.get(f"/sessions/{session_id}/memory")
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data["messages"]) == 0
+        assert response.status_code == 404
 
 
 @pytest.mark.requires_api_keys
-class TestRetrievalEndpoint:
-    @patch("redis_memory_server.retrieval.search_messages")
+class TestSearchEndpoint:
+    @patch("redis_memory_server.api.search_messages")
     @pytest.mark.asyncio
-    async def test_retrieval(self, mock_search, client):
-        """Test the retrieval endpoint"""
+    async def test_search(self, mock_search, client):
+        """Test the search endpoint"""
         mock_search.return_value = SearchResults(
             docs=[
                 RedisearchResult(role="user", content="Hello, world!", dist=0.25),
@@ -221,7 +218,7 @@ class TestRetrievalEndpoint:
         payload = {"text": "What is the capital of France?"}
 
         # Call endpoint with the correct URL format (matching the router definition)
-        response = await client.post("/sessions/test-session/retrieval", json=payload)
+        response = await client.post("/sessions/test-session/search", json=payload)
 
         # Check status code
         assert response.status_code == 200, response.text

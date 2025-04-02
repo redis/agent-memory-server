@@ -1,20 +1,22 @@
-import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
 import pytest
+from redis.commands.search.document import Document
 
-from redis_memory_server.models import (
+from redis_memory_server.llms import (
+    OpenAIClientWrapper,
+)
+from redis_memory_server.models.messages import (
     MemoryMessage,
     MemoryMessagesAndContext,
     MemoryResponse,
-    ModelClientFactory,
-    ModelProvider,
-    OpenAIClientWrapper,
     RedisearchResult,
     SearchPayload,
-    get_model_config,
+    index_messages,
+    search_messages,
 )
+from redis_memory_server.utils import REDIS_INDEX_NAME, TokenEscaper
 
 
 class TestModels:
@@ -109,134 +111,173 @@ class TestModels:
         assert result.dist == 0.75
 
 
-@pytest.mark.asyncio
-class TestOpenAIClientWrapper:
-    @patch.dict(
-        os.environ,
-        {
-            "OPENAI_API_KEY": "test-key",
-        },
-    )
-    @patch("redis_memory_server.models.AsyncOpenAI")
-    async def test_init_regular_openai(self, mock_openai):
-        """Test initializing with regular OpenAI"""
-        # Set up the mock to return an AsyncMock
-        mock_openai.return_value = AsyncMock()
-
-        OpenAIClientWrapper()
-
-        # Verify the client was created
-        assert mock_openai.called
-
-    @patch.object(OpenAIClientWrapper, "__init__", return_value=None)
-    async def test_create_embedding(self, mock_init):
-        """Test creating embeddings"""
-        # Create a client with mocked init
-        client = OpenAIClientWrapper()
-
-        # Mock the embedding client and response
-        mock_response = AsyncMock()
-        mock_response.data = [
-            MagicMock(embedding=[0.1, 0.2, 0.3]),
-            MagicMock(embedding=[0.4, 0.5, 0.6]),
-        ]
-
-        client.embedding_client = AsyncMock()
-        client.embedding_client.embeddings.create = AsyncMock(
-            return_value=mock_response
-        )
-
-        # Test creating embeddings
-        query_vec = ["Hello, world!", "How are you?"]
-        embeddings = await client.create_embedding(query_vec)
-
-        # Verify embeddings were created correctly
-        assert len(embeddings) == 2
-        # Convert NumPy array to list or use np.array_equal for comparison
-        assert np.array_equal(
-            embeddings[0], np.array([0.1, 0.2, 0.3], dtype=np.float32)
-        )
-        assert np.array_equal(
-            embeddings[1], np.array([0.4, 0.5, 0.6], dtype=np.float32)
-        )
-
-        # Verify the client was called with correct parameters
-        client.embedding_client.embeddings.create.assert_called_with(
-            model="text-embedding-ada-002", input=query_vec
-        )
-
-    @patch.object(OpenAIClientWrapper, "__init__", return_value=None)
-    async def test_create_chat_completion(self, mock_init):
-        """Test creating chat completions"""
-        # Create a client with mocked init
-        client = OpenAIClientWrapper()
-
-        # Mock the completion client and response
-        # Create a response structure that matches our new ChatResponse format
-        mock_response = AsyncMock()
-        mock_response.choices = [{"message": {"content": "Test response"}}]
-        mock_response.usage = {"total_tokens": 100}
-
-        client.completion_client = AsyncMock()
-        client.completion_client.chat.completions.create = AsyncMock(
-            return_value=mock_response
-        )
-
-        # Test creating chat completion
-        model = "gpt-3.5-turbo"
-        prompt = "Hello, world!"
-        response = await client.create_chat_completion(model, prompt)
-
-        # Verify the response contains the expected structure
-        assert response.choices[0]["message"]["content"] == "Test response"
-        assert response.total_tokens == 100
-
-        # Verify the client was called with correct parameters
-        client.completion_client.chat.completions.create.assert_called_with(
-            model=model, messages=[{"role": "user", "content": prompt}]
-        )
-
-
-@pytest.mark.parametrize(
-    ("model_name", "expected_provider", "expected_max_tokens"),
-    [
-        ("gpt-4o", "openai", 128000),
-        ("claude-3-sonnet-20240229", "anthropic", 200000),
-        ("nonexistent-model", "openai", 128000),  # Should default to GPT-4o-mini
-    ],
-)
-def test_get_model_config(model_name, expected_provider, expected_max_tokens):
-    """Test the get_model_config function"""
-    # Get the model config
-    config = get_model_config(model_name)
-
-    # Check the provider
-    if expected_provider == "openai":
-        assert config.provider == ModelProvider.OPENAI
-    else:
-        assert config.provider == ModelProvider.ANTHROPIC
-
-    # Check the max tokens
-    assert config.max_tokens == expected_max_tokens
-
-
-@pytest.mark.asyncio
-async def test_model_client_factory():
-    """Test the ModelClientFactory"""
-    # Test with OpenAI model
-    with (
-        patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}),
-        patch("redis_memory_server.models.OpenAIClientWrapper") as mock_openai,
+class TestLongTermMemory:
+    @pytest.mark.asyncio
+    async def test_index_messages(
+        self, memory_messages, mock_openai_client, mock_async_redis_client
     ):
-        mock_openai.return_value = "openai-client"
-        client = await ModelClientFactory.get_client("gpt-4")
-        assert client == "openai-client"
+        """Test indexing messages"""
+        # Set up the mock embedding response
+        mock_openai_client.create_embedding.return_value = np.array(
+            [[0.1, 0.2, 0.3, 0.4] for _ in memory_messages]
+        )
 
-    # Test with Anthropic model
-    with (
-        patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
-        patch("redis_memory_server.models.AnthropicClientWrapper") as mock_anthropic,
+        # Call index_messages
+        session_id = "test-session"
+        mock_async_redis_client.hset = AsyncMock()
+
+        await index_messages(
+            memory_messages, session_id, mock_openai_client, mock_async_redis_client
+        )
+
+        # Check that create_embedding was called with the right arguments
+        contents = [msg.content for msg in memory_messages]
+        mock_openai_client.create_embedding.assert_called_with(contents)
+
+        # Verify one of the calls to make sure the data is correct
+        for call in mock_async_redis_client.hset.call_args_list:
+            args, kwargs = call
+
+            # Check that the key starts with the memory key prefix
+            assert args[0].startswith("memory:")
+
+            # Check that the mapping contains the right keys
+            mapping = kwargs["mapping"]
+            assert "session" in mapping
+            assert "vector" in mapping
+            assert "content" in mapping
+            assert "role" in mapping
+
+            # Check that the session ID is correct
+            assert mapping["session"] == session_id
+
+            # Check that the vector is bytes
+            assert isinstance(mapping["vector"], bytes)
+
+    @pytest.mark.asyncio
+    async def test_search_messages(self, mock_openai_client, mock_async_redis_client):
+        """Test searching messages"""
+        # Set up the mock embedding response
+        mock_openai_client.create_embedding.return_value = np.array(
+            [0.1, 0.2, 0.3, 0.4], dtype=np.float32
+        )
+
+        class MockResult:
+            def __init__(self, docs):
+                self.total = len(docs)
+                self.docs = docs
+
+        # Create a proper mock structure for Redis ft().search()
+        mock_search = AsyncMock()
+        mock_search.return_value = MockResult(
+            [
+                Document(
+                    id=b"doc1",
+                    role=b"user",
+                    content=b"Hello, world!",
+                    dist=0.25,
+                ),
+                Document(
+                    id=b"doc2",
+                    role=b"assistant",
+                    content=b"Hi there!",
+                    dist=0.75,
+                ),
+            ]
+        )
+
+        # Create a mock FT object that has a search method
+        mock_ft = MagicMock()
+        mock_ft.search = mock_search
+
+        # Setup the ft method to return our mock_ft object
+        mock_async_redis_client.ft = MagicMock(return_value=mock_ft)
+
+        # Call search_messages
+        query = "What is the meaning of life?"
+        session_id = "test-session"
+        results = await search_messages(
+            query,
+            mock_openai_client,
+            mock_async_redis_client,
+            session_id=session_id,
+        )
+
+        # Check that create_embedding was called with the right arguments
+        escaper = TokenEscaper()
+        escaped_query = escaper.escape(query)
+        mock_openai_client.create_embedding.assert_called_with([escaped_query])
+
+        # Check that the index name is correct
+        assert mock_async_redis_client.ft.call_count == 1
+        assert mock_async_redis_client.ft.call_args[0][0] == REDIS_INDEX_NAME
+
+        # Check that search was called with the right arguments
+        assert mock_ft.search.call_count == 1
+        args = mock_ft.search.call_args[0]
+        assert (
+            args[0]._query_string
+            == "@session:{test\\-session} =>[KNN 10 @vector $vec AS dist]"
+        )
+
+        # Check that the results are parsed correctly
+        assert len(results.docs) == 2
+        assert isinstance(results.docs[0], RedisearchResult)
+        assert results.docs[0].role == "user"
+        assert results.docs[0].content == "Hello, world!"
+        assert results.docs[0].dist == 0.25
+        assert results.docs[1].role == "assistant"
+        assert results.docs[1].content == "Hi there!"
+        assert results.docs[1].dist == 0.75
+
+
+@pytest.mark.requires_api_keys
+class TestLongTermMemoryIntegration:
+    """Integration tests for long-term memory"""
+
+    @pytest.mark.asyncio
+    async def test_search_messages(self, memory_messages, async_redis_client):
+        """Test searching messages"""
+
+        await index_messages(
+            memory_messages, "123", OpenAIClientWrapper(), async_redis_client
+        )
+
+        results = await search_messages(
+            "What is the capital of France?",
+            OpenAIClientWrapper(),
+            async_redis_client,
+            session_id="123",
+            limit=1,
+        )
+
+        assert results.total == 1
+        assert results.docs[0].role == "user"
+        assert results.docs[0].content == "What is the capital of France?"
+
+    @pytest.mark.asyncio
+    async def test_search_messages_with_distance_threshold(
+        self, memory_messages, async_redis_client
     ):
-        mock_anthropic.return_value = "anthropic-client"
-        client = await ModelClientFactory.get_client("claude-3-sonnet-20240229")
-        assert client == "anthropic-client"
+        """Test searching messages with a distance threshold"""
+
+        await index_messages(
+            memory_messages, "123", OpenAIClientWrapper(), async_redis_client
+        )
+
+        results = await search_messages(
+            "What is the capital of France?",
+            OpenAIClientWrapper(),
+            async_redis_client,
+            session_id="123",
+            distance_threshold=1.5,
+            limit=2,
+        )
+
+        assert results.total == 4
+        assert len(results.docs) == 2
+
+        assert results.docs[0].role == "user"
+        assert results.docs[0].content == "What is the capital of France?"
+        assert results.docs[1].role == "assistant"
+        assert results.docs[1].content == "The capital of France is Paris."

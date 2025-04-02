@@ -6,9 +6,7 @@ from transformers import AutoModelForTokenClassification, AutoTokenizer, pipelin
 
 from redis_memory_server.config import settings
 from redis_memory_server.logging import get_logger
-from redis_memory_server.models import (
-    MemoryMessage,
-)
+from redis_memory_server.models.messages import MemoryMessage
 
 
 logger = get_logger(__name__)
@@ -88,7 +86,7 @@ def extract_entities(text: str) -> list[str]:
         return []
 
 
-def extract_topics(text: str) -> list[str]:
+def extract_topics(text: str, num_topics: int | None = None) -> list[str]:
     """
     Extract topics from text using the BERTopic model.
 
@@ -105,14 +103,16 @@ def extract_topics(text: str) -> list[str]:
     topic_indices, _ = model.transform([text])
 
     topics = []
-    for idx in topic_indices:
+    for i, topic_idx in enumerate(topic_indices):
+        if num_topics and i >= num_topics:
+            break
         # Convert possible numpy integer to Python int
-        idx_int = int(idx)
-        if idx_int != -1:  # Skip outlier topic (-1)
-            topic_info = model.get_topic(idx_int)
+        topic_idx_int = int(topic_idx)
+        if topic_idx_int != -1:  # Skip outlier topic (-1)
+            topic_info: list[tuple[str, float]] = model.get_topic(topic_idx_int)  # type: ignore
+            print(topic_info)
             if topic_info:
-                top_topics = [t[0] for t in topic_info[0:2]]  # type: ignore
-                topics.extend(top_topics)
+                topics.extend([info[0] for info in topic_info])
 
     return topics
 

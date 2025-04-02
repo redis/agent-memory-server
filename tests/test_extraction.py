@@ -4,12 +4,12 @@ import numpy as np
 import pytest
 
 from redis_memory_server.config import settings
-from redis_memory_server.extraction import (
+from redis_memory_server.models.extraction import (
     extract_entities,
     extract_topics,
     handle_extraction,
 )
-from redis_memory_server.models import MemoryMessage
+from redis_memory_server.models.messages import MemoryMessage
 
 
 @pytest.fixture
@@ -40,7 +40,7 @@ def mock_ner():
 
 @pytest.mark.asyncio
 class TestTopicExtraction:
-    @patch("redis_memory_server.extraction.get_topic_model")
+    @patch("redis_memory_server.models.extraction.get_topic_model")
     async def test_extract_topics_success(self, mock_get_topic_model, mock_bertopic):
         """Test successful topic extraction"""
         mock_get_topic_model.return_value = mock_bertopic
@@ -51,7 +51,7 @@ class TestTopicExtraction:
         assert set(topics) == {"technology", "business"}
         mock_bertopic.transform.assert_called_once_with([text])
 
-    @patch("redis_memory_server.extraction.get_topic_model")
+    @patch("redis_memory_server.models.extraction.get_topic_model")
     async def test_extract_topics_no_valid_topics(
         self, mock_get_topic_model, mock_bertopic
     ):
@@ -67,7 +67,7 @@ class TestTopicExtraction:
 
 @pytest.mark.asyncio
 class TestEntityExtraction:
-    @patch("redis_memory_server.extraction.get_ner_model")
+    @patch("redis_memory_server.models.extraction.get_ner_model")
     async def test_extract_entities_success(self, mock_get_ner_model, mock_ner):
         """Test successful entity extraction"""
         mock_get_ner_model.return_value = mock_ner
@@ -78,7 +78,7 @@ class TestEntityExtraction:
         assert set(entities) == {"John", "Google", "MountainView"}
         mock_ner.assert_called_once_with(text)
 
-    @patch("redis_memory_server.extraction.get_ner_model")
+    @patch("redis_memory_server.models.extraction.get_ner_model")
     async def test_extract_entities_error(self, mock_get_ner_model):
         """Test handling of NER model error"""
         mock_get_ner_model.side_effect = Exception("Model error")
@@ -90,8 +90,8 @@ class TestEntityExtraction:
 
 @pytest.mark.asyncio
 class TestHandleExtraction:
-    @patch("redis_memory_server.extraction.extract_topics")
-    @patch("redis_memory_server.extraction.extract_entities")
+    @patch("redis_memory_server.models.extraction.extract_topics")
+    @patch("redis_memory_server.models.extraction.extract_entities")
     async def test_handle_extraction_new_message(
         self, mock_extract_entities, mock_extract_topics
     ):
@@ -113,8 +113,8 @@ class TestHandleExtraction:
         mock_extract_topics.assert_called_once_with(message.content)
         mock_extract_entities.assert_called_once_with(message.content)
 
-    @patch("redis_memory_server.extraction.extract_topics")
-    @patch("redis_memory_server.extraction.extract_entities")
+    @patch("redis_memory_server.models.extraction.extract_topics")
+    @patch("redis_memory_server.models.extraction.extract_entities")
     async def test_handle_extraction_with_existing(
         self, mock_extract_entities, mock_extract_topics
     ):
@@ -143,8 +143,8 @@ class TestHandleExtraction:
         assert "Google" in updated_message.entities
         assert len(updated_message.entities) == 3
 
-    @patch("redis_memory_server.extraction.extract_topics")
-    @patch("redis_memory_server.extraction.extract_entities")
+    @patch("redis_memory_server.models.extraction.extract_topics")
+    @patch("redis_memory_server.models.extraction.extract_entities")
     async def test_handle_extraction_disabled_features(
         self, mock_extract_entities, mock_extract_topics
     ):

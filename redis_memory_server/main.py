@@ -1,15 +1,15 @@
 import os
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import BackgroundTasks, FastAPI
 
 from redis_memory_server import utils
+from redis_memory_server.api import router as memory_router
 from redis_memory_server.config import settings
 from redis_memory_server.healthcheck import router as health_router
+from redis_memory_server.llms import MODEL_CONFIGS, ModelProvider
 from redis_memory_server.logging import configure_logging, get_logger
-from redis_memory_server.memory import router as memory_router
-from redis_memory_server.models import MODEL_CONFIGS, ModelProvider
-from redis_memory_server.retrieval import router as retrieval_router
+from redis_memory_server.mcp import mcp_app
 from redis_memory_server.utils import ensure_redisearch_index, get_redis_conn
 
 
@@ -124,7 +124,19 @@ app.add_event_handler("shutdown", shutdown_event)
 
 app.include_router(health_router)
 app.include_router(memory_router)
-app.include_router(retrieval_router)
+
+
+# Set up MCP routes
+@app.middleware("http")
+async def mcp_middleware(request, call_next):
+    """Middleware to inject BackgroundTasks into MCP handler"""
+    background_tasks = BackgroundTasks()
+    request.state.background_tasks = background_tasks
+    return await call_next(request)
+
+
+# Mount MCP server
+app.mount("/mcp", mcp_app.sse_app())
 
 
 def on_start_logger(port: int):

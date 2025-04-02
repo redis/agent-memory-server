@@ -1,11 +1,13 @@
 import logging
+import re
 
 from redis.asyncio import ConnectionPool, Redis
 from redis.commands.search.field import TagField, TextField, VectorField
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
+from regex import Pattern
 
 from redis_memory_server.config import settings
-from redis_memory_server.models import (
+from redis_memory_server.llms import (
     AnthropicClientWrapper,
     ModelClientFactory,
     OpenAIClientWrapper,
@@ -116,25 +118,60 @@ class Keys:
     """Keys for Redis"""
 
     @staticmethod
-    def session_key(session_id: str) -> str:
-        return f"session:{session_id}"
+    def context_key(session_id: str, namespace: str | None = None) -> str:
+        return (
+            f"context:{namespace}:{session_id}"
+            if namespace
+            else f"context:{session_id}"
+        )
 
     @staticmethod
-    def context_key(session_id: str) -> str:
-        return f"context:{session_id}"
+    def token_count_key(session_id: str, namespace: str | None = None) -> str:
+        return (
+            f"tokens:{namespace}:{session_id}" if namespace else f"tokens:{session_id}"
+        )
 
     @staticmethod
-    def token_count_key(session_id: str) -> str:
-        return f"tokens:{session_id}"
+    def messages_key(session_id: str, namespace: str | None = None) -> str:
+        return (
+            f"messages:{namespace}:{session_id}"
+            if namespace
+            else f"messages:{session_id}"
+        )
 
     @staticmethod
-    def messages_key(session_id: str) -> str:
-        return f"messages:{session_id}"
+    def sessions_key(namespace: str | None = None) -> str:
+        return f"sessions:{namespace}" if namespace else "sessions"
 
     @staticmethod
-    def sessions_key() -> str:
-        return "sessions"
+    def memory_key(id: str, namespace: str | None = None) -> str:
+        return f"memory:{namespace}:{id}" if namespace else f"memory:{id}"
 
-    @staticmethod
-    def memory_key(id: str) -> str:
-        return f"memory:{id}"
+
+class TokenEscaper:
+    """Escape punctuation within an input string.
+
+    Adapted from RedisOM Python.
+    """
+
+    # Characters that RediSearch requires us to escape during queries.
+    # Source: https://redis.io/docs/stack/search/reference/escaping/#the-rules-of-text-field-tokenization
+    DEFAULT_ESCAPED_CHARS = r"[,.<>{}\[\]\\\"\':;!@#$%^&*()\-+=~\/ ]"
+
+    def __init__(self, escape_chars_re: Pattern | None = None):
+        if escape_chars_re:
+            self.escaped_chars_re = escape_chars_re
+        else:
+            self.escaped_chars_re = re.compile(self.DEFAULT_ESCAPED_CHARS)
+
+    def escape(self, value: str) -> str:
+        if not isinstance(value, str):
+            raise TypeError(
+                f"Value must be a string object for token escaping, got type {type(value)}"
+            )
+
+        def escape_symbol(match):
+            value = match.group(0)
+            return f"\\{value}"
+
+        return self.escaped_chars_re.sub(escape_symbol, value)

@@ -4,12 +4,13 @@ import logging
 import tiktoken
 from redis.asyncio import Redis
 
-from redis_memory_server.models import (
+from redis_memory_server.llms import (
     AnthropicClientWrapper,
-    MemoryMessage,
     OpenAIClientWrapper,
     get_model_config,
 )
+from redis_memory_server.models.messages import MemoryMessage
+from redis_memory_server.utils import Keys
 
 
 logger = logging.getLogger(__name__)
@@ -84,7 +85,7 @@ async def handle_compaction(
     redis_conn: Redis,
 ) -> None:
     """
-    Handle compaction of messages when they exceed the window size.
+    Handle compaction of messages in a session when they exceed the window size.
 
     This function:
     1. Gets the second half of messages and current context
@@ -103,12 +104,12 @@ async def handle_compaction(
         half = window_size // 2
 
         # Get keys
-        session_key = f"session:{session_id}"
-        context_key = f"context:{session_id}"
+        messages_key = Keys.messages_key(session_id)
+        context_key = Keys.context_key(session_id)
 
         # Get messages and context from Redis
         pipe = redis_conn.pipeline()
-        pipe.lrange(session_key, half, window_size)
+        pipe.lrange(messages_key, half, window_size)
         pipe.get(context_key)
         results = await pipe.execute()
 
@@ -131,10 +132,21 @@ async def handle_compaction(
 
         # Set up token limits based on model configuration
         max_tokens = model_config.max_tokens
-        summary_max_tokens = max(
-            512, max_tokens // 8
-        )  # Use at least 512 tokens or 12.5% of model's context
-        buffer_tokens = 230
+
+        # More nuanced summary token allocation:
+        # - For small context (<10k): use 12.5% (min 512)
+        # - For medium context (10k-50k): use 10% (min 1024)
+        # - For large context (>50k): use 5% (min 2048)
+        if max_tokens < 10000:
+            summary_max_tokens = max(512, max_tokens // 8)  # 12.5%
+        elif max_tokens < 50000:
+            summary_max_tokens = max(1024, max_tokens // 10)  # 10%
+        else:
+            summary_max_tokens = max(2048, max_tokens // 20)  # 5%
+
+        # Scale buffer tokens with context size, but keep reasonable bounds
+        buffer_tokens = min(max(230, max_tokens // 100), 1000)
+
         max_message_tokens = max_tokens - summary_max_tokens - buffer_tokens
 
         # Initialize encoding
@@ -170,7 +182,7 @@ async def handle_compaction(
 
         # Remove messages that were summarized (up to half the window)
         for _ in range(half):
-            pipe.lpop(session_key)
+            pipe.lpop(messages_key)
 
         await pipe.execute()
         logger.info(f"Compaction complete for session {session_id}")
