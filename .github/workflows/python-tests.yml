@@ -45,7 +45,7 @@ jobs:
           echo "REDIS_IMAGE=redis:${{ matrix.redis-version }}" >> $GITHUB_ENV
         else
           echo "REDIS_IMAGE=redis/redis-stack-server:${{ matrix.redis-version }}" >> $GITHUB_ENV
-        f
+        fi
 
     - name: Set up Python
       uses: actions/setup-python@v4
