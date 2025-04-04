@@ -7,7 +7,7 @@ memory operations in AI applications.
 
 ## Features
 
-- **Short-Term Memory Management**
+- **Short-Term Memory**
   - Configurable window size for recent messages
   - Automatic conversation summarization using LLMs
   - Token limit management based on model capabilities
@@ -91,6 +91,7 @@ Agent Memory Server also offers an MCP (Model Context Protocol) server interface
 2. Start both the REST API server and MCP server:
   ```bash
   python -m redis_memory_server.main
+  ```
 
 ### Docker Compose
 
