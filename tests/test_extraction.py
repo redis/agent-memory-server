@@ -4,12 +4,12 @@ import numpy as np
 import pytest
 
 from redis_memory_server.config import settings
-from redis_memory_server.models.extraction import (
+from redis_memory_server.extraction import (
     extract_entities,
     extract_topics,
     handle_extraction,
 )
-from redis_memory_server.models.messages import MemoryMessage
+from redis_memory_server.messages import MemoryMessage
 
 
 @pytest.fixture

@@ -3,9 +3,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from redis_memory_server.models.summarization import (
+from redis_memory_server.summarization import (
     _incremental_summary,
-    handle_compaction,
+    summarize_session,
 )
 from redis_memory_server.utils import Keys
 
@@ -108,7 +108,7 @@ class TestHandleCompaction:
         mock_async_redis_client.set = AsyncMock(return_value=True)
         mock_async_redis_client.lpop = AsyncMock(return_value=True)
 
-        await handle_compaction(
+        await summarize_session(
             session_id,
             model,
             window_size,
@@ -153,7 +153,7 @@ class TestHandleCompaction:
         mock_async_redis_client.set = AsyncMock(return_value=True)
         mock_async_redis_client.lpop = AsyncMock(return_value=True)
 
-        await handle_compaction(
+        await summarize_session(
             session_id,
             model,
             window_size,

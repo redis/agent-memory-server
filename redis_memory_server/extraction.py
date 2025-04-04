@@ -6,7 +6,6 @@ from transformers import AutoModelForTokenClassification, AutoTokenizer, pipelin
 
 from redis_memory_server.config import settings
 from redis_memory_server.logging import get_logger
-from redis_memory_server.models.messages import MemoryMessage
 
 
 logger = get_logger(__name__)
@@ -110,43 +109,36 @@ def extract_topics(text: str, num_topics: int | None = None) -> list[str]:
         topic_idx_int = int(topic_idx)
         if topic_idx_int != -1:  # Skip outlier topic (-1)
             topic_info: list[tuple[str, float]] = model.get_topic(topic_idx_int)  # type: ignore
-            print(topic_info)
             if topic_info:
                 topics.extend([info[0] for info in topic_info])
 
     return topics
 
 
-async def handle_extraction(
-    message: MemoryMessage,
-) -> MemoryMessage:
+async def handle_extraction(text: str) -> tuple[list[str], list[str]]:
     """
     Handle topic and entity extraction for a message.
 
     Args:
-        message: The message to process
+        text: The text to process
 
     Returns:
-        Updated message with extracted topics and entities
+        Tuple of extracted topics and entities
     """
     # Extract topics if enabled
     topics = []
     if settings.enable_topic_extraction:
-        topics = extract_topics(message.content)
+        topics = extract_topics(text)
 
     # Extract entities if enabled
     entities = []
     if settings.enable_ner:
-        entities = extract_entities(message.content)
+        entities = extract_entities(text)
 
     # Merge with existing topics and entities
     if topics:
-        message.topics = (
-            list(set(message.topics + topics)) if message.topics else topics
-        )
+        topics = list(set(topics))
     if entities:
-        message.entities = (
-            list(set(message.entities + entities)) if message.entities else entities
-        )
+        entities = list(set(entities))
 
-    return message
+    return topics, entities

@@ -7,15 +7,14 @@ from redis.commands.search.document import Document
 from redis_memory_server.llms import (
     OpenAIClientWrapper,
 )
-from redis_memory_server.models.messages import (
+from redis_memory_server.messages import (
     MemoryMessage,
-    MemoryMessagesAndContext,
-    MemoryResponse,
     RedisearchResult,
-    SearchPayload,
+    SessionMemory,
     index_messages,
     search_messages,
 )
+from redis_memory_server.models import SearchPayload, SessionMemoryResponse
 from redis_memory_server.utils import REDIS_INDEX_NAME, TokenEscaper
 
 
@@ -64,12 +63,12 @@ class TestModels:
         ]
 
         # Test without context
-        payload = MemoryMessagesAndContext(messages=messages)
+        payload = SessionMemory(messages=messages)
         assert payload.messages == messages
         assert payload.context is None
 
         # Test with context
-        payload = MemoryMessagesAndContext(
+        payload = SessionMemory(
             messages=messages, context="Previous conversation summary"
         )
         assert payload.messages == messages
@@ -83,13 +82,13 @@ class TestModels:
         ]
 
         # Test basic response
-        response = MemoryResponse(messages=messages)
+        response = SessionMemoryResponse(messages=messages)
         assert response.messages == messages
         assert response.context is None
         assert response.tokens is None
 
         # Test with all fields
-        response = MemoryResponse(
+        response = SessionMemoryResponse(
             messages=messages, context="Conversation summary", tokens=150
         )
         assert response.messages == messages
@@ -127,7 +126,9 @@ class TestLongTermMemory:
         mock_async_redis_client.hset = AsyncMock()
 
         await index_messages(
-            memory_messages, session_id, mock_openai_client, mock_async_redis_client
+            mock_async_redis_client,
+            session_id,
+            memory_messages,
         )
 
         # Check that create_embedding was called with the right arguments
@@ -240,7 +241,9 @@ class TestLongTermMemoryIntegration:
         """Test searching messages"""
 
         await index_messages(
-            memory_messages, "123", OpenAIClientWrapper(), async_redis_client
+            async_redis_client,
+            "123",
+            memory_messages,
         )
 
         results = await search_messages(
@@ -262,7 +265,9 @@ class TestLongTermMemoryIntegration:
         """Test searching messages with a distance threshold"""
 
         await index_messages(
-            memory_messages, "123", OpenAIClientWrapper(), async_redis_client
+            async_redis_client,
+            "123",
+            memory_messages,
         )
 
         results = await search_messages(

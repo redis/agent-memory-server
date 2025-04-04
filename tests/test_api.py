@@ -4,12 +4,12 @@ import numpy as np
 import pytest
 
 from redis_memory_server.config import Settings
-from redis_memory_server.models.messages import (
+from redis_memory_server.messages import (
     RedisearchResult,
     SearchResults,
     index_messages,
 )
-from redis_memory_server.models.summarization import handle_compaction
+from redis_memory_server.summarization import summarize_session
 
 
 @pytest.fixture
@@ -104,7 +104,7 @@ class TestMemoryEndpoints:
             "context": "Previous context",
         }
 
-        response = await client.post("/sessions/test-session/memory", json=payload)
+        response = await client.put("/sessions/test-session/memory", json=payload)
 
         assert response.status_code == 200
 
@@ -114,7 +114,7 @@ class TestMemoryEndpoints:
 
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
-    async def test_post_memory_stores_in_long_term_memory(self, client):
+    async def test_put_memory_stores_in_long_term_memory(self, client):
         """Test the post_memory endpoint"""
         payload = {
             "messages": [
@@ -130,7 +130,7 @@ class TestMemoryEndpoints:
             patch("redis_memory_server.api.settings", mock_settings),
             patch("redis_memory_server.api.BackgroundTasks.add_task", mock_add_task),
         ):
-            response = await client.post("/sessions/test-session/memory", json=payload)
+            response = await client.put("/sessions/test-session/memory", json=payload)
 
         assert response.status_code == 200
 
@@ -159,10 +159,10 @@ class TestMemoryEndpoints:
         mock_add_task = MagicMock()
 
         with (
-            patch("redis_memory_server.api.settings", mock_settings),
+            patch("redis_memory_server.api.messages.settings", mock_settings),
             patch("redis_memory_server.api.BackgroundTasks.add_task", mock_add_task),
         ):
-            response = await client.post("/sessions/test-session/memory", json=payload)
+            response = await client.put("/sessions/test-session/memory", json=payload)
 
         assert response.status_code == 200
 
@@ -174,7 +174,7 @@ class TestMemoryEndpoints:
         assert mock_add_task.call_count == 1
 
         # Check that the last call was for compaction
-        assert mock_add_task.call_args_list[-1][0][0] == handle_compaction
+        assert mock_add_task.call_args_list[-1][0][0] == summarize_session
 
     @pytest.mark.asyncio
     async def test_delete_memory(self, client, session):
@@ -202,7 +202,7 @@ class TestMemoryEndpoints:
 
 @pytest.mark.requires_api_keys
 class TestSearchEndpoint:
-    @patch("redis_memory_server.api.search_messages")
+    @patch("redis_memory_server.api.messages.search_messages")
     @pytest.mark.asyncio
     async def test_search(self, mock_search, client):
         """Test the search endpoint"""
@@ -218,7 +218,7 @@ class TestSearchEndpoint:
         payload = {"text": "What is the capital of France?"}
 
         # Call endpoint with the correct URL format (matching the router definition)
-        response = await client.post("/sessions/test-session/search", json=payload)
+        response = await client.post("/messages/search", json=payload)
 
         # Check status code
         assert response.status_code == 200, response.text

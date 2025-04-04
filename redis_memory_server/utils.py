@@ -147,6 +147,14 @@ class Keys:
     def memory_key(id: str, namespace: str | None = None) -> str:
         return f"memory:{namespace}:{id}" if namespace else f"memory:{id}"
 
+    @staticmethod
+    def metadata_key(session_id: str, namespace: str | None = None) -> str:
+        return (
+            f"metadata:{namespace}:{session_id}"
+            if namespace
+            else f"metadata:{session_id}"
+        )
+
 
 class TokenEscaper:
     """Escape punctuation within an input string.

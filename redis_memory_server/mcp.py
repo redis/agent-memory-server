@@ -1,28 +1,29 @@
 import logging
 
-from fastapi import BackgroundTasks
+from fastapi import BackgroundTasks, HTTPException
 from mcp.server.fastmcp import FastMCP
-from mcp.types import Prompt, PromptArgument, PromptMessage, TextContent
+from mcp.server.fastmcp.prompts import base
+from mcp.types import TextContent
 
 from redis_memory_server.api import (
-    delete_memory as core_delete_memory,
+    delete_session_memory as core_delete_memory,
     get_session_memory as core_get_session_memory,
     list_sessions as core_list_sessions,
-    post_memory as core_post_memory,
-    search_session_messages as core_search_messages,
+    messages_search as core_search_messages,
+    put_session_memory as core_put_session_memory,
 )
-from redis_memory_server.models.messages import (
+from redis_memory_server.models import (
     AckResponse,
     GetSessionsQuery,
-    MemoryMessagesAndContext,
-    MemoryResponse,
+    MemoryMessage,
     SearchPayload,
     SearchResults,
+    SessionMemory,
 )
 
 
 logger = logging.getLogger(__name__)
-mcp_app = FastMCP("Redis Agentic Memory Server")
+mcp_app = FastMCP("Redis Agent Memory Server")
 
 
 @mcp_app.tool()
@@ -36,7 +37,7 @@ async def list_sessions(
 
 
 @mcp_app.resource("memory://{session_id}/memory")
-async def get_session_memory(session_id: str) -> MemoryResponse:
+async def get_session_memory(session_id: str) -> SessionMemory:
     """Get memory for a specific session"""
     return await core_get_session_memory(session_id)
 
@@ -44,15 +45,23 @@ async def get_session_memory(session_id: str) -> MemoryResponse:
 @mcp_app.tool()
 async def add_memory(
     session_id: str,
-    memory_messages: MemoryMessagesAndContext,
+    memory: str,
+    context: str | None = None,
     namespace: str | None = None,
 ) -> AckResponse:
-    """Add messages to a session's memory"""
+    """Add a memory to a session"""
     background_tasks = BackgroundTasks()
-
-    return await core_post_memory(
-        session_id, memory_messages, background_tasks, namespace
+    session_memory = SessionMemory(
+        messages=[MemoryMessage(role="user", content=memory)],
+        context=context,
+        namespace=namespace,
     )
+
+    result = await core_put_session_memory(session_id, session_memory, background_tasks)
+
+    logger.warning(f"Background tasks: {background_tasks.tasks}")
+
+    return result
 
 
 @mcp_app.tool()
@@ -68,10 +77,25 @@ async def delete_session_memory(
 async def search_memory(
     session_id: str,
     query: str,
+    topics: list[str] | None = None,
+    entities: list[str] | None = None,
+    distance_threshold: float | None = None,
+    limit: int = 10,
+    offset: int = 0,
     namespace: str | None = None,
 ) -> SearchResults:
     """Search through a session's memory"""
-    return await core_search_messages(session_id, SearchPayload(text=query), namespace)
+    payload = SearchPayload(
+        session_id=session_id,
+        text=query,
+        namespace=namespace,
+        topics=topics,
+        entities=entities,
+        distance_threshold=distance_threshold,
+        limit=limit,
+        offset=offset,
+    )
+    return await core_search_messages(payload)
 
 
 @mcp_app.prompt()
@@ -79,35 +103,41 @@ async def memory_prompt(
     session_id: str,
     query: str,
     namespace: str | None = None,
-) -> Prompt:
-    """A prompt to enrich a user query with memory context"""
+) -> list[base.Message]:
+    """A prompt to enrich a user query with context from memory"""
     messages = []
-
     try:
-        memory = await core_get_session_memory(session_id)
-        if memory.context:
+        session_memory = await core_get_session_memory(session_id)
+    except HTTPException:
+        session_memory = None
+
+    if session_memory:
+        if session_memory.context:
             messages.append(
-                PromptMessage(
-                    role="assistant",
+                base.AssistantMessage(
                     content=TextContent(
                         type="text",
-                        text=f"## Context related to the current conversation\n{memory.context}",
+                        text=f"## A summary of the conversation so far\n{session_memory.context}",
                     ),
                 )
             )
-        for msg in memory.messages:
+        for msg in session_memory.messages:
+            if msg.role == "user":
+                msg_class = base.UserMessage
+            else:
+                msg_class = base.AssistantMessage
             messages.append(
-                PromptMessage(
-                    role="user" if msg.role == "user" else "assistant",
+                msg_class(
                     content=TextContent(type="text", text=msg.content),
                 )
             )
-    except Exception:
-        logger.exception(f"Could not load memory for session {session_id}")
 
-    long_term_memories = await core_search_messages(
-        session_id, SearchPayload(text=query), namespace
+    payload = SearchPayload(
+        session_id=session_id,
+        text=query,
+        namespace=namespace,
     )
+    long_term_memories = await core_search_messages(payload)
     if long_term_memories.total > 0:
         long_term_memories_text = "\n".join(
             [
@@ -116,8 +146,7 @@ async def memory_prompt(
             ]
         )
         messages.append(
-            PromptMessage(
-                role="assistant",
+            base.AssistantMessage(
                 content=TextContent(
                     type="text",
                     text=f"## Long term memories related to the user's query\n {long_term_memories_text}",
@@ -126,25 +155,9 @@ async def memory_prompt(
         )
 
     messages.append(
-        PromptMessage(
-            role="user",
+        base.UserMessage(
             content=TextContent(type="text", text=query),
         )
     )
 
-    return Prompt(
-        name="memory-prompt",
-        description="A prompt containing the user's query enriched with memory context",
-        arguments=[
-            PromptArgument(
-                name="session_id",
-                description="The session ID to interact with",
-                required=False,
-            ),
-            PromptArgument(
-                name="query",
-                description="The query or message to process",
-                required=False,
-            ),
-        ],
-    )
+    return messages

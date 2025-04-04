@@ -14,16 +14,15 @@ from testcontainers.compose import DockerCompose
 
 from redis_memory_server.api import router as memory_router
 from redis_memory_server.healthcheck import router as health_router
-from redis_memory_server.models.messages import (
+from redis_memory_server.llms import OpenAIClientWrapper
+from redis_memory_server.messages import (
     MemoryMessage,
-    OpenAIClientWrapper,
     index_messages,
 )
 from redis_memory_server.utils import (
     REDIS_INDEX_NAME,
     Keys,
     ensure_redisearch_index,
-    get_openai_client,
 )
 
 
@@ -115,13 +114,10 @@ async def session(use_test_redis_connection, async_redis_client):
         {"role": "assistant", "content": "Hi there"},
     ]
 
-    client = await get_openai_client()
-
     await index_messages(
-        [MemoryMessage(**msg, topics=[], entities=[]) for msg in messages],
-        session_id,
-        client,
         async_redis_client,
+        session_id,
+        [MemoryMessage(**msg) for msg in messages],
     )
 
     key = Keys.messages_key(session_id)
@@ -130,7 +126,10 @@ async def session(use_test_redis_connection, async_redis_client):
 
     # Add context
     await async_redis_client.set(Keys.context_key(session_id), "Sample context")
-    await async_redis_client.set(Keys.token_count_key(session_id), "150")
+    await async_redis_client.hset(
+        Keys.metadata_key(session_id),
+        mapping={"tokens": 150, "user_id": "test-user"},
+    )
 
     return session_id
 

@@ -1,7 +1,8 @@
 import os
+from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import BackgroundTasks, FastAPI
+from fastapi import FastAPI
 
 from redis_memory_server import utils
 from redis_memory_server.api import router as memory_router
@@ -16,13 +17,11 @@ from redis_memory_server.utils import ensure_redisearch_index, get_redis_conn
 configure_logging()
 logger = get_logger(__name__)
 
-# Create FastAPI app
-app = FastAPI(title="Redis Agentic Memory Server")
 
-
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """Initialize the application on startup"""
-    logger.info("Starting Redis Agentic Memory Server 🤘")
+    logger.info("Starting Redis Agent Memory Server 🤘")
 
     # Check for required API keys
     available_providers = []
@@ -104,45 +103,36 @@ async def startup_event():
         logger.info(f"Available Anthropic models: {', '.join(anthropic_models)}")
 
     logger.info(
-        "Redis Agentic Memory Server initialized",
+        "Redis Agent Memory Server initialized",
         window_size=settings.window_size,
         generation_model=settings.generation_model,
         embedding_model=settings.embedding_model,
         long_term_memory=settings.long_term_memory,
     )
 
+    yield
 
-async def shutdown_event():
-    """Clean up resources on shutdown"""
-    logger.info("Shutting down Redis Agentic Memory Server")
+    logger.info("Shutting down Redis Agent Memory Server")
     if utils._redis_pool:
         await utils._redis_pool.aclose()
 
 
-app.add_event_handler("startup", startup_event)
-app.add_event_handler("shutdown", shutdown_event)
+# Create FastAPI app
+app = FastAPI(title="Redis Agent Memory Server", lifespan=lifespan)
+
 
 app.include_router(health_router)
 app.include_router(memory_router)
 
 
-# Set up MCP routes
-@app.middleware("http")
-async def mcp_middleware(request, call_next):
-    """Middleware to inject BackgroundTasks into MCP handler"""
-    background_tasks = BackgroundTasks()
-    request.state.background_tasks = background_tasks
-    return await call_next(request)
-
-
 # Mount MCP server
-app.mount("/mcp", mcp_app.sse_app())
+app.mount("/", mcp_app.sse_app())
 
 
 def on_start_logger(port: int):
     """Log startup information"""
     print("\n-----------------------------------")
-    print(f"🧠 Redis Agentic Memory Server running on port: {port}")
+    print(f"🧠 Redis Agent Memory Server running on port: {port}")
     print("-----------------------------------\n")
 
 

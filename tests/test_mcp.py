@@ -9,10 +9,6 @@ from mcp.types import CallToolResult
 from pydantic import AnyUrl
 
 from redis_memory_server.mcp import mcp_app
-from redis_memory_server.models.messages import (
-    MemoryMessage,
-    MemoryMessagesAndContext,
-)
 
 
 class TestMemoryOperations:
@@ -40,17 +36,9 @@ class TestMemoryOperations:
     async def test_add_memory(self, session):
         """Test adding memory and verifying its persistence via the client."""
         session_id = session
-
-        messages = MemoryMessagesAndContext(
-            messages=[
-                MemoryMessage(role="user", content="Test message"),
-                MemoryMessage(role="assistant", content="Test response"),
-            ],
-            context="Test context",
-        )
         async with client_session(mcp_app._mcp_server) as client:
             response = await client.call_tool(
-                "add_memory", {"session_id": session_id, "memory_messages": messages}
+                "add_memory", {"session_id": session_id, "memory": "Test message"}
             )
             assert response.content[0].text == '{"status": "ok"}'
             # Verify stored memory
@@ -59,10 +47,10 @@ class TestMemoryOperations:
             )
             memory = json.loads(stored_memory.contents[0].text)
 
-            assert memory["context"] == messages.context
-            assert len(memory["messages"]) == 4  # Includes the initial messages
-            assert memory["messages"][-1]["content"] == messages.messages[1].content
-            assert memory["messages"][-2]["content"] == messages.messages[0].content
+            assert len(memory["messages"]) == 3
+            assert memory["messages"][0]["content"] == "Hello"
+            assert memory["messages"][1]["content"] == "Hi there"
+            assert memory["messages"][2]["content"] == "Test message"
 
     @pytest.mark.asyncio
     async def test_delete_session_memory(self, session):
@@ -112,12 +100,14 @@ class TestSearchAndPrompts:
                 {"session_id": session, "query": "Test query"},
             )
             assert isinstance(prompt, GetPromptResult)
-            assert prompt.messages[0].role == "user"
+            assert prompt.messages[0].role == "assistant"  # the summary message
             assert prompt.messages[0].content.type == "text"
-            assert (
-                prompt.messages[0].content.text
-                == '{"name": "memory-prompt", "description": "A prompt containing the user\'s query enriched with memory context", "arguments": [{"name": "session_id", "description": "The session ID to interact with", "required": false}, {"name": "query", "description": "The query or message to process", "required": false}]}'
+            assert prompt.messages[0].content.text.startswith(
+                "## A summary of the conversation so far"
             )
+            assert prompt.messages[1].role == "user"
+            assert prompt.messages[1].content.type == "text"
+            assert prompt.messages[1].content.text == "Hello"
 
     @pytest.mark.asyncio
     async def test_memory_prompt_error_handling(self):
@@ -130,7 +120,4 @@ class TestSearchAndPrompts:
             assert isinstance(prompt, GetPromptResult)
             assert prompt.messages[0].role == "user"
             assert prompt.messages[0].content.type == "text"
-            assert (
-                prompt.messages[0].content.text
-                == '{"name": "memory-prompt", "description": "A prompt containing the user\'s query enriched with memory context", "arguments": [{"name": "session_id", "description": "The session ID to interact with", "required": false}, {"name": "query", "description": "The query or message to process", "required": false}]}'
-            )
+            assert prompt.messages[0].content.text == "Test query"
