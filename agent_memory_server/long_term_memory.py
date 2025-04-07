@@ -6,13 +6,13 @@ from fastapi import BackgroundTasks
 from redis.asyncio import Redis
 from redis.commands.search.query import Query
 
-from redis_memory_server.extraction import handle_extraction
-from redis_memory_server.models import (
+from agent_memory_server.extraction import handle_extraction
+from agent_memory_server.models import (
     LongTermMemory,
     LongTermMemoryResult,
     LongTermMemoryResults,
 )
-from redis_memory_server.utils import (
+from agent_memory_server.utils import (
     REDIS_INDEX_NAME,
     Keys,
     TokenEscaper,
@@ -179,6 +179,9 @@ async def search_long_term_memories(
         if hasattr(raw_results, "docs") and isinstance(raw_results.docs, list):
             for doc in raw_results.docs:
                 if hasattr(doc, "id") and hasattr(doc, "text") and hasattr(doc, "dist"):
+                    topics = doc.topics if hasattr(doc, "topics") else []
+                    entities = doc.entities if hasattr(doc, "entities") else []
+
                     results.append(
                         LongTermMemoryResult(
                             id_=doc.id_,
@@ -189,12 +192,8 @@ async def search_long_term_memories(
                             user_id=doc.user_id,
                             session_id=doc.session_id,
                             namespace=doc.namespace,
-                            topics=doc.get("topics", "").split(",")
-                            if doc.get("topics")
-                            else [],
-                            entities=doc.get("entities", "").split(",")
-                            if doc.get("entities")
-                            else [],
+                            topics=topics,
+                            entities=entities,
                         )
                     )
 

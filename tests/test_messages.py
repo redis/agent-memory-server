@@ -1,20 +1,20 @@
 import json
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from redis_memory_server.long_term_memory import (
+from agent_memory_server.long_term_memory import (
     index_long_term_memories,
 )
-from redis_memory_server.messages import (
+from agent_memory_server.messages import (
     delete_session_memory,
     get_session_memory,
     list_sessions,
     set_session_memory,
 )
-from redis_memory_server.models import LongTermMemory, MemoryMessage, SessionMemory
-from redis_memory_server.summarization import summarize_session
+from agent_memory_server.models import LongTermMemory, MemoryMessage, SessionMemory
+from agent_memory_server.summarization import summarize_session
 
 
 @pytest.mark.asyncio
@@ -113,6 +113,7 @@ class TestSetSessionMemory:
         mock_pipeline.rpush = MagicMock(return_value=mock_pipeline)
         mock_pipeline.hset = MagicMock(return_value=mock_pipeline)
         mock_pipeline.execute = AsyncMock(return_value=None)
+        mock_pipeline.multi = MagicMock(return_value=mock_pipeline)
         mock_async_redis_client.llen = AsyncMock(return_value=5)  # Below window size
         mock_async_redis_client.pipeline = MagicMock(return_value=mock_pipeline)
 
@@ -124,7 +125,7 @@ class TestSetSessionMemory:
         )
 
         settings_patch = patch.multiple(
-            "redis_memory_server.messages.settings",
+            "agent_memory_server.messages.settings",
             window_size=20,
             long_term_memory=False,
             generation_model="gpt-4o-mini",
@@ -148,15 +149,15 @@ class TestSetSessionMemory:
         self, mock_async_redis_client
     ):
         """Test session memory setting when window size is exceeded"""
-        mock_async_redis_client.__aenter__ = AsyncMock(
-            return_value=mock_async_redis_client
-        )
-        mock_async_redis_client.zadd = AsyncMock(return_value=1)
-        mock_async_redis_client.rpush = AsyncMock(return_value=1)
-        mock_async_redis_client.hset = AsyncMock(return_value=1)
-        mock_async_redis_client.llen = AsyncMock(
-            return_value=21
-        )  # Exceed window size of 20
+        mock_pipeline = AsyncMock()
+        mock_pipeline.__aenter__ = AsyncMock(return_value=mock_pipeline)
+        mock_pipeline.zadd = MagicMock(return_value=mock_pipeline)
+        mock_pipeline.rpush = MagicMock(return_value=mock_pipeline)
+        mock_pipeline.hset = MagicMock(return_value=mock_pipeline)
+        mock_pipeline.execute = AsyncMock(return_value=None)
+        mock_pipeline.multi = MagicMock(return_value=mock_pipeline)
+        mock_async_redis_client.llen = AsyncMock(return_value=21)  # Exceed window size
+        mock_async_redis_client.pipeline = MagicMock(return_value=mock_pipeline)
 
         mock_background_tasks = MagicMock()
 
@@ -166,7 +167,7 @@ class TestSetSessionMemory:
         )
 
         settings_patch = patch.multiple(
-            "redis_memory_server.messages.settings",
+            "agent_memory_server.messages.settings",
             window_size=20,
             long_term_memory=False,
             generation_model="gpt-4o-mini",
@@ -193,13 +194,15 @@ class TestSetSessionMemory:
         self, mock_async_redis_client
     ):
         """Test session memory setting with long-term memory enabled"""
-        mock_async_redis_client.__aenter__ = AsyncMock(
-            return_value=mock_async_redis_client
-        )
-        mock_async_redis_client.zadd = AsyncMock(return_value=1)
-        mock_async_redis_client.rpush = AsyncMock(return_value=1)
-        mock_async_redis_client.hset = AsyncMock(return_value=1)
+        mock_pipeline = AsyncMock()
+        mock_pipeline.__aenter__ = AsyncMock(return_value=mock_pipeline)
+        mock_pipeline.zadd = MagicMock(return_value=mock_pipeline)
+        mock_pipeline.rpush = MagicMock(return_value=mock_pipeline)
+        mock_pipeline.hset = MagicMock(return_value=mock_pipeline)
+        mock_pipeline.execute = AsyncMock(return_value=None)
+        mock_pipeline.multi = MagicMock(return_value=mock_pipeline)
         mock_async_redis_client.llen = AsyncMock(return_value=5)  # Below window size
+        mock_async_redis_client.pipeline = MagicMock(return_value=mock_pipeline)
 
         mock_background_tasks = MagicMock()
 
@@ -209,7 +212,7 @@ class TestSetSessionMemory:
         )
 
         settings_patch = patch.multiple(
-            "redis_memory_server.messages.settings",
+            "agent_memory_server.messages.settings",
             window_size=20,
             long_term_memory=True,
             generation_model="gpt-4o-mini",
@@ -221,12 +224,15 @@ class TestSetSessionMemory:
             )
 
         # Verify long-term memory indexing task was added
-        mock_background_tasks.add_task.assert_called_once_with(
-            index_long_term_memories,
-            mock_async_redis_client,
-            [LongTermMemory(session_id="test-session", text="user: Hello")],
-            mock_background_tasks,
-        )
+        assert mock_background_tasks.add_task.call_count == 1
+        assert mock_background_tasks.add_task.call_args_list == [
+            call(
+                index_long_term_memories,
+                mock_async_redis_client,
+                [LongTermMemory(session_id="test-session", text="user: Hello")],
+                mock_background_tasks,
+            ),
+        ]
 
 
 @pytest.mark.asyncio

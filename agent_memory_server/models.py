@@ -2,7 +2,7 @@ import logging
 
 from pydantic import BaseModel, Field
 
-from redis_memory_server.utils import (
+from agent_memory_server.utils import (
     TokenEscaper,
 )
 

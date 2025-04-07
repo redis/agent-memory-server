@@ -3,11 +3,11 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "redis-memory-server"
+name = "agent-memory-server"
 version = "0.1.0"
-description = "A Redis-based memory server for LLM applications"
+description = "A Redis-powered memory server built for AI agents and applications."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "Andrew Brookins", email = "andrew.brookins@redis.com" }]
 dependencies = [
@@ -41,10 +41,10 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["redis_memory_server"]
+packages = ["agent_memory_server"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/redis_memory_server"]
+include = ["/agent_memory_server"]
 
 [tool.hatch.metadata]
 allow-direct-references = true

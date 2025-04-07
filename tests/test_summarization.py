@@ -3,11 +3,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from redis_memory_server.summarization import (
+from agent_memory_server.summarization import (
     _incremental_summary,
     summarize_session,
 )
-from redis_memory_server.utils import Keys
+from agent_memory_server.utils import Keys
 
 
 @pytest.mark.asyncio
@@ -75,7 +75,7 @@ class TestIncrementalSummarization:
 
 class TestSummarizeSession:
     @pytest.mark.asyncio
-    @patch("redis_memory_server.summarization._incremental_summary")
+    @patch("agent_memory_server.summarization._incremental_summary")
     async def test_summarize_session(
         self, mock_summarization, mock_openai_client, mock_async_redis_client
     ):
@@ -112,7 +112,7 @@ class TestSummarizeSession:
         mock_summarization.return_value = ("New summary", 300)
 
         with patch(
-            "redis_memory_server.summarization.get_model_client"
+            "agent_memory_server.summarization.get_model_client"
         ) as mock_get_model_client:
             mock_get_model_client.return_value = mock_openai_client
 
@@ -157,7 +157,7 @@ class TestSummarizeSession:
         ]
 
     @pytest.mark.asyncio
-    @patch("redis_memory_server.summarization._incremental_summary")
+    @patch("agent_memory_server.summarization._incremental_summary")
     async def test_handle_summarization_no_messages(
         self, mock_summarization, mock_openai_client, mock_async_redis_client
     ):

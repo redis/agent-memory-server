@@ -3,22 +3,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np
 import pytest
 
-from redis_memory_server.config import Settings
-from redis_memory_server.long_term_memory import index_long_term_memories
-from redis_memory_server.models import (
+from agent_memory_server.config import Settings
+from agent_memory_server.long_term_memory import index_long_term_memories
+from agent_memory_server.models import (
     LongTermMemoryResult,
     LongTermMemoryResultsResponse,
     MemoryMessage,
     SessionListResponse,
     SessionMemoryResponse,
 )
-from redis_memory_server.summarization import summarize_session
+from agent_memory_server.summarization import summarize_session
 
 
 @pytest.fixture
 def mock_openai_client_wrapper():
     """Create a mock OpenAIClientWrapper that doesn't need an API key"""
-    with patch("redis_memory_server.models.OpenAIClientWrapper") as mock_wrapper:
+    with patch("agent_memory_server.models.OpenAIClientWrapper") as mock_wrapper:
         # Create a mock instance
         mock_instance = AsyncMock()
         mock_wrapper.return_value = mock_instance
@@ -136,8 +136,8 @@ class TestMemoryEndpoints:
         mock_add_task = MagicMock()
 
         with (
-            patch("redis_memory_server.api.settings", mock_settings),
-            patch("redis_memory_server.api.BackgroundTasks.add_task", mock_add_task),
+            patch("agent_memory_server.api.settings", mock_settings),
+            patch("agent_memory_server.api.BackgroundTasks.add_task", mock_add_task),
         ):
             response = await client.put("/sessions/test-session/memory", json=payload)
 
@@ -168,8 +168,8 @@ class TestMemoryEndpoints:
         mock_add_task = MagicMock()
 
         with (
-            patch("redis_memory_server.api.messages.settings", mock_settings),
-            patch("redis_memory_server.api.BackgroundTasks.add_task", mock_add_task),
+            patch("agent_memory_server.api.messages.settings", mock_settings),
+            patch("agent_memory_server.api.BackgroundTasks.add_task", mock_add_task),
         ):
             response = await client.put("/sessions/test-session/memory", json=payload)
 
@@ -217,7 +217,7 @@ class TestMemoryEndpoints:
 
 @pytest.mark.requires_api_keys
 class TestSearchEndpoint:
-    @patch("redis_memory_server.api.long_term_memory.search_long_term_memories")
+    @patch("agent_memory_server.api.long_term_memory.search_long_term_memories")
     @pytest.mark.asyncio
     async def test_search(self, mock_search, client):
         """Test the search endpoint"""

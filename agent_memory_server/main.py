@@ -4,13 +4,13 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
-from redis_memory_server import utils
-from redis_memory_server.api import router as memory_router
-from redis_memory_server.config import settings
-from redis_memory_server.healthcheck import router as health_router
-from redis_memory_server.llms import MODEL_CONFIGS, ModelProvider
-from redis_memory_server.logging import configure_logging, get_logger
-from redis_memory_server.utils import ensure_redisearch_index, get_redis_conn
+from agent_memory_server import utils
+from agent_memory_server.api import router as memory_router
+from agent_memory_server.config import settings
+from agent_memory_server.healthcheck import router as health_router
+from agent_memory_server.llms import MODEL_CONFIGS, ModelProvider
+from agent_memory_server.logging import configure_logging, get_logger
+from agent_memory_server.utils import ensure_redisearch_index, get_redis_conn
 
 
 configure_logging()
@@ -135,4 +135,4 @@ def on_start_logger(port: int):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
     on_start_logger(port)
-    uvicorn.run("redis_memory_server.main:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run("agent_memory_server.main:app", host="0.0.0.0", port=port, reload=False)

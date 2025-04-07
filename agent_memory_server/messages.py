@@ -6,15 +6,15 @@ from fastapi import BackgroundTasks
 from redis import WatchError
 from redis.asyncio import Redis
 
-from redis_memory_server.config import settings
-from redis_memory_server.long_term_memory import index_long_term_memories
-from redis_memory_server.models import (
+from agent_memory_server.config import settings
+from agent_memory_server.long_term_memory import index_long_term_memories
+from agent_memory_server.models import (
     LongTermMemory,
     MemoryMessage,
     SessionMemory,
 )
-from redis_memory_server.summarization import summarize_session
-from redis_memory_server.utils import (
+from agent_memory_server.summarization import summarize_session
+from agent_memory_server.utils import (
     Keys,
     TokenEscaper,
 )

@@ -8,12 +8,12 @@ import pytest
 from fastapi import BackgroundTasks
 from redis.commands.search.document import Document
 
-from redis_memory_server.long_term_memory import (
+from agent_memory_server.long_term_memory import (
     index_long_term_memories,
     search_long_term_memories,
 )
-from redis_memory_server.models import LongTermMemory, LongTermMemoryResult
-from redis_memory_server.utils import REDIS_INDEX_NAME, TokenEscaper
+from agent_memory_server.models import LongTermMemory, LongTermMemoryResult
+from agent_memory_server.utils import REDIS_INDEX_NAME, TokenEscaper
 
 
 class TestLongTermMemory:
@@ -35,7 +35,7 @@ class TestLongTermMemory:
         mock_async_redis_client.hset = AsyncMock()
 
         with mock.patch(
-            "redis_memory_server.long_term_memory.get_openai_client",
+            "agent_memory_server.long_term_memory.get_openai_client",
             return_value=mock_openai_client,
         ):
             await index_long_term_memories(
@@ -122,7 +122,7 @@ class TestLongTermMemory:
         session_id = "test-session"
 
         with mock.patch(
-            "redis_memory_server.long_term_memory.get_openai_client",
+            "agent_memory_server.long_term_memory.get_openai_client",
             return_value=mock_openai_client,
         ):
             results = await search_long_term_memories(

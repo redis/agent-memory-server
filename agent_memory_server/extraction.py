@@ -4,8 +4,8 @@ from typing import Any
 from bertopic import BERTopic
 from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
 
-from redis_memory_server.config import settings
-from redis_memory_server.logging import get_logger
+from agent_memory_server.config import settings
+from agent_memory_server.logging import get_logger
 
 
 logger = get_logger(__name__)

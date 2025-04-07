@@ -1,4 +1,4 @@
-from redis_memory_server.models import (
+from agent_memory_server.models import (
     LongTermMemoryResult,
     MemoryMessage,
     SearchPayload,

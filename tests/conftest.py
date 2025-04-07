@@ -12,16 +12,16 @@ from redis import Redis
 from redis.asyncio import ConnectionPool, Redis as AsyncRedis
 from testcontainers.compose import DockerCompose
 
-from redis_memory_server.api import router as memory_router
-from redis_memory_server.healthcheck import router as health_router
-from redis_memory_server.llms import OpenAIClientWrapper
-from redis_memory_server.messages import (
+from agent_memory_server.api import router as memory_router
+from agent_memory_server.healthcheck import router as health_router
+from agent_memory_server.llms import OpenAIClientWrapper
+from agent_memory_server.messages import (
     MemoryMessage,
     index_long_term_memories,
     set_session_memory,
 )
-from redis_memory_server.models import LongTermMemory, SessionMemory
-from redis_memory_server.utils import (
+from agent_memory_server.models import LongTermMemory, SessionMemory
+from agent_memory_server.utils import (
     REDIS_INDEX_NAME,
     ensure_redisearch_index,
 )
@@ -206,7 +206,7 @@ def redis_client(redis_url):
 def use_test_redis_connection(redis_url: str):
     """Replace the Redis connection pool with a test one"""
     replacement_pool = ConnectionPool.from_url(redis_url)
-    with patch("redis_memory_server.utils._redis_pool", new=replacement_pool):
+    with patch("agent_memory_server.utils._redis_pool", new=replacement_pool):
         yield replacement_pool
 
 

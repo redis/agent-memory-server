@@ -5,14 +5,14 @@ import tiktoken
 from redis import WatchError
 from redis.asyncio import Redis
 
-from redis_memory_server.config import settings
-from redis_memory_server.llms import (
+from agent_memory_server.config import settings
+from agent_memory_server.llms import (
     AnthropicClientWrapper,
     OpenAIClientWrapper,
     get_model_config,
 )
-from redis_memory_server.models import MemoryMessage
-from redis_memory_server.utils import Keys, get_model_client
+from agent_memory_server.models import MemoryMessage
+from agent_memory_server.utils import Keys, get_model_client
 
 
 logger = logging.getLogger(__name__)

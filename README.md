@@ -93,7 +93,7 @@ Agent Memory Server offers an MCP (Model Context Protocol) server interface powe
 
 2. Start both the REST API server and MCP server:
   ```bash
-  python -m redis_memory_server.main
+  python -m agent_memory_server.main
   ```
 
 ### Docker Compose
@@ -148,12 +148,12 @@ pip install -e ".[dev]"
 
 3. Run the API server:
 ```bash
-python -m redis_memory_server.main
+python -m agent_memory_server.main
 ```
 
 4. In a separate terminal, run the MCP server (use either the "stdio" or "sse" options to set the running mode):
 ```bash
-python -m redis_memory_server.mcp [stdio|sse]
+python -m agent_memory_server.mcp [stdio|sse]
 ```
 
 ### Running Tests

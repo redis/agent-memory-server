@@ -11,8 +11,8 @@ from redis.commands.search.field import (
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 from regex import Pattern
 
-from redis_memory_server.config import settings
-from redis_memory_server.llms import (
+from agent_memory_server.config import settings
+from agent_memory_server.llms import (
     AnthropicClientWrapper,
     ModelClientFactory,
     OpenAIClientWrapper,

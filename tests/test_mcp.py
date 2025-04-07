@@ -7,8 +7,8 @@ from mcp.shared.memory import (
 )
 from mcp.types import CallToolResult
 
-from redis_memory_server.mcp import mcp_app
-from redis_memory_server.models import LongTermMemory
+from agent_memory_server.mcp import mcp_app
+from agent_memory_server.models import LongTermMemory
 
 
 class TestMCP:

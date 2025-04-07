@@ -12,10 +12,10 @@ RUN apt-get update && apt-get install -y \
 
 # Copy project files
 COPY pyproject.toml README.md ./
-COPY redis_memory_server ./redis_memory_server
+COPY agent_memory_server ./agent_memory_server
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -e .
 
 # Run the API server
-CMD ["python", "-m", "redis_memory_server.main"]
+CMD ["python", "-m", "agent_memory_server.main"]

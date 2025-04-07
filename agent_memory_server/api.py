@@ -1,9 +1,9 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
-from redis_memory_server import long_term_memory, messages
-from redis_memory_server.config import settings
-from redis_memory_server.logging import get_logger
-from redis_memory_server.models import (
+from agent_memory_server import long_term_memory, messages
+from agent_memory_server.config import settings
+from agent_memory_server.logging import get_logger
+from agent_memory_server.models import (
     AckResponse,
     CreateLongTermMemoryPayload,
     GetSessionsQuery,
@@ -13,7 +13,7 @@ from redis_memory_server.models import (
     SessionMemory,
     SessionMemoryResponse,
 )
-from redis_memory_server.utils import get_redis_conn
+from agent_memory_server.utils import get_redis_conn
 
 
 logger = get_logger(__name__)

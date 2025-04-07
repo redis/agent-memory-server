@@ -21,7 +21,7 @@ services:
     depends_on:
       - redis
     volumes:
-      - ./redis_memory_server:/app/redis_memory_server
+      - ./agent_memory_server:/app/agent_memory_server
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
@@ -49,7 +49,7 @@ services:
       - "9000:9000"
     depends_on:
       - redis
-    command: ["python", "-m", "redis_memory_server.mcp", "sse"]
+    command: ["python", "-m", "agent_memory_server.mcp", "sse"]
 
   redis:
     image: redis/redis-stack:latest
