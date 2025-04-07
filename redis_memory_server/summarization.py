@@ -119,9 +119,11 @@ async def summarize_session(
     Summarize messages in a session when they exceed the window size.
 
     This function:
-    1. Gets the second half of messages and current context
+    1. Gets the oldest messages up to window size and current context
     2. Generates a new summary that includes these messages
-    3. Removes older messages and updates the context
+    3. Removes older, summarized messages and updates the context
+
+    Stop summarizing
 
     Args:
         session_id: The session ID
@@ -132,15 +134,19 @@ async def summarize_session(
     """
     client = await get_model_client(settings.generation_model)
 
-    half = window_size // 2
     messages_key = Keys.messages_key(session_id)
-    context_key = Keys.context_key(session_id)
     metadata_key = Keys.metadata_key(session_id)
 
     async with redis.pipeline(transaction=False) as pipe:
-        await pipe.watch(messages_key, context_key)
-        messages_raw = await pipe.lrange(messages_key, half, window_size)  # type: ignore
-        context = await pipe.get(context_key)
+        await pipe.watch(messages_key, metadata_key)
+
+        num_messages = await pipe.llen(messages_key)  # type: ignore
+        if num_messages < window_size:
+            logger.info(f"No messages to summarize for session {session_id}")
+            return
+
+        messages_raw = await pipe.lrange(messages_key, 0, window_size - 1)  # type: ignore
+        metadata = await pipe.hgetall(metadata_key)  # type: ignore
         pipe.multi()
 
         while True:
@@ -149,16 +155,8 @@ async def summarize_session(
                 for msg_raw in messages_raw:
                     if isinstance(msg_raw, bytes):
                         msg_raw = msg_raw.decode("utf-8")
-                msg_dict = json.loads(msg_raw)
-                messages.append(MemoryMessage(**msg_dict))
-
-                if context:
-                    if isinstance(context, bytes):
-                        context_str = context.decode("utf-8")
-                    else:
-                        context_str = str(context)
-                else:
-                    context_str = ""
+                    msg_dict = json.loads(msg_raw)
+                    messages.append(MemoryMessage(**msg_dict))
 
                 model_config = get_model_config(model)
                 max_tokens = model_config.max_tokens
@@ -183,8 +181,17 @@ async def summarize_session(
                 messages_to_summarize = []
 
                 for msg in messages:
-                    msg_str = json.dumps(msg.model_dump())
+                    msg_str = f"{msg.role}: {msg.content}"
                     msg_tokens = len(encoding.encode(msg_str))
+
+                    # TODO: Here, we take a partial message if a single message's
+                    # total size exceeds the buffer. Should this be configurable
+                    # behavior?
+                    if msg_tokens > max_message_tokens:
+                        msg_str = msg_str[: max_message_tokens // 2]
+                        msg_tokens = len(encoding.encode(msg_str))
+                        total_tokens += msg_tokens
+
                     if total_tokens + msg_tokens <= max_message_tokens:
                         total_tokens += msg_tokens
                         messages_to_summarize.append(msg_str)
@@ -193,20 +200,24 @@ async def summarize_session(
                     logger.info(f"No messages to summarize for session {session_id}")
                     return
 
+                context = metadata.get("context", "")
+
                 summary, summary_tokens_used = await _incremental_summary(
                     model,
                     client,
-                    context_str,
+                    context,
                     messages_to_summarize,
                 )
                 total_tokens += summary_tokens_used
 
-                pipe.set(context_key, summary)
-                pipe.hset(metadata_key, "tokens", str(total_tokens))
+                metadata["context"] = summary
+                metadata["tokens"] = str(total_tokens)
 
-                # Remove messages that were summarized (up to half the window)
-                for _ in range(half):
-                    pipe.lpop(messages_key)
+                pipe.hmset(metadata_key, mapping=metadata)
+
+                # Messages that were summarized
+                num_summarized = len(messages_to_summarize)
+                pipe.ltrim(messages_key, 0, num_summarized - 1)
 
                 await pipe.execute()
                 break

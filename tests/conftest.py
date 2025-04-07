@@ -17,11 +17,12 @@ from redis_memory_server.healthcheck import router as health_router
 from redis_memory_server.llms import OpenAIClientWrapper
 from redis_memory_server.messages import (
     MemoryMessage,
-    index_messages,
+    index_long_term_memories,
+    set_session_memory,
 )
+from redis_memory_server.models import LongTermMemory, SessionMemory
 from redis_memory_server.utils import (
     REDIS_INDEX_NAME,
-    Keys,
     ensure_redisearch_index,
 )
 
@@ -100,35 +101,42 @@ async def search_index(async_redis_client):
 @pytest.fixture()
 async def session(use_test_redis_connection, async_redis_client):
     """Set up a test session with Redis data for testing"""
-    import json
-    import time
 
     session_id = "test-session"
 
-    # Add session to sorted set of sessions
-    await async_redis_client.zadd(Keys.sessions_key(), {session_id: int(time.time())})
+    await index_long_term_memories(
+        async_redis_client,
+        [
+            LongTermMemory(
+                session_id=session_id,
+                text="User: Hello",
+                namespace="test-namespace",
+            ),
+            LongTermMemory(
+                session_id=session_id,
+                text="Assistant: Hi there",
+                namespace="test-namespace",
+            ),
+        ],
+    )
 
-    # Add messages
+    # Add messages to session memory
     messages = [
         {"role": "user", "content": "Hello"},
         {"role": "assistant", "content": "Hi there"},
     ]
 
-    await index_messages(
+    await set_session_memory(
         async_redis_client,
         session_id,
-        [MemoryMessage(**msg) for msg in messages],
-    )
-
-    key = Keys.messages_key(session_id)
-    for msg in messages:
-        await async_redis_client.rpush(key, json.dumps(msg))
-
-    # Add context
-    await async_redis_client.set(Keys.context_key(session_id), "Sample context")
-    await async_redis_client.hset(
-        Keys.metadata_key(session_id),
-        mapping={"tokens": 150, "user_id": "test-user"},
+        SessionMemory(
+            messages=[MemoryMessage(**msg) for msg in messages],
+            context="Sample context",
+            user_id="test-user",
+            tokens=150,
+            namespace="test-namespace",
+        ),
+        background_tasks=BackgroundTasks(),
     )
 
     return session_id

@@ -2,7 +2,12 @@ import logging
 import re
 
 from redis.asyncio import ConnectionPool, Redis
-from redis.commands.search.field import TagField, TextField, VectorField
+from redis.commands.search.field import (
+    NumericField,
+    TagField,
+    TextField,
+    VectorField,
+)
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 from regex import Pattern
 
@@ -61,11 +66,15 @@ async def ensure_redisearch_index(
                 logger.info("RediSearch index doesn't exist, creating...")
 
                 schema = [
-                    TagField(name="session"),
-                    TextField(name="content"),
-                    TagField(name="role"),
+                    TextField(name="text"),
+                    TagField(name="id_"),
+                    TagField(name="session_id"),
+                    TagField(name="user_id"),
+                    TagField(name="namespace"),
                     TagField(name="topics", separator=","),
                     TagField(name="entities", separator=","),
+                    NumericField(name="created_at"),
+                    NumericField(name="last_accessed"),
                     VectorField(
                         name="vector",
                         algorithm="HNSW",

@@ -50,6 +50,8 @@ def extract_entities(text: str) -> list[str]:
     """
     Extract named entities from text using the NER model.
 
+    TODO: Cache this output.
+
     Args:
         text: The text to extract entities from
 
@@ -88,6 +90,8 @@ def extract_entities(text: str) -> list[str]:
 def extract_topics(text: str, num_topics: int | None = None) -> list[str]:
     """
     Extract topics from text using the BERTopic model.
+
+    TODO: Cache this output.
 
     Args:
         text: The text to extract topics from

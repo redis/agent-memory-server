@@ -2,26 +2,20 @@ import json
 import logging
 import time
 
-import nanoid
 from fastapi import BackgroundTasks
 from redis.asyncio import Redis
-from redis.commands.search.query import Query
 
 from redis_memory_server.config import settings
-from redis_memory_server.extraction import handle_extraction
-from redis_memory_server.llms import OpenAIClientWrapper
+from redis_memory_server.long_term_memory import index_long_term_memories
 from redis_memory_server.models import (
+    LongTermMemory,
     MemoryMessage,
-    RedisearchResult,
-    SearchResults,
     SessionMemory,
 )
 from redis_memory_server.summarization import summarize_session
 from redis_memory_server.utils import (
-    REDIS_INDEX_NAME,
     Keys,
     TokenEscaper,
-    get_openai_client,
 )
 
 
@@ -31,18 +25,24 @@ escaper = TokenEscaper()
 
 async def list_sessions(
     redis: Redis,
-    page: int = 1,
-    size: int = 20,
+    limit: int = 20,
+    offset: int = 0,
     namespace: str | None = None,
-) -> list[str]:
+) -> tuple[int, list[str]]:
     """List sessions"""
     # Calculate start and end indices (0-indexed start, inclusive end)
-    start = (page - 1) * size
-    end = page * size - 1
+    start = offset
+    end = offset + limit - 1
 
     sessions_key = Keys.sessions_key(namespace=namespace)
-    session_ids = await redis.zrange(sessions_key, start, end)
-    return [s.decode("utf-8") if isinstance(s, bytes) else s for s in session_ids]
+    async with redis.pipeline() as pipe:
+        pipe.zcard(sessions_key)
+        pipe.zrange(sessions_key, start, end)
+        total, session_ids = await pipe.execute()
+
+    return total, [
+        s.decode("utf-8") if isinstance(s, bytes) else s for s in session_ids
+    ]
 
 
 async def get_session_memory(
@@ -54,7 +54,6 @@ async def get_session_memory(
     """Get a session's memory"""
     sessions_key = Keys.sessions_key(namespace=namespace)
     messages_key = Keys.messages_key(session_id, namespace=namespace)
-    context_key = Keys.context_key(session_id, namespace=namespace)
     metadata_key = Keys.metadata_key(session_id, namespace=namespace)
 
     session_exists = await redis.zscore(sessions_key, session_id)
@@ -63,10 +62,9 @@ async def get_session_memory(
 
     pipe = redis.pipeline()
     pipe.lrange(messages_key, 0, window_size - 1)  # Get messages
-    pipe.get(context_key)  # Get context
     pipe.hgetall(metadata_key)  # Get metadata
 
-    messages_raw, context_raw, metadata_raw = await pipe.execute()
+    messages_raw, metadata_raw = await pipe.execute()
 
     memory_messages = []
     for msg_raw in messages_raw:
@@ -91,8 +89,6 @@ async def get_session_memory(
 
     kwargs = {
         "messages": memory_messages,
-        "context": context_raw.decode("utf-8") if context_raw else None,
-        "namespace": namespace,
         **{k.decode("utf-8"): v.decode("utf-8") for k, v in metadata_raw.items()},
     }
 
@@ -105,18 +101,31 @@ async def set_session_memory(
     memory: SessionMemory,
     background_tasks: BackgroundTasks,
 ):
-    """Create or update a session's memory"""
-    messages_key = Keys.messages_key(session_id, namespace=memory.namespace)
-    context_key = Keys.context_key(session_id, namespace=memory.namespace)
-    sessions_key = Keys.sessions_key(namespace=memory.namespace)
+    """
+    Create or update a session's memory
 
+    TODO: This shouldn't need BackgroundTasks.
+
+    Args:
+        redis: The Redis client
+        session_id: The session ID
+        memory: The session memory to set
+        background_tasks: The background tasks to add the summarization task to
+    """
+    sessions_key = Keys.sessions_key(namespace=memory.namespace)
+    messages_key = Keys.messages_key(session_id, namespace=memory.namespace)
+    metadata_key = Keys.metadata_key(session_id, namespace=memory.namespace)
     messages_json = [json.dumps(msg.model_dump()) for msg in memory.messages]
+
+    metadata = memory.model_dump(
+        exclude_none=True,
+        exclude={"messages"},
+    )
 
     current_time = int(time.time())
     await redis.zadd(sessions_key, {session_id: current_time})
-    if memory.context:
-        await redis.set(context_key, memory.context)  # type: ignore
     await redis.rpush(messages_key, *messages_json)  # type: ignore
+    await redis.hset(metadata_key, mapping=metadata)  # type: ignore
 
     # Check if window size is exceeded
     current_size = await redis.llen(messages_key)  # type: ignore
@@ -132,13 +141,20 @@ async def set_session_memory(
 
     # If long-term memory is enabled, index messages
     # TODO: Use a distributed background task
+    # TODO: Allow strategies for long-term memory: indexing
+    #       messages vs. extracting memories from messages, etc.
     if settings.long_term_memory:
         background_tasks.add_task(
-            index_messages,
+            index_long_term_memories,
             redis,
-            session_id,
-            memory.messages,
-            memory.namespace,
+            [
+                LongTermMemory(
+                    session_id=session_id,
+                    text=f"{msg.role}: {msg.content}",
+                    namespace=memory.namespace,
+                )
+                for msg in memory.messages
+            ],
         )
 
 
@@ -150,143 +166,11 @@ async def delete_session_memory(
     """Delete a session's memory"""
     # Define keys
     messages_key = Keys.messages_key(session_id)
-    context_key = Keys.context_key(session_id)
     sessions_key = f"sessions:{namespace}" if namespace else "sessions"
+    metadata_key = Keys.metadata_key(session_id, namespace=namespace)
 
     # Create pipeline for deletion
     pipe = redis.pipeline()
-    pipe.delete(messages_key, context_key)
+    pipe.delete(messages_key, metadata_key)
     pipe.zrem(sessions_key, session_id)
     await pipe.execute()
-
-
-async def index_messages(
-    redis: Redis,
-    session_id: str,
-    messages: list[MemoryMessage],
-    namespace: str | None = None,
-) -> None:
-    """Index messages in Redis for vector search"""
-    # Currently we only support OpenAI embeddings
-    client = await get_openai_client()
-
-    contents = [msg.content for msg in messages]
-    embeddings = await client.create_embedding(contents)
-
-    async with redis.pipeline(transaction=False) as pipe:
-        for idx, embedding in enumerate(embeddings):
-            id = nanoid.generate()
-            key = Keys.memory_key(id, namespace)
-            vector = embedding.tobytes()
-
-            # Process messages for topic/entity extraction
-            topics, entities = await handle_extraction(contents[idx])
-            # Convert lists to comma-separated strings for TAG fields
-            topics_joined = ",".join(topics) if topics else ""
-            entities_joined = ",".join(entities) if entities else ""
-
-            await pipe.hset(  # type: ignore
-                key,
-                mapping={
-                    "session": session_id or "",
-                    "namespace": namespace or "",
-                    "vector": vector,
-                    "content": contents[idx],
-                    "role": messages[idx].role,
-                    "topics": topics_joined,
-                    "entities": entities_joined,
-                },
-            )
-
-        await pipe.execute()
-
-    logger.info(f"Indexed {len(messages)} messages for session {session_id}")
-
-
-class Unset:
-    pass
-
-
-async def search_messages(
-    text: str,
-    client: OpenAIClientWrapper,  # Only OpenAI supports embeddings currently
-    redis_conn: Redis,
-    session_id: str | None = None,
-    namespace: str | None = None,
-    topics: list[str] | None = None,
-    entities: list[str] | None = None,
-    distance_threshold: float | type[Unset] = Unset,
-    limit: int = 10,
-    offset: int = 0,
-) -> SearchResults:
-    """Search for messages using vector similarity and filters"""
-    try:
-        query = escaper.escape(text)
-        if session_id:
-            session_id = escaper.escape(session_id)
-        if namespace:
-            namespace = escaper.escape(namespace)
-
-        # Get embedding for query
-        query_embedding = await client.create_embedding([query])
-        vector = query_embedding.tobytes()
-
-        # TODO: Use RedisVL
-        params = {"vec": vector}
-        namespace_filter = f"@namespace:{{{namespace}}}" if namespace else ""
-        session_filter = f"@session:{{{session_id}}}" if session_id else ""
-        topics_filter = f"@topics:{{{','.join(topics)}}}" if topics else ""
-        entities_filter = f"@entities:{{{','.join(entities)}}}" if entities else ""
-
-        if distance_threshold and distance_threshold is not Unset:
-            base_query = Query(
-                f"{session_filter} {namespace_filter} {topics_filter} {entities_filter} @vector:[VECTOR_RANGE $radius $vec]=>{{$YIELD_DISTANCE_AS: dist}}"
-            )
-            params = {"vec": vector, "radius": distance_threshold}
-        else:
-            base_query = Query(
-                f"{session_filter} {namespace_filter} {topics_filter} {entities_filter}=>[KNN {limit} @vector$vec AS dist]"
-            )
-
-        q = (
-            base_query.return_fields("role", "content", "dist")
-            .sort_by("dist", asc=True)
-            .paging(offset, limit)
-            .dialect(2)
-        )
-
-        # Execute search
-        raw_results = await redis_conn.ft(REDIS_INDEX_NAME).search(
-            q,
-            query_params=params,  # type: ignore
-        )
-
-        # Parse results safely
-        results = []
-        total_results = 0
-
-        # Check if raw_results has the expected attributes
-        if hasattr(raw_results, "docs") and isinstance(raw_results.docs, list):
-            for doc in raw_results.docs:
-                if (
-                    hasattr(doc, "role")
-                    and hasattr(doc, "content")
-                    and hasattr(doc, "dist")
-                ):
-                    results.append(
-                        RedisearchResult(
-                            role=doc.role, content=doc.content, dist=float(doc.dist)
-                        )
-                    )
-
-            total_results = getattr(raw_results, "total", len(results))
-        else:
-            # Handle the case where raw_results doesn't have the expected structure
-            logger.warning("Unexpected search result format")
-            total_results = 0
-
-        logger.info(f"Found {len(results)} results for query in session {session_id}")
-        return SearchResults(total=total_results, docs=results)
-    except Exception as e:
-        logger.error(f"Error searching messages: {e}")
-        raise

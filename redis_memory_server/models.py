@@ -24,6 +24,7 @@ class SessionMemory(BaseModel):
     """A session's memory"""
 
     messages: list[MemoryMessage]
+    session_id: str | None = None
     context: str | None = None
     user_id: str | None = None
     last_accessed: int | None = None
@@ -32,19 +33,33 @@ class SessionMemory(BaseModel):
     namespace: str | None = None
 
 
-class StoredSessionMemory(SessionMemory):
-    """Stored session memory"""
+class LongTermMemory(BaseModel):
+    """A long-term memory"""
 
-    session_id: str
+    text: str
+    id_: str | None = None
+    session_id: str | None = None
+    user_id: str | None = None
+    last_accessed: int | None = None
     created_at: int | None = None
+    namespace: str | None = None
+    topics: list[str] | None = None
+    entities: list[str] | None = None
 
 
 class SessionMemoryResponse(SessionMemory):
     """Response containing a session's memory"""
 
 
+class SessionListResponse(BaseModel):
+    """Response containing a list of sessions"""
+
+    sessions: list[str]
+    total: int
+
+
 class SearchPayload(BaseModel):
-    """Payload for semantic search"""
+    """Payload for long-term memory search"""
 
     text: str
     session_id: str | None = None
@@ -52,7 +67,7 @@ class SearchPayload(BaseModel):
     topics: list[str] | None = None
     entities: list[str] | None = None
     distance_threshold: float | None = None
-    limit: int = Field(default=10, ge=1)
+    limit: int = Field(default=10, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
 
 
@@ -68,30 +83,32 @@ class AckResponse(BaseModel):
     status: str
 
 
-class RedisearchResult(BaseModel):
-    """Result from a redisearch query"""
+class LongTermMemoryResult(LongTermMemory):
+    """Result from a long-term memory search"""
 
-    role: str
-    content: str
     dist: float
 
 
-class SearchResults(BaseModel):
-    """Results from a redisearch query"""
+class LongTermMemoryResults(BaseModel):
+    """Results from a long-term memory search"""
 
-    docs: list[RedisearchResult]
+    memories: list[LongTermMemoryResult]
     total: int
 
 
-class NamespaceQuery(BaseModel):
-    """Query parameters for namespace"""
+class LongTermMemoryResultsResponse(LongTermMemoryResults):
+    """Response containing long-term memory search results"""
 
-    namespace: str | None = None
+
+class CreateLongTermMemoryPayload(BaseModel):
+    """Payload for creating a long-term memory"""
+
+    memories: list[LongTermMemory]
 
 
 class GetSessionsQuery(BaseModel):
     """Query parameters for getting sessions"""
 
-    page: int = Field(default=1, ge=1)
-    size: int = Field(default=20, ge=1)
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
     namespace: str | None = None

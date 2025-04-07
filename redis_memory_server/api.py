@@ -1,20 +1,19 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
-from redis_memory_server import messages
+from redis_memory_server import long_term_memory, messages
 from redis_memory_server.config import settings
 from redis_memory_server.logging import get_logger
 from redis_memory_server.models import (
     AckResponse,
+    CreateLongTermMemoryPayload,
     GetSessionsQuery,
+    LongTermMemoryResultsResponse,
     SearchPayload,
-    SearchResults,
+    SessionListResponse,
     SessionMemory,
     SessionMemoryResponse,
 )
-from redis_memory_server.utils import (
-    get_openai_client,
-    get_redis_conn,
-)
+from redis_memory_server.utils import get_redis_conn
 
 
 logger = get_logger(__name__)
@@ -22,7 +21,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.get("/sessions/", response_model=list[str])
+@router.get("/sessions/", response_model=SessionListResponse)
 async def list_sessions(
     options: GetSessionsQuery = Depends(),
 ):
@@ -35,17 +34,18 @@ async def list_sessions(
     Returns:
         List of session IDs
     """
-    # TODO: Pydantic should validate this
-    if options.page > 100:
-        raise HTTPException(status_code=400, detail="Page must not exceed 100")
-
     redis = get_redis_conn()
 
-    return await messages.list_sessions(
+    total, session_ids = await messages.list_sessions(
         redis=redis,
-        page=options.page,
-        size=options.size,
+        limit=options.limit,
+        offset=options.offset,
         namespace=options.namespace,
+    )
+
+    return SessionListResponse(
+        sessions=session_ids,
+        total=total,
     )
 
 
@@ -133,12 +133,36 @@ async def delete_session_memory(
     return AckResponse(status="ok")
 
 
-@router.post("/messages/search", response_model=SearchResults)
-async def messages_search(payload: SearchPayload):
+@router.post("/long-term-memory", response_model=AckResponse)
+async def create_long_term_memory(payload: CreateLongTermMemoryPayload):
     """
-    Run a semantic search on messages
+    Create a long-term memory
 
-    TODO: Infer topics for `text`
+    Args:
+        payload: Long-term memory payload
+
+    Returns:
+        Acknowledgement response
+    """
+    redis = get_redis_conn()
+
+    if not settings.long_term_memory:
+        raise HTTPException(status_code=400, detail="Long-term memory is disabled")
+
+    await long_term_memory.index_long_term_memories(
+        redis=redis,
+        memories=payload.memories,
+    )
+    return AckResponse(status="ok")
+
+
+@router.post("/long-term-memory/search", response_model=LongTermMemoryResultsResponse)
+async def search_long_term_memory(payload: SearchPayload):
+    """
+    Run a semantic search on long-term memory
+
+    TODO: Infer topics, entities for `text` and attempt to use them
+          as boosts or filters in the search.
 
     Args:
         payload: Search payload
@@ -149,13 +173,9 @@ async def messages_search(payload: SearchPayload):
     redis = get_redis_conn()
 
     if not settings.long_term_memory:
-        raise HTTPException(status_code=400, detail="Long term memory is disabled")
+        raise HTTPException(status_code=400, detail="Long-term memory is disabled")
 
-    # For embeddings, we always use OpenAI models since Anthropic doesn't support embeddings
-    client = await get_openai_client()
-
-    return await messages.search_messages(
-        client=client,
-        redis_conn=redis,
+    return await long_term_memory.search_long_term_memories(
+        redis=redis,
         **payload.model_dump(exclude_none=True),
     )

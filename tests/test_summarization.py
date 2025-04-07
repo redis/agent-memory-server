@@ -73,92 +73,121 @@ class TestIncrementalSummarization:
         assert "Hello, world!" in args[1]
 
 
-class TestHandleCompaction:
+class TestSummarizeSession:
     @pytest.mark.asyncio
-    @patch("redis_memory_server.models.summarization._incremental_summary")
-    async def test_handle_compaction(
+    @patch("redis_memory_server.summarization._incremental_summary")
+    async def test_summarize_session(
         self, mock_summarization, mock_openai_client, mock_async_redis_client
     ):
-        """Test handle_compaction with mocked summarization"""
+        """Test summarize_session with mocked summarization"""
         session_id = "test-session"
         model = "gpt-3.5-turbo"
-        window_size = 12
+        window_size = 4
 
         pipeline_mock = MagicMock()  # pipeline is not a coroutine
+        pipeline_mock.__aenter__ = AsyncMock(return_value=pipeline_mock)
+        pipeline_mock.watch = AsyncMock()
         mock_async_redis_client.pipeline = MagicMock(return_value=pipeline_mock)
 
-        pipeline_mock.lrange = MagicMock(return_value=pipeline_mock)
-        pipeline_mock.get = MagicMock(return_value=pipeline_mock)
-        pipeline_mock.execute = AsyncMock(
-            return_value=[
-                [
-                    json.dumps({"role": "user", "content": "Message 1"}),
-                    json.dumps({"role": "assistant", "content": "Message 2"}),
-                    json.dumps({"role": "user", "content": "Message 3"}),
-                    json.dumps({"role": "assistant", "content": "Message 4"}),
-                    json.dumps({"role": "user", "content": "Message 5"}),
-                    json.dumps({"role": "assistant", "content": "Message 6"}),
-                ],
-                "Previous summary",
-            ]
+        # This needs to match the window size
+        messages_raw = [
+            json.dumps({"role": "user", "content": "Message 1"}),
+            json.dumps({"role": "assistant", "content": "Message 2"}),
+            json.dumps({"role": "user", "content": "Message 3"}),
+            json.dumps({"role": "assistant", "content": "Message 4"}),
+        ]
+
+        pipeline_mock.lrange = AsyncMock(return_value=messages_raw)
+        pipeline_mock.hgetall = AsyncMock(
+            return_value={
+                "context": "Previous summary",
+                "tokens": "100",
+            }
         )
+        pipeline_mock.hmset = MagicMock(return_value=True)
+        pipeline_mock.ltrim = MagicMock(return_value=True)
+        pipeline_mock.execute = AsyncMock(return_value=True)
+        pipeline_mock.llen = AsyncMock(return_value=window_size)
 
         mock_summarization.return_value = ("New summary", 300)
 
-        mock_async_redis_client.set = AsyncMock(return_value=True)
-        mock_async_redis_client.lpop = AsyncMock(return_value=True)
+        with patch(
+            "redis_memory_server.summarization.get_model_client"
+        ) as mock_get_model_client:
+            mock_get_model_client.return_value = mock_openai_client
 
-        await summarize_session(
-            session_id,
-            model,
-            window_size,
-            mock_openai_client,
-            mock_async_redis_client,
-        )
+            await summarize_session(
+                mock_async_redis_client,
+                session_id,
+                model,
+                window_size,
+            )
 
         assert pipeline_mock.lrange.call_count == 1
         assert pipeline_mock.lrange.call_args[0][0] == Keys.messages_key(session_id)
-        assert pipeline_mock.lrange.call_args[0][1] == 6
-        assert pipeline_mock.lrange.call_args[0][2] == window_size
+        assert pipeline_mock.lrange.call_args[0][1] == 0
+        assert pipeline_mock.lrange.call_args[0][2] == window_size - 1
+
+        assert pipeline_mock.hgetall.call_count == 1
+        assert pipeline_mock.hgetall.call_args[0][0] == Keys.metadata_key(session_id)
+
+        assert pipeline_mock.hmset.call_count == 1
+        assert pipeline_mock.hmset.call_args[0][0] == Keys.metadata_key(session_id)
+        assert pipeline_mock.hmset.call_args.kwargs["mapping"] == {
+            "context": "New summary",
+            "tokens": "320",
+        }
+
+        assert pipeline_mock.ltrim.call_count == 1
+        assert pipeline_mock.ltrim.call_args[0][0] == Keys.messages_key(session_id)
+        assert pipeline_mock.ltrim.call_args[0][1] == 0
+        assert pipeline_mock.ltrim.call_args[0][2] == window_size - 1
+
+        assert pipeline_mock.execute.call_count == 1
 
         mock_summarization.assert_called_once()
         assert mock_summarization.call_args[0][0] == model
         assert mock_summarization.call_args[0][1] == mock_openai_client
         assert mock_summarization.call_args[0][2] == "Previous summary"
-        assert len(mock_summarization.call_args[0][3]) == 6
+        assert mock_summarization.call_args[0][3] == [
+            "user: Message 1",
+            "assistant: Message 2",
+            "user: Message 3",
+            "assistant: Message 4",
+        ]
 
     @pytest.mark.asyncio
-    @patch("redis_memory_server.models.summarization._incremental_summary")
-    async def test_handle_compaction_no_messages(
+    @patch("redis_memory_server.summarization._incremental_summary")
+    async def test_handle_summarization_no_messages(
         self, mock_summarization, mock_openai_client, mock_async_redis_client
     ):
-        """Test handle_compaction when no messages need summarization"""
+        """Test summarize_session when no messages need summarization"""
         session_id = "test-session"
         model = "gpt-3.5-turbo"
         window_size = 12
 
         pipeline_mock = MagicMock()  # pipeline is not a coroutine
+        pipeline_mock.__aenter__ = AsyncMock(return_value=pipeline_mock)
+        pipeline_mock.watch = AsyncMock()
         mock_async_redis_client.pipeline = MagicMock(return_value=pipeline_mock)
 
-        pipeline_mock.lrange = MagicMock(return_value=pipeline_mock)
-        pipeline_mock.get = MagicMock(return_value=pipeline_mock)
-
-        pipeline_mock.execute = AsyncMock(
-            return_value=[
-                [],
-                "Previous summary",
-            ]
-        )
-
-        mock_async_redis_client.set = AsyncMock(return_value=True)
-        mock_async_redis_client.lpop = AsyncMock(return_value=True)
+        pipeline_mock.llen = AsyncMock(return_value=0)
+        pipeline_mock.lrange = AsyncMock(return_value=[])
+        pipeline_mock.hgetall = AsyncMock(return_value={})
+        pipeline_mock.hmset = AsyncMock(return_value=True)
+        pipeline_mock.lpop = AsyncMock(return_value=True)
+        pipeline_mock.execute = AsyncMock(return_value=True)
 
         await summarize_session(
+            mock_async_redis_client,
             session_id,
             model,
             window_size,
-            mock_openai_client,
-            mock_async_redis_client,
         )
 
         assert mock_summarization.call_count == 0
+        assert pipeline_mock.lrange.call_count == 0
+        assert pipeline_mock.hgetall.call_count == 0
+        assert pipeline_mock.hmset.call_count == 0
+        assert pipeline_mock.lpop.call_count == 0
+        assert pipeline_mock.execute.call_count == 0

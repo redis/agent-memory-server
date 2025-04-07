@@ -1,24 +1,21 @@
 import logging
 
-from fastapi import BackgroundTasks, HTTPException
+from fastapi import HTTPException
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.prompts import base
 from mcp.types import TextContent
 
 from redis_memory_server.api import (
-    delete_session_memory as core_delete_memory,
+    create_long_term_memory as core_create_long_term_memory,
     get_session_memory as core_get_session_memory,
-    list_sessions as core_list_sessions,
-    messages_search as core_search_messages,
-    put_session_memory as core_put_session_memory,
+    search_long_term_memory as core_search_long_term_memory,
 )
 from redis_memory_server.models import (
     AckResponse,
-    GetSessionsQuery,
-    MemoryMessage,
+    CreateLongTermMemoryPayload,
+    LongTermMemory,
+    LongTermMemoryResults,
     SearchPayload,
-    SearchResults,
-    SessionMemory,
 )
 
 
@@ -27,55 +24,24 @@ mcp_app = FastMCP("Redis Agent Memory Server")
 
 
 @mcp_app.tool()
-async def list_sessions(
-    page: int = 1, size: int = 10, namespace: str | None = None
-) -> list[str]:
-    """List available memory sessions"""
-    return await core_list_sessions(
-        GetSessionsQuery(page=page, size=size, namespace=namespace)
-    )
-
-
-@mcp_app.resource("memory://{session_id}/memory")
-async def get_session_memory(session_id: str) -> SessionMemory:
-    """Get memory for a specific session"""
-    return await core_get_session_memory(session_id)
-
-
-@mcp_app.tool()
-async def add_memory(
-    session_id: str,
-    memory: str,
-    context: str | None = None,
-    namespace: str | None = None,
+async def create_long_term_memories(
+    memories: list[LongTermMemory],
 ) -> AckResponse:
-    """Add a memory to a session"""
-    background_tasks = BackgroundTasks()
-    session_memory = SessionMemory(
-        messages=[MemoryMessage(role="user", content=memory)],
-        context=context,
-        namespace=namespace,
-    )
+    """
+    Create a long-term memory.
 
-    result = await core_put_session_memory(session_id, session_memory, background_tasks)
+    Args:
+        memories: A list of long-term memories to create.
 
-    logger.warning(f"Background tasks: {background_tasks.tasks}")
-
-    return result
+    Returns:
+        An acknowledgement of the creation.
+    """
+    payload = CreateLongTermMemoryPayload(memories=memories)
+    return await core_create_long_term_memory(payload)
 
 
 @mcp_app.tool()
-async def delete_session_memory(
-    session_id: str,
-    namespace: str | None = None,
-) -> AckResponse:
-    """Delete a session's memory"""
-    return await core_delete_memory(session_id, namespace)
-
-
-@mcp_app.tool()
-async def search_memory(
-    session_id: str,
+async def search_long_term_memory(
     query: str,
     topics: list[str] | None = None,
     entities: list[str] | None = None,
@@ -83,10 +49,22 @@ async def search_memory(
     limit: int = 10,
     offset: int = 0,
     namespace: str | None = None,
-) -> SearchResults:
-    """Search through a session's memory"""
+) -> LongTermMemoryResults:
+    """
+    Search for long-term memories relevant to a query.
+
+    Args:
+        query: The query to search for.
+        topics: A list of topics to filter by.
+        entities: A list of entities to filter by.
+        distance_threshold: The distance threshold to use for the search.
+        limit: The maximum number of results to return.
+        offset: The offset to use for the search.
+
+    Returns:
+        A list of long-term memories that match the query.
+    """
     payload = SearchPayload(
-        session_id=session_id,
         text=query,
         namespace=namespace,
         topics=topics,
@@ -95,7 +73,7 @@ async def search_memory(
         limit=limit,
         offset=offset,
     )
-    return await core_search_messages(payload)
+    return await core_search_long_term_memory(payload)
 
 
 @mcp_app.prompt()
@@ -104,7 +82,16 @@ async def memory_prompt(
     query: str,
     namespace: str | None = None,
 ) -> list[base.Message]:
-    """A prompt to enrich a user query with context from memory"""
+    """
+    A prompt to enrich a user query with context from memory.
+
+    Args:
+        query: The query to enrich.
+        namespace: The namespace to use for the search.
+
+    Returns:
+        A list of messages with the enriched query.
+    """
     messages = []
     try:
         session_memory = await core_get_session_memory(session_id)
@@ -137,13 +124,11 @@ async def memory_prompt(
         text=query,
         namespace=namespace,
     )
-    long_term_memories = await core_search_messages(payload)
+
+    long_term_memories = await core_search_long_term_memory(payload)
     if long_term_memories.total > 0:
         long_term_memories_text = "\n".join(
-            [
-                f"Role: {m.role}\nContent: {m.content}\nDistance: {m.dist}"
-                for m in long_term_memories.docs
-            ]
+            [f"- {m.text}" for m in long_term_memories.memories]
         )
         messages.append(
             base.AssistantMessage(

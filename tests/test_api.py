@@ -4,10 +4,13 @@ import numpy as np
 import pytest
 
 from redis_memory_server.config import Settings
-from redis_memory_server.messages import (
-    RedisearchResult,
-    SearchResults,
-    index_messages,
+from redis_memory_server.long_term_memory import index_long_term_memories
+from redis_memory_server.models import (
+    LongTermMemoryResult,
+    LongTermMemoryResultsResponse,
+    MemoryMessage,
+    SessionListResponse,
+    SessionMemoryResponse,
 )
 from redis_memory_server.summarization import summarize_session
 
@@ -48,38 +51,43 @@ class TestHealthEndpoint:
 class TestMemoryEndpoints:
     async def test_list_sessions_empty(self, client):
         """Test the list_sessions endpoint with no sessions"""
-        response = await client.get("/sessions/?page=1&size=10")
+        response = await client.get("/sessions/?offset=0&limit=10")
 
         assert response.status_code == 200
 
         data = response.json()
-        assert isinstance(data, list)
-        assert len(data) == 0
+        response = SessionListResponse(**data)
+        assert response.sessions == []
+        assert response.total == 0
 
     async def test_list_sessions_with_sessions(self, client, session):
         """Test the list_sessions endpoint with a session"""
-        response = await client.get("/sessions/?page=1&size=10")
+        response = await client.get(
+            "/sessions/?offset=0&limit=10&namespace=test-namespace"
+        )
         assert response.status_code == 200
 
         data = response.json()
-        assert isinstance(data, list)
-        assert len(data) == 1
-        assert data[0] == session
+        response = SessionListResponse(**data)
+        assert response.sessions == [session]
+        assert response.total == 1
 
     async def test_get_memory(self, client, session):
         """Test the get_memory endpoint"""
         session_id = session
 
-        response = await client.get(f"/sessions/{session_id}/memory")
+        response = await client.get(
+            f"/sessions/{session_id}/memory?namespace=test-namespace"
+        )
 
         assert response.status_code == 200
 
         data = response.json()
-        assert "messages" in data
-        assert "context" in data
-        assert "tokens" in data
-
-        assert len(data["messages"]) == 2
+        response = SessionMemoryResponse(**data)
+        assert response.messages == [
+            MemoryMessage(role="user", content="Hello"),
+            MemoryMessage(role="assistant", content="Hi there"),
+        ]
 
         roles = [msg["role"] for msg in data["messages"]]
         contents = [msg["content"] for msg in data["messages"]]
@@ -94,7 +102,7 @@ class TestMemoryEndpoints:
 
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
-    async def test_post_memory(self, client):
+    async def test_put_memory(self, client):
         """Test the post_memory endpoint"""
         payload = {
             "messages": [
@@ -102,6 +110,7 @@ class TestMemoryEndpoints:
                 {"role": "assistant", "content": "Hi there"},
             ],
             "context": "Previous context",
+            "namespace": "test-namespace",
         }
 
         response = await client.put("/sessions/test-session/memory", json=payload)
@@ -114,8 +123,8 @@ class TestMemoryEndpoints:
 
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
-    async def test_put_memory_stores_in_long_term_memory(self, client):
-        """Test the post_memory endpoint"""
+    async def test_put_memory_stores_messages_in_long_term_memory(self, client):
+        """Test the put_memory endpoint"""
         payload = {
             "messages": [
                 {"role": "user", "content": "Hello"},
@@ -142,7 +151,7 @@ class TestMemoryEndpoints:
         assert mock_add_task.call_count == 1
 
         # Check that the last call was for long-term memory indexing
-        assert mock_add_task.call_args_list[-1][0][0] == index_messages
+        assert mock_add_task.call_args_list[-1][0][0] == index_long_term_memories
 
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
@@ -181,14 +190,18 @@ class TestMemoryEndpoints:
         """Test the delete_memory endpoint"""
         session_id = session
 
-        response = await client.get(f"/sessions/{session_id}/memory")
+        response = await client.get(
+            f"/sessions/{session_id}/memory?namespace=test-namespace"
+        )
 
         assert response.status_code == 200
 
         data = response.json()
         assert len(data["messages"]) == 2
 
-        response = await client.delete(f"/sessions/{session_id}/memory")
+        response = await client.delete(
+            f"/sessions/{session_id}/memory?namespace=test-namespace"
+        )
 
         assert response.status_code == 200
 
@@ -196,20 +209,22 @@ class TestMemoryEndpoints:
         assert "status" in data
         assert data["status"] == "ok"
 
-        response = await client.get(f"/sessions/{session_id}/memory")
+        response = await client.get(
+            f"/sessions/{session_id}/memory?namespace=test-namespace"
+        )
         assert response.status_code == 404
 
 
 @pytest.mark.requires_api_keys
 class TestSearchEndpoint:
-    @patch("redis_memory_server.api.messages.search_messages")
+    @patch("redis_memory_server.api.long_term_memory.search_long_term_memories")
     @pytest.mark.asyncio
     async def test_search(self, mock_search, client):
         """Test the search endpoint"""
-        mock_search.return_value = SearchResults(
-            docs=[
-                RedisearchResult(role="user", content="Hello, world!", dist=0.25),
-                RedisearchResult(role="assistant", content="Hi there!", dist=0.75),
+        mock_search.return_value = LongTermMemoryResultsResponse(
+            memories=[
+                LongTermMemoryResult(id_="1", text="User: Hello, world!", dist=0.25),
+                LongTermMemoryResult(id_="2", text="Assistant: Hi there!", dist=0.75),
             ],
             total=2,
         )
@@ -218,24 +233,24 @@ class TestSearchEndpoint:
         payload = {"text": "What is the capital of France?"}
 
         # Call endpoint with the correct URL format (matching the router definition)
-        response = await client.post("/messages/search", json=payload)
+        response = await client.post("/long-term-memory/search", json=payload)
 
         # Check status code
         assert response.status_code == 200, response.text
 
         # Check response structure
         data = response.json()
-        assert "docs" in data
+        assert "memories" in data
         assert "total" in data
         assert data["total"] == 2
-        assert len(data["docs"]) == 2
+        assert len(data["memories"]) == 2
 
         # Check first result
-        assert data["docs"][0]["role"] == "user"
-        assert data["docs"][0]["content"] == "Hello, world!"
-        assert data["docs"][0]["dist"] == 0.25
+        assert data["memories"][0]["id_"] == "1"
+        assert data["memories"][0]["text"] == "User: Hello, world!"
+        assert data["memories"][0]["dist"] == 0.25
 
         # Check second result
-        assert data["docs"][1]["role"] == "assistant"
-        assert data["docs"][1]["content"] == "Hi there!"
-        assert data["docs"][1]["dist"] == 0.75
+        assert data["memories"][1]["id_"] == "2"
+        assert data["memories"][1]["text"] == "Assistant: Hi there!"
+        assert data["memories"][1]["dist"] == 0.75

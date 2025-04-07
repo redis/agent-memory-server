@@ -2,26 +2,32 @@
 
 Agent Memory Server is a high-performance and flexible server for managing
 short-term and long-term memory for agents using Redis. It provides both REST
-API endpoints and an MCP (Managed Control Plane) server interface for robust
+API endpoints and an MCP (Model Context Protocol) server interface for robust
 memory operations in AI applications.
 
 ## Features
 
 - **Short-Term Memory**
-  - Configurable window size for recent messages
-  - Automatic conversation summarization using LLMs
-  - Token limit management based on model capabilities
+  - Storage for messages, token count, context, and metadata for a session
+  - Automatically and recursively summarizes conversations
+  - Token limit management based on specific model capabilities
 
 - **Long-Term Memory**
-  - Semantic search over messages
-  - Automatic message indexing
-  - Topic modeling with BERTopic
-  - Named Entity Recognition using BERT
+  - Storage for long-term memories across sessions
+  - Semantic search to retrieve memories, with filters
+  - Automatic topic modeling for stored memories with BERTopic
+  - Automatic Entity Recognition using BERT
 
-- **Advanced Features**
+- **Other Features**
   - Support for OpenAI and Anthropic model providers
   - Namespace support for session isolation
+  - Both a REST interface and MCP server
 
+## Roadmap
+- Long-term memory deduplication
+- More options for moving session memory to long-term memory
+- Auth hooks
+- Use a background task system instead of `BackgroundTask`
 
 ## REST API Endpoints
 
@@ -42,7 +48,8 @@ The following endpoints are available:
   - `namespace` (string, optional): Filter sessions by namespace.
 
 - **GET /sessions/{session_id}/memory**
-  Retrieves conversation memory for a session, including messages and context.
+  Retrieves conversation memory for a session, including messages and
+  summarized older messages.
 
 - **POST /sessions/{session_id}/memory**
   Adds messages (and optional context) to a session's memory.
@@ -52,8 +59,7 @@ The following endpoints are available:
     "messages": [
       {"role": "user", "content": "Hello"},
       {"role": "assistant", "content": "Hi there"}
-    ],
-    "context": "Optional context"
+    ]
   }
   ```
 
@@ -70,14 +76,11 @@ The following endpoints are available:
   ```
 
 ## MCP Server Interface
-Agent Memory Server also offers an MCP (Model Context Protocol) server interface powered by FastMCP, providing tool-based memory operations:
+Agent Memory Server offers an MCP (Model Context Protocol) server interface powered by FastMCP, providing tool-based long-term memory management:
 
-- **list_sessions**: Retrieve available memory sessions with optional pagination.
-- **get_session_memory**: Fetch memory (messages and context) for a specific session.
-- **add_memory**: Add messages and context to a session's memory.
-- **delete_session_memory**: Remove all memory data for a session.
-- **search_memory**: Perform semantic search across session messages.
-- **memory_prompt**: Generate prompts enriched with memory context and long-term memories.
+- **create_long_term_memories**: Store long-term memories.
+- **search_memory**: Perform semantic search across long-term memories.
+- **memory_prompt**: Generate prompts enriched with session context and long-term memories.
 
 ## Getting Started
 
