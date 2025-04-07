@@ -2,6 +2,7 @@ import logging
 import time
 
 import nanoid
+from fastapi import BackgroundTasks
 from redis.asyncio import Redis
 from redis.commands.search.query import Query
 
@@ -23,12 +24,34 @@ logger = logging.getLogger(__name__)
 escaper = TokenEscaper()
 
 
-# TODO: Use LLM to extract memories?
+async def extract_memory_structure(
+    redis: Redis, _id: str, text: str, namespace: str | None
+):
+    # Process messages for topic/entity extraction
+    # TODO: Move into background task.
+    topics, entities = await handle_extraction(text)
+
+    # Convert lists to comma-separated strings for TAG fields
+    topics_joined = ",".join(topics) if topics else ""
+    entities_joined = ",".join(entities) if entities else ""
+
+    await redis.hset(
+        Keys.memory_key(_id, ""),
+        mapping={
+            "topics": topics_joined,
+            "entities": entities_joined,
+        },
+    )  # type: ignore
+
+
 async def index_long_term_memories(
     redis: Redis,
     memories: list[LongTermMemory],
+    background_tasks: BackgroundTasks,
 ) -> None:
-    """Index long-term memories in Redis for search"""
+    """
+    Index long-term memories in Redis for search
+    """
     # Currently we only support OpenAI embeddings
     client = await get_openai_client()
     embeddings = await client.create_embedding([memory.text for memory in memories])
@@ -39,14 +62,7 @@ async def index_long_term_memories(
             id_ = memory.id_ if memory.id_ else nanoid.generate()
             key = Keys.memory_key(id_, memory.namespace)
             vector = embedding.tobytes()
-
-            # Process messages for topic/entity extraction
-            # TODO: Move into background task.
-            topics, entities = await handle_extraction(memory.text)
-
-            # Convert lists to comma-separated strings for TAG fields
-            topics_joined = ",".join(topics) if topics else ""
-            entities_joined = ",".join(entities) if entities else ""
+            id_ = memory.id_ if memory.id_ else nanoid.generate()
 
             await pipe.hset(  # type: ignore
                 key,
@@ -58,10 +74,12 @@ async def index_long_term_memories(
                     "last_accessed": memory.last_accessed or int(time.time()),
                     "created_at": memory.created_at or int(time.time()),
                     "namespace": memory.namespace or "",
-                    "topics": topics_joined,
-                    "entities": entities_joined,
                     "vector": vector,
                 },
+            )
+
+            background_tasks.add_task(
+                extract_memory_structure, redis, id_, memory.text, memory.namespace
             )
 
         await pipe.execute()

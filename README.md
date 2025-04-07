@@ -1,9 +1,6 @@
-# Redis Agent Memory Server
+# 🔮 Redis Agent Memory Server
 
-Agent Memory Server is a high-performance and flexible server for managing
-short-term and long-term memory for agents using Redis. It provides both REST
-API endpoints and an MCP (Model Context Protocol) server interface for robust
-memory operations in AI applications.
+A Redis-powered memory server built for AI agents and applications. It manages both conversational context and long-term memories, offering semantic search, automatic summarization, and flexible APIs through both REST and MCP interfaces.
 
 ## Features
 
@@ -164,13 +161,3 @@ python -m pytest
 3. Commit your changes
 4. Push to the branch
 5. Create a Pull Request
-
-## License
-
-This project derives from original work from the Motorhead project:
-https://github.com/getmetal/motorhead/
-
-The original code is licensed under the Apache License 2.0:
-https://www.apache.org/licenses/LICENSE-2.0
-
-Modifications made by Redis, Inc. are also licensed under the Apache License 2.0.

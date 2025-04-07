@@ -140,7 +140,7 @@ async def set_session_memory(
         )
 
     # If long-term memory is enabled, index messages
-    # TODO: Use a distributed background task
+    # TODO: Use a distributed task queue
     # TODO: Allow strategies for long-term memory: indexing
     #       messages vs. extracting memories from messages, etc.
     if settings.long_term_memory:
