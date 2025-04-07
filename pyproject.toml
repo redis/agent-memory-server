@@ -7,7 +7,7 @@ name = "agent-memory-server"
 version = "0.1.0"
 description = "A Redis-powered memory server built for AI agents and applications."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Andrew Brookins", email = "andrew.brookins@redis.com" }]
 dependencies = [
@@ -27,7 +27,7 @@ dependencies = [
     "numba>=0.60.0",
     "nanoid>=2.0.0",
     "mcp>=1.6.0",
-    "sentence-transformers>=2.5.0",
+    "sentence-transformers>=3.4.1",
 ]
 
 [project.optional-dependencies]
