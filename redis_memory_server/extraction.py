@@ -28,7 +28,7 @@ def get_topic_model() -> BERTopic:
     """
     global _topic_model
     if _topic_model is None:
-        _topic_model = BERTopic.load("topic_model.pickle", settings.topic_model)
+        _topic_model = BERTopic.load(settings.topic_model)
     return _topic_model  # type: ignore
 
 
