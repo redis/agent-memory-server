@@ -23,9 +23,12 @@ memory operations in AI applications.
   - Namespace support for session isolation
   - Both a REST interface and MCP server
 
+## System Diagram
+![System Diagram](diagram.png)
+
 ## Roadmap
 - Long-term memory deduplication
-- More options for moving session memory to long-term memory
+- Configurable strategy for moving session memory to long-term memory
 - Auth hooks
 - Use a background task system instead of `BackgroundTask`
 
