@@ -28,6 +28,7 @@ dependencies = [
     "nanoid>=2.0.0",
     "mcp>=1.6.0",
     "sentence-transformers>=3.4.1",
+    "accelerate>=1.6.0",
 ]
 
 [project.optional-dependencies]

@@ -139,9 +139,11 @@ You can configure the service using environment variables:
 
 ### Installation
 
+This project uses [uv](https://github.com/astral-sh/uv) for dependency management.
+
 1. Install dependencies:
 ```bash
-pip install -e ".[dev]"
+uv sync --all-extras
 ```
 
 2. Set up environment variables (see Configuration section)
