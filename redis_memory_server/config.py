@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     generation_model: str = "gpt-4o-mini"
     embedding_model: str = "text-embedding-3-small"
     port: int = 8000
+    mcp_port: int = 9000
 
     # Topic and NER model settings
     topic_model: str = "MaartenGr/BERTopic_Wikipedia"

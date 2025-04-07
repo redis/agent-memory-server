@@ -3,6 +3,7 @@ import logging
 import time
 
 from fastapi import BackgroundTasks
+from redis import WatchError
 from redis.asyncio import Redis
 
 from redis_memory_server.config import settings
@@ -116,16 +117,25 @@ async def set_session_memory(
     messages_key = Keys.messages_key(session_id, namespace=memory.namespace)
     metadata_key = Keys.metadata_key(session_id, namespace=memory.namespace)
     messages_json = [json.dumps(msg.model_dump()) for msg in memory.messages]
-
     metadata = memory.model_dump(
         exclude_none=True,
         exclude={"messages"},
     )
 
-    current_time = int(time.time())
-    await redis.zadd(sessions_key, {session_id: current_time})
-    await redis.rpush(messages_key, *messages_json)  # type: ignore
-    await redis.hset(metadata_key, mapping=metadata)  # type: ignore
+    async with redis.pipeline(transaction=True) as pipe:
+        await pipe.watch(messages_key, metadata_key)
+        pipe.multi()
+
+        while True:
+            try:
+                current_time = int(time.time())
+                pipe.zadd(sessions_key, {session_id: current_time})
+                pipe.rpush(messages_key, *messages_json)  # type: ignore
+                pipe.hset(metadata_key, mapping=metadata)  # type: ignore
+                await pipe.execute()
+            except WatchError:
+                continue
+            break
 
     # Check if window size is exceeded
     current_size = await redis.llen(messages_key)  # type: ignore
@@ -155,6 +165,7 @@ async def set_session_memory(
                 )
                 for msg in memory.messages
             ],
+            background_tasks,
         )
 
 

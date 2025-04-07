@@ -1,11 +1,10 @@
 import json
 import time
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from redis_memory_server.long_term_memory import (
-    extract_memory_structure,
     index_long_term_memories,
 )
 from redis_memory_server.messages import (
@@ -110,11 +109,11 @@ class TestSetSessionMemory:
         """Test basic session memory setting"""
         mock_pipeline = AsyncMock()
         mock_pipeline.__aenter__ = AsyncMock(return_value=mock_pipeline)
-        mock_pipeline.zadd = MagicMock()
-        mock_pipeline.rpush = MagicMock()
-        mock_pipeline.hset = MagicMock()
-        mock_pipeline.llen = MagicMock(return_value=5)  # Below window size
+        mock_pipeline.zadd = MagicMock(return_value=mock_pipeline)
+        mock_pipeline.rpush = MagicMock(return_value=mock_pipeline)
+        mock_pipeline.hset = MagicMock(return_value=mock_pipeline)
         mock_pipeline.execute = AsyncMock(return_value=None)
+        mock_async_redis_client.llen = AsyncMock(return_value=5)  # Below window size
         mock_async_redis_client.pipeline = MagicMock(return_value=mock_pipeline)
 
         mock_background_tasks = MagicMock()
@@ -140,6 +139,7 @@ class TestSetSessionMemory:
         mock_pipeline.zadd.assert_called_once()
         mock_pipeline.rpush.assert_called_once()
         mock_pipeline.hset.assert_called_once()
+        mock_pipeline.execute.assert_called_once()
 
         # Verify no background tasks were added (window size not exceeded)
         mock_background_tasks.add_task.assert_not_called()
@@ -220,23 +220,12 @@ class TestSetSessionMemory:
                 mock_async_redis_client, "test-session", memory, mock_background_tasks
             )
 
-        # Verify long-term memory indexing task (and sub-task) was added
-        mock_background_tasks.add_task.assert_has_calls(
-            [
-                call(
-                    index_long_term_memories,
-                    mock_async_redis_client,
-                    [LongTermMemory(session_id="test-session", text="user: Hello")],
-                    mock_background_tasks,
-                ),
-                call(
-                    extract_memory_structure,
-                    mock_async_redis_client,
-                    "test-session",
-                    "user: Hello",
-                    None,
-                ),
-            ]
+        # Verify long-term memory indexing task was added
+        mock_background_tasks.add_task.assert_called_once_with(
+            index_long_term_memories,
+            mock_async_redis_client,
+            [LongTermMemory(session_id="test-session", text="user: Hello")],
+            mock_background_tasks,
         )
 
 

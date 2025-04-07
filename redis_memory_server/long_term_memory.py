@@ -36,7 +36,7 @@ async def extract_memory_structure(
     entities_joined = ",".join(entities) if entities else ""
 
     await redis.hset(
-        Keys.memory_key(_id, ""),
+        Keys.memory_key(_id, namespace),
         mapping={
             "topics": topics_joined,
             "entities": entities_joined,
@@ -62,7 +62,6 @@ async def index_long_term_memories(
             id_ = memory.id_ if memory.id_ else nanoid.generate()
             key = Keys.memory_key(id_, memory.namespace)
             vector = embedding.tobytes()
-            id_ = memory.id_ if memory.id_ else nanoid.generate()
 
             await pipe.hset(  # type: ignore
                 key,
@@ -190,8 +189,12 @@ async def search_long_term_memories(
                             user_id=doc.user_id,
                             session_id=doc.session_id,
                             namespace=doc.namespace,
-                            topics=doc.topics.split(",") if doc.topics else [],
-                            entities=doc.entities.split(",") if doc.entities else [],
+                            topics=doc.get("topics", "").split(",")
+                            if doc.get("topics")
+                            else [],
+                            entities=doc.get("entities", "").split(",")
+                            if doc.get("entities")
+                            else [],
                         )
                     )
 

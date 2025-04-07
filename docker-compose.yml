@@ -28,6 +28,29 @@ services:
       timeout: 10s
       retries: 3
 
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - PORT=9000
+      # Add your API keys here or use a .env file
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Optional configurations with defaults
+      - LONG_TERM_MEMORY=True
+      - WINDOW_SIZE=20
+      - GENERATION_MODEL=gpt-4o-mini
+      - EMBEDDING_MODEL=text-embedding-3-small
+      - ENABLE_TOPIC_EXTRACTION=True
+      - ENABLE_NER=True
+    ports:
+      - "9000:9000"
+    depends_on:
+      - redis
+    command: ["python", "-m", "redis_memory_server.mcp", "sse"]
+
   redis:
     image: redis/redis-stack:latest
     ports:

@@ -134,7 +134,9 @@ async def delete_session_memory(
 
 
 @router.post("/long-term-memory", response_model=AckResponse)
-async def create_long_term_memory(payload: CreateLongTermMemoryPayload):
+async def create_long_term_memory(
+    payload: CreateLongTermMemoryPayload, background_tasks: BackgroundTasks
+):
     """
     Create a long-term memory
 
@@ -152,6 +154,7 @@ async def create_long_term_memory(payload: CreateLongTermMemoryPayload):
     await long_term_memory.index_long_term_memories(
         redis=redis,
         memories=payload.memories,
+        background_tasks=background_tasks,
     )
     return AckResponse(status="ok")
 

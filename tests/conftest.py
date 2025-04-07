@@ -118,6 +118,7 @@ async def session(use_test_redis_connection, async_redis_client):
                 namespace="test-namespace",
             ),
         ],
+        background_tasks=BackgroundTasks(),
     )
 
     # Add messages to session memory

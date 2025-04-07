@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import nanoid
 import numpy as np
 import pytest
+from fastapi import BackgroundTasks
 from redis.commands.search.document import Document
 
 from redis_memory_server.long_term_memory import (
@@ -40,6 +41,7 @@ class TestLongTermMemory:
             await index_long_term_memories(
                 mock_async_redis_client,
                 long_term_memories,
+                background_tasks=BackgroundTasks(),
             )
 
         # Check that create_embedding was called with the right arguments
@@ -169,6 +171,7 @@ class TestLongTermMemoryIntegration:
         await index_long_term_memories(
             async_redis_client,
             long_term_memories,
+            background_tasks=BackgroundTasks(),
         )
 
         results = await search_long_term_memories(
@@ -194,6 +197,7 @@ class TestLongTermMemoryIntegration:
         await index_long_term_memories(
             async_redis_client,
             long_term_memories,
+            background_tasks=BackgroundTasks(),
         )
 
         results = await search_long_term_memories(

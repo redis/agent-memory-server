@@ -1,4 +1,5 @@
 import logging
+import sys
 
 from fastapi import HTTPException
 from mcp.server.fastmcp import FastMCP
@@ -10,6 +11,7 @@ from redis_memory_server.api import (
     get_session_memory as core_get_session_memory,
     search_long_term_memory as core_search_long_term_memory,
 )
+from redis_memory_server.config import settings
 from redis_memory_server.models import (
     AckResponse,
     CreateLongTermMemoryPayload,
@@ -20,7 +22,7 @@ from redis_memory_server.models import (
 
 
 logger = logging.getLogger(__name__)
-mcp_app = FastMCP("Redis Agent Memory Server")
+mcp_app = FastMCP("Redis Agent Memory Server", port=settings.mcp_port)
 
 
 @mcp_app.tool()
@@ -146,3 +148,10 @@ async def memory_prompt(
     )
 
     return messages
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "sse":
+        mcp_app.run(transport="sse")
+    else:
+        mcp_app.run(transport="stdio")

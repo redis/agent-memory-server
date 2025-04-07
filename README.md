@@ -109,7 +109,7 @@ To start the API using Docker Compose, follow these steps:
 4. Build and start the containers by running:
    docker-compose up --build
 
-5. Once the containers are up, the API will be available at http://localhost:8000. You can also access the interactive API documentation at http://localhost:8000/docs.
+5. Once the containers are up, the REST API will be available at http://localhost:8000. You can also access the interactive API documentation at http://localhost:8000/docs. The MCP server will be available at http://localhost:9000/sse.
 
 6. To stop the containers, press Ctrl+C in the terminal and then run:
    docker-compose down
@@ -127,11 +127,12 @@ You can configure the service using environment variables:
 | `ANTHROPIC_API_KEY` | API key for Anthropic | - |
 | `GENERATION_MODEL` | Model for text generation | `gpt-4o-mini` |
 | `EMBEDDING_MODEL` | Model for text embeddings | `text-embedding-3-small` |
-| `PORT` | Server port | `8000` |
+| `PORT` | REST API server port | `8000` |
 | `TOPIC_MODEL` | BERTopic model for topic extraction | `MaartenGr/BERTopic_Wikipedia` |
 | `NER_MODEL` | BERT model for NER | `dbmdz/bert-large-cased-finetuned-conll03-english` |
 | `ENABLE_TOPIC_EXTRACTION` | Enable/disable topic extraction | `True` |
 | `ENABLE_NER` | Enable/disable named entity recognition | `True` |
+| `MCP_PORT` | MCP server port |9000|
 
 
 ## Development
@@ -145,15 +146,24 @@ pip install -e ".[dev]"
 
 2. Set up environment variables (see Configuration section)
 
-3. Run the server:
+3. Run the API server:
 ```bash
 python -m redis_memory_server.main
+```
+
+4. In a separate terminal, run the MCP server (use either the "stdio" or "sse" options to set the running mode):
+```bash
+python -m redis_memory_server.mcp [stdio|sse]
 ```
 
 ### Running Tests
 ```bash
 python -m pytest
 ```
+
+## Known Issues
+- The MCP server from the Python MCP SDK often refuses to shut down with Control-C if it's connected to a client
+- All background tasks run as async coroutines in the same process as the REST API server, using Starlette's `BackgroundTask`
 
 ### Contributing
 1. Fork the repository

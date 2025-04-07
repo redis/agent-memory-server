@@ -10,7 +10,6 @@ from redis_memory_server.config import settings
 from redis_memory_server.healthcheck import router as health_router
 from redis_memory_server.llms import MODEL_CONFIGS, ModelProvider
 from redis_memory_server.logging import configure_logging, get_logger
-from redis_memory_server.mcp import mcp_app
 from redis_memory_server.utils import ensure_redisearch_index, get_redis_conn
 
 
@@ -123,10 +122,6 @@ app = FastAPI(title="Redis Agent Memory Server", lifespan=lifespan)
 
 app.include_router(health_router)
 app.include_router(memory_router)
-
-
-# Mount MCP server
-app.mount("/", mcp_app.sse_app())
 
 
 def on_start_logger(port: int):
