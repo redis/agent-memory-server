@@ -23,7 +23,7 @@ dependencies = [
     "pydantic-settings>=2.8.1",
     "bertopic>=0.16.4,<0.17.0",
     "structlog>=25.2.0",
-    "transformers>=4.30.0",
+    "transformers>=4.30.0,<=4.50.3",
     "numba>=0.60.0",
     "nanoid>=2.0.0",
     "mcp>=1.6.0",
