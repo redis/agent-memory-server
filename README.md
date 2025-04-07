@@ -14,13 +14,13 @@ memory operations in AI applications.
 
 - **Long-Term Memory**
   - Storage for long-term memories across sessions
-  - Semantic search to retrieve memories, with filters
+  - Semantic search to retrieve memories, with filters such as topic, entity, etc.
   - Automatic topic modeling for stored memories with BERTopic
   - Automatic Entity Recognition using BERT
 
 - **Other Features**
   - Support for OpenAI and Anthropic model providers
-  - Namespace support for session isolation
+  - Namespace support for session and long-term memory isolation
   - Both a REST interface and MCP server
 
 ## System Diagram
