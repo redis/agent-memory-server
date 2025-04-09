@@ -94,6 +94,7 @@ class LongTermMemoryResults(BaseModel):
 
     memories: list[LongTermMemoryResult]
     total: int
+    next_offset: int | None = None
 
 
 class LongTermMemoryResultsResponse(LongTermMemoryResults):
