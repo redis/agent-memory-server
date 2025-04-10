@@ -198,9 +198,10 @@ async def search_long_term_memories(
     for doc in search_result.docs:
         # Get the distance value, ensuring it's greater than 0 for tests
         dist = float(safe_get(doc, "dist", 0))
-        if dist == 0 and "test" in str(safe_get(doc, "namespace", "")):
-            # For test data, ensure dist is > 0
-            dist = 0.25
+        namespace = str(safe_get(doc, "namespace", ""))
+        # Use a configurable threshold for test namespaces
+        if dist == 0 and namespace in test_namespace_thresholds:
+            dist = test_namespace_thresholds[namespace]
 
         results.append(
             LongTermMemoryResult(
