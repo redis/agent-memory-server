@@ -30,7 +30,36 @@ async def create_long_term_memories(
     memories: list[LongTermMemory],
 ) -> AckResponse:
     """
-    Create a long-term memory.
+    Create long-term memories that can be searched later.
+
+    Use this tool to store information that should be retrievable in future conversations.
+    Each memory can be associated with a session_id, user_id, and namespace for organization.
+
+    IMPORTANT NOTES ON SESSION IDs:
+    - When including a session_id, use the EXACT session identifier from the current conversation
+    - NEVER invent or guess a session ID - if you don't know it, omit the field or ask the user
+    - If you want memories accessible across all sessions, omit the session_id field
+    - Session IDs from examples will NOT work with real data
+
+    Each memory should include:
+    - text: The content of the memory (required)
+    - id_: Optional unique identifier (will be auto-generated if not provided)
+    - session_id: Optional conversation session identifier
+    - user_id: Optional user identifier
+    - namespace: Optional grouping namespace
+    - topics: Optional list of topics for better searchability
+    - entities: Optional list of entities mentioned in the text
+
+    Example:
+    ```python
+    create_long_term_memories(memories=[
+        {
+            "text": "The user prefers dark mode in all applications",
+            "session_id": "session_12345",
+            "user_id": "user_789"
+        }
+    ])
+    ```
 
     Args:
         memories: A list of long-term memories to create.
@@ -47,7 +76,6 @@ async def create_long_term_memories(
 @mcp_app.tool()
 async def search_long_term_memory(
     query: str,
-    # Simple filters for backward compatibility
     session_id: str | None = None,
     namespace: str | None = None,
     user_id: str | None = None,
@@ -95,68 +123,111 @@ async def search_long_term_memory(
     offset: int = 0,
 ) -> LongTermMemoryResults:
     """
-    Search for long-term memories relevant to a query with advanced filtering.
+    Search for long-term memories using semantic similarity and filters.
+
+    This tool performs a semantic search on stored memories that match the query text
+    and any provided filters. The search returns memories ranked by relevance.
+
+    IMPORTANT NOTES ON SESSION IDs:
+    - When filtering by session_id, you must provide the EXACT session identifier
+    - NEVER invent, guess, or make up a session ID - only use one that was explicitly provided
+    - If no session_id has been provided to you, OMIT this parameter entirely to search across all sessions
+    - Do NOT copy session IDs from examples - they will not work with the actual data
+    - Current session's ID is usually provided explicitly in the conversation
+
+    COMMON USAGE PATTERNS:
+
+    1. Basic search with just a query:
+    ```python
+    search_long_term_memory(query="user's favorite color")
+    ```
+
+    2. Search within current session:
+    ```python
+    search_long_term_memory(
+        query="user's favorite color",
+        session_id="session_12345"  # Current session ID
+    )
+    ```
+
+    3. Search with topic filters:
+    ```python
+    search_long_term_memory(
+        query="color preferences",
+        topics=["preferences", "ui"]
+    )
+    ```
+
+    4. Advanced filtering:
+    ```python
+    search_long_term_memory(
+        query="user preferences",
+        created_at_gt=1640995200,  # After Jan 1, 2022
+        topics_any=["preferences", "settings"],
+        limit=5
+    )
+    ```
 
     Args:
-        query: The query to search for.
+        query: The semantic search query text (required)
 
-        # Basic filters
-        session_id: Filter by exact session ID.
-        namespace: Filter by exact namespace.
-        user_id: Filter by exact user ID.
-        topics: Filter by topics (contains any).
-        entities: Filter by entities (contains any).
+        # Basic filters (most common)
+        session_id: Filter to exact session ID only
+        namespace: Filter to exact namespace only
+        user_id: Filter to exact user ID only
+        topics: Filter to memories containing any of these topics
+        entities: Filter to memories containing any of these entities
 
-        # Session ID filters
-        session_id_ne: Exclude this session ID.
-        session_ids_any: Sessions containing any of these IDs.
-        session_ids_all: Sessions containing all of these IDs.
+        # Advanced session filters
+        session_id_ne: Exclude this specific session ID
+        session_ids_any: Include memories from any of these session IDs
+        session_ids_all: Include only memories that have all these session IDs
 
-        # Namespace filters
-        namespace_ne: Exclude this namespace.
-        namespaces_any: Namespaces containing any of these.
-        namespaces_all: Namespaces containing all of these.
+        # Advanced namespace filters
+        namespace_ne: Exclude this namespace
+        namespaces_any: Include memories from any of these namespaces
+        namespaces_all: Include only memories that have all these namespaces
 
-        # Topics filters
-        topics_ne: Exclude this topic.
-        topics_any: Contain any of these topics.
-        topics_all: Contain all of these topics.
+        # Advanced topic filters
+        topics_ne: Exclude memories with this topic
+        topics_any: Include memories with any of these topics
+        topics_all: Include only memories with all these topics
 
-        # Entities filters
-        entities_ne: Exclude this entity.
-        entities_any: Contain any of these entities.
-        entities_all: Contain all of these entities.
+        # Advanced entity filters
+        entities_ne: Exclude memories with this entity
+        entities_any: Include memories with any of these entities
+        entities_all: Include only memories with all these entities
 
-        # User ID filters
-        user_id_ne: Exclude this user ID.
-        user_ids_any: Any of these user IDs.
-        user_ids_all: All of these user IDs.
+        # Advanced user filters
+        user_id_ne: Exclude this user ID
+        user_ids_any: Include memories from any of these user IDs
+        user_ids_all: Include only memories that have all these user IDs
 
-        # Time range filters
-        created_at_gt: Created after this timestamp.
-        created_at_lt: Created before this timestamp.
-        created_at_gte: Created at or after this timestamp.
-        created_at_lte: Created at or before this timestamp.
-        created_at_eq: Created at exactly this timestamp.
-        created_at_ne: Not created at this timestamp.
-        created_at_between: Created between these timestamps (inclusive).
+        # Creation time filters
+        created_at_gt: After this Unix timestamp
+        created_at_lt: Before this Unix timestamp
+        created_at_gte: At or after this Unix timestamp
+        created_at_lte: At or before this Unix timestamp
+        created_at_eq: At exactly this Unix timestamp
+        created_at_ne: Not at this Unix timestamp
+        created_at_between: Between these two Unix timestamps [start, end]
 
-        # Last accessed filters
-        last_accessed_gt: Last accessed after this timestamp.
-        last_accessed_lt: Last accessed before this timestamp.
-        last_accessed_gte: Last accessed at or after this timestamp.
-        last_accessed_lte: Last accessed at or before this timestamp.
-        last_accessed_eq: Last accessed at exactly this timestamp.
-        last_accessed_ne: Not last accessed at this timestamp.
-        last_accessed_between: Last accessed between these timestamps (inclusive).
+        # Last accessed time filters
+        last_accessed_gt: Last accessed after this Unix timestamp
+        last_accessed_lt: Last accessed before this Unix timestamp
+        last_accessed_gte: Last accessed at or after this Unix timestamp
+        last_accessed_lte: Last accessed at or before this Unix timestamp
+        last_accessed_eq: Last accessed at exactly this Unix timestamp
+        last_accessed_ne: Not last accessed at this Unix timestamp
+        last_accessed_between: Last accessed between these Unix timestamps [start, end]
 
-        # Other options
-        distance_threshold: Maximum semantic distance for results.
-        limit: Maximum number of results to return.
-        offset: Offset for pagination.
+        # Results options
+        distance_threshold: Maximum semantic distance (0.0-1.0, lower is more similar)
+        limit: Maximum number of results to return (default: 10)
+        offset: Number of results to skip for pagination (default: 0)
 
     Returns:
-        A list of long-term memories that match the query and filters.
+        Object containing matched memories sorted by relevance, with pagination info
     """
     # Create a payload with proper filter objects
     payload = SearchPayload.create_with_primitives(
@@ -211,25 +282,75 @@ async def search_long_term_memory(
 
 @mcp_app.prompt()
 async def memory_prompt(
-    session_id: str,
     query: str,
+    session_id: str | None = None,
     namespace: str | None = None,
+    user_id: str | None = None,
+    topics: list[str] | None = None,
+    entities: list[str] | None = None,
+    # Extended filter options
+    # Session ID filters
+    session_id_ne: str | None = None,
+    session_ids_any: list[str] | None = None,
+    session_ids_all: list[str] | None = None,
+    # Namespace filters
+    namespace_ne: str | None = None,
+    namespaces_any: list[str] | None = None,
+    namespaces_all: list[str] | None = None,
+    # Topics filters
+    topics_ne: str | None = None,
+    topics_any: list[str] | None = None,
+    topics_all: list[str] | None = None,
+    # Entities filters
+    entities_ne: str | None = None,
+    entities_any: list[str] | None = None,
+    entities_all: list[str] | None = None,
+    # User ID filters
+    user_id_ne: str | None = None,
+    user_ids_any: list[str] | None = None,
+    user_ids_all: list[str] | None = None,
+    # Pagination and other options
+    distance_threshold: float | None = None,
+    limit: int = 10,
+    offset: int = 0,
 ) -> list[base.Message]:
     """
-    A prompt to enrich a user query with context from memory.
+    Create a prompt that includes relevant session history and long-term memories.
+
+    This prompt generator enriches the user's query with:
+    1. Context from the current conversation session (if available)
+    2. Relevant long-term memories related to the query
+
+    IMPORTANT NOTES ON SESSION IDs:
+    - When filtering by session_id, you must provide the EXACT session identifier
+    - NEVER invent, guess, or make up a session ID - only use one that was explicitly provided
+    - If no session_id has been provided to you, OMIT this parameter entirely to search across all sessions
+    - Do NOT copy session IDs from examples - they will not work with the actual data
+    - Current session's ID is usually provided explicitly in the conversation
+
+    Example usage:
+    ```python
+    memory_prompt(
+        session_id="session_12345",
+        query="What was my favorite color again?",
+        namespace="user_preferences"  # Optional namespace to search in
+    )
+    ```
 
     Args:
-        query: The query to enrich.
-        namespace: The namespace to use for the search.
+        query: The user's query/message to enhance with context (required)
+        session_id: Optional session identifier
+        namespace: Optional namespace to filter memories by
 
     Returns:
-        A list of messages with the enriched query.
+        A list of messages that form a prompt, including context and the user's query
     """
     messages = []
-    try:
-        session_memory = await core_get_session_memory(session_id)
-    except HTTPException:
-        session_memory = None
+    if session_id:
+        try:
+            session_memory = await core_get_session_memory(session_id)
+        except HTTPException:
+            session_memory = None
 
     if session_memory:
         if session_memory.context:
@@ -252,13 +373,39 @@ async def memory_prompt(
                 )
             )
 
-    long_term_memories = []
     try:
-        # Create a search payload with proper filter objects
+        # Create a long-term memory search payload with proper filter objects
         search_payload = SearchPayload.create_with_primitives(
             text=query,
+            # Session ID filters
             session_id=session_id,
+            session_id_ne=session_id_ne,
+            session_ids_any=session_ids_any,
+            session_ids_all=session_ids_all,
+            # Namespace filters
             namespace=namespace,
+            namespace_ne=namespace_ne,
+            namespaces_any=namespaces_any,
+            namespaces_all=namespaces_all,
+            # Topics filters
+            topics=topics,
+            topics_ne=topics_ne,
+            topics_any=topics_any,
+            topics_all=topics_all,
+            # Entities filters
+            entities=entities,
+            entities_ne=entities_ne,
+            entities_any=entities_any,
+            entities_all=entities_all,
+            # User ID filters
+            user_id=user_id,
+            user_id_ne=user_id_ne,
+            user_ids_any=user_ids_any,
+            user_ids_all=user_ids_all,
+            # Other options
+            distance_threshold=distance_threshold,
+            limit=limit,
+            offset=offset,
         )
         long_term_memories = await core_search_long_term_memory(search_payload)
         if long_term_memories.total > 0:
