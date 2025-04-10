@@ -18,8 +18,6 @@ class TagFilter(BaseModel):
             raise ValueError("eq and ne cannot both be set")
         if self.any is not None and self.all is not None:
             raise ValueError("any and all cannot both be set")
-        if self.any is not None and self.all is not None:
-            raise ValueError("any and all cannot both be set")
         if self.all is not None and len(self.all) == 0:
             raise ValueError("all cannot be an empty list")
         if self.any is not None and len(self.any) == 0:
