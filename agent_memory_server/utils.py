@@ -26,7 +26,7 @@ _index = None
 def get_search_index(
     redis: Redis,
     index_name: str = settings.redisvl_index_name,
-    vector_dimensions: int = settings.redisvl_vector_dimensions,
+    vector_dimensions: str = settings.redisvl_vector_dimensions,
     distance_metric: str = settings.redisvl_distance_metric,
 ) -> AsyncSearchIndex:
     global _index
@@ -79,7 +79,7 @@ def get_redis_conn(url: str | None = settings.redis_url, **kwargs) -> Redis:
 async def ensure_redisearch_index(
     redis: Redis,
     index_name: str = settings.redisvl_index_name,
-    vector_dimensions: int = settings.redisvl_vector_dimensions,
+    vector_dimensions: str = settings.redisvl_vector_dimensions,
     distance_metric: str = settings.redisvl_distance_metric,
 ) -> None:
     """
