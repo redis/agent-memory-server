@@ -270,8 +270,8 @@ python -m pytest
 ```
 
 ## Known Issues
-- The MCP server from the Python MCP SDK often refuses to shut down with Control-C if it's connected to a client
 - All background tasks run as async coroutines in the same process as the REST API server, using Starlette's `BackgroundTask`
+- ~~The MCP server from the Python MCP SDK often refuses to shut down with Control-C if it's connected to a client~~
 
 ### Contributing
 1. Fork the repository

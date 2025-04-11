@@ -196,13 +196,18 @@ async def search_long_term_memories(
     results = []
 
     for doc in search_result.docs:
-        topics = safe_get(doc, "topics", [])
-        if isinstance(topics, str):
-            topics: list[str] = topics.split(",")  # type: ignore
+        # NOTE: Because this may not be obvious. We index hashes, and we extract
+        # topics and entities separately from main long-term indexing. However,
+        # when we store the topics and entities, we store them as comma-separated
+        # strings in the hash. Our search index picks these up and indexes them
+        # in TAG fields, and we get them back as comma-separated strings.
+        doc_topics = safe_get(doc, "topics", [])
+        if isinstance(doc_topics, str):
+            doc_topics = doc_topics.split(",")  # type: ignore
 
-        entities = safe_get(doc, "entities", [])
-        if isinstance(entities, str):
-            entities: list[str] = entities.split(",")  # type: ignore
+        doc_entities = safe_get(doc, "entities", [])
+        if isinstance(doc_entities, str):
+            doc_entities = doc_entities.split(",")  # type: ignore
 
         results.append(
             LongTermMemoryResult(
@@ -210,12 +215,13 @@ async def search_long_term_memories(
                 text=safe_get(doc, "text", ""),
                 dist=float(safe_get(doc, "vector_distance", 0)),
                 created_at=int(safe_get(doc, "created_at", 0)),
+                updated_at=int(safe_get(doc, "updated_at", 0)),
                 last_accessed=int(safe_get(doc, "last_accessed", 0)),
                 user_id=safe_get(doc, "user_id"),
                 session_id=safe_get(doc, "session_id"),
                 namespace=safe_get(doc, "namespace"),
-                topics=topics,
-                entities=entities,
+                topics=doc_topics,
+                entities=doc_entities,
             )
         )
     total_results = search_result.total
