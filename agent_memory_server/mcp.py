@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import sys
 
@@ -22,7 +23,11 @@ from agent_memory_server.models import (
 
 
 logger = logging.getLogger(__name__)
-mcp_app = FastMCP("Redis Agent Memory Server", port=settings.mcp_port)
+mcp_app = FastMCP(
+    "Redis Agent Memory Server - ALWAYS check memory for user information",
+    port=settings.mcp_port,
+    instructions="When responding to user queries, ALWAYS check memory first before answering questions about user preferences, history, or personal information.",
+)
 
 
 @mcp_app.tool()
@@ -80,7 +85,9 @@ async def search_long_term_memory(
     payload: SearchPayload,
 ) -> LongTermMemoryResults:
     """
-    Search for long-term memories using semantic similarity and filters.
+    Search for memories related to a text query.
+
+    Finds memories based on a combination of semantic similarity and input filters.
 
     This tool performs a semantic search on stored memories using the query text and filters
     in the payload. Results are ranked by relevance.
@@ -152,9 +159,18 @@ async def hydrate_memory_prompt(
     """
     Hydrate a user prompt with relevant session history and long-term memories.
 
-    This tool enriches the user's query with:
-    1. Context from the current conversation session (if available, based on session ID)
-    2. Relevant long-term memories related to the query text
+    CRITICAL: Use this tool for EVERY question that might benefit from memory context,
+    especially when you don't have sufficient information to answer confidently.
+
+    This tool enriches the user's query by retrieving:
+    1. Context from the current conversation session
+    2. Relevant long-term memories related to the query
+
+    ALWAYS use this tool when:
+    - The user references past conversations
+    - The question is about user preferences or personal information
+    - You need additional context to provide a complete answer
+    - The question seems to assume information you don't have in current context
 
     The function uses the text field from the payload as the user's query,
     and any filters to retrieve relevant memories.
@@ -245,6 +261,6 @@ async def hydrate_memory_prompt(
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "sse":
-        mcp_app.run(transport="sse")
+        asyncio.run(mcp_app.run_sse_async())
     else:
-        mcp_app.run(transport="stdio")
+        asyncio.run(mcp_app.run_stdio_async())

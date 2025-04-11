@@ -26,7 +26,7 @@ class Settings(BaseSettings):
 
     # RedisVL Settings
     redisvl_distance_metric: str = "COSINE"
-    redisvl_vector_dimensions: int = 1536
+    redisvl_vector_dimensions: str = "1536"
     redisvl_index_name: str = "memory"
     redisvl_index_prefix: str = "memory"
 

@@ -133,15 +133,29 @@ Agent Memory Server offers an MCP (Model Context Protocol) server interface powe
 
 ### Local Install
 
-1. Install the package and required dependencies:
+First, you'll need to download this repository. After you've downloaded it, you can install and run the servers.
+
+1. Install the package and required dependencies with pip, ideally into a virtual environment:
    ```bash
    pip install -e .
    ```
 
-2. Start both the REST API server and MCP server:
+**NOTE:** This project uses `uv` for dependency management, so if you have uv installed, you can run `uv sync` instead of `pip install ...` to install the project's dependencies.
+
+2 (a). The easiest way to start the REST API server and MCP server in SSE mode is to use Docker Compose. See the Docker Compose section of this file for more details.
+
+2 (b). You can also run the REST API and MCP servers directly:
+#### REST API
   ```bash
   python -m agent_memory_server.main
   ```
+#### MCP Server
+The MCP server can run in either SSE mode or stdio:
+  ```bash
+  python -m agent_memory_server.mcp <sse|stdio>
+  ```
+
+**NOTE:** With uv, just prefix the command with `uv`, e.g.: `uv run python -m agent_memory_server.mcp sse`.
 
 ### Docker Compose
 
@@ -160,6 +174,51 @@ To start the API using Docker Compose, follow these steps:
 
 6. To stop the containers, press Ctrl+C in the terminal and then run:
    docker-compose down
+
+## Using the MCP Server with Claude Desktop, Cursor, etc.
+You can use the MCP server that comes with this project in any application or SDK that supports MCP tools.
+
+### Claude
+<img src="claude.png">
+
+For example, with Claude, use the following configuration:
+  ```json
+  {
+    "mcpServers": {
+      "redis-memory-server": {
+          "command": "uv",
+          "args": [
+              "--directory",
+              "/ABSOLUTE/PATH/TO/REPO/DIRECTORY/agent-memory-server",
+              "run",
+              "python",
+              "-m",
+              "agent_memory_server.mcp",
+              "stdio"
+          ]
+      }
+    }
+  }
+  ```
+**NOTE:** On a Mac, this configuration requires that you use `brew install uv` to install uv. Probably any method that makes the `uv`
+command globally accessible, so Claude can find it, would work.
+
+### Cursor
+
+<img src="cursor.png">
+
+Cursor's MCP config is similar to Claude's, but it also supports SSE servers, so you can run the server yourself and pass in the URL:
+
+  ```json
+  {
+    "mcpServers": {
+      "redis-memory-server": {
+        "url": "http://localhost:9000/sse"
+      }
+    }
+  }
+  ```
+
 
 ## Configuration
 
@@ -211,8 +270,8 @@ python -m pytest
 ```
 
 ## Known Issues
-- The MCP server from the Python MCP SDK often refuses to shut down with Control-C if it's connected to a client
 - All background tasks run as async coroutines in the same process as the REST API server, using Starlette's `BackgroundTask`
+- ~~The MCP server from the Python MCP SDK often refuses to shut down with Control-C if it's connected to a client~~
 
 ### Contributing
 1. Fork the repository
