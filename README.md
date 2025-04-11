@@ -7,16 +7,18 @@ A Redis-powered memory server built for AI agents and applications. It manages b
 - **Short-Term Memory**
   - Storage for messages, token count, context, and metadata for a session
   - Automatically and recursively summarizes conversations
-  - Token limit management based on specific model capabilities
+  - Client model-aware token limit management (adapts to the context window of the client's LLM)
+  - Supports all major OpenAI and Anthropic models
 
 - **Long-Term Memory**
   - Storage for long-term memories across sessions
-  - Semantic search to retrieve memories, with filters such as topic, entity, etc.
+  - Semantic search to retrieve memories with advanced filtering system
+  - Filter by session, namespace, topics, entities, timestamps, and more
+  - Supports both exact match and semantic similarity search
   - Automatic topic modeling for stored memories with BERTopic
   - Automatic Entity Recognition using BERT
 
 - **Other Features**
-  - Support for OpenAI and Anthropic model providers
   - Namespace support for session and long-term memory isolation
   - Both a REST interface and MCP server
 
@@ -56,6 +58,11 @@ The following endpoints are available:
 - **GET /sessions/{session_id}/memory**
   Retrieves conversation memory for a session, including messages and
   summarized older messages.
+  _Query Parameters:_
+  - `namespace` (string, optional): The namespace to use for the session
+  - `window_size` (int, optional): Number of messages to include in the response (default from config)
+  - `model_name` (string, optional): The client's LLM model name to determine appropriate context window size
+  - `context_window_max` (int, optional): Direct specification of max context window tokens (overrides model_name)
 
 - **POST /sessions/{session_id}/memory**
   Adds messages (and optional context) to a session's memory.
@@ -80,6 +87,40 @@ The following endpoints are available:
     "text": "Search query text"
   }
   ```
+
+- **POST /long-term-memory/search**
+  Performs semantic search on long-term memories with advanced filtering options.
+  _Request Body Example:_
+  ```json
+  {
+    "text": "Search query text",
+    "limit": 10,
+    "offset": 0,
+    "session_id": {"eq": "session-123"},
+    "namespace": {"eq": "default"},
+    "topics": {"any": ["AI", "Machine Learning"]},
+    "entities": {"all": ["OpenAI", "Claude"]},
+    "created_at": {"gte": 1672527600, "lte": 1704063599},
+    "last_accessed": {"gt": 1704063600},
+    "user_id": {"eq": "user-456"}
+  }
+  ```
+
+  _Filter options:_
+  - Tag filters (session_id, namespace, topics, entities, user_id):
+    - `eq`: Equals this value
+    - `ne`: Not equals this value
+    - `any`: Contains any of these values
+    - `all`: Contains all of these values
+
+  - Numeric filters (created_at, last_accessed):
+    - `gt`: Greater than
+    - `lt`: Less than
+    - `gte`: Greater than or equal
+    - `lte`: Less than or equal
+    - `eq`: Equals
+    - `ne`: Not equals
+    - `between`: Between two values
 
 ## MCP Server Interface
 Agent Memory Server offers an MCP (Model Context Protocol) server interface powered by FastMCP, providing tool-based long-term memory management:
