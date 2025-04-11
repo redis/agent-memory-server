@@ -181,7 +181,7 @@ class SearchPayload(BaseModel):
         # Handle Topics filter
         topics_args = {}
         if topics is not None:
-            topics_args["any"] = topics  # Legacy support
+            topics_args["any"] = topics
         if topics_ne is not None:
             topics_args["ne"] = topics_ne
         if topics_any is not None:
@@ -194,7 +194,7 @@ class SearchPayload(BaseModel):
         # Handle Entities filter
         entities_args = {}
         if entities is not None:
-            entities_args["any"] = entities  # Legacy support
+            entities_args["any"] = entities
         if entities_ne is not None:
             entities_args["ne"] = entities_ne
         if entities_any is not None:
