@@ -16,12 +16,10 @@ from agent_memory_server.models import (
 from agent_memory_server.summarization import summarize_session
 from agent_memory_server.utils import (
     Keys,
-    TokenEscaper,
 )
 
 
 logger = logging.getLogger(__name__)
-escaper = TokenEscaper()
 
 
 async def list_sessions(
@@ -75,17 +73,6 @@ async def get_session_memory(
 
         # Parse JSON
         msg_dict = json.loads(msg_raw)
-
-        # Convert comma-separated strings back to lists for topics and entities
-        if "topics" in msg_dict:
-            msg_dict["topics"] = (
-                msg_dict["topics"].split(",") if msg_dict["topics"] else []
-            )
-        if "entities" in msg_dict:
-            msg_dict["entities"] = (
-                msg_dict["entities"].split(",") if msg_dict["entities"] else []
-            )
-
         memory_messages.append(MemoryMessage(**msg_dict))
 
     kwargs = {

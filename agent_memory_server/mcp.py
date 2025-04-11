@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import sys
 
@@ -15,30 +16,64 @@ from agent_memory_server.config import settings
 from agent_memory_server.models import (
     AckResponse,
     CreateLongTermMemoryPayload,
-    LongTermMemory,
     LongTermMemoryResults,
     SearchPayload,
 )
 
 
 logger = logging.getLogger(__name__)
-mcp_app = FastMCP("Redis Agent Memory Server", port=settings.mcp_port)
+mcp_app = FastMCP(
+    "Redis Agent Memory Server - ALWAYS check memory for user information",
+    port=settings.mcp_port,
+    instructions="When responding to user queries, ALWAYS check memory first before answering questions about user preferences, history, or personal information.",
+)
 
 
 @mcp_app.tool()
 async def create_long_term_memories(
-    memories: list[LongTermMemory],
+    payload: CreateLongTermMemoryPayload,
 ) -> AckResponse:
     """
-    Create a long-term memory.
+    Create long-term memories that can be searched later.
+
+    This tool saves memories contained in the payload for future retrieval.
+
+    IMPORTANT NOTES ON SESSION IDs:
+    - When including a session_id, use the EXACT session identifier from the current conversation
+    - NEVER invent or guess a session ID - if you don't know it, omit the field
+    - If you want memories accessible across all sessions, omit the session_id field
+
+    Each memory in the payload should include:
+    - text: The content of the memory (required)
+    - id_: Optional unique identifier (auto-generated if not provided)
+    - session_id: Optional conversation session identifier
+    - user_id: Optional user identifier
+    - namespace: Optional grouping namespace
+    - topics: Optional list of topics for better searchability
+    - entities: Optional list of entities mentioned in the text
+
+    Example JSON input:
+    ```json
+    {
+      "payload": {
+        "memories": [
+          {
+            "text": "The user prefers dark mode in all applications",
+            "session_id": "session_12345",
+            "user_id": "user_789",
+            "topics": ["preferences", "ui"]
+          }
+        ]
+      }
+    }
+    ```
 
     Args:
-        memories: A list of long-term memories to create.
+        payload: A CreateLongTermMemoryPayload containing a list of memories to create
 
     Returns:
-        An acknowledgement of the creation.
+        An acknowledgement response indicating success
     """
-    payload = CreateLongTermMemoryPayload(memories=memories)
     return await core_create_long_term_memory(
         payload, background_tasks=BackgroundTasks()
     )
@@ -46,60 +81,134 @@ async def create_long_term_memories(
 
 @mcp_app.tool()
 async def search_long_term_memory(
-    query: str,
-    topics: list[str] | None = None,
-    entities: list[str] | None = None,
-    distance_threshold: float | None = None,
-    limit: int = 10,
-    offset: int = 0,
-    namespace: str | None = None,
+    payload: SearchPayload,
 ) -> LongTermMemoryResults:
     """
-    Search for long-term memories relevant to a query.
+    Search for memories related to a text query.
+
+    Finds memories based on a combination of semantic similarity and input filters.
+
+    This tool performs a semantic search on stored memories using the query text and filters
+    in the payload. Results are ranked by relevance.
+
+    IMPORTANT NOTES ON SESSION IDs:
+    - When including a session_id filter, use the EXACT session identifier
+    - NEVER invent or guess a session ID - if you don't know it, omit this filter
+    - If you want to search across all sessions, don't include a session_id filter
+    - Session IDs from examples will NOT work with real data
+
+    COMMON USAGE PATTERNS:
+
+    1. Basic search with just query text:
+    ```json
+    {
+      "payload": {
+        "text": "user's favorite color"
+      }
+    }
+    ```
+
+    2. Search with simple session filter:
+    ```json
+    {
+      "payload": {
+        "text": "user's favorite color",
+        "session_id": {
+          "eq": "session_12345"
+        }
+      }
+    }
+    ```
+
+    3. Search with complex filters:
+    ```json
+    {
+      "payload": {
+        "text": "user preferences",
+        "topics": {
+          "any": ["preferences", "settings"]
+        },
+        "created_at": {
+          "gt": 1640995200
+        },
+        "limit": 5
+      }
+    }
+    ```
 
     Args:
-        query: The query to search for.
-        topics: A list of topics to filter by.
-        entities: A list of entities to filter by.
-        distance_threshold: The distance threshold to use for the search.
-        limit: The maximum number of results to return.
-        offset: The offset to use for the search.
+        payload: A SearchPayload object containing:
+            - text: The semantic search query text (required)
+            - Filter objects for various fields (session_id, namespace, topics, etc.)
+            - Pagination options (limit, offset)
+            - Other search options (distance_threshold)
 
     Returns:
-        A list of long-term memories that match the query.
+        LongTermMemoryResults containing matched memories sorted by relevance
     """
-    payload = SearchPayload(
-        text=query,
-        namespace=namespace,
-        topics=topics,
-        entities=entities,
-        distance_threshold=distance_threshold,
-        limit=limit,
-        offset=offset,
-    )
     return await core_search_long_term_memory(payload)
 
 
-@mcp_app.prompt()
-async def memory_prompt(
-    session_id: str,
-    query: str,
-    namespace: str | None = None,
+# NOTE: Prompts don't support search filters in FastMCP, so we need to use a
+# tool instead.
+@mcp_app.tool()
+async def hydrate_memory_prompt(
+    payload: SearchPayload,
 ) -> list[base.Message]:
     """
-    A prompt to enrich a user query with context from memory.
+    Hydrate a user prompt with relevant session history and long-term memories.
+
+    CRITICAL: Use this tool for EVERY question that might benefit from memory context,
+    especially when you don't have sufficient information to answer confidently.
+
+    This tool enriches the user's query by retrieving:
+    1. Context from the current conversation session
+    2. Relevant long-term memories related to the query
+
+    ALWAYS use this tool when:
+    - The user references past conversations
+    - The question is about user preferences or personal information
+    - You need additional context to provide a complete answer
+    - The question seems to assume information you don't have in current context
+
+    The function uses the text field from the payload as the user's query,
+    and any filters to retrieve relevant memories.
+
+    IMPORTANT NOTES ON SESSION IDs:
+    - When filtering by session_id, you must provide the EXACT session identifier
+    - NEVER invent or guess a session ID - if you don't know it, omit this filter
+    - Session IDs from examples will NOT work with real data
+
+    Example JSON input:
+    ```json
+    {
+      "payload": {
+        "text": "What was my favorite color?",
+        "session_id": {
+          "eq": "session_12345"
+        },
+        "namespace": {
+          "eq": "user_preferences"
+        }
+      }
+    }
+    ```
 
     Args:
-        query: The query to enrich.
-        namespace: The namespace to use for the search.
+        payload: A SearchPayload containing:
+            - text: The user's query/message (required)
+            - Filter objects for retrieving relevant session and memories
 
     Returns:
-        A list of messages with the enriched query.
+        A list of messages forming a prompt, including context and the user's query
     """
     messages = []
-    try:
-        session_memory = await core_get_session_memory(session_id)
-    except HTTPException:
+    if payload.session_id and payload.session_id.eq:
+        try:
+            session_memory = await core_get_session_memory(payload.session_id.eq)
+        except HTTPException:
+            session_memory = None
+    else:
         session_memory = None
 
     if session_memory:
@@ -123,29 +232,26 @@ async def memory_prompt(
                 )
             )
 
-    payload = SearchPayload(
-        session_id=session_id,
-        text=query,
-        namespace=namespace,
-    )
-
-    long_term_memories = await core_search_long_term_memory(payload)
-    if long_term_memories.total > 0:
-        long_term_memories_text = "\n".join(
-            [f"- {m.text}" for m in long_term_memories.memories]
-        )
-        messages.append(
-            base.AssistantMessage(
-                content=TextContent(
-                    type="text",
-                    text=f"## Long term memories related to the user's query\n {long_term_memories_text}",
-                ),
+    try:
+        long_term_memories = await core_search_long_term_memory(payload)
+        if long_term_memories.total > 0:
+            long_term_memories_text = "\n".join(
+                [f"- {m.text}" for m in long_term_memories.memories]
             )
-        )
+            messages.append(
+                base.AssistantMessage(
+                    content=TextContent(
+                        type="text",
+                        text=f"## Long term memories related to the user's query\n {long_term_memories_text}",
+                    ),
+                )
+            )
+    except Exception as e:
+        logger.error(f"Error searching long-term memory: {e}")
 
     messages.append(
         base.UserMessage(
-            content=TextContent(type="text", text=query),
+            content=TextContent(type="text", text=payload.text),
         )
     )
 
@@ -154,6 +260,6 @@ async def memory_prompt(
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "sse":
-        mcp_app.run(transport="sse")
+        asyncio.run(mcp_app.run_sse_async())
     else:
-        mcp_app.run(transport="stdio")
+        asyncio.run(mcp_app.run_stdio_async())

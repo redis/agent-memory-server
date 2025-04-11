@@ -1,14 +1,15 @@
 import json
 
 import pytest
-from mcp import GetPromptResult
 from mcp.shared.memory import (
     create_connected_server_and_client_session as client_session,
 )
 from mcp.types import CallToolResult
 
 from agent_memory_server.mcp import mcp_app
-from agent_memory_server.models import LongTermMemory
+from agent_memory_server.models import (
+    LongTermMemory,
+)
 
 
 class TestMCP:
@@ -20,9 +21,11 @@ class TestMCP:
             results = await client.call_tool(
                 "create_long_term_memories",
                 {
-                    "memories": [
-                        LongTermMemory(text="Hello", session_id=session),
-                    ],
+                    "payload": {
+                        "memories": [
+                            LongTermMemory(text="Hello", session_id=session),
+                        ],
+                    }
                 },
             )
             assert isinstance(results, CallToolResult)
@@ -36,8 +39,10 @@ class TestMCP:
             results = await client.call_tool(
                 "search_long_term_memory",
                 {
-                    "query": "Hello",
-                    "namespace": "test-namespace",
+                    "payload": {
+                        "text": "Hello",
+                        "namespace": {"eq": "test-namespace"},
+                    },
                 },
             )
             assert isinstance(
@@ -67,38 +72,64 @@ class TestMCP:
     async def test_memory_prompt(self, session):
         """Test memory prompt with various parameter combinations."""
         async with client_session(mcp_app._mcp_server) as client:
-            prompt = await client.get_prompt(
-                "memory_prompt",
+            prompt = await client.call_tool(
+                "hydrate_memory_prompt",
                 {
-                    "session_id": session,
-                    "query": "Test query",
-                    "namespace": "test-namespace",
+                    "payload": {
+                        "text": "Test query",
+                        "session_id": {"eq": session},
+                        "namespace": {"eq": "test-namespace"},
+                    }
                 },
             )
-            assert isinstance(prompt, GetPromptResult)
-            assert prompt.messages[0].role == "assistant"  # the summary message
-            assert prompt.messages[0].content.type == "text"
-            assert prompt.messages[0].content.text.startswith(
-                "## Long term memories related to the user's query\n - User: Hello\n- Assistant: Hi there"
+            assert isinstance(prompt, CallToolResult)
+
+            # Parse the response content - ensure we're getting text content
+            assert prompt.content[0].type == "text"
+            message = json.loads(prompt.content[0].text)
+
+            # The result should be a dictionary with content and role
+            assert isinstance(message, dict)
+            assert "content" in message
+            assert "role" in message
+
+            # Check the message content and role
+            assert message["role"] == "assistant"
+            assert message["content"]["type"] == "text"
+            assert (
+                "Long term memories related to the user's query"
+                in message["content"]["text"]
             )
-            assert prompt.messages[1].role == "user"
-            assert prompt.messages[1].content.type == "text"
-            assert prompt.messages[1].content.text == "Test query"
+            assert "User: Hello" in message["content"]["text"]
+            assert "Assistant: Hi there" in message["content"]["text"]
 
     @pytest.mark.asyncio
     async def test_memory_prompt_error_handling(self, session):
         """Test error handling in memory prompt generation via the client."""
         async with client_session(mcp_app._mcp_server) as client:
             # Test with a non-existent session id
-            prompt = await client.get_prompt(
-                "memory_prompt",
+            prompt = await client.call_tool(
+                "hydrate_memory_prompt",
                 {
-                    "session_id": "non-existent",
-                    "query": "Test query",
-                    "namespace": "test-namespace",
+                    "payload": {
+                        "text": "Test query",
+                        "session_id": {"eq": "non-existent"},
+                        "namespace": {"eq": "test-namespace"},
+                    }
                 },
             )
-            assert isinstance(prompt, GetPromptResult)
-            assert prompt.messages[0].role == "user"
-            assert prompt.messages[0].content.type == "text"
-            assert prompt.messages[0].content.text == "Test query"
+            assert isinstance(prompt, CallToolResult)
+
+            # Parse the response content - ensure we're getting text content
+            assert prompt.content[0].type == "text"
+            message = json.loads(prompt.content[0].text)
+
+            # The result should be a dictionary with content and role
+            assert isinstance(message, dict)
+            assert "content" in message
+            assert "role" in message
+
+            # Check that we have a user message with the test query
+            assert message["role"] == "user"
+            assert message["content"]["type"] == "text"
+            assert message["content"]["text"] == "Test query"

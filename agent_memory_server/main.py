@@ -70,14 +70,19 @@ async def lifespan(app: FastAPI):
         # Get embedding dimensions from model config
         embedding_model_config = MODEL_CONFIGS.get(settings.embedding_model)
         vector_dimensions = (
-            embedding_model_config.embedding_dimensions
+            str(embedding_model_config.embedding_dimensions)
             if embedding_model_config
-            else 1536
+            else "1536"
         )
         distance_metric = "COSINE"
 
         try:
-            await ensure_redisearch_index(redis, vector_dimensions, distance_metric)
+            await ensure_redisearch_index(
+                redis,
+                index_name=settings.redisvl_index_name,
+                vector_dimensions=vector_dimensions,
+                distance_metric=distance_metric,
+            )
         except Exception as e:
             logger.error(f"Failed to ensure RediSearch index: {e}")
             raise
