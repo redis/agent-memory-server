@@ -196,6 +196,14 @@ async def search_long_term_memories(
     results = []
 
     for doc in search_result.docs:
+        topics = safe_get(doc, "topics", [])
+        if isinstance(topics, str):
+            topics: list[str] = topics.split(",")  # type: ignore
+
+        entities = safe_get(doc, "entities", [])
+        if isinstance(entities, str):
+            entities: list[str] = entities.split(",")  # type: ignore
+
         results.append(
             LongTermMemoryResult(
                 id_=safe_get(doc, "id_"),
@@ -206,8 +214,8 @@ async def search_long_term_memories(
                 user_id=safe_get(doc, "user_id"),
                 session_id=safe_get(doc, "session_id"),
                 namespace=safe_get(doc, "namespace"),
-                topics=safe_get(doc, "topics", []),
-                entities=safe_get(doc, "entities", []),
+                topics=topics,
+                entities=entities,
             )
         )
     total_results = search_result.total
