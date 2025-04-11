@@ -34,7 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.12, 3.13]
+        python-version: [3.12]  # Not testing with 3.13 at the moment
         redis-version: ['6.2.6-v9', 'latest']  # 8.0-M03 is not working atm
 
     steps:

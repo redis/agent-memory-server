@@ -7,7 +7,7 @@ name = "agent-memory-server"
 version = "0.2.0"
 description = "A Memory Server for LLM Agents and Applications"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
 authors = [{ name = "Andrew Brookins", email = "andrew.brookins@redis.com" }]
 dependencies = [
