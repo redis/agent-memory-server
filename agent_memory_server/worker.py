@@ -17,10 +17,9 @@ from docket import Docket, Worker
 
 from agent_memory_server.config import settings
 from agent_memory_server.docket_tasks import task_collection
-from agent_memory_server.logging import configure_logging, get_logger
+from agent_memory_server.logging import get_logger
 
 
-configure_logging()
 logger = get_logger(__name__)
 
 

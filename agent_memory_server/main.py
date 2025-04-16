@@ -11,11 +11,10 @@ from agent_memory_server.config import settings
 from agent_memory_server.docket_tasks import register_tasks
 from agent_memory_server.healthcheck import router as health_router
 from agent_memory_server.llms import MODEL_CONFIGS, ModelProvider
-from agent_memory_server.logging import configure_logging, get_logger
+from agent_memory_server.logging import get_logger
 from agent_memory_server.utils import ensure_redisearch_index, get_redis_conn
 
 
-configure_logging()
 logger = get_logger(__name__)
 
 

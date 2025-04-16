@@ -289,25 +289,16 @@ The Redis Memory Server uses Docket for background task management. There are tw
 After installing the package, you can run the worker using the Docket CLI command:
 
 ```bash
-docket worker --tasks agent_memory_server.docket_tasks:task_collection
+docket worker --tasks agent_memory_server.docket_tasks:task_collection --docket memory-server
 ```
 
 You can customize the concurrency and redelivery timeout:
 
 ```bash
-docket worker --tasks agent_memory_server.docket_tasks:task_collection --concurrency 5 --redelivery-timeout 60
+docket worker --tasks agent_memory_server.docket_tasks:task_collection --concurrency 5 --redelivery-timeout 60 --docket memory-server
 ```
 
-### 2. Using Python Code
-
-Alternatively, you can run the worker directly in Python:
-
-```bash
-python -m agent_memory_server.worker
-```
-
-With customization options:
-
-```bash
-python -m agent_memory_server.worker --concurrency 5 --redelivery-timeout 60
-```
+**NOTE:** The name passed with `--docket` is effectively the name of a task queue where
+the worker will look for work. This name should match the docket name your API server
+is using, configured with the `docket_name` setting via environment variable
+or directly in `agent_memory_server.config.Settings`.
