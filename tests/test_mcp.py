@@ -21,11 +21,9 @@ class TestMCP:
             results = await client.call_tool(
                 "create_long_term_memories",
                 {
-                    "payload": {
-                        "memories": [
-                            LongTermMemory(text="Hello", session_id=session),
-                        ],
-                    }
+                    "memories": [
+                        LongTermMemory(text="Hello", session_id=session),
+                    ],
                 },
             )
             assert isinstance(results, CallToolResult)
@@ -39,10 +37,8 @@ class TestMCP:
             results = await client.call_tool(
                 "search_long_term_memory",
                 {
-                    "payload": {
-                        "text": "Hello",
-                        "namespace": {"eq": "test-namespace"},
-                    },
+                    "text": "Hello",
+                    "namespace": {"eq": "test-namespace"},
                 },
             )
             assert isinstance(
@@ -75,11 +71,9 @@ class TestMCP:
             prompt = await client.call_tool(
                 "hydrate_memory_prompt",
                 {
-                    "payload": {
-                        "text": "Test query",
-                        "session_id": {"eq": session},
-                        "namespace": {"eq": "test-namespace"},
-                    }
+                    "text": "Test query",
+                    "session_id": {"eq": session},
+                    "namespace": {"eq": "test-namespace"},
                 },
             )
             assert isinstance(prompt, CallToolResult)
@@ -111,11 +105,9 @@ class TestMCP:
             prompt = await client.call_tool(
                 "hydrate_memory_prompt",
                 {
-                    "payload": {
-                        "text": "Test query",
-                        "session_id": {"eq": "non-existent"},
-                        "namespace": {"eq": "test-namespace"},
-                    }
+                    "text": "Test query",
+                    "session_id": {"eq": "non-existent"},
+                    "namespace": {"eq": "test-namespace"},
                 },
             )
             assert isinstance(prompt, CallToolResult)
