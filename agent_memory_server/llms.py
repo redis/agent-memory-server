@@ -307,7 +307,7 @@ class OpenAIClientWrapper:
     async def create_chat_completion(
         self,
         model: str,
-        progressive_prompt: str,
+        prompt: str,
         response_format: dict[str, str] | None = None,
         functions: list[dict[str, Any]] | None = None,
         function_call: dict[str, str] | None = None,
@@ -317,7 +317,7 @@ class OpenAIClientWrapper:
             # Build the request parameters
             request_params = {
                 "model": model,
-                "messages": [{"role": "user", "content": progressive_prompt}],
+                "messages": [{"role": "user", "content": prompt}],
             }
 
             # Add optional parameters if provided
