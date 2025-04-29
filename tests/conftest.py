@@ -329,18 +329,11 @@ def use_test_redis_connection(redis_url: str):
         print(f"DEBUG: Returning replacement_redis: {replacement_redis}")
         return replacement_redis
 
-    print(
-        "DEBUG: Patching agent_memory_server.utils.redis.get_redis_conn with mock function"
-    )
-    with patch("agent_memory_server.utils.redis.get_redis_conn", mock_get_redis_conn):
-        # Also patch the re-exported function in db.redis
-        print(
-            "DEBUG: Patching agent_memory_server.db.redis.get_redis_conn with mock function"
-        )
-        with patch("agent_memory_server.db.redis.get_redis_conn", mock_get_redis_conn):
-            print(f"DEBUG: Yielding replacement_redis: {replacement_redis}")
-            yield replacement_redis
-    print("DEBUG: Exiting use_test_redis_connection fixture")
+    with (
+        patch("agent_memory_server.utils.redis.get_redis_conn", mock_get_redis_conn),
+        patch("agent_memory_server.utils.redis.get_redis_conn", mock_get_redis_conn),
+    ):
+        yield replacement_redis
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
