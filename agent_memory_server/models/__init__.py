@@ -1,3 +1,5 @@
+"""Model clients for language models."""
+
 import logging
 import time
 
@@ -12,11 +14,10 @@ from agent_memory_server.filters import (
     Topics,
     UserId,
 )
+from agent_memory_server.models.base import BaseClient
 
 
 logger = logging.getLogger(__name__)
-
-JSONTypes = str | float | int | bool | list | dict
 
 
 class MemoryMessage(BaseModel):
@@ -110,6 +111,50 @@ class LongTermMemory(BaseModel):
     )
 
 
+class AckResponse(BaseModel):
+    """Generic acknowledgement response"""
+
+    status: str
+
+
+class LongTermMemoryResult(LongTermMemory):
+    """Result from a long-term memory search"""
+
+    dist: float
+
+
+class LongTermMemoryResults(BaseModel):
+    """Results from a long-term memory search"""
+
+    memories: list[LongTermMemoryResult]
+    total: int
+    next_offset: int | None = None
+
+
+class LongTermMemoryResultsResponse(LongTermMemoryResults):
+    """Response containing long-term memory search results"""
+
+
+class CreateLongTermMemoryPayload(BaseModel):
+    """Payload for creating a long-term memory"""
+
+    memories: list[LongTermMemory]
+
+
+class GetSessionsQuery(BaseModel):
+    """Query parameters for getting sessions"""
+
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+    namespace: str | None = None
+
+
+class HealthCheckResponse(BaseModel):
+    """Response for health check endpoint"""
+
+    now: int
+
+
 class SessionMemoryResponse(SessionMemory):
     """Response containing a session's memory"""
 
@@ -200,45 +245,19 @@ class SearchPayload(BaseModel):
         return filters
 
 
-class HealthCheckResponse(BaseModel):
-    """Response for health check endpoint"""
-
-    now: int
-
-
-class AckResponse(BaseModel):
-    """Generic acknowledgement response"""
-
-    status: str
-
-
-class LongTermMemoryResult(LongTermMemory):
-    """Result from a long-term memory search"""
-
-    dist: float
-
-
-class LongTermMemoryResults(BaseModel):
-    """Results from a long-term memory search"""
-
-    memories: list[LongTermMemoryResult]
-    total: int
-    next_offset: int | None = None
-
-
-class LongTermMemoryResultsResponse(LongTermMemoryResults):
-    """Response containing long-term memory search results"""
-
-
-class CreateLongTermMemoryPayload(BaseModel):
-    """Payload for creating a long-term memory"""
-
-    memories: list[LongTermMemory]
-
-
-class GetSessionsQuery(BaseModel):
-    """Query parameters for getting sessions"""
-
-    limit: int = Field(default=20, ge=1, le=100)
-    offset: int = Field(default=0, ge=0)
-    namespace: str | None = None
+__all__ = [
+    "BaseClient",
+    "LongTermMemory",
+    "LongTermMemoryResult",
+    "LongTermMemoryResults",
+    "MemoryMessage",
+    "SessionMemory",
+    "AckResponse",
+    "LongTermMemoryResultsResponse",
+    "CreateLongTermMemoryPayload",
+    "GetSessionsQuery",
+    "HealthCheckResponse",
+    "SessionMemoryResponse",
+    "SessionListResponse",
+    "SearchPayload",
+]

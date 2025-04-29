@@ -1,3 +1,5 @@
+"""Session memory management functions."""
+
 import json
 import logging
 import time
@@ -14,9 +16,7 @@ from agent_memory_server.models import (
     SessionMemory,
 )
 from agent_memory_server.summarization import summarize_session
-from agent_memory_server.utils import (
-    Keys,
-)
+from agent_memory_server.utils.keys import Keys
 
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 async def list_sessions(
     redis: Redis,
-    limit: int = 20,
+    limit: int = 10,
     offset: int = 0,
     namespace: str | None = None,
 ) -> tuple[int, list[str]]:
@@ -34,10 +34,26 @@ async def list_sessions(
     end = offset + limit - 1
 
     sessions_key = Keys.sessions_key(namespace=namespace)
+    print(f"DEBUG: Listing sessions with key: {sessions_key}")
+
+    # Debug: List all keys in Redis
+    all_keys = await redis.keys("*")
+    print(f"DEBUG: All keys in Redis: {all_keys}")
+
+    # Debug: Check if the sessions key exists
+    exists = await redis.exists(sessions_key)
+    print(f"DEBUG: Does {sessions_key} exist? {exists}")
+
+    # Debug: Try to get all sessions directly
+    all_sessions = await redis.zrange(sessions_key, 0, -1)
+    print(f"DEBUG: Direct zrange of {sessions_key}: {all_sessions}")
+
     async with redis.pipeline() as pipe:
         pipe.zcard(sessions_key)
         pipe.zrange(sessions_key, start, end)
         total, session_ids = await pipe.execute()
+
+    print(f"DEBUG: Found {total} sessions: {session_ids}")
 
     return total, [
         s.decode("utf-8") if isinstance(s, bytes) else s for s in session_ids
@@ -59,28 +75,29 @@ async def get_session_memory(
     if not session_exists:
         return None
 
-    pipe = redis.pipeline()
-    pipe.lrange(messages_key, 0, window_size - 1)  # Get messages
-    pipe.hgetall(metadata_key)  # Get metadata
+    # Retrieve messages and metadata
+    async with redis.pipeline() as pipe:
+        pipe.lrange(messages_key, -window_size, -1)  # Get the most recent messages
+        pipe.hgetall(metadata_key)
+        messages_data, metadata = await pipe.execute()
 
-    messages_raw, metadata_raw = await pipe.execute()
+    # Parse messages
+    messages = []
+    for msg_data in messages_data:
+        if isinstance(msg_data, bytes):
+            msg_data = msg_data.decode("utf-8")
+        msg = json.loads(msg_data)
+        messages.append(MemoryMessage(**msg))
 
-    memory_messages = []
-    for msg_raw in messages_raw:
-        # Decode if needed
-        if isinstance(msg_raw, bytes):
-            msg_raw = msg_raw.decode("utf-8")
+    # Parse metadata
+    metadata_dict = {}
+    for k, v in metadata.items():
+        key = k.decode("utf-8") if isinstance(k, bytes) else k
+        value = v.decode("utf-8") if isinstance(v, bytes) else v
+        metadata_dict[key] = value
 
-        # Parse JSON
-        msg_dict = json.loads(msg_raw)
-        memory_messages.append(MemoryMessage(**msg_dict))
-
-    kwargs = {
-        "messages": memory_messages,
-        **{k.decode("utf-8"): v.decode("utf-8") for k, v in metadata_raw.items()},
-    }
-
-    return SessionMemory(**kwargs)
+    # Create SessionMemory object
+    return SessionMemory(messages=messages, **metadata_dict)
 
 
 async def set_session_memory(
@@ -98,9 +115,15 @@ async def set_session_memory(
         memory: The session memory to set
         background_tasks: Background tasks instance
     """
+    print(
+        f"DEBUG: Setting session memory for session {session_id} with namespace {memory.namespace}"
+    )
     sessions_key = Keys.sessions_key(namespace=memory.namespace)
     messages_key = Keys.messages_key(session_id, namespace=memory.namespace)
     metadata_key = Keys.metadata_key(session_id, namespace=memory.namespace)
+    print(
+        f"DEBUG: Using keys: sessions_key={sessions_key}, messages_key={messages_key}, metadata_key={metadata_key}"
+    )
     messages_json = [json.dumps(msg.model_dump()) for msg in memory.messages]
     metadata = memory.model_dump(
         exclude_none=True,
@@ -114,13 +137,28 @@ async def set_session_memory(
         while True:
             try:
                 current_time = int(time.time())
+                print(
+                    f"DEBUG: Adding session {session_id} to sessions set {sessions_key} with score {current_time}"
+                )
                 pipe.zadd(sessions_key, {session_id: current_time})
                 pipe.rpush(messages_key, *messages_json)  # type: ignore
                 pipe.hset(metadata_key, mapping=metadata)  # type: ignore
-                await pipe.execute()
+                result = await pipe.execute()
+                print(f"DEBUG: Result of pipeline execution: {result}")
             except WatchError:
+                print("DEBUG: WatchError occurred, retrying")
                 continue
             break
+
+    # Verify that the session was added to the sessions set
+    score = await redis.zscore(sessions_key, session_id)
+    print(
+        f"DEBUG: After set_session_memory, zscore for {session_id} in {sessions_key} is {score}"
+    )
+
+    # List all sessions in the sessions set
+    all_sessions = await redis.zrange(sessions_key, 0, -1)
+    print(f"DEBUG: All sessions in {sessions_key}: {all_sessions}")
 
     # Check if window size is exceeded
     current_size = await redis.llen(messages_key)  # type: ignore
@@ -157,8 +195,8 @@ async def delete_session_memory(
 ):
     """Delete a session's memory"""
     # Define keys
-    messages_key = Keys.messages_key(session_id)
-    sessions_key = f"sessions:{namespace}" if namespace else "sessions"
+    messages_key = Keys.messages_key(session_id, namespace=namespace)
+    sessions_key = Keys.sessions_key(namespace=namespace)
     metadata_key = Keys.metadata_key(session_id, namespace=namespace)
 
     # Create pipeline for deletion

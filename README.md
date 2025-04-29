@@ -302,3 +302,33 @@ docket worker --tasks agent_memory_server.docket_tasks:task_collection --concurr
 the worker will look for work. This name should match the docket name your API server
 is using, configured with the `docket_name` setting via environment variable
 or directly in `agent_memory_server.config.Settings`.
+
+## Memory Compaction
+
+The memory compaction functionality optimizes storage by merging duplicate and semantically similar memories. This improves retrieval quality and reduces storage costs.
+
+### Key Features
+
+- **Hash-based Deduplication**: Identifies and merges exact duplicate memories using content hashing
+- **Semantic Deduplication**: Finds and merges memories with similar meaning using vector search
+- **LLM-powered Merging**: Uses language models to intelligently combine memories
+
+### Testing Approach
+
+Testing the memory compaction functionality involves:
+
+1. **Unit Tests**: Testing individual helper functions like `generate_memory_hash` and `merge_memories_with_llm`
+2. **Integration Tests**: Testing the complete workflow with minimal mocking
+3. **Mocked Tests**: Using helper functions to test specific parts of the workflow
+
+The main integration test (`test_compact_memories_integration`) demonstrates the memory merging functionality without relying on Redis search, which makes it more robust and less prone to environment-specific failures.
+
+### Running Tests
+
+```bash
+# Run all tests
+python -m pytest tests/test_memory_compaction.py
+
+# Run specific integration test
+python -m pytest tests/test_memory_compaction.py::TestMemoryCompaction::test_compact_memories_integration -v
+```

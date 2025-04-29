@@ -1,6 +1,8 @@
 import asyncio
 import contextlib
+import json
 import os
+import time
 from unittest import mock
 from unittest.mock import AsyncMock, patch
 
@@ -9,7 +11,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from redis import Redis
-from redis.asyncio import ConnectionPool, Redis as AsyncRedis
+from redis.asyncio import Redis as AsyncRedis
 from testcontainers.compose import DockerCompose
 
 from agent_memory_server.api import router as memory_router
@@ -19,13 +21,8 @@ from agent_memory_server.healthcheck import router as health_router
 from agent_memory_server.llms import OpenAIClientWrapper
 from agent_memory_server.messages import (
     MemoryMessage,
-    index_long_term_memories,
-    set_session_memory,
 )
-from agent_memory_server.models import LongTermMemory, SessionMemory
-from agent_memory_server.utils import (
-    ensure_redisearch_index,
-)
+from agent_memory_server.utils.redis import Keys, ensure_search_index_exists
 
 
 load_dotenv()
@@ -81,7 +78,7 @@ async def search_index(async_redis_client):
             if "unknown index name".lower() not in str(e).lower():
                 print(f"Error checking index: {e}")
 
-        await ensure_redisearch_index(async_redis_client)
+        await ensure_search_index_exists(async_redis_client)
 
     except Exception as e:
         print(f"ERROR: Failed to create RediSearch index: {str(e)}")
@@ -102,44 +99,161 @@ async def search_index(async_redis_client):
 @pytest.fixture()
 async def session(use_test_redis_connection, async_redis_client):
     """Set up a test session with Redis data for testing"""
+    import logging
 
-    session_id = "test-session"
+    logging.getLogger(__name__)
 
-    await index_long_term_memories(
-        [
-            LongTermMemory(
-                session_id=session_id,
-                text="User: Hello",
-                namespace="test-namespace",
-            ),
-            LongTermMemory(
-                session_id=session_id,
-                text="Assistant: Hi there",
-                namespace="test-namespace",
-            ),
-        ],
-    )
+    print("DEBUG: session fixture called")
+    print(f"DEBUG: use_test_redis_connection: {use_test_redis_connection}")
+    print(f"DEBUG: async_redis_client: {async_redis_client}")
 
-    # Add messages to session memory
-    messages = [
-        {"role": "user", "content": "Hello"},
-        {"role": "assistant", "content": "Hi there"},
-    ]
+    try:
+        session_id = "test-session"
+        print(f"DEBUG: Creating test session with ID: {session_id}")
 
-    await set_session_memory(
-        async_redis_client,
-        session_id,
-        SessionMemory(
-            messages=[MemoryMessage(**msg) for msg in messages],
-            context="Sample context",
-            user_id="test-user",
-            tokens=150,
-            namespace="test-namespace",
-        ),
-        background_tasks=DocketBackgroundTasks(),
-    )
+        # Add messages to session memory
+        print("DEBUG: Setting session memory")
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there"},
+        ]
 
-    return session_id
+        # Create session directly in Redis
+        sessions_key = Keys.sessions_key(namespace="test-namespace")
+        messages_key = Keys.messages_key(session_id, namespace="test-namespace")
+        metadata_key = Keys.metadata_key(session_id, namespace="test-namespace")
+
+        print(
+            f"DEBUG: Using keys: sessions_key={sessions_key}, messages_key={messages_key}, metadata_key={metadata_key}"
+        )
+
+        # Convert messages to JSON
+        messages_json = [json.dumps(msg) for msg in messages]
+        print(f"DEBUG: Converted messages to JSON: {messages_json}")
+
+        # Create metadata
+        metadata = {
+            "context": "Sample context",
+            "user_id": "test-user",
+            "tokens": "150",
+            "namespace": "test-namespace",
+        }
+        print(f"DEBUG: Created metadata: {metadata}")
+
+        # Add session to Redis
+        current_time = int(time.time())
+        print(f"DEBUG: Adding session to Redis with current_time={current_time}")
+
+        # Use the use_test_redis_connection directly
+        print(
+            f"DEBUG: Using use_test_redis_connection directly: {use_test_redis_connection}"
+        )
+
+        # First check if the key exists
+        exists = await use_test_redis_connection.exists(sessions_key)
+        print(f"DEBUG: Does {sessions_key} exist? {exists}")
+
+        # Add session to Redis
+        async with use_test_redis_connection.pipeline(transaction=True) as pipe:
+            print(f"DEBUG: Created pipeline: {pipe}")
+            pipe.zadd(sessions_key, {session_id: current_time})
+            pipe.rpush(messages_key, *messages_json)
+            pipe.hset(metadata_key, mapping=metadata)
+            print("DEBUG: Added commands to pipeline")
+            result = await pipe.execute()
+            print(f"DEBUG: Result of direct Redis operations: {result}")
+
+        # Verify session was created
+        print("DEBUG: Verifying session was created")
+        session_exists = await use_test_redis_connection.zscore(
+            sessions_key, session_id
+        )
+        print(f"DEBUG: Session exists: {session_exists is not None}")
+
+        if session_exists is None:
+            print(f"DEBUG: Session {session_id} was not created properly")
+            # List all keys in Redis for debugging
+            all_keys = await use_test_redis_connection.keys("*")
+            print(f"DEBUG: All keys in Redis: {all_keys}")
+        else:
+            # List all sessions in the sessions set
+            await use_test_redis_connection.zrange(sessions_key, 0, -1)
+            # Index the messages as long-term memories directly without background tasks
+            import nanoid
+            from redisvl.utils.vectorize import OpenAITextVectorizer
+
+            from agent_memory_server.models import LongTermMemory
+
+            # Create LongTermMemory objects for each message
+            memories = []
+            for msg in messages:
+                memories.append(
+                    LongTermMemory(
+                        text=f"{msg['role']}: {msg['content']}",
+                        session_id=session_id,
+                        namespace="test-namespace",
+                        user_id="test-user",
+                    )
+                )
+
+            # Index the memories directly
+            vectorizer = OpenAITextVectorizer()
+            embeddings = await vectorizer.aembed_many(
+                [memory.text for memory in memories],
+                batch_size=20,
+                as_buffer=True,
+            )
+
+            async with use_test_redis_connection.pipeline(transaction=False) as pipe:
+                for idx, vector in enumerate(embeddings):
+                    memory = memories[idx]
+                    id_ = memory.id_ if memory.id_ else nanoid.generate()
+                    key = Keys.memory_key(id_, memory.namespace)
+
+                    # Generate memory hash for the memory
+                    from agent_memory_server.long_term_memory import (
+                        generate_memory_hash,
+                    )
+
+                    memory_hash = generate_memory_hash(
+                        {
+                            "text": memory.text,
+                            "user_id": memory.user_id or "",
+                            "session_id": memory.session_id or "",
+                        }
+                    )
+
+                    await pipe.hset(
+                        key,
+                        mapping={
+                            "text": memory.text,
+                            "id_": id_,
+                            "session_id": memory.session_id or "",
+                            "user_id": memory.user_id or "",
+                            "last_accessed": memory.last_accessed or int(time.time()),
+                            "created_at": memory.created_at or int(time.time()),
+                            "namespace": memory.namespace or "",
+                            "memory_hash": memory_hash,
+                            "vector": vector,
+                            "topics": "",
+                            "entities": "",
+                        },
+                    )
+
+                await pipe.execute()
+
+            print(
+                f"DEBUG: Indexed {len(memories)} messages as long-term memories directly"
+            )
+
+        print(f"DEBUG: Returning session_id: {session_id}")
+        return session_id
+    except Exception as e:
+        print(f"DEBUG: Exception in session fixture: {e}")
+        import traceback
+
+        print(f"DEBUG: Traceback: {traceback.format_exc()}")
+        raise
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -203,10 +317,30 @@ def redis_client(redis_url):
 
 @pytest.fixture()
 def use_test_redis_connection(redis_url: str):
-    """Replace the Redis connection pool with a test one"""
-    replacement_pool = ConnectionPool.from_url(redis_url)
-    with patch("agent_memory_server.utils._redis_pool", new=replacement_pool):
-        yield replacement_pool
+    """Replace the Redis connection with a test one"""
+    print(f"DEBUG: use_test_redis_connection fixture called with redis_url={redis_url}")
+    replacement_redis = AsyncRedis.from_url(redis_url)
+    print(f"DEBUG: Created replacement_redis: {replacement_redis}")
+
+    # Create a mock get_redis_conn function that always returns the replacement_redis
+    async def mock_get_redis_conn(*args, **kwargs):
+        print(f"DEBUG: mock_get_redis_conn called with args={args}, kwargs={kwargs}")
+        # Ignore any URL parameter and always return the replacement_redis
+        print(f"DEBUG: Returning replacement_redis: {replacement_redis}")
+        return replacement_redis
+
+    print(
+        "DEBUG: Patching agent_memory_server.utils.redis.get_redis_conn with mock function"
+    )
+    with patch("agent_memory_server.utils.redis.get_redis_conn", mock_get_redis_conn):
+        # Also patch the re-exported function in db.redis
+        print(
+            "DEBUG: Patching agent_memory_server.db.redis.get_redis_conn with mock function"
+        )
+        with patch("agent_memory_server.db.redis.get_redis_conn", mock_get_redis_conn):
+            print(f"DEBUG: Yielding replacement_redis: {replacement_redis}")
+            yield replacement_redis
+    print("DEBUG: Exiting use_test_redis_connection fixture")
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -248,6 +382,24 @@ def mock_background_tasks():
     return mock.Mock(name="DocketBackgroundTasks", spec=DocketBackgroundTasks)
 
 
+@pytest.fixture(autouse=True)
+def setup_redis_pool(use_test_redis_connection):
+    """Set up the global Redis pool for all tests"""
+    # Set the global _redis_pool variable to ensure that direct calls to get_redis_conn work
+    import agent_memory_server.utils.redis
+
+    agent_memory_server.utils.redis._redis_pool = use_test_redis_connection
+    print(
+        f"DEBUG: Set global _redis_pool to use_test_redis_connection: {use_test_redis_connection}"
+    )
+
+    yield
+
+    # Reset the global _redis_pool variable after the test
+    agent_memory_server.utils.redis._redis_pool = None
+    print("DEBUG: Reset global _redis_pool to None")
+
+
 @pytest.fixture()
 def app(use_test_redis_connection):
     """Create a test FastAPI app with routers"""
@@ -256,6 +408,21 @@ def app(use_test_redis_connection):
     # Include routers
     app.include_router(health_router)
     app.include_router(memory_router)
+
+    # Override the get_redis_conn function to return the test Redis connection
+    async def mock_get_redis_conn(*args, **kwargs):
+        print(
+            f"DEBUG: app fixture mock_get_redis_conn called with args={args}, kwargs={kwargs}"
+        )
+        print(
+            f"DEBUG: Returning use_test_redis_connection: {use_test_redis_connection}"
+        )
+        return use_test_redis_connection
+
+    # Override the dependency
+    from agent_memory_server.utils.redis import get_redis_conn
+
+    app.dependency_overrides[get_redis_conn] = mock_get_redis_conn
 
     return app
 

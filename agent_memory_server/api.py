@@ -17,7 +17,7 @@ from agent_memory_server.models import (
     SessionMemory,
     SessionMemoryResponse,
 )
-from agent_memory_server.utils import get_redis_conn
+from agent_memory_server.utils.redis import get_redis_conn
 
 
 logger = get_logger(__name__)
@@ -64,7 +64,7 @@ async def list_sessions(
     Returns:
         List of session IDs
     """
-    redis = get_redis_conn()
+    redis = await get_redis_conn()
 
     total, session_ids = await messages.list_sessions(
         redis=redis,
@@ -102,7 +102,7 @@ async def get_session_memory(
     Returns:
         Conversation history and context
     """
-    redis = get_redis_conn()
+    redis = await get_redis_conn()
 
     # If context_window_max is explicitly provided, use that
     if context_window_max is not None:
@@ -144,7 +144,7 @@ async def put_session_memory(
     Returns:
         Acknowledgement response
     """
-    redis = get_redis_conn()
+    redis = await get_redis_conn()
 
     await messages.set_session_memory(
         redis=redis,
@@ -170,7 +170,7 @@ async def delete_session_memory(
     Returns:
         Acknowledgement response
     """
-    redis = get_redis_conn()
+    redis = await get_redis_conn()
     await messages.delete_session_memory(
         redis=redis,
         session_id=session_id,
@@ -216,7 +216,7 @@ async def search_long_term_memory(payload: SearchPayload):
     Returns:
         List of search results
     """
-    redis = get_redis_conn()
+    redis = await get_redis_conn()
 
     if not settings.long_term_memory:
         raise HTTPException(status_code=400, detail="Long-term memory is disabled")

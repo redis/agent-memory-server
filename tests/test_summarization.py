@@ -7,7 +7,7 @@ from agent_memory_server.summarization import (
     _incremental_summary,
     summarize_session,
 )
-from agent_memory_server.utils import Keys
+from agent_memory_server.utils.keys import Keys
 
 
 @pytest.mark.asyncio

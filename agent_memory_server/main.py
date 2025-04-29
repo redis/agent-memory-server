@@ -5,14 +5,17 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
-from agent_memory_server import utils
 from agent_memory_server.api import router as memory_router
 from agent_memory_server.config import settings
 from agent_memory_server.docket_tasks import register_tasks
 from agent_memory_server.healthcheck import router as health_router
 from agent_memory_server.llms import MODEL_CONFIGS, ModelProvider
 from agent_memory_server.logging import get_logger
-from agent_memory_server.utils import ensure_redisearch_index, get_redis_conn
+from agent_memory_server.utils.redis import (
+    _redis_pool as connection_pool,
+    ensure_search_index_exists,
+    get_redis_conn,
+)
 
 
 logger = get_logger(__name__)
@@ -66,7 +69,7 @@ async def lifespan(app: FastAPI):
 
     # Set up RediSearch index if long-term memory is enabled
     if settings.long_term_memory:
-        redis = get_redis_conn()
+        redis = await get_redis_conn()
 
         # Get embedding dimensions from model config
         embedding_model_config = MODEL_CONFIGS.get(settings.embedding_model)
@@ -78,7 +81,7 @@ async def lifespan(app: FastAPI):
         distance_metric = "COSINE"
 
         try:
-            await ensure_redisearch_index(
+            await ensure_search_index_exists(
                 redis,
                 index_name=settings.redisvl_index_name,
                 vector_dimensions=vector_dimensions,
@@ -132,8 +135,8 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down Redis Agent Memory Server")
-    if utils._redis_pool:
-        await utils._redis_pool.aclose()
+    if connection_pool is not None:
+        await connection_pool.aclose()
 
 
 # Create FastAPI app

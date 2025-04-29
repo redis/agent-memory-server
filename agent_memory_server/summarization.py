@@ -8,10 +8,12 @@ from agent_memory_server.config import settings
 from agent_memory_server.llms import (
     AnthropicClientWrapper,
     OpenAIClientWrapper,
+    get_model_client,
     get_model_config,
 )
 from agent_memory_server.models import MemoryMessage
-from agent_memory_server.utils import Keys, get_model_client, get_redis_conn
+from agent_memory_server.utils.keys import Keys
+from agent_memory_server.utils.redis import get_redis_conn
 
 
 logger = logging.getLogger(__name__)
@@ -130,7 +132,7 @@ async def summarize_session(
         client: The client wrapper (OpenAI or Anthropic)
         redis_conn: Redis connection
     """
-    redis = get_redis_conn()
+    redis = await get_redis_conn()
     client = await get_model_client(settings.generation_model)
 
     messages_key = Keys.messages_key(session_id)
