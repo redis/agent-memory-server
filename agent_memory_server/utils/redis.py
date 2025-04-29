@@ -4,22 +4,15 @@ import logging
 from typing import Any
 
 from redis.asyncio import Redis
-from redis.commands.search.commands import SearchCommands
-from redis.commands.search.field import (
-    Field,
-    NumericField,
-    TagField,
-    TextField,
-    VectorField,
-)
-from redis.commands.search.indexDefinition import IndexDefinition, IndexType
+from redisvl.index import AsyncSearchIndex
+from redisvl.schema import IndexSchema
 
 from agent_memory_server.config import settings
-from agent_memory_server.utils.keys import Keys
 
 
 logger = logging.getLogger(__name__)
 _redis_pool: Redis | None = None
+_index: AsyncSearchIndex | None = None
 
 
 async def get_redis_conn(url: str = settings.redis_url, **kwargs) -> Redis:
@@ -34,96 +27,82 @@ async def get_redis_conn(url: str = settings.redis_url, **kwargs) -> Redis:
     """
     global _redis_pool
 
-    print(f"DEBUG: get_redis_conn called with url={url}")
-    print(f"DEBUG: _redis_pool before check: {_redis_pool}")
-
     # Always use the existing _redis_pool if it's not None, regardless of the URL parameter
     # This ensures that the patched _redis_pool from the test fixture is used
     if _redis_pool is None:
-        print(f"DEBUG: Creating new Redis connection with url={url}")
         _redis_pool = Redis.from_url(url, **kwargs)
-        print(f"DEBUG: _redis_pool after creation: {_redis_pool}")
-    else:
-        print(f"DEBUG: Using existing _redis_pool: {_redis_pool}")
-
-    print(f"DEBUG: Returning _redis_pool: {_redis_pool}")
     return _redis_pool
 
 
-async def get_search_index(redis_client: Redis | None = None) -> SearchCommands:
-    """Get the Redis search index.
+def get_search_index(
+    redis: Redis,
+    index_name: str = settings.redisvl_index_name,
+    vector_dimensions: str = settings.redisvl_vector_dimensions,
+    distance_metric: str = settings.redisvl_distance_metric,
+) -> AsyncSearchIndex:
+    global _index
+    if _index is None:
+        schema = {
+            "index": {
+                "name": index_name,
+                "prefix": f"{index_name}:",
+                "key_separator": ":",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {"name": "text", "type": "text"},
+                {"name": "id_", "type": "tag"},
+                {"name": "session_id", "type": "tag"},
+                {"name": "user_id", "type": "tag"},
+                {"name": "namespace", "type": "tag"},
+                {"name": "topics", "type": "tag"},
+                {"name": "entities", "type": "tag"},
+                {"name": "created_at", "type": "numeric"},
+                {"name": "last_accessed", "type": "numeric"},
+                {
+                    "name": "vector",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "HNSW",
+                        "dims": vector_dimensions,
+                        "distance_metric": distance_metric,
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        }
+        index_schema = IndexSchema.from_dict(schema)
+        _index = AsyncSearchIndex(index_schema, redis_client=redis)
+    return _index
+
+
+async def ensure_search_index_exists(
+    redis: Redis,
+    index_name: str = settings.redisvl_index_name,
+    vector_dimensions: str = settings.redisvl_vector_dimensions,
+    distance_metric: str = settings.redisvl_distance_metric,
+) -> None:
+    """
+    Ensure that the async search index exists, create it if it doesn't.
+    Uses RedisVL's AsyncSearchIndex.
 
     Args:
-        redis_client: Redis client to use, or None to create a new one
-
-    Returns:
-        A Redis search index instance
+        redis: A Redis client instance
+        vector_dimensions: Dimensions of the embedding vectors
+        distance_metric: Distance metric to use (default: COSINE)
+        index_name: The name of the index
     """
-    if not redis_client:
-        redis_client = await get_redis_conn()
+    index = get_search_index(redis, index_name, vector_dimensions, distance_metric)
+    if await index.exists():
+        logger.info("Async search index already exists")
+        return
 
-    return redis_client.ft(Keys.search_index_name())
+    logger.info("Async search index doesn't exist, creating...")
+    await index.create()
 
-
-async def ensure_search_index_exists(redis: Redis) -> None:
-    """Ensure the search index exists
-
-    Args:
-        redis: Redis client to use
-
-    Raises:
-        Exception: If creating the index fails for a reason other than it already existing
-    """
-    index_name = Keys.search_index_name()
-    print(f"DEBUG: ensure_search_index_exists called with index_name={index_name}")
-    print(f"DEBUG: redis connection: {redis}")
-
-    try:
-        # First check if the index already exists
-        try:
-            print(f"DEBUG: Checking if index {index_name} exists")
-            info = await redis.execute_command(f"FT.INFO {index_name}")
-            print(f"DEBUG: Index {index_name} exists: {info}")
-            return
-        except Exception as e:
-            if "unknown index name" not in str(e).lower():
-                print(f"DEBUG: Error checking if index exists: {e}")
-                raise
-            print(f"DEBUG: Index {index_name} does not exist, creating it")
-
-        schema: list[Field] = [
-            TextField("text", weight=5.0),
-            TextField("id_"),
-            TextField("user_id"),
-            TextField("session_id"),
-            TextField("namespace"),
-            NumericField("created_at", sortable=True),
-            NumericField("last_accessed", sortable=True),
-            TagField("topics", separator=","),
-            TagField("entities", separator=","),
-            TagField(
-                "memory_hash"
-            ),  # Add hash as a tag field for efficient search/aggregation
-            VectorField(
-                "vector",
-                "HNSW",
-                {"TYPE": "FLOAT32", "DIM": 1536, "DISTANCE_METRIC": "COSINE"},
-            ),
-        ]
-
-        definition = IndexDefinition(prefix=["memory:"], index_type=IndexType.HASH)
-        print(f"DEBUG: Creating index {index_name} with prefix=['memory:']")
-        await redis.ft(index_name).create_index(schema, definition=definition)
-        print(f"DEBUG: Created index {index_name}")
-        logger.info("Created search index")
-    except Exception as e:
-        if "Index already exists" in str(e):
-            print(f"DEBUG: Index {index_name} already exists")
-            logger.info("Search index already exists")
-        else:
-            print(f"DEBUG: Failed to create index {index_name}: {e}")
-            logger.error(f"Failed to create search index: {e}")
-            raise
+    logger.info(
+        f"Created async search index with {vector_dimensions} dimensions and {distance_metric} metric"
+    )
 
 
 def safe_get(doc: Any, key: str, default: Any | None = None) -> Any:

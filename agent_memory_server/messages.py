@@ -34,26 +34,17 @@ async def list_sessions(
     end = offset + limit - 1
 
     sessions_key = Keys.sessions_key(namespace=namespace)
-    print(f"DEBUG: Listing sessions with key: {sessions_key}")
 
-    # Debug: List all keys in Redis
-    all_keys = await redis.keys("*")
-    print(f"DEBUG: All keys in Redis: {all_keys}")
+    # Check if the sessions key exists
+    await redis.exists(sessions_key)
 
-    # Debug: Check if the sessions key exists
-    exists = await redis.exists(sessions_key)
-    print(f"DEBUG: Does {sessions_key} exist? {exists}")
-
-    # Debug: Try to get all sessions directly
-    all_sessions = await redis.zrange(sessions_key, 0, -1)
-    print(f"DEBUG: Direct zrange of {sessions_key}: {all_sessions}")
+    # Try to get all sessions directly
+    await redis.zrange(sessions_key, 0, -1)
 
     async with redis.pipeline() as pipe:
         pipe.zcard(sessions_key)
         pipe.zrange(sessions_key, start, end)
         total, session_ids = await pipe.execute()
-
-    print(f"DEBUG: Found {total} sessions: {session_ids}")
 
     return total, [
         s.decode("utf-8") if isinstance(s, bytes) else s for s in session_ids
@@ -115,15 +106,9 @@ async def set_session_memory(
         memory: The session memory to set
         background_tasks: Background tasks instance
     """
-    print(
-        f"DEBUG: Setting session memory for session {session_id} with namespace {memory.namespace}"
-    )
     sessions_key = Keys.sessions_key(namespace=memory.namespace)
     messages_key = Keys.messages_key(session_id, namespace=memory.namespace)
     metadata_key = Keys.metadata_key(session_id, namespace=memory.namespace)
-    print(
-        f"DEBUG: Using keys: sessions_key={sessions_key}, messages_key={messages_key}, metadata_key={metadata_key}"
-    )
     messages_json = [json.dumps(msg.model_dump()) for msg in memory.messages]
     metadata = memory.model_dump(
         exclude_none=True,
@@ -137,28 +122,19 @@ async def set_session_memory(
         while True:
             try:
                 current_time = int(time.time())
-                print(
-                    f"DEBUG: Adding session {session_id} to sessions set {sessions_key} with score {current_time}"
-                )
                 pipe.zadd(sessions_key, {session_id: current_time})
                 pipe.rpush(messages_key, *messages_json)  # type: ignore
                 pipe.hset(metadata_key, mapping=metadata)  # type: ignore
-                result = await pipe.execute()
-                print(f"DEBUG: Result of pipeline execution: {result}")
+                await pipe.execute()
             except WatchError:
-                print("DEBUG: WatchError occurred, retrying")
                 continue
             break
 
     # Verify that the session was added to the sessions set
-    score = await redis.zscore(sessions_key, session_id)
-    print(
-        f"DEBUG: After set_session_memory, zscore for {session_id} in {sessions_key} is {score}"
-    )
+    await redis.zscore(sessions_key, session_id)
 
     # List all sessions in the sessions set
-    all_sessions = await redis.zrange(sessions_key, 0, -1)
-    print(f"DEBUG: All sessions in {sessions_key}: {all_sessions}")
+    await redis.zrange(sessions_key, 0, -1)
 
     # Check if window size is exceeded
     current_size = await redis.llen(messages_key)  # type: ignore

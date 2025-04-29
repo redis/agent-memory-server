@@ -1299,7 +1299,7 @@ class TestMemoryCompaction:
         ):
             from agent_memory_server.long_term_memory import get_search_index
 
-            index = await get_search_index(mock_async_redis_client)
+            index = get_search_index(mock_async_redis_client)
             result = await index.search(vector_query)
 
         # Verify results

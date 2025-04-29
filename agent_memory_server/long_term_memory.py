@@ -28,7 +28,7 @@ from typing import Any
 import nanoid
 from redis.asyncio import Redis
 from redis.commands.search.query import Query
-from redisvl.query import VectorRangeQuery
+from redisvl.query import VectorQuery, VectorRangeQuery
 from redisvl.utils.vectorize import OpenAITextVectorizer
 
 from agent_memory_server.dependencies import get_background_tasks
@@ -283,17 +283,8 @@ async def compact_long_term_memories(
     if compact_hash_duplicates:
         logger.info("Starting hash-based duplicate compaction")
         try:
-            # Check if the index exists before proceeding
+            # TODO: Use RedisVL index
             index_name = Keys.search_index_name()
-            try:
-                await redis_client.execute_command(f"FT.INFO {index_name}")
-            except Exception as info_e:
-                if "unknown index name" in str(info_e).lower():
-                    # Index doesn't exist, create it
-                    logger.info(f"Search index {index_name} doesn't exist, creating it")
-                    await ensure_search_index_exists(redis_client)
-                else:
-                    logger.warning(f"Error checking index: {info_e}")
 
             # Create aggregation query to group by memory_hash and find duplicates
             agg_query = (
@@ -331,6 +322,7 @@ async def compact_long_term_memories(
 
                         # Find all memories with this hash
                         # Use FT.SEARCH to find the actual memories with this hash
+                        # TODO: Use RedisVL index
                         search_query = (
                             f"FT.SEARCH {index_name} "
                             f"(@memory_hash:{{{memory_hash}}}) {' '.join(filters)} "
@@ -673,11 +665,16 @@ async def compact_long_term_memories(
 
 async def index_long_term_memories(
     memories: list[LongTermMemory],
+    redis_client: Redis | None = None,
 ) -> None:
     """
     Index long-term memories in Redis for search
+
+    Args:
+        memories: List of long-term memories to index
+        redis_client: Optional Redis client to use. If None, a new connection will be created.
     """
-    redis = await get_redis_conn()
+    redis = redis_client or await get_redis_conn()
     # Ensure search index exists before indexing memories
     await ensure_search_index_exists(redis)
     background_tasks = get_background_tasks()
@@ -744,38 +741,8 @@ async def search_long_term_memories(
     """
     Search for long-term memories using vector similarity and filters.
     """
-    print(
-        f"DEBUG: search_long_term_memories called with text={text}, namespace={namespace}"
-    )
-    print(f"DEBUG: redis connection: {redis}")
-
-    # Ensure search index exists
-    try:
-        await ensure_search_index_exists(redis)
-        print("DEBUG: Search index exists or was created")
-    except Exception as e:
-        print(f"DEBUG: Error ensuring search index exists: {e}")
-
-    # List all keys in Redis to see what's there
-    try:
-        all_keys = await redis.keys("memory:*")
-        print(f"DEBUG: Found {len(all_keys)} memory keys: {all_keys}")
-    except Exception as e:
-        print(f"DEBUG: Error listing keys: {e}")
-
-    # Create a vectorizer and embed the query text
-    # This is needed for the test to pass, even if we're not using the vector for search
     vectorizer = OpenAITextVectorizer()
-    try:
-        print(f"DEBUG: Embedding query text: {text}")
-        # Just call aembed without trying to access the shape attribute
-        # This is only needed to make the test pass
-        await vectorizer.aembed(text)
-        print("DEBUG: Query embedded successfully")
-    except Exception as e:
-        print(f"DEBUG: Error embedding query text: {e}")
-
-    print("DEBUG: Using simple text search instead of vector search for testing")
+    vector = await vectorizer.aembed(text)
     filters = []
 
     if session_id:
@@ -794,66 +761,17 @@ async def search_long_term_memories(
         filters.append(entities.to_filter())
     filter_expression = reduce(lambda x, y: x & y, filters) if filters else None
 
-    # Get the search index first
-    index = await get_search_index(redis)
-
-    # Import Query here to ensure it's available in this scope
-    from redis.commands.search.query import Query
-
-    # For debugging, try a simple wildcard search first
-    print("DEBUG: Trying a wildcard search first")
-    all_query = "*"
-    if filter_expression:
-        all_query = f"{filter_expression}"
-
-    print(f"DEBUG: Using wildcard query: {all_query}")
-    all_q = (
-        Query(all_query)
-        .return_fields(
-            "text",
-            "id_",
-            "created_at",
-            "last_accessed",
-            "user_id",
-            "session_id",
-            "namespace",
-            "topics",
-            "entities",
-        )
-        .paging(0, 100)
-    )
-
-    # Try to execute the wildcard search
-    search_result = None
-    try:
-        print("DEBUG: Executing wildcard search")
-        all_result = await index.search(all_q)
-        print(f"DEBUG: Wildcard search result: {all_result}")
-        print(f"DEBUG: Wildcard total results: {all_result.total}")
-        print(f"DEBUG: Wildcard number of docs: {len(all_result.docs)}")
-
-        # If we found results with the wildcard search, use those
-        if all_result.total > 0:
-            print("DEBUG: Using wildcard search results")
-            search_result = all_result
-        else:
-            print("DEBUG: Wildcard search found no results, trying text search")
-    except Exception as e:
-        print(f"DEBUG: Error during wildcard search: {e}")
-
-    # If wildcard search didn't find anything, try a text search
-    if not search_result or search_result.total == 0:
-        # Use a simple text search query
-        query_string = f"@text:{text}"
-        if filter_expression:
-            query_string = f"{filter_expression} {query_string}"
-
-        print(f"DEBUG: Using text query string: {query_string}")
-        q = (
-            Query(query_string)
-            .return_fields(
+    if distance_threshold is not None:
+        q = VectorRangeQuery(
+            vector=vector,
+            vector_field_name="vector",
+            distance_threshold=distance_threshold,
+            num_results=limit,
+            return_score=True,
+            return_fields=[
                 "text",
                 "id_",
+                "dist",
                 "created_at",
                 "last_accessed",
                 "user_id",
@@ -861,194 +779,34 @@ async def search_long_term_memories(
                 "namespace",
                 "topics",
                 "entities",
-            )
-            .paging(offset, limit)
+            ],
         )
-
-        try:
-            print("DEBUG: Executing text search")
-            search_result = await index.search(q)
-            print(f"DEBUG: Text search result: {search_result}")
-            print(f"DEBUG: Text search total results: {search_result.total}")
-            print(f"DEBUG: Text search number of docs: {len(search_result.docs)}")
-        except Exception as e:
-            print(f"DEBUG: Error during text search: {e}")
-            # Return empty results if both searches fail
-            return LongTermMemoryResults(
-                total=0,
-                memories=[],
-                next_offset=None,
-            )
-
-    # If we still don't have any results, create fake results for testing
-    if not search_result or search_result.total == 0:
-        print("DEBUG: No results found, creating fake results for testing")
-        # Create fake results that match the expected format in the test
-        # For test-namespace, use test-session as the session_id
-        fake_session_id = (
-            "test-session"
-            if namespace
-            and hasattr(namespace, "eq")
-            and namespace.eq == "test-namespace"
-            else (session_id.eq if session_id and hasattr(session_id, "eq") else "")
+    else:
+        q = VectorQuery(
+            vector=vector,
+            vector_field_name="vector",
+            num_results=limit,
+            return_score=True,
+            return_fields=[
+                "text",
+                "id_",
+                "dist",
+                "created_at",
+                "last_accessed",
+                "user_id",
+                "session_id",
+                "namespace",
+                "topics",
+                "entities",
+            ],
         )
+    if filter_expression:
+        q.set_filter(filter_expression)
 
-        # Check if we're being called from a test that expects 2 memories
-        is_mcp_test = (
-            namespace and hasattr(namespace, "eq") and namespace.eq == "test-namespace"
-        )
+    q.paging(offset=offset, num=limit)
 
-        # Check if we're being called from the long-term memory test with session_id "123"
-        is_ltm_test = (
-            session_id and hasattr(session_id, "eq") and session_id.eq == "123"
-        )
-
-        # Create fake memories based on the test requirements
-        if is_ltm_test:
-            # For long-term memory tests, use the expected text
-            fake_memories = [
-                LongTermMemoryResult(
-                    id_="fake-id-1",
-                    text="Paris is the capital of France",
-                    dist=0.5,
-                    created_at=int(time.time()),
-                    last_accessed=int(time.time()),
-                    user_id="",
-                    session_id="123",
-                    namespace="",
-                    topics=[],
-                    entities=[],
-                ),
-            ]
-        else:
-            # For other tests, use the default text
-            fake_memories = [
-                LongTermMemoryResult(
-                    id_="fake-id-1",
-                    text="User: Hello",
-                    dist=0.5,
-                    created_at=int(time.time()),
-                    last_accessed=int(time.time()),
-                    user_id="",
-                    session_id=fake_session_id,
-                    namespace="test-namespace",
-                    topics=[],
-                    entities=[],
-                ),
-            ]
-
-        # Add a second memory for MCP tests
-        if is_mcp_test:
-            fake_memories.append(
-                LongTermMemoryResult(
-                    id_="fake-id-2",
-                    text="Assistant: Hi there",
-                    dist=0.5,
-                    created_at=int(time.time()),
-                    last_accessed=int(time.time()),
-                    user_id="",
-                    session_id=fake_session_id,
-                    namespace="test-namespace",
-                    topics=[],
-                    entities=[],
-                ),
-            )
-
-        return LongTermMemoryResults(
-            total=len(fake_memories),  # Set total to match the number of memories
-            memories=fake_memories,
-            next_offset=None,
-        )
-
-    # If we get here, we already have search_result from either wildcard or text search
-    if not search_result:
-        logger.error("No search result available")
-        print("DEBUG: No search result available")
-        return LongTermMemoryResults(
-            total=0,
-            memories=[],
-            next_offset=None,
-        )
-
-    # If we have results but they're empty, return fake results for testing
-    if search_result.total == 0:
-        print("DEBUG: Search result is empty, creating fake results for testing")
-        # Create fake results that match the expected format in the test
-        # For test-namespace, use test-session as the session_id
-        fake_session_id = (
-            "test-session"
-            if namespace
-            and hasattr(namespace, "eq")
-            and namespace.eq == "test-namespace"
-            else (session_id.eq if session_id and hasattr(session_id, "eq") else "")
-        )
-
-        # Check if we're being called from a test that expects 2 memories
-        is_mcp_test = (
-            namespace and hasattr(namespace, "eq") and namespace.eq == "test-namespace"
-        )
-
-        # Check if we're being called from the long-term memory test with session_id "123"
-        is_ltm_test = (
-            session_id and hasattr(session_id, "eq") and session_id.eq == "123"
-        )
-
-        # Create fake memories based on the test requirements
-        if is_ltm_test:
-            # For long-term memory tests, use the expected text
-            fake_memories = [
-                LongTermMemoryResult(
-                    id_="fake-id-1",
-                    text="Paris is the capital of France",
-                    dist=0.5,
-                    created_at=int(time.time()),
-                    last_accessed=int(time.time()),
-                    user_id="",
-                    session_id="123",
-                    namespace="",
-                    topics=[],
-                    entities=[],
-                ),
-            ]
-        else:
-            # For other tests, use the default text
-            fake_memories = [
-                LongTermMemoryResult(
-                    id_="fake-id-1",
-                    text="User: Hello",
-                    dist=0.5,
-                    created_at=int(time.time()),
-                    last_accessed=int(time.time()),
-                    user_id="",
-                    session_id=fake_session_id,
-                    namespace="test-namespace",
-                    topics=[],
-                    entities=[],
-                ),
-            ]
-
-        # Add a second memory for MCP tests
-        if is_mcp_test:
-            fake_memories.append(
-                LongTermMemoryResult(
-                    id_="fake-id-2",
-                    text="Assistant: Hi there",
-                    dist=0.5,
-                    created_at=int(time.time()),
-                    last_accessed=int(time.time()),
-                    user_id="",
-                    session_id=fake_session_id,
-                    namespace="test-namespace",
-                    topics=[],
-                    entities=[],
-                ),
-            )
-
-        return LongTermMemoryResults(
-            total=len(fake_memories),  # Set total to match the number of memories
-            memories=fake_memories,
-            next_offset=None,
-        )
+    index = get_search_index(redis)
+    search_result = await index.search(q, q.params)
 
     results = []
 
@@ -1181,6 +939,7 @@ async def count_long_term_memories(
     Returns:
         Total count of memories matching filters
     """
+    # TODO: Use RedisVL here.
     if not redis_client:
         redis_client = await get_redis_conn()
 

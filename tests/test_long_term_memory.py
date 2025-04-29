@@ -43,6 +43,7 @@ class TestLongTermMemory:
         ):
             await index_long_term_memories(
                 long_term_memories,
+                redis_client=mock_async_redis_client,
             )
 
         # Check that create_embedding was called with the right arguments
@@ -173,6 +174,7 @@ class TestLongTermMemoryIntegration:
         ):
             await index_long_term_memories(
                 long_term_memories,
+                redis_client=async_redis_client,
             )
 
         results = await search_long_term_memories(
@@ -202,6 +204,7 @@ class TestLongTermMemoryIntegration:
         ):
             await index_long_term_memories(
                 long_term_memories,
+                redis_client=async_redis_client,
             )
 
         results = await search_long_term_memories(

@@ -50,18 +50,18 @@ class TestMCP:
             results = json.loads(results.content[0].text)
             assert results["total"] > 0
             assert len(results["memories"]) == 2
-            assert results["memories"][0]["text"] == "User: Hello"
+            assert results["memories"][0]["text"] == "user: Hello"
             assert results["memories"][0]["dist"] > 0
             assert results["memories"][0]["created_at"] > 0
             assert results["memories"][0]["last_accessed"] > 0
-            assert results["memories"][0]["user_id"] == ""
+            assert results["memories"][0]["user_id"] == "test-user"
             assert results["memories"][0]["session_id"] == session
             assert results["memories"][0]["namespace"] == "test-namespace"
-            assert results["memories"][1]["text"] == "Assistant: Hi there"
+            assert results["memories"][1]["text"] == "assistant: Hi there"
             assert results["memories"][1]["dist"] > 0
             assert results["memories"][1]["created_at"] > 0
             assert results["memories"][1]["last_accessed"] > 0
-            assert results["memories"][1]["user_id"] == ""
+            assert results["memories"][1]["user_id"] == "test-user"
             assert results["memories"][1]["session_id"] == session
 
     @pytest.mark.asyncio
@@ -94,8 +94,8 @@ class TestMCP:
                 "Long term memories related to the user's query"
                 in message["content"]["text"]
             )
-            assert "User: Hello" in message["content"]["text"]
-            assert "Assistant: Hi there" in message["content"]["text"]
+            assert "user: Hello" in message["content"]["text"]
+            assert "assistant: Hi there" in message["content"]["text"]
 
     @pytest.mark.asyncio
     async def test_memory_prompt_error_handling(self, session):

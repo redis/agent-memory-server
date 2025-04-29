@@ -6,6 +6,7 @@ import time
 from unittest import mock
 from unittest.mock import AsyncMock, patch
 
+import docket
 import pytest
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -22,7 +23,8 @@ from agent_memory_server.llms import OpenAIClientWrapper
 from agent_memory_server.messages import (
     MemoryMessage,
 )
-from agent_memory_server.utils.redis import Keys, ensure_search_index_exists
+from agent_memory_server.utils.keys import Keys
+from agent_memory_server.utils.redis import ensure_search_index_exists
 
 
 load_dotenv()
@@ -76,14 +78,11 @@ async def search_index(async_redis_client):
             )
         except Exception as e:
             if "unknown index name".lower() not in str(e).lower():
-                print(f"Error checking index: {e}")
+                pass
 
         await ensure_search_index_exists(async_redis_client)
 
-    except Exception as e:
-        print(f"ERROR: Failed to create RediSearch index: {str(e)}")
-        print("This might indicate that Redis is not running with RediSearch module")
-        print("Make sure you're using redis-stack, not standard redis")
+    except Exception:
         raise
 
     yield
@@ -103,16 +102,10 @@ async def session(use_test_redis_connection, async_redis_client):
 
     logging.getLogger(__name__)
 
-    print("DEBUG: session fixture called")
-    print(f"DEBUG: use_test_redis_connection: {use_test_redis_connection}")
-    print(f"DEBUG: async_redis_client: {async_redis_client}")
-
     try:
         session_id = "test-session"
-        print(f"DEBUG: Creating test session with ID: {session_id}")
 
         # Add messages to session memory
-        print("DEBUG: Setting session memory")
         messages = [
             {"role": "user", "content": "Hello"},
             {"role": "assistant", "content": "Hi there"},
@@ -123,13 +116,8 @@ async def session(use_test_redis_connection, async_redis_client):
         messages_key = Keys.messages_key(session_id, namespace="test-namespace")
         metadata_key = Keys.metadata_key(session_id, namespace="test-namespace")
 
-        print(
-            f"DEBUG: Using keys: sessions_key={sessions_key}, messages_key={messages_key}, metadata_key={metadata_key}"
-        )
-
         # Convert messages to JSON
         messages_json = [json.dumps(msg) for msg in messages]
-        print(f"DEBUG: Converted messages to JSON: {messages_json}")
 
         # Create metadata
         metadata = {
@@ -138,43 +126,28 @@ async def session(use_test_redis_connection, async_redis_client):
             "tokens": "150",
             "namespace": "test-namespace",
         }
-        print(f"DEBUG: Created metadata: {metadata}")
-
         # Add session to Redis
         current_time = int(time.time())
-        print(f"DEBUG: Adding session to Redis with current_time={current_time}")
-
-        # Use the use_test_redis_connection directly
-        print(
-            f"DEBUG: Using use_test_redis_connection directly: {use_test_redis_connection}"
-        )
 
         # First check if the key exists
-        exists = await use_test_redis_connection.exists(sessions_key)
-        print(f"DEBUG: Does {sessions_key} exist? {exists}")
+        await use_test_redis_connection.exists(sessions_key)
 
         # Add session to Redis
         async with use_test_redis_connection.pipeline(transaction=True) as pipe:
-            print(f"DEBUG: Created pipeline: {pipe}")
             pipe.zadd(sessions_key, {session_id: current_time})
             pipe.rpush(messages_key, *messages_json)
             pipe.hset(metadata_key, mapping=metadata)
-            print("DEBUG: Added commands to pipeline")
-            result = await pipe.execute()
-            print(f"DEBUG: Result of direct Redis operations: {result}")
+            await pipe.execute()
 
         # Verify session was created
-        print("DEBUG: Verifying session was created")
         session_exists = await use_test_redis_connection.zscore(
             sessions_key, session_id
         )
-        print(f"DEBUG: Session exists: {session_exists is not None}")
 
         if session_exists is None:
-            print(f"DEBUG: Session {session_id} was not created properly")
             # List all keys in Redis for debugging
             all_keys = await use_test_redis_connection.keys("*")
-            print(f"DEBUG: All keys in Redis: {all_keys}")
+            logging.error(f"Session not found. All keys: {all_keys}")
         else:
             # List all sessions in the sessions set
             await use_test_redis_connection.zrange(sessions_key, 0, -1)
@@ -242,17 +215,8 @@ async def session(use_test_redis_connection, async_redis_client):
 
                 await pipe.execute()
 
-            print(
-                f"DEBUG: Indexed {len(memories)} messages as long-term memories directly"
-            )
-
-        print(f"DEBUG: Returning session_id: {session_id}")
         return session_id
-    except Exception as e:
-        print(f"DEBUG: Exception in session fixture: {e}")
-        import traceback
-
-        print(f"DEBUG: Traceback: {traceback.format_exc()}")
+    except Exception:
         raise
 
 
@@ -318,20 +282,24 @@ def redis_client(redis_url):
 @pytest.fixture()
 def use_test_redis_connection(redis_url: str):
     """Replace the Redis connection with a test one"""
-    print(f"DEBUG: use_test_redis_connection fixture called with redis_url={redis_url}")
     replacement_redis = AsyncRedis.from_url(redis_url)
-    print(f"DEBUG: Created replacement_redis: {replacement_redis}")
 
     # Create a mock get_redis_conn function that always returns the replacement_redis
     async def mock_get_redis_conn(*args, **kwargs):
-        print(f"DEBUG: mock_get_redis_conn called with args={args}, kwargs={kwargs}")
         # Ignore any URL parameter and always return the replacement_redis
-        print(f"DEBUG: Returning replacement_redis: {replacement_redis}")
         return replacement_redis
+
+    # Create a patched Docket class that uses the test Redis URL
+    original_docket_init = docket.Docket.__init__
+
+    def patched_docket_init(self, name, url=None, *args, **kwargs):
+        # Use the test Redis URL instead of the default one
+        return original_docket_init(self, name, *args, url=redis_url, **kwargs)
 
     with (
         patch("agent_memory_server.utils.redis.get_redis_conn", mock_get_redis_conn),
         patch("agent_memory_server.utils.redis.get_redis_conn", mock_get_redis_conn),
+        patch("docket.docket.Docket.__init__", patched_docket_init),
     ):
         yield replacement_redis
 
@@ -382,15 +350,11 @@ def setup_redis_pool(use_test_redis_connection):
     import agent_memory_server.utils.redis
 
     agent_memory_server.utils.redis._redis_pool = use_test_redis_connection
-    print(
-        f"DEBUG: Set global _redis_pool to use_test_redis_connection: {use_test_redis_connection}"
-    )
 
     yield
 
     # Reset the global _redis_pool variable after the test
     agent_memory_server.utils.redis._redis_pool = None
-    print("DEBUG: Reset global _redis_pool to None")
 
 
 @pytest.fixture()
@@ -404,12 +368,6 @@ def app(use_test_redis_connection):
 
     # Override the get_redis_conn function to return the test Redis connection
     async def mock_get_redis_conn(*args, **kwargs):
-        print(
-            f"DEBUG: app fixture mock_get_redis_conn called with args={args}, kwargs={kwargs}"
-        )
-        print(
-            f"DEBUG: Returning use_test_redis_connection: {use_test_redis_connection}"
-        )
         return use_test_redis_connection
 
     # Override the dependency
@@ -429,6 +387,14 @@ def app_with_mock_background_tasks(use_test_redis_connection, mock_background_ta
     app.include_router(health_router)
     app.include_router(memory_router)
 
+    # Override the get_redis_conn function to return the test Redis connection
+    async def mock_get_redis_conn(*args, **kwargs):
+        return use_test_redis_connection
+
+    # Override the dependencies
+    from agent_memory_server.utils.redis import get_redis_conn
+
+    app.dependency_overrides[get_redis_conn] = mock_get_redis_conn
     app.dependency_overrides[get_background_tasks] = lambda: mock_background_tasks
 
     return app
