@@ -31,11 +31,11 @@ A Redis-powered memory server built for AI agents and applications. It manages b
 This project is under active development and is **pre-release** software. Think of it as an early beta!
 
 ### Roadmap
-- Long-term memory deduplication and compaction
-- Configurable strategy for moving session memory to long-term memory
-- Authentication/authorization hooks
-- Use a background task system instead of `BackgroundTask`
-- Separate Redis connections for long-term and short-term memory
+- [x] Long-term memory deduplication and compaction
+- [ ] Configurable strategy for moving session memory to long-term memory
+- [ ] Authentication/authorization hooks
+- [x] Use a background task system instead of `BackgroundTask`
+- [ ] Separate Redis connections for long-term and short-term memory
 
 ## REST API Endpoints
 
