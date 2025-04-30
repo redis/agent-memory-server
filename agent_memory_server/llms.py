@@ -307,7 +307,7 @@ class OpenAIClientWrapper:
     async def create_chat_completion(
         self,
         model: str,
-        progressive_prompt: str,
+        prompt: str,
         response_format: dict[str, str] | None = None,
         functions: list[dict[str, Any]] | None = None,
         function_call: dict[str, str] | None = None,
@@ -317,7 +317,7 @@ class OpenAIClientWrapper:
             # Build the request parameters
             request_params = {
                 "model": model,
-                "messages": [{"role": "user", "content": progressive_prompt}],
+                "messages": [{"role": "user", "content": prompt}],
             }
 
             # Add optional parameters if provided
@@ -372,19 +372,38 @@ class OpenAIClientWrapper:
             raise
 
 
-class ModelClientFactory:
-    """Factory for creating model clients"""
+# Global LLM client cache
+_model_clients = {}
 
-    @staticmethod
-    async def get_client(
-        model_name: str,
-    ) -> OpenAIClientWrapper | AnthropicClientWrapper:
-        """Get the appropriate client for a model"""
+
+async def get_model_client(
+    model_name: str,
+) -> OpenAIClientWrapper | AnthropicClientWrapper:
+    """Get the appropriate client for a model using the factory.
+
+    This is a module-level function that caches clients for reuse.
+
+    Args:
+        model_name: Name of the model to get a client for
+
+    Returns:
+        An appropriate client wrapper for the model
+    """
+    global _model_clients
+    model = None
+
+    if model_name not in _model_clients:
         model_config = get_model_config(model_name)
 
         if model_config.provider == ModelProvider.OPENAI:
-            return OpenAIClientWrapper(api_key=os.environ.get("OPENAI_API_KEY"))
+            model = OpenAIClientWrapper(api_key=os.environ.get("OPENAI_API_KEY"))
         if model_config.provider == ModelProvider.ANTHROPIC:
-            return AnthropicClientWrapper(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+            model = AnthropicClientWrapper(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+
+        if model:
+            _model_clients[model_name] = model
+            return model
 
         raise ValueError(f"Unsupported model provider: {model_config.provider}")
+
+    return _model_clients[model_name]

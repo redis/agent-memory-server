@@ -1,19 +1,23 @@
 import os
+import sys
 from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
 
-from agent_memory_server import utils
 from agent_memory_server.api import router as memory_router
 from agent_memory_server.config import settings
+from agent_memory_server.docket_tasks import register_tasks
 from agent_memory_server.healthcheck import router as health_router
 from agent_memory_server.llms import MODEL_CONFIGS, ModelProvider
-from agent_memory_server.logging import configure_logging, get_logger
-from agent_memory_server.utils import ensure_redisearch_index, get_redis_conn
+from agent_memory_server.logging import get_logger
+from agent_memory_server.utils.redis import (
+    _redis_pool as connection_pool,
+    ensure_search_index_exists,
+    get_redis_conn,
+)
 
 
-configure_logging()
 logger = get_logger(__name__)
 
 
@@ -65,7 +69,7 @@ async def lifespan(app: FastAPI):
 
     # Set up RediSearch index if long-term memory is enabled
     if settings.long_term_memory:
-        redis = get_redis_conn()
+        redis = await get_redis_conn()
 
         # Get embedding dimensions from model config
         embedding_model_config = MODEL_CONFIGS.get(settings.embedding_model)
@@ -77,7 +81,7 @@ async def lifespan(app: FastAPI):
         distance_metric = "COSINE"
 
         try:
-            await ensure_redisearch_index(
+            await ensure_search_index_exists(
                 redis,
                 index_name=settings.redisvl_index_name,
                 vector_dimensions=vector_dimensions,
@@ -85,6 +89,20 @@ async def lifespan(app: FastAPI):
             )
         except Exception as e:
             logger.error(f"Failed to ensure RediSearch index: {e}")
+            raise
+
+    # Initialize Docket for background tasks if enabled
+    if settings.use_docket:
+        try:
+            await register_tasks()
+            logger.info("Initialized Docket for background tasks")
+            logger.info("To run the worker, use one of these methods:")
+            logger.info(
+                "1. CLI: docket worker --tasks agent_memory_server.docket_tasks:task_collection"
+            )
+            logger.info("2. Python: python -m agent_memory_server.worker")
+        except Exception as e:
+            logger.error(f"Failed to initialize Docket: {e}")
             raise
 
     # Show available models
@@ -117,8 +135,8 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down Redis Agent Memory Server")
-    if utils._redis_pool:
-        await utils._redis_pool.aclose()
+    if connection_pool is not None:
+        await connection_pool.aclose()
 
 
 # Create FastAPI app
@@ -138,6 +156,31 @@ def on_start_logger(port: int):
 
 # Run the application
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "8000"))
+    # Parse command line arguments for port
+    port = settings.app_port
+
+    # Check if --port argument is provided
+    if "--port" in sys.argv:
+        try:
+            port_index = sys.argv.index("--port") + 1
+            if port_index < len(sys.argv):
+                port = int(sys.argv[port_index])
+                print(f"Using port from command line: {port}")
+        except (ValueError, IndexError):
+            # If conversion fails or index out of bounds, use default
+            print(f"Invalid port argument, using default: {port}")
+    else:
+        print(f"No port argument provided, using default: {port}")
+
+    # Explicitly unset the PORT environment variable if it exists
+    if "PORT" in os.environ:
+        port_val = os.environ.pop("PORT")
+        print(f"Removed environment variable PORT={port_val}")
+
     on_start_logger(port)
-    uvicorn.run("agent_memory_server.main:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run(
+        app,  # Using the app instance directly
+        host="0.0.0.0",
+        port=port,
+        reload=False,
+    )

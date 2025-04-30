@@ -21,6 +21,11 @@ from agent_memory_server.summarization import summarize_session
 class TestListSessions:
     async def test_list_sessions_empty(self, mock_async_redis_client):
         """Test listing sessions when none exist"""
+        # Mock the async methods that are awaited directly
+        mock_async_redis_client.keys = AsyncMock(return_value=[])
+        mock_async_redis_client.exists = AsyncMock(return_value=0)
+        mock_async_redis_client.zrange = AsyncMock(return_value=[])
+
         mock_pipeline = AsyncMock()
         mock_pipeline.__aenter__ = AsyncMock(return_value=mock_pipeline)
         mock_pipeline.zcard = MagicMock(return_value=mock_pipeline)
@@ -37,6 +42,12 @@ class TestListSessions:
 
     async def test_list_sessions_with_sessions(self, mock_async_redis_client):
         """Test listing sessions when some exist"""
+        # Mock the async methods that are awaited directly
+        mock_async_redis_client.keys = AsyncMock(return_value=[])
+        mock_async_redis_client.exists = AsyncMock(return_value=0)
+        mock_async_redis_client.zrange = AsyncMock(return_value=[])
+
+        # Set up the pipeline mock
         mock_pipeline = AsyncMock()
         mock_pipeline.__aenter__ = AsyncMock(return_value=mock_pipeline)
         mock_pipeline.zcard = MagicMock(return_value=mock_pipeline)
@@ -51,6 +62,11 @@ class TestListSessions:
 
     async def test_list_sessions_with_namespace(self, mock_async_redis_client):
         """Test listing sessions with a namespace"""
+        # Mock the async methods that are awaited directly
+        mock_async_redis_client.keys = AsyncMock(return_value=[])
+        mock_async_redis_client.exists = AsyncMock(return_value=0)
+        mock_async_redis_client.zrange = AsyncMock(return_value=[])
+
         mock_pipeline = AsyncMock()
         mock_pipeline.__aenter__ = AsyncMock(return_value=mock_pipeline)
         mock_pipeline.zcard = MagicMock(return_value=mock_pipeline)
@@ -107,14 +123,20 @@ class TestGetSessionMemory:
 class TestSetSessionMemory:
     async def test_set_session_memory_basic(self, mock_async_redis_client):
         """Test basic session memory setting"""
+        # Mock the async methods that are awaited directly
+        mock_async_redis_client.watch = AsyncMock()
+        mock_async_redis_client.zscore = AsyncMock(return_value=123456789)
+        mock_async_redis_client.zrange = AsyncMock(return_value=[b"test-session"])
+        mock_async_redis_client.llen = AsyncMock(return_value=5)  # Below window size
+
         mock_pipeline = AsyncMock()
         mock_pipeline.__aenter__ = AsyncMock(return_value=mock_pipeline)
+        mock_pipeline.watch = AsyncMock()
+        mock_pipeline.multi = MagicMock(return_value=mock_pipeline)
         mock_pipeline.zadd = MagicMock(return_value=mock_pipeline)
         mock_pipeline.rpush = MagicMock(return_value=mock_pipeline)
         mock_pipeline.hset = MagicMock(return_value=mock_pipeline)
-        mock_pipeline.execute = AsyncMock(return_value=None)
-        mock_pipeline.multi = MagicMock(return_value=mock_pipeline)
-        mock_async_redis_client.llen = AsyncMock(return_value=5)  # Below window size
+        mock_pipeline.execute = AsyncMock(return_value=[1, 2, 3])
         mock_async_redis_client.pipeline = MagicMock(return_value=mock_pipeline)
 
         mock_background_tasks = MagicMock()
@@ -149,17 +171,24 @@ class TestSetSessionMemory:
         self, mock_async_redis_client
     ):
         """Test session memory setting when window size is exceeded"""
+        # Mock the async methods that are awaited directly
+        mock_async_redis_client.watch = AsyncMock()
+        mock_async_redis_client.zscore = AsyncMock(return_value=123456789)
+        mock_async_redis_client.zrange = AsyncMock(return_value=[b"test-session"])
+        mock_async_redis_client.llen = AsyncMock(return_value=21)  # Exceed window size
+
         mock_pipeline = AsyncMock()
         mock_pipeline.__aenter__ = AsyncMock(return_value=mock_pipeline)
+        mock_pipeline.watch = AsyncMock()
+        mock_pipeline.multi = MagicMock(return_value=mock_pipeline)
         mock_pipeline.zadd = MagicMock(return_value=mock_pipeline)
         mock_pipeline.rpush = MagicMock(return_value=mock_pipeline)
         mock_pipeline.hset = MagicMock(return_value=mock_pipeline)
-        mock_pipeline.execute = AsyncMock(return_value=None)
-        mock_pipeline.multi = MagicMock(return_value=mock_pipeline)
-        mock_async_redis_client.llen = AsyncMock(return_value=21)  # Exceed window size
+        mock_pipeline.execute = AsyncMock(return_value=[1, 2, 3])
         mock_async_redis_client.pipeline = MagicMock(return_value=mock_pipeline)
 
         mock_background_tasks = MagicMock()
+        mock_background_tasks.add_task = AsyncMock()
 
         memory = SessionMemory(
             messages=[MemoryMessage(role="user", content="Hello")],
@@ -181,7 +210,6 @@ class TestSetSessionMemory:
         # Verify summarization task was added
         mock_background_tasks.add_task.assert_called_with(
             summarize_session,
-            mock_async_redis_client,
             "test-session",
             "gpt-4o-mini",
             20,
@@ -194,17 +222,24 @@ class TestSetSessionMemory:
         self, mock_async_redis_client
     ):
         """Test session memory setting with long-term memory enabled"""
+        # Mock the async methods that are awaited directly
+        mock_async_redis_client.watch = AsyncMock()
+        mock_async_redis_client.zscore = AsyncMock(return_value=123456789)
+        mock_async_redis_client.zrange = AsyncMock(return_value=[b"test-session"])
+        mock_async_redis_client.llen = AsyncMock(return_value=5)  # Below window size
+
         mock_pipeline = AsyncMock()
         mock_pipeline.__aenter__ = AsyncMock(return_value=mock_pipeline)
+        mock_pipeline.watch = AsyncMock()
+        mock_pipeline.multi = MagicMock(return_value=mock_pipeline)
         mock_pipeline.zadd = MagicMock(return_value=mock_pipeline)
         mock_pipeline.rpush = MagicMock(return_value=mock_pipeline)
         mock_pipeline.hset = MagicMock(return_value=mock_pipeline)
-        mock_pipeline.execute = AsyncMock(return_value=None)
-        mock_pipeline.multi = MagicMock(return_value=mock_pipeline)
-        mock_async_redis_client.llen = AsyncMock(return_value=5)  # Below window size
+        mock_pipeline.execute = AsyncMock(return_value=[1, 2, 3])
         mock_async_redis_client.pipeline = MagicMock(return_value=mock_pipeline)
 
         mock_background_tasks = MagicMock()
+        mock_background_tasks.add_task = AsyncMock()
 
         memory = SessionMemory(
             messages=[MemoryMessage(role="user", content="Hello")],
@@ -228,9 +263,7 @@ class TestSetSessionMemory:
         assert mock_background_tasks.add_task.call_args_list == [
             call(
                 index_long_term_memories,
-                mock_async_redis_client,
                 [LongTermMemory(session_id="test-session", text="user: Hello")],
-                mock_background_tasks,
             ),
         ]
 

@@ -1,9 +1,10 @@
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from agent_memory_server import long_term_memory, messages
 from agent_memory_server.config import settings
+from agent_memory_server.dependencies import get_background_tasks
 from agent_memory_server.llms import get_model_config
 from agent_memory_server.logging import get_logger
 from agent_memory_server.models import (
@@ -16,7 +17,7 @@ from agent_memory_server.models import (
     SessionMemory,
     SessionMemoryResponse,
 )
-from agent_memory_server.utils import get_redis_conn
+from agent_memory_server.utils.redis import get_redis_conn
 
 
 logger = get_logger(__name__)
@@ -63,7 +64,7 @@ async def list_sessions(
     Returns:
         List of session IDs
     """
-    redis = get_redis_conn()
+    redis = await get_redis_conn()
 
     total, session_ids = await messages.list_sessions(
         redis=redis,
@@ -101,7 +102,7 @@ async def get_session_memory(
     Returns:
         Conversation history and context
     """
-    redis = get_redis_conn()
+    redis = await get_redis_conn()
 
     # If context_window_max is explicitly provided, use that
     if context_window_max is not None:
@@ -130,7 +131,7 @@ async def get_session_memory(
 async def put_session_memory(
     session_id: str,
     memory: SessionMemory,
-    background_tasks: BackgroundTasks,
+    background_tasks=Depends(get_background_tasks),
 ):
     """
     Set session memory. Replaces existing session memory.
@@ -138,11 +139,12 @@ async def put_session_memory(
     Args:
         session_id: The session ID
         memory: Messages and context to save
+        background_tasks: DocketBackgroundTasks instance (injected automatically)
 
     Returns:
         Acknowledgement response
     """
-    redis = get_redis_conn()
+    redis = await get_redis_conn()
 
     await messages.set_session_memory(
         redis=redis,
@@ -168,7 +170,7 @@ async def delete_session_memory(
     Returns:
         Acknowledgement response
     """
-    redis = get_redis_conn()
+    redis = await get_redis_conn()
     await messages.delete_session_memory(
         redis=redis,
         session_id=session_id,
@@ -179,26 +181,25 @@ async def delete_session_memory(
 
 @router.post("/long-term-memory", response_model=AckResponse)
 async def create_long_term_memory(
-    payload: CreateLongTermMemoryPayload, background_tasks: BackgroundTasks
+    payload: CreateLongTermMemoryPayload,
+    background_tasks=Depends(get_background_tasks),
 ):
     """
     Create a long-term memory
 
     Args:
         payload: Long-term memory payload
+        background_tasks: DocketBackgroundTasks instance (injected automatically)
 
     Returns:
         Acknowledgement response
     """
-    redis = get_redis_conn()
-
     if not settings.long_term_memory:
         raise HTTPException(status_code=400, detail="Long-term memory is disabled")
 
-    await long_term_memory.index_long_term_memories(
-        redis=redis,
+    await background_tasks.add_task(
+        long_term_memory.index_long_term_memories,
         memories=payload.memories,
-        background_tasks=background_tasks,
     )
     return AckResponse(status="ok")
 
@@ -214,7 +215,7 @@ async def search_long_term_memory(payload: SearchPayload):
     Returns:
         List of search results
     """
-    redis = get_redis_conn()
+    redis = await get_redis_conn()
 
     if not settings.long_term_memory:
         raise HTTPException(status_code=400, detail="Long-term memory is disabled")
