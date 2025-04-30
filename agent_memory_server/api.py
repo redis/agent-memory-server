@@ -197,7 +197,6 @@ async def create_long_term_memory(
     if not settings.long_term_memory:
         raise HTTPException(status_code=400, detail="Long-term memory is disabled")
 
-    print("Creating long-term memory task")
     await background_tasks.add_task(
         long_term_memory.index_long_term_memories,
         memories=payload.memories,

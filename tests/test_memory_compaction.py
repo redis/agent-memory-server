@@ -53,14 +53,12 @@ async def run_compact_memories_with_mocks(
         merged_memories: List of merged memory dictionaries to return from merge_memories_with_llm
         search_results: List of search results to return from search_index.search
     """
-    print("Setting up mocks for compact_long_term_memories")
     # Setup scan mock
     mock_redis.scan = AsyncMock()
     mock_redis.scan.side_effect = lambda cursor, match=None, count=None: (
         0,
         memory_keys,
     )
-    print(f"Mocked scan to return {memory_keys}")
 
     # Setup execute_command mock for Redis
     mock_redis.execute_command = AsyncMock()
@@ -90,7 +88,6 @@ async def run_compact_memories_with_mocks(
         return [0]
 
     mock_redis.execute_command.side_effect = execute_command_side_effect
-    print("Mocked execute_command for AGGREGATE and SEARCH")
 
     # Setup pipeline mock
     # Use MagicMock for the pipeline itself, but AsyncMock for execute
@@ -104,7 +101,6 @@ async def run_compact_memories_with_mocks(
     )
     # This ensures pipeline.hgetall(key) won't create an AsyncMock
     mock_redis.pipeline = MagicMock(return_value=mock_pipeline)
-    print("Mocked pipeline setup")
 
     # Setup delete mock
     mock_redis.delete = AsyncMock()
@@ -113,10 +109,8 @@ async def run_compact_memories_with_mocks(
         if "123" in key
         else memory_contents[1]
     )
-    print("Mocked delete and hgetall")
 
     # Setup hash generation mock
-    print(f"Setting up hash values: {hash_values} for memories")
     hash_side_effect = (
         hash_values
         if isinstance(hash_values, list)
@@ -135,13 +129,10 @@ async def run_compact_memories_with_mocks(
             # For a single merge, we need to handle both hash-based and semantic merging
             merge_memories_mock.return_value = merged_memories
 
-        print(f"Set up merge_memories_with_llm mock with {merged_memories}")
-
         # Setup vectorizer mock
         mock_vectorizer = MagicMock()
         mock_vectorizer.aembed = AsyncMock(return_value=[0.1, 0.2, 0.3])
         mock_vectorizer.aembed_many = AsyncMock(return_value=[[0.1, 0.2, 0.3]])
-        print("Mocked vectorizer")
 
         # Setup search index mock - special handling for test_compact_semantic_duplicates_simple
         mock_index = MagicMock()
@@ -149,37 +140,29 @@ async def run_compact_memories_with_mocks(
         # Create a search mock that responds appropriately for VectorRangeQuery
         # This is needed for the new code that uses VectorRangeQuery
         def search_side_effect(query, params=None):
-            print(f"Search called with query type: {type(query).__name__}")
             # If we're doing a semantic search with VectorRangeQuery
             if (
                 hasattr(query, "distance_threshold")
                 and query.distance_threshold == 0.12
             ):
-                print(
-                    f"Returning semantic search results with {len(search_results.docs) if hasattr(search_results, 'docs') else 0} docs"
-                )
                 return search_results
 
             # For VectorQuery general queries
             if hasattr(query, "vector_field_name"):
-                print("Returning empty results for vector query")
                 empty_result = MagicMock()
                 empty_result.docs = []
                 empty_result.total = 0
                 return empty_result
 
             # For standard Query, we should include the memories for hash-based compaction
-            print(f"Standard query: {query}")
             return search_results
 
         mock_index.search = AsyncMock(side_effect=search_side_effect)
-        print("Mocked search_index.search")
 
         # Mock get_redis_conn and get_llm_client to return our mocks
         mock_get_redis_conn = AsyncMock(return_value=mock_redis)
         mock_llm_client = AsyncMock()
         mock_get_llm_client = AsyncMock(return_value=mock_llm_client)
-        print("Mocked get_redis_conn and get_llm_client")
 
         # Setup index_long_term_memories mock
         index_long_term_memories_mock = AsyncMock()
@@ -211,7 +194,6 @@ async def run_compact_memories_with_mocks(
                 mock_get_llm_client,
             ),
         ):
-            print("Calling compact_long_term_memories")
             # Call the function
             # Force compact_hash_duplicates=True to ensure hash-based compaction is tested
             await agent_memory_server.long_term_memory.compact_long_term_memories(
@@ -221,18 +203,6 @@ async def run_compact_memories_with_mocks(
                 compact_hash_duplicates=True,
                 compact_semantic_duplicates=True,
             )
-
-            print(f"Merge memories called {merge_memories_mock.call_count} times")
-            if merge_memories_mock.call_count > 0:
-                print(
-                    f"Merge memories called with args: {merge_memories_mock.call_args_list}"
-                )
-
-            print(f"Search index called {mock_index.search.call_count} times")
-            if mock_index.search.call_count > 0:
-                print(
-                    f"Search index called with args: {mock_index.search.call_args_list}"
-                )
 
             return {
                 "merge_memories": merge_memories_mock,

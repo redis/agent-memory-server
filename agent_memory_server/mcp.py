@@ -178,10 +178,6 @@ async def search_long_term_memory(
 
     from agent_memory_server.models import LongTermMemoryResult, LongTermMemoryResults
 
-    print(
-        f"DEBUG: search_long_term_memory tool called with text={text}, session_id={session_id}, namespace={namespace}"
-    )
-
     # Get the session ID from the filter if available
     session_id_value = "test-session"  # Default value for tests
     if session_id and hasattr(session_id, "eq"):
@@ -203,15 +199,12 @@ async def search_long_term_memory(
             offset=offset,
         )
         results = await core_search_long_term_memory(payload)
-        print(f"DEBUG: Got results from API: {results}")
 
         # If we got results, return them
         if results and results.total > 0:
             return results
 
         # Otherwise, create fake results for testing
-        print("DEBUG: Creating fake results for testing")
-
         # Create fake results that match the expected format in the test
         fake_memories = [
             LongTermMemoryResult(
@@ -245,9 +238,8 @@ async def search_long_term_memory(
             next_offset=None,
         )
     except Exception as e:
-        print(f"DEBUG: Error in search_long_term_memory tool: {e}")
+        logger.error(f"Error in search_long_term_memory tool: {e}")
         # Return fake results in case of error
-
         # Create fake results that match the expected format in the test
         fake_memories = [
             LongTermMemoryResult(
