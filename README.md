@@ -269,17 +269,6 @@ python -m agent_memory_server.mcp [stdio|sse]
 python -m pytest
 ```
 
-## Known Issues
-- All background tasks run as async coroutines in the same process as the REST API server, using Starlette's `BackgroundTask`
-- ~~The MCP server from the Python MCP SDK often refuses to shut down with Control-C if it's connected to a client~~
-
-### Contributing
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
-
 ## Running the Background Task Worker
 
 The Redis Memory Server uses Docket for background task management. There are two ways to run the worker:
@@ -307,21 +296,22 @@ or directly in `agent_memory_server.config.Settings`.
 
 The memory compaction functionality optimizes storage by merging duplicate and semantically similar memories. This improves retrieval quality and reduces storage costs.
 
+### Running Compaction
+
+Currently, memory compaction is only available as a function in `agent_memory_server.long_term_memory.compact_long_term_memories`. You can run it manually or trigger it (manually, via code) to run as a background task.
+
 ### Key Features
 
 - **Hash-based Deduplication**: Identifies and merges exact duplicate memories using content hashing
 - **Semantic Deduplication**: Finds and merges memories with similar meaning using vector search
 - **LLM-powered Merging**: Uses language models to intelligently combine memories
 
-### Testing Approach
-
-Testing the memory compaction functionality involves:
-
-1. **Unit Tests**: Testing individual helper functions like `generate_memory_hash` and `merge_memories_with_llm`
-2. **Integration Tests**: Testing the complete workflow with minimal mocking
-3. **Mocked Tests**: Using helper functions to test specific parts of the workflow
-
-The main integration test (`test_compact_memories_integration`) demonstrates the memory merging functionality without relying on Redis search, which makes it more robust and less prone to environment-specific failures.
+### Contributing
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ### Running Tests
 
