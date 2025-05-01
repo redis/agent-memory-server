@@ -2,6 +2,8 @@
 
 import logging
 
+from agent_memory_server.config import settings
+
 
 logger = logging.getLogger(__name__)
 
@@ -56,4 +58,4 @@ class Keys:
     @staticmethod
     def search_index_name() -> str:
         """Return the name of the search index."""
-        return "memory_idx"
+        return settings.redisvl_index_name
