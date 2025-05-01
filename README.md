@@ -79,15 +79,6 @@ The following endpoints are available:
 - **DELETE /sessions/{session_id}/memory**
   Deletes all stored memory (messages, context, token count) for a session.
 
-- **POST /sessions/{session_id}/search**
-  Performs a semantic search on the messages within a session.
-  _Request Body Example:_
-  ```json
-  {
-    "text": "Search query text"
-  }
-  ```
-
 - **POST /long-term-memory/search**
   Performs semantic search on long-term memories with advanced filtering options.
   _Request Body Example:_
