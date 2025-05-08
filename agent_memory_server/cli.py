@@ -187,7 +187,6 @@ def task_worker(concurrency: int, redelivery_timeout: int):
         Worker.run(
             docket_name=settings.docket_name,
             url=settings.redis_url,
-            name="agent-memory-worker",
             concurrency=concurrency,
             redelivery_timeout=datetime.timedelta(seconds=redelivery_timeout),
             tasks=["agent_memory_server.docket_tasks:task_collection"],
