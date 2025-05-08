@@ -297,7 +297,7 @@ Currently, memory compaction is only available as a function in `agent_memory_se
 - **Semantic Deduplication**: Finds and merges memories with similar meaning using vector search
 - **LLM-powered Merging**: Uses language models to intelligently combine memories
 
-### Contributing
+## Contributing
 1. Fork the repository
 2. Create a feature branch
 3. Commit your changes
@@ -308,8 +308,5 @@ Currently, memory compaction is only available as a function in `agent_memory_se
 
 ```bash
 # Run all tests
-python -m pytest tests/test_memory_compaction.py
-
-# Run specific integration test
-python -m pytest tests/test_memory_compaction.py::TestMemoryCompaction::test_compact_memories_integration -v
+pytest tests
 ```
