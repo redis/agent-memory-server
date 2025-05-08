@@ -1,4 +1,5 @@
 import json
+from unittest import mock
 
 import pytest
 from mcp.shared.memory import (
@@ -12,11 +13,27 @@ from agent_memory_server.models import (
 )
 
 
+@pytest.fixture
+async def mcp_test_setup(async_redis_client, search_index):
+    with (
+        mock.patch(
+            "agent_memory_server.long_term_memory.get_redis_conn",
+            return_value=async_redis_client,
+        ) as _mock_ltm_redis,
+        mock.patch(
+            "agent_memory_server.api.get_redis_conn",
+            return_value=async_redis_client,
+            create=True,
+        ) as _mock_api_redis,
+    ):
+        yield
+
+
 class TestMCP:
     """Test search functionality and memory prompt endpoints via client sessions."""
 
     @pytest.mark.asyncio
-    async def test_create_long_term_memory(self, session):
+    async def test_create_long_term_memory(self, session, mcp_test_setup):
         async with client_session(mcp_app._mcp_server) as client:
             results = await client.call_tool(
                 "create_long_term_memories",
@@ -31,7 +48,7 @@ class TestMCP:
             assert results.content[0].text == '{"status": "ok"}'
 
     @pytest.mark.asyncio
-    async def test_search_memory(self, session):
+    async def test_search_memory(self, session, mcp_test_setup):
         """Test searching through session memory using the client."""
         async with client_session(mcp_app._mcp_server) as client:
             results = await client.call_tool(
@@ -65,7 +82,7 @@ class TestMCP:
             assert results["memories"][1]["session_id"] == session
 
     @pytest.mark.asyncio
-    async def test_memory_prompt(self, session):
+    async def test_memory_prompt(self, session, mcp_test_setup):
         """Test memory prompt with various parameter combinations."""
         async with client_session(mcp_app._mcp_server) as client:
             prompt = await client.call_tool(
@@ -98,7 +115,7 @@ class TestMCP:
             assert "assistant: Hi there" in message["content"]["text"]
 
     @pytest.mark.asyncio
-    async def test_memory_prompt_error_handling(self, session):
+    async def test_memory_prompt_error_handling(self, session, mcp_test_setup):
         """Test error handling in memory prompt generation via the client."""
         async with client_session(mcp_app._mcp_server) as client:
             # Test with a non-existent session id

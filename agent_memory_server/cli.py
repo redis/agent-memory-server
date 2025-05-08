@@ -15,12 +15,10 @@ from agent_memory_server.logging import configure_logging, get_logger
 from agent_memory_server.utils.redis import ensure_search_index_exists, get_redis_conn
 
 
-# Set up logging
 configure_logging()
 logger = get_logger(__name__)
 
-# Define the version
-VERSION = "0.2.0"  # Matches the version in pyproject.toml
+VERSION = "0.2.0"
 
 
 @click.group()
@@ -68,6 +66,10 @@ def mcp(port: int, sse: bool):
     """Run the MCP server."""
     import asyncio
 
+    # Update the port in settings FIRST
+    settings.mcp_port = port
+
+    # Import mcp_app AFTER settings have been updated
     from agent_memory_server.mcp import mcp_app
 
     async def setup_and_run():
@@ -82,9 +84,6 @@ def mcp(port: int, sse: bool):
 
     # Update the port in settings
     settings.mcp_port = port
-
-    # Update the port in the mcp_app
-    mcp_app._port = port
 
     click.echo(f"Starting MCP server on port {port}")
 

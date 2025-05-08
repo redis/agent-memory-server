@@ -13,6 +13,7 @@ from agent_memory_server.long_term_memory import (
     search_long_term_memories,
 )
 from agent_memory_server.models import LongTermMemory, LongTermMemoryResult
+from agent_memory_server.utils.redis import ensure_search_index_exists
 
 
 class TestLongTermMemory:
@@ -162,6 +163,7 @@ class TestLongTermMemoryIntegration:
     @pytest.mark.asyncio
     async def test_search_messages(self, async_redis_client):
         """Test searching messages"""
+        await ensure_search_index_exists(async_redis_client)
 
         long_term_memories = [
             LongTermMemory(text="Paris is the capital of France", session_id="123"),
@@ -192,6 +194,7 @@ class TestLongTermMemoryIntegration:
     @pytest.mark.asyncio
     async def test_search_messages_with_distance_threshold(self, async_redis_client):
         """Test searching messages with a distance threshold"""
+        await ensure_search_index_exists(async_redis_client)
 
         long_term_memories = [
             LongTermMemory(text="Paris is the capital of France", session_id="123"),
