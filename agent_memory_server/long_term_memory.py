@@ -283,7 +283,6 @@ async def compact_long_term_memories(
     if compact_hash_duplicates:
         logger.info("Starting hash-based duplicate compaction")
         try:
-            # TODO: Use RedisVL index
             index_name = Keys.search_index_name()
 
             # Create aggregation query to group by memory_hash and find duplicates
@@ -386,7 +385,7 @@ async def compact_long_term_memories(
                     logger.warning(f"Error checking index: {info_e}")
 
             # Get all memories matching the filters
-            index = await get_search_index(redis_client)
+            index = get_search_index(redis_client)
             query_str = filter_str if filter_str != "*" else ""
 
             # Create a query to get all memories
@@ -675,8 +674,6 @@ async def index_long_term_memories(
         redis_client: Optional Redis client to use. If None, a new connection will be created.
     """
     redis = redis_client or await get_redis_conn()
-    # Ensure search index exists before indexing memories
-    await ensure_search_index_exists(redis)
     background_tasks = get_background_tasks()
     vectorizer = OpenAITextVectorizer()
     embeddings = await vectorizer.aembed_many(

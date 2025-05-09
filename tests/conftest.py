@@ -23,6 +23,9 @@ from agent_memory_server.llms import OpenAIClientWrapper
 from agent_memory_server.messages import (
     MemoryMessage,
 )
+
+# Import the module to access its global for resetting
+from agent_memory_server.utils import redis as redis_utils_module
 from agent_memory_server.utils.keys import Keys
 from agent_memory_server.utils.redis import ensure_search_index_exists
 
@@ -64,7 +67,8 @@ def mock_openai_client():
 @pytest.fixture(autouse=True)
 async def search_index(async_redis_client):
     """Create a Redis connection pool for testing"""
-    # TODO: Replace with RedisVL index.
+    # Reset the cached index in redis_utils_module
+    redis_utils_module._index = None
 
     await async_redis_client.flushdb()
 
