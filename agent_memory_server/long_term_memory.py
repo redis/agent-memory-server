@@ -253,17 +253,6 @@ async def compact_long_term_memories(
         f"semantic_duplicates={compact_semantic_duplicates}"
     )
 
-    # Get all memory keys using scan
-    memory_keys = []
-    pattern = "memory:*"
-    # Scan for memory keys
-    cursor = 0
-    while True:
-        cursor, keys = await redis_client.scan(cursor, match=pattern, count=limit)
-        memory_keys.extend(keys)
-        if cursor == 0 or len(memory_keys) >= limit:
-            break
-
     # Build filters for memory queries
     filters = []
     if namespace:

@@ -61,8 +61,13 @@ def api(port: int, host: str, reload: bool):
 
 @cli.command()
 @click.option("--port", default=settings.mcp_port, help="Port to run the MCP server on")
-@click.option("--sse", is_flag=True, help="Run the MCP server in SSE mode")
-def mcp(port: int, sse: bool):
+@click.option(
+    "--mode",
+    default="stdio",
+    help="Run the MCP server in SSE or stdio mode",
+    type=click.Choice(["stdio", "sse"]),
+)
+def mcp(port: int, mode: str):
     """Run the MCP server."""
     import asyncio
 
@@ -77,20 +82,23 @@ def mcp(port: int, sse: bool):
         await ensure_search_index_exists(redis)
 
         # Run the MCP server
-        if sse:
+        if mode == "sse":
             await mcp_app.run_sse_async()
-        else:
+        elif mode == "stdio":
             await mcp_app.run_stdio_async()
+        else:
+            raise ValueError(f"Invalid mode: {mode}")
 
     # Update the port in settings
     settings.mcp_port = port
 
-    click.echo(f"Starting MCP server on port {port}")
+    # MCP servers shouldn't write to stdout in stdio mode
+    sys.stderr.write(f"Starting MCP server on port {port}\n")
 
-    if sse:
-        click.echo("Running in SSE mode")
-    else:
-        click.echo("Running in stdio mode")
+    if mode == "sse":
+        sys.stderr.write("Running in SSE mode\n")
+    elif mode == "stdio":
+        sys.stderr.write("Running in stdio mode\n")
 
     asyncio.run(setup_and_run())
 
