@@ -220,15 +220,10 @@ First, you'll need to download this repository. After you've downloaded it, you 
 
 2 (a). The easiest way to start the REST API server and MCP server in SSE mode is to use Docker Compose. See the Docker Compose section of this file for more details.
 
-2 (b). You can also run the REST API and MCP servers directly:
-#### REST API
+2 (b). You can also run the REST API and MCP servers directly, e.g.:
+#### REST API (direct, without CLI)
   ```bash
   python -m agent_memory_server.main
-  ```
-#### MCP Server
-The MCP server can run in either SSE mode or stdio:
-  ```bash
-  agent-memory mcp --mode <sse|stdio>
   ```
 
 **NOTE:** With uv, prefix the command with `uv`, e.g.: `uv run agent-memory --mode sse`. If you installed from source, you'll probably need to add `--directory` to tell uv where to find the code: `uv run --directory <path/to/checkout> run agent-memory --mode stdio`.
@@ -267,9 +262,9 @@ For example, with Claude, use the following configuration:
               "--directory",
               "/ABSOLUTE/PATH/TO/REPO/DIRECTORY/agent-memory-server",
               "run",
-              "python",
-              "-m",
-              "agent_memory_server.mcp",
+              "agent-memory",
+              "-mcp",
+              "--mode",
               "stdio"
           ]
       }
@@ -283,7 +278,7 @@ command globally accessible, so Claude can find it, would work.
 
 <img src="cursor.png">
 
-Cursor's MCP config is similar to Claude's, but it also supports SSE servers, so you can run the server yourself and pass in the URL:
+Cursor's MCP config is similar to Claude's, but it also supports SSE servers, so you can run the server in SSE mode and pass in the URL:
 
   ```json
   {
