@@ -51,6 +51,7 @@ def get_search_index(
             },
             "fields": [
                 {"name": "text", "type": "text"},
+                {"name": "memory_hash", "type": "text"},
                 {"name": "id_", "type": "tag"},
                 {"name": "session_id", "type": "tag"},
                 {"name": "user_id", "type": "tag"},

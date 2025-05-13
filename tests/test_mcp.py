@@ -142,3 +142,58 @@ class TestMCP:
             assert message["role"] == "user"
             assert message["content"]["type"] == "text"
             assert message["content"]["text"] == "Test query"
+
+    @pytest.mark.asyncio
+    async def test_default_namespace_injection(self, monkeypatch):
+        """
+        Ensure that when default_namespace is set on mcp_app, search_long_term_memory injects it automatically.
+        """
+        from agent_memory_server.models import (
+            LongTermMemoryResult,
+            LongTermMemoryResults,
+        )
+
+        # Capture injected namespace
+        injected = {}
+
+        async def fake_core_search(payload):
+            injected["namespace"] = payload.namespace.eq if payload.namespace else None
+            # Return a dummy result with total>0 to skip fake fallback
+            return LongTermMemoryResults(
+                total=1,
+                memories=[
+                    LongTermMemoryResult(
+                        id_="id",
+                        text="x",
+                        dist=0.0,
+                        created_at=1,
+                        last_accessed=1,
+                        user_id="",
+                        session_id="",
+                        namespace=payload.namespace.eq if payload.namespace else None,
+                        topics=[],
+                        entities=[],
+                    )
+                ],
+                next_offset=None,
+            )
+
+        # Patch the core search function used by the MCP tool
+        monkeypatch.setattr(
+            "agent_memory_server.mcp.core_search_long_term_memory", fake_core_search
+        )
+        # Temporarily set default_namespace on the MCP app instance
+        original_ns = mcp_app.default_namespace
+        mcp_app.default_namespace = "default-ns"
+        try:
+            # Call the tool without specifying a namespace
+            async with client_session(mcp_app._mcp_server) as client:
+                await client.call_tool(
+                    "search_long_term_memory",
+                    {"text": "anything"},
+                )
+            # Verify that our fake core received the default namespace
+            assert injected.get("namespace") == "default-ns"
+        finally:
+            # Restore original namespace
+            mcp_app.default_namespace = original_ns

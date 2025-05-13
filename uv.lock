@@ -1,4 +1,5 @@
 version = 1
+revision = 1
 requires-python = "==3.12.*"
 
 [[package]]
@@ -27,6 +28,7 @@ dependencies = [
     { name = "accelerate" },
     { name = "anthropic" },
     { name = "bertopic" },
+    { name = "click" },
     { name = "fastapi" },
     { name = "mcp" },
     { name = "nanoid" },
@@ -61,6 +63,7 @@ requires-dist = [
     { name = "accelerate", specifier = ">=1.6.0" },
     { name = "anthropic", specifier = ">=0.15.0" },
     { name = "bertopic", specifier = ">=0.16.4,<0.17.0" },
+    { name = "click", specifier = ">=8.1.0" },
     { name = "fastapi", specifier = ">=0.115.11" },
     { name = "mcp", specifier = ">=1.6.0" },
     { name = "nanoid", specifier = ">=2.0.0" },

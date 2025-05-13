@@ -228,10 +228,10 @@ First, you'll need to download this repository. After you've downloaded it, you 
 #### MCP Server
 The MCP server can run in either SSE mode or stdio:
   ```bash
-  python -m agent_memory_server.mcp <sse|stdio>
+  agent-memory mcp --mode <sse|stdio>
   ```
 
-**NOTE:** With uv, just prefix the command with `uv`, e.g.: `uv run python -m agent_memory_server.mcp sse`.
+**NOTE:** With uv, prefix the command with `uv`, e.g.: `uv run agent-memory --mode sse`. If you installed from source, you'll probably need to add `--directory` to tell uv where to find the code: `uv run --directory <path/to/checkout> run agent-memory --mode stdio`.
 
 ### Docker Compose
 
@@ -332,12 +332,12 @@ uv sync --all-extras
 
 3. Run the API server:
 ```bash
-python -m agent_memory_server.main
+agent-memory api
 ```
 
-4. In a separate terminal, run the MCP server (use either the "stdio" or "sse" options to set the running mode):
+4. In a separate terminal, run the MCP server (use either the "stdio" or "sse" options to set the running mode) if you want to test with tools like Cursor or Claude:
 ```bash
-python -m agent_memory_server.mcp [stdio|sse]
+agent-memory mcp --mode <stdio|sse>
 ```
 
 ### Running Tests
@@ -374,7 +374,12 @@ The memory compaction functionality optimizes storage by merging duplicate and s
 
 ### Running Compaction
 
-Currently, memory compaction is only available as a function in `agent_memory_server.long_term_memory.compact_long_term_memories`. You can run it manually or trigger it (manually, via code) to run as a background task.
+Memory compaction is available as a task function in `agent_memory_server.long_term_memory.compact_long_term_memories`. You can trigger it manually
+by running the `agent-memory schedule-task` command:
+
+```bash
+agent-memory schedule-task "agent_memory_server.long_term_memory.compact_long_term_memories"
+```
 
 ### Key Features
 

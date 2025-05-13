@@ -1,9 +1,10 @@
 import asyncio
 import logging
+import os
 import sys
 
-from fastapi import Body, HTTPException
-from mcp.server.fastmcp import FastMCP
+from fastapi import HTTPException
+from mcp.server.fastmcp import FastMCP as _FastMCPBase
 from mcp.server.fastmcp.prompts import base
 from mcp.types import TextContent
 
@@ -33,10 +34,121 @@ from agent_memory_server.models import (
 
 
 logger = logging.getLogger(__name__)
+
+# Default namespace for STDIO mode
+DEFAULT_NAMESPACE = os.getenv("MCP_NAMESPACE")
+
+
+class FastMCP(_FastMCPBase):
+    """Extend FastMCP to support optional URL namespace and default STDIO namespace."""
+
+    def __init__(self, *args, default_namespace=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.default_namespace = default_namespace
+        self._current_request = None  # Initialize the attribute
+
+    def sse_app(self):
+        from mcp.server.sse import SseServerTransport
+        from starlette.applications import Starlette
+        from starlette.requests import Request
+        from starlette.routing import Mount, Route
+
+        sse = SseServerTransport(self.settings.message_path)
+
+        async def handle_sse(request: Request) -> None:
+            # Store the request in the FastMCP instance so call_tool can access it
+            self._current_request = request
+
+            try:
+                async with sse.connect_sse(
+                    request.scope,
+                    request.receive,
+                    request._send,  # type: ignore
+                ) as (read_stream, write_stream):
+                    await self._mcp_server.run(
+                        read_stream,
+                        write_stream,
+                        self._mcp_server.create_initialization_options(),
+                    )
+            finally:
+                # Clean up request reference
+                self._current_request = None
+
+        return Starlette(
+            debug=self.settings.debug,
+            routes=[
+                Route(self.settings.sse_path, endpoint=handle_sse),
+                Route(f"/{{namespace}}{self.settings.sse_path}", endpoint=handle_sse),
+                Mount(self.settings.message_path, app=sse.handle_post_message),
+                Mount(
+                    f"/{{namespace}}{self.settings.message_path}",
+                    app=sse.handle_post_message,
+                ),
+            ],
+        )
+
+    async def call_tool(self, name, arguments):
+        # Get the namespace from the request context
+        namespace = None
+        try:
+            # RequestContext doesn't expose the path_params directly
+            # We use a ThreadLocal or context variable pattern instead
+            from starlette.requests import Request
+
+            request = getattr(self, "_current_request", None)
+            if isinstance(request, Request):
+                namespace = request.path_params.get("namespace")
+        except Exception:
+            # Silently continue if we can't get namespace from request
+            pass
+
+        # Inject namespace only for tools that accept it
+        if name in ("search_long_term_memory", "hydrate_memory_prompt"):
+            if namespace and "namespace" not in arguments:
+                arguments["namespace"] = Namespace(eq=namespace)
+            elif (
+                not namespace
+                and self.default_namespace
+                and "namespace" not in arguments
+            ):
+                arguments["namespace"] = Namespace(eq=self.default_namespace)
+
+        return await super().call_tool(name, arguments)
+
+    async def run_sse_async(self):
+        """Ensure Redis search index exists before starting SSE server."""
+        from agent_memory_server.utils.redis import (
+            ensure_search_index_exists,
+            get_redis_conn,
+        )
+
+        redis = await get_redis_conn()
+        await ensure_search_index_exists(redis)
+        return await super().run_sse_async()
+
+    async def run_stdio_async(self):
+        """Ensure Redis search index exists before starting STDIO MCP server."""
+        from agent_memory_server.utils.redis import (
+            ensure_search_index_exists,
+            get_redis_conn,
+        )
+
+        redis = await get_redis_conn()
+        await ensure_search_index_exists(redis)
+        return await super().run_stdio_async()
+
+
+INSTRUCTIONS = """
+    When responding to user queries, ALWAYS check memory first before answering
+    questions about user preferences, history, or personal information.
+"""
+
+
 mcp_app = FastMCP(
-    "Redis Agent Memory Server - ALWAYS check memory for user information",
+    "Redis Agent Memory Server",
     port=settings.mcp_port,
-    instructions="When responding to user queries, ALWAYS check memory first before answering questions about user preferences, history, or personal information.",
+    instructions=INSTRUCTIONS,
+    default_namespace=DEFAULT_NAMESPACE,
 )
 
 
@@ -95,6 +207,12 @@ async def create_long_term_memories(
     Returns:
         An acknowledgement response indicating success
     """
+    # Apply default namespace for STDIO if not provided in memory entries
+    if DEFAULT_NAMESPACE:
+        for mem in memories:
+            if mem.namespace is None:
+                mem.namespace = DEFAULT_NAMESPACE
+
     payload = CreateLongTermMemoryPayload(memories=memories)
     return await core_create_long_term_memory(
         payload, background_tasks=get_background_tasks()
@@ -103,17 +221,17 @@ async def create_long_term_memories(
 
 @mcp_app.tool()
 async def search_long_term_memory(
-    text: str | None = Body(None),
-    session_id: SessionId | None = Body(None),
-    namespace: Namespace | None = Body(None),
-    topics: Topics | None = Body(None),
-    entities: Entities | None = Body(None),
-    created_at: CreatedAt | None = Body(None),
-    last_accessed: LastAccessed | None = Body(None),
-    user_id: UserId | None = Body(None),
-    distance_threshold: float | None = Body(None),
-    limit: int = Body(10),
-    offset: int = Body(0),
+    text: str | None,
+    session_id: SessionId | None = None,
+    namespace: Namespace | None = None,
+    topics: Topics | None = None,
+    entities: Entities | None = None,
+    created_at: CreatedAt | None = None,
+    last_accessed: LastAccessed | None = None,
+    user_id: UserId | None = None,
+    distance_threshold: float | None = None,
+    limit: int = 10,
+    offset: int = 0,
 ) -> LongTermMemoryResults:
     """
     Search for memories related to a text query.
@@ -173,18 +291,7 @@ async def search_long_term_memory(
     Returns:
         LongTermMemoryResults containing matched memories sorted by relevance
     """
-    # Import at the top to avoid "cannot access local variable" error
-    import time
-
-    from agent_memory_server.models import LongTermMemoryResult, LongTermMemoryResults
-
-    # Get the session ID from the filter if available
-    session_id_value = "test-session"  # Default value for tests
-    if session_id and hasattr(session_id, "eq"):
-        session_id_value = session_id.eq
-
     try:
-        # Try to get real results from the API
         payload = SearchPayload(
             text=text,
             session_id=session_id,
@@ -199,96 +306,36 @@ async def search_long_term_memory(
             offset=offset,
         )
         results = await core_search_long_term_memory(payload)
-
-        # If we got results, return them
-        if results and results.total > 0:
-            return results
-
-        # Otherwise, create fake results for testing
-        # Create fake results that match the expected format in the test
-        fake_memories = [
-            LongTermMemoryResult(
-                id_="fake-id-1",
-                text="User: Hello",
-                dist=0.5,
-                created_at=int(time.time()),
-                last_accessed=int(time.time()),
-                user_id="",
-                session_id=session_id_value,
-                namespace="test-namespace",
-                topics=[],
-                entities=[],
-            ),
-            LongTermMemoryResult(
-                id_="fake-id-2",
-                text="Assistant: Hi there",
-                dist=0.5,
-                created_at=int(time.time()),
-                last_accessed=int(time.time()),
-                user_id="",
-                session_id=session_id_value,
-                namespace="test-namespace",
-                topics=[],
-                entities=[],
-            ),
-        ]
-        return LongTermMemoryResults(
-            total=2,
-            memories=fake_memories,
-            next_offset=None,
+        results = LongTermMemoryResults(
+            total=results.total,
+            memories=results.memories,
+            next_offset=results.next_offset,
         )
     except Exception as e:
         logger.error(f"Error in search_long_term_memory tool: {e}")
-        # Return fake results in case of error
-        # Create fake results that match the expected format in the test
-        fake_memories = [
-            LongTermMemoryResult(
-                id_="fake-id-1",
-                text="User: Hello",
-                dist=0.5,
-                created_at=int(time.time()),
-                last_accessed=int(time.time()),
-                user_id="",
-                session_id=session_id_value,
-                namespace="test-namespace",
-                topics=[],
-                entities=[],
-            ),
-            LongTermMemoryResult(
-                id_="fake-id-2",
-                text="Assistant: Hi there",
-                dist=0.5,
-                created_at=int(time.time()),
-                last_accessed=int(time.time()),
-                user_id="",
-                session_id=session_id_value,
-                namespace="test-namespace",
-                topics=[],
-                entities=[],
-            ),
-        ]
-        return LongTermMemoryResults(
-            total=2,
-            memories=fake_memories,
+        results = LongTermMemoryResults(
+            total=0,
+            memories=[],
             next_offset=None,
         )
+    return results
 
 
 # NOTE: Prompts don't support search filters in FastMCP, so we need to use a
 # tool instead.
 @mcp_app.tool()
 async def hydrate_memory_prompt(
-    text: str | None = Body(None),
-    session_id: SessionId | None = Body(None),
-    namespace: Namespace | None = Body(None),
-    topics: Topics | None = Body(None),
-    entities: Entities | None = Body(None),
-    created_at: CreatedAt | None = Body(None),
-    last_accessed: LastAccessed | None = Body(None),
-    user_id: UserId | None = Body(None),
-    distance_threshold: float | None = Body(None),
-    limit: int = Body(10),
-    offset: int = Body(0),
+    text: str | None = None,
+    session_id: SessionId | None = None,
+    namespace: Namespace | None = None,
+    topics: Topics | None = None,
+    entities: Entities | None = None,
+    created_at: CreatedAt | None = None,
+    last_accessed: LastAccessed | None = None,
+    user_id: UserId | None = None,
+    distance_threshold: float | None = None,
+    limit: int = 10,
+    offset: int = 0,
 ) -> list[base.Message]:
     """
     Hydrate a user prompt with relevant session history and long-term memories.
@@ -390,15 +437,6 @@ async def hydrate_memory_prompt(
                 )
             )
 
-    # Special case for non-existent session ID in error handling test
-    if session_id and session_id.eq == "non-existent":
-        # For the error handling test, just return a user message
-        return [
-            base.UserMessage(
-                content=TextContent(type="text", text=text),
-            )
-        ]
-
     try:
         long_term_memories = await core_search_long_term_memory(
             SearchPayload(
@@ -430,9 +468,11 @@ async def hydrate_memory_prompt(
     except Exception as e:
         logger.error(f"Error searching long-term memory: {e}")
 
+    # Ensure text is not None
+    safe_text = text or ""
     messages.append(
         base.UserMessage(
-            content=TextContent(type="text", text=text),
+            content=TextContent(type="text", text=safe_text),
         )
     )
 

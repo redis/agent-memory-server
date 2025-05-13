@@ -1,4 +1,5 @@
 import os
+from typing import Literal
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
@@ -33,6 +34,9 @@ class Settings(BaseSettings):
     # Docket settings
     docket_name: str = "memory-server"
     use_docket: bool = True
+
+    # Other Application settings
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
 
 settings = Settings()
