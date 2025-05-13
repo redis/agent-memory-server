@@ -5,6 +5,7 @@ Command-line interface for agent-memory-server.
 
 import datetime
 import importlib
+import logging
 import sys
 
 import click
@@ -39,16 +40,7 @@ def version():
 @click.option("--reload", is_flag=True, help="Enable auto-reload")
 def api(port: int, host: str, reload: bool):
     """Run the REST API server."""
-    import asyncio
-
     from agent_memory_server.main import app, on_start_logger
-
-    async def setup_redis():
-        redis = await get_redis_conn()
-        await ensure_search_index_exists(redis)
-
-    # Run the async setup
-    asyncio.run(setup_redis())
 
     on_start_logger(port)
     uvicorn.run(
@@ -78,27 +70,27 @@ def mcp(port: int, mode: str):
     from agent_memory_server.mcp import mcp_app
 
     async def setup_and_run():
-        redis = await get_redis_conn()
-        await ensure_search_index_exists(redis)
+        # Redis setup is handled by the MCP app before it starts
 
         # Run the MCP server
         if mode == "sse":
+            logger.info(f"Starting MCP server on port {port}\n")
             await mcp_app.run_sse_async()
         elif mode == "stdio":
+            # Try to force all logging to stderr because stdio-mode MCP servers
+            # use standard output for the protocol.
+            logging.basicConfig(
+                level=settings.log_level,
+                stream=sys.stderr,
+                force=True,  # remove any existing handlers
+                format="%(asctime)s %(name)s %(levelname)s %(message)s",
+            )
             await mcp_app.run_stdio_async()
         else:
             raise ValueError(f"Invalid mode: {mode}")
 
     # Update the port in settings
     settings.mcp_port = port
-
-    # MCP servers shouldn't write to stdout in stdio mode
-    sys.stderr.write(f"Starting MCP server on port {port}\n")
-
-    if mode == "sse":
-        sys.stderr.write("Running in SSE mode\n")
-    elif mode == "stdio":
-        sys.stderr.write("Running in stdio mode\n")
 
     asyncio.run(setup_and_run())
 

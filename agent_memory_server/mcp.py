@@ -115,6 +115,28 @@ class FastMCP(_FastMCPBase):
 
         return await super().call_tool(name, arguments)
 
+    async def run_sse_async(self):
+        """Ensure Redis search index exists before starting SSE server."""
+        from agent_memory_server.utils.redis import (
+            ensure_search_index_exists,
+            get_redis_conn,
+        )
+
+        redis = await get_redis_conn()
+        await ensure_search_index_exists(redis)
+        return await super().run_sse_async()
+
+    async def run_stdio_async(self):
+        """Ensure Redis search index exists before starting STDIO MCP server."""
+        from agent_memory_server.utils.redis import (
+            ensure_search_index_exists,
+            get_redis_conn,
+        )
+
+        redis = await get_redis_conn()
+        await ensure_search_index_exists(redis)
+        return await super().run_stdio_async()
+
 
 INSTRUCTIONS = """
     When responding to user queries, ALWAYS check memory first before answering

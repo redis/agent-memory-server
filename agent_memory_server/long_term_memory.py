@@ -361,21 +361,30 @@ async def compact_long_term_memories(
     if compact_semantic_duplicates:
         logger.info("Starting semantic duplicate compaction")
         try:
-            # Check if the index exists before proceeding
+            # Get the correct index name
             index_name = Keys.search_index_name()
+            logger.info(
+                f"Using index '{index_name}' for semantic duplicate compaction."
+            )
+
+            # Check if the index exists before proceeding
             try:
                 await redis_client.execute_command(f"FT.INFO {index_name}")
             except Exception as info_e:
                 if "unknown index name" in str(info_e).lower():
-                    # Index doesn't exist, create it
                     logger.info(f"Search index {index_name} doesn't exist, creating it")
-                    await ensure_search_index_exists(redis_client)
+                    # Ensure 'get_search_index' is called with the correct name to create it if needed
+                    await ensure_search_index_exists(
+                        redis_client, index_name=index_name
+                    )
                 else:
-                    logger.warning(f"Error checking index: {info_e}")
+                    logger.warning(
+                        f"Error checking index '{index_name}': {info_e} - attempting to proceed."
+                    )
 
-            # Get all memories matching the filters
-            index = get_search_index(redis_client)
-            query_str = filter_str if filter_str != "*" else ""
+            # Get all memories matching the filters, using the correct index name
+            index = get_search_index(redis_client, index_name=index_name)
+            query_str = filter_str if filter_str != "*" else "*"
 
             # Create a query to get all memories
             q = Query(query_str).paging(0, limit)
@@ -498,10 +507,9 @@ async def compact_long_term_memories(
                                 if filter_expression:
                                     vector_query.set_filter(filter_expression)
 
-                            # Execute the vector search
-                            similar_results = None
+                            # Execute the vector search using the AsyncSearchIndex
                             try:
-                                similar_results = await index.search(vector_query)
+                                vector_search_result = await index.search(vector_query)
                             except Exception as e:
                                 logger.error(
                                     f"Error in vector search for memory {memory_id}: {e}"
@@ -510,14 +518,14 @@ async def compact_long_term_memories(
 
                             # Filter out the current memory and already processed memories
                             similar_memories = []
-                            if similar_results:
-                                for doc in similar_results.docs:
-                                    similar_id = doc.id.replace("memory:", "")
-                                    if (
-                                        similar_id != memory_id
-                                        and similar_id not in processed_ids
-                                    ):
-                                        similar_memories.append(doc)
+                            for doc in getattr(vector_search_result, "docs", []):
+                                # Extract the ID field safely
+                                similar_id = safe_get(doc, "id_").replace("memory:", "")
+                                if (
+                                    similar_id != memory_id
+                                    and similar_id not in processed_ids
+                                ):
+                                    similar_memories.append(doc)
 
                             # If we found similar memories, merge them
                             if similar_memories:
@@ -530,7 +538,7 @@ async def compact_long_term_memories(
                                 similar_memory_keys = []
 
                                 for similar_memory in similar_memories:
-                                    similar_id = similar_memory.id.replace(
+                                    similar_id = similar_memory["id_"].replace(
                                         "memory:", ""
                                     )
                                     similar_key = Keys.memory_key(
@@ -541,30 +549,30 @@ async def compact_long_term_memories(
                                     # Get similar memory data with error handling
                                     similar_data = {}
                                     try:
-                                        # Use pipeline for Redis operations - only await the execute() method
-                                        pipeline = redis_client.pipeline()
-                                        pipeline.hgetall(similar_key)
-                                        # Execute the pipeline and await the result
-                                        similar_data_raw = await pipeline.execute()
+                                        similar_data_raw = await redis_client.hgetall(
+                                            similar_key  # type: ignore
+                                        )
 
-                                        if similar_data_raw and similar_data_raw[0]:
+                                        # hgetall returns a dict of field to value
+                                        if similar_data_raw:
                                             # Convert from bytes to strings
                                             similar_data = {
-                                                k.decode()
-                                                if isinstance(k, bytes)
-                                                else k: v.decode()
-                                                if isinstance(v, bytes)
-                                                and k != b"vector"
-                                                else v
-                                                for k, v in similar_data_raw[0].items()
+                                                (
+                                                    k.decode()
+                                                    if isinstance(k, bytes)
+                                                    else k
+                                                ): (
+                                                    v.decode()
+                                                    if isinstance(v, bytes)
+                                                    else v
+                                                )
+                                                for k, v in similar_data_raw.items()
                                             }
-                                            similar_memory_data_list.append(
-                                                similar_data
-                                            )
-                                            similar_memory_keys.append(similar_key)
-                                            processed_ids.add(
-                                                similar_id
-                                            )  # Mark as processed
+                                        similar_memory_data_list.append(similar_data)
+                                        similar_memory_keys.append(similar_key)
+                                        processed_ids.add(
+                                            similar_id
+                                        )  # Mark as processed
                                     except Exception as e:
                                         logger.error(
                                             f"Error retrieving similar memory {similar_id}: {e}"
