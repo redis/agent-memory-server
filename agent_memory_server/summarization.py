@@ -98,7 +98,7 @@ New summary:
         response = await client.create_chat_completion(model, progressive_prompt)
 
         # Extract completion text
-        completion = response.choices[0]["message"]["content"]
+        completion = response.choices[0].message.content
 
         # Get token usage
         tokens_used = response.total_tokens
@@ -219,6 +219,7 @@ async def summarize_session(
                 metadata["tokens"] = str(total_tokens)
 
                 pipe.hmset(metadata_key, mapping=metadata)
+                print("Metadata: ", metadata_key, metadata)
 
                 # Messages that were summarized
                 num_summarized = len(messages_to_summarize)

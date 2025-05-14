@@ -221,3 +221,4 @@ libs/redis/docs/.Trash*
 .python-version
 .idea/*
 .vscode/settings.json
+.cursor

@@ -79,11 +79,11 @@ def migrate_memories():
 @click.option("--reload", is_flag=True, help="Enable auto-reload")
 def api(port: int, host: str, reload: bool):
     """Run the REST API server."""
-    from agent_memory_server.main import app, on_start_logger
+    from agent_memory_server.main import on_start_logger
 
     on_start_logger(port)
     uvicorn.run(
-        app,
+        "agent_memory_server.main:app",
         host=host,
         port=port,
         reload=reload,

@@ -66,13 +66,11 @@ async def get_session_memory(
     if not session_exists:
         return None
 
-    # Retrieve messages and metadata
     async with redis.pipeline() as pipe:
         pipe.lrange(messages_key, -window_size, -1)  # Get the most recent messages
         pipe.hgetall(metadata_key)
         messages_data, metadata = await pipe.execute()
 
-    # Parse messages
     messages = []
     for msg_data in messages_data:
         if isinstance(msg_data, bytes):
@@ -80,14 +78,12 @@ async def get_session_memory(
         msg = json.loads(msg_data)
         messages.append(MemoryMessage(**msg))
 
-    # Parse metadata
     metadata_dict = {}
     for k, v in metadata.items():
         key = k.decode("utf-8") if isinstance(k, bytes) else k
         value = v.decode("utf-8") if isinstance(v, bytes) else v
         metadata_dict[key] = value
 
-    # Create SessionMemory object
     return SessionMemory(messages=messages, **metadata_dict)
 
 
@@ -112,6 +108,7 @@ async def set_session_memory(
     messages_json = [json.dumps(msg.model_dump()) for msg in memory.messages]
     metadata = memory.model_dump(
         exclude_none=True,
+        exclude_unset=True,
         exclude={"messages"},
     )
 
@@ -138,11 +135,7 @@ async def set_session_memory(
 
     # Check if window size is exceeded
     current_size = await redis.llen(messages_key)  # type: ignore
-    print(
-        f"Current size: {current_size}", "Current window size: ", settings.window_size
-    )
     if current_size > settings.window_size:
-        print("Queuing summarizing session task")
         # Add summarization task
         await background_tasks.add_task(
             summarize_session,
@@ -152,7 +145,6 @@ async def set_session_memory(
         )
 
     # If long-term memory is enabled, index messages
-    print("Long-term memory is enabled: ", settings.long_term_memory)
     if settings.long_term_memory:
         memories = [
             LongTermMemory(
@@ -164,7 +156,6 @@ async def set_session_memory(
             for msg in memory.messages
         ]
 
-        print("Adding a task")
         await background_tasks.add_task(
             index_long_term_memories,
             memories,

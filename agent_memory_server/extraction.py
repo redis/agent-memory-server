@@ -343,4 +343,7 @@ async def extract_discrete_memories(redis: Redis | None = None):
             for new_memory in discrete_memories
         ]
 
-        await index_long_term_memories(long_term_memories)
+        await index_long_term_memories(
+            long_term_memories,
+            deduplicate=True,
+        )

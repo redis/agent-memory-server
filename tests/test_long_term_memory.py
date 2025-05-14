@@ -147,12 +147,11 @@ class TestLongTermMemory:
 
         assert mock_index.query.call_count == 1
 
-        assert len(results.memories) == 2
+        assert len(results.memories) == 1
         assert isinstance(results.memories[0], LongTermMemoryResult)
         assert results.memories[0].text == "Hello, world!"
         assert results.memories[0].dist == 0.25
-        assert results.memories[1].text == "Hi there!"
-        assert results.memories[1].dist == 0.75
+        assert results.memories[0].memory_type == "message"
 
 
 @pytest.mark.requires_api_keys

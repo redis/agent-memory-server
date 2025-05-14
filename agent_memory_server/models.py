@@ -8,6 +8,7 @@ from agent_memory_server.filters import (
     CreatedAt,
     Entities,
     LastAccessed,
+    MemoryType,
     Namespace,
     SessionId,
     Topics,
@@ -213,6 +214,10 @@ class SearchPayload(BaseModel):
         default=None,
         description="Optional distance threshold to filter by",
     )
+    memory_type: MemoryType | None = Field(
+        default=None,
+        description="Optional memory type to filter by",
+    )
     limit: int = Field(
         default=10,
         ge=1,
@@ -249,5 +254,8 @@ class SearchPayload(BaseModel):
 
         if self.last_accessed is not None:
             filters["last_accessed"] = self.last_accessed
+
+        if self.memory_type is not None:
+            filters["memory_type"] = self.memory_type
 
         return filters
