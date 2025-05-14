@@ -1,24 +1,3 @@
-"""
-Memory Compaction System
-------------------------
-
-This module implements a system for reducing memory storage by detecting and merging:
-1. Hash-based duplicates: Memories with identical content based on a stable hash
-2. Semantic duplicates: Memories with similar meaning detected via vector search
-
-The compaction process:
-- Uses stable hash generation for exact duplicate detection
-- Leverages RedisVL vector search for semantic similarity detection
-- Merges similar memories using LLM to create cohesive combined memories
-- Maintains metadata from original memories (timestamps, topics, entities)
-- Supports filtering by user, session, and namespace
-
-Key functions:
-- generate_memory_hash: Creates a stable hash for deduplication
-- merge_memories_with_llm: Uses an LLM to merge similar memories
-- compact_long_term_memories: Main entry point for memory compaction
-"""
-
 import hashlib
 import logging
 import time
@@ -31,12 +10,14 @@ from redis.commands.search.query import Query
 from redisvl.query import VectorQuery, VectorRangeQuery
 from redisvl.utils.vectorize import OpenAITextVectorizer
 
+from agent_memory_server.config import settings
 from agent_memory_server.dependencies import get_background_tasks
-from agent_memory_server.extraction import handle_extraction
+from agent_memory_server.extraction import extract_discrete_memories, handle_extraction
 from agent_memory_server.filters import (
     CreatedAt,
     Entities,
     LastAccessed,
+    MemoryType,
     Namespace,
     SessionId,
     Topics,
@@ -52,8 +33,6 @@ from agent_memory_server.models import (
     LongTermMemoryResult,
     LongTermMemoryResults,
 )
-from agent_memory_server.models.base import BaseClient
-from agent_memory_server.models.clients import get_llm_client
 from agent_memory_server.utils.keys import Keys
 from agent_memory_server.utils.redis import (
     ensure_search_index_exists,
@@ -111,15 +90,12 @@ def generate_memory_hash(memory: dict) -> str:
     return hashlib.sha256(hash_content.encode()).hexdigest()
 
 
-async def merge_memories_with_llm(
-    memories: list[dict], memory_type: str = "hash", llm_client: Any = None
-) -> dict:
+async def merge_memories_with_llm(memories: list[dict], llm_client: Any = None) -> dict:
     """
     Use an LLM to merge similar or duplicate memories.
 
     Args:
         memories: List of memory dictionaries to merge
-        memory_type: Type of duplication ("hash" for exact matches or "semantic" for similar)
         llm_client: Optional LLM client to use for merging
 
     Returns:
@@ -150,10 +126,7 @@ async def merge_memories_with_llm(
     memory_texts = [m["text"] for m in memories]
 
     # Construct the LLM prompt
-    if memory_type == "hash":
-        instruction = "Merge these duplicate memories into a single, concise memory:"
-    else:
-        instruction = "Merge these similar memories into a single, coherent memory:"
+    instruction = "Merge these similar memories into a single, coherent memory:"
 
     prompt = f"{instruction}\n\n"
     for i, text in enumerate(memory_texts, 1):
@@ -161,8 +134,6 @@ async def merge_memories_with_llm(
 
     prompt += "\nMerged memory:"
 
-    # Use gpt-4o-mini for a good balance of quality and speed
-    # TODO: Make this configurable
     model_name = "gpt-4o-mini"
 
     if not llm_client:
@@ -190,15 +161,30 @@ async def merge_memories_with_llm(
             merged_text = str(response.choices[0])
 
     # Use the earliest creation timestamp
-    created_at = min(m.get("created_at", int(time.time())) for m in memories)
+    created_at = min(int(m.get("created_at", int(time.time()))) for m in memories)
 
     # Use the most recent last_accessed timestamp
-    last_accessed = max(m.get("last_accessed", int(time.time())) for m in memories)
+    last_accessed = max(int(m.get("last_accessed", int(time.time()))) for m in memories)
 
     # Prefer non-empty namespace, user_id, session_id from memories
     namespace = next((m["namespace"] for m in memories if m.get("namespace")), None)
     user_id = next((m["user_id"] for m in memories if m.get("user_id")), None)
     session_id = next((m["session_id"] for m in memories if m.get("session_id")), None)
+
+    # Get the memory type from the first memory
+    memory_type = next(
+        (m["memory_type"] for m in memories if m.get("memory_type")), "semantic"
+    )
+
+    # Get the discrete_memory_extracted from the first memory
+    discrete_memory_extracted = next(
+        (
+            m["discrete_memory_extracted"]
+            for m in memories
+            if m.get("discrete_memory_extracted")
+        ),
+        "t",
+    )
 
     # Create the merged memory
     merged_memory = {
@@ -212,6 +198,8 @@ async def merge_memories_with_llm(
         "updated_at": int(time.time()),
         "topics": list(all_topics) if all_topics else None,
         "entities": list(all_entities) if all_entities else None,
+        "memory_type": memory_type,
+        "discrete_memory_extracted": discrete_memory_extracted,
     }
 
     # Generate a new hash for the merged memory
@@ -225,7 +213,7 @@ async def compact_long_term_memories(
     namespace: str | None = None,
     user_id: str | None = None,
     session_id: str | None = None,
-    llm_client: BaseClient | None = None,
+    llm_client: OpenAIClientWrapper | AnthropicClientWrapper | None = None,
     redis_client: Redis | None = None,
     vector_distance_threshold: float = 0.12,
     compact_hash_duplicates: bool = True,
@@ -244,7 +232,7 @@ async def compact_long_term_memories(
         redis_client = await get_redis_conn()
 
     if not llm_client:
-        llm_client = await get_llm_client()
+        llm_client = await get_model_client(model_name="gpt-4o-mini")
 
     logger.info(
         f"Starting memory compaction: namespace={namespace}, "
@@ -331,7 +319,7 @@ async def compact_long_term_memories(
 
                             for j in range(1, len(search_results), 2):
                                 # Skip the last item (newest) which we'll keep
-                                if j < (num_duplicates - 1) * 2 + 1:
+                                if j < (int(num_duplicates) - 1) * 2 + 1:
                                     key = search_results[j].decode()
                                     memories_to_delete.append(key)
 
@@ -360,284 +348,133 @@ async def compact_long_term_memories(
     semantic_memories_merged = 0
     if compact_semantic_duplicates:
         logger.info("Starting semantic duplicate compaction")
+        # Get the correct index name
+        index_name = Keys.search_index_name()
+        logger.info(f"Using index '{index_name}' for semantic duplicate compaction.")
+
+        # Check if the index exists before proceeding
         try:
-            # Get the correct index name
-            index_name = Keys.search_index_name()
-            logger.info(
-                f"Using index '{index_name}' for semantic duplicate compaction."
-            )
-
-            # Check if the index exists before proceeding
-            try:
-                await redis_client.execute_command(f"FT.INFO {index_name}")
-            except Exception as info_e:
-                if "unknown index name" in str(info_e).lower():
-                    logger.info(f"Search index {index_name} doesn't exist, creating it")
-                    # Ensure 'get_search_index' is called with the correct name to create it if needed
-                    await ensure_search_index_exists(
-                        redis_client, index_name=index_name
-                    )
-                else:
-                    logger.warning(
-                        f"Error checking index '{index_name}': {info_e} - attempting to proceed."
-                    )
-
-            # Get all memories matching the filters, using the correct index name
-            index = get_search_index(redis_client, index_name=index_name)
-            query_str = filter_str if filter_str != "*" else "*"
-
-            # Create a query to get all memories
-            q = Query(query_str).paging(0, limit)
-            q.return_fields(
-                "id_", "text", "vector", "user_id", "session_id", "namespace"
-            )
-
-            # Execute the query to get memories
-            search_result = None
-            try:
-                search_result = await index.search(q)
-            except Exception as e:
-                logger.error(f"Error searching for memories: {e}")
-
-            if search_result and search_result.total > 0:
-                logger.info(
-                    f"Found {search_result.total} memories to check for semantic duplicates"
+            await redis_client.execute_command(f"FT.INFO {index_name}")
+        except Exception as info_e:
+            if "unknown index name" in str(info_e).lower():
+                logger.info(f"Search index {index_name} doesn't exist, creating it")
+                # Ensure 'get_search_index' is called with the correct name to create it if needed
+                await ensure_search_index_exists(redis_client, index_name=index_name)
+            else:
+                logger.warning(
+                    f"Error checking index '{index_name}': {info_e} - attempting to proceed."
                 )
 
-                # Process memories in batches to avoid overloading Redis
-                batch_size = 50
-                processed_ids = set()  # Track which memories have been processed
+        # Get all memories matching the filters, using the correct index name
+        index = get_search_index(redis_client, index_name=index_name)
+        query_str = filter_str if filter_str != "*" else "*"
 
-                for i in range(0, len(search_result.docs), batch_size):
-                    batch = search_result.docs[i : i + batch_size]
+        # Create a query to get all memories
+        q = Query(query_str).paging(0, limit)
+        q.return_fields("id_", "text", "vector", "user_id", "session_id", "namespace")
 
-                    for memory in batch:
-                        memory_id = memory.id.replace("memory:", "")
-
-                        # Skip if already processed
-                        if memory_id in processed_ids:
-                            continue
-
-                        # Get the memory text and vector
-                        getattr(memory, "text", "")
-
-                        # Retrieve the memory from Redis to get all fields
-                        memory_key = Keys.memory_key(
-                            memory_id, getattr(memory, "namespace", "")
-                        )
-
-                        # Get memory data with error handling
-                        memory_data = {}
-                        try:
-                            # Redis pipeline operations - only await the execute() method
-                            pipeline = redis_client.pipeline()
-                            pipeline.hgetall(memory_key)
-                            # Execute the pipeline and await the result
-                            memory_data_raw = await pipeline.execute()
-                            if memory_data_raw and memory_data_raw[0]:
-                                # Convert memory data from bytes to strings
-                                memory_data = {
-                                    k.decode() if isinstance(k, bytes) else k: v
-                                    if isinstance(v, bytes)
-                                    and (k == b"vector" or k == "vector")
-                                    else v.decode()
-                                    if isinstance(v, bytes)
-                                    else v
-                                    for k, v in memory_data_raw[0].items()
-                                }
-                        except Exception as e:
-                            logger.error(f"Error retrieving memory {memory_id}: {e}")
-                            continue
-
-                        # Skip if memory not found
-                        if not memory_data:
-                            continue
-
-                        # Add this memory to processed list
-                        processed_ids.add(memory_id)
-
-                        # Handle the vector safely
-                        vector_data = memory_data.get("vector")
-                        if not vector_data or not isinstance(vector_data, bytes):
-                            logger.warning(
-                                f"Missing or invalid vector for memory {memory_id}"
-                            )
-                            continue
-
-                        # Use vector search to find semantically similar memories
-                        try:
-                            vector_query = VectorRangeQuery(
-                                vector=vector_data,  # Ensure we pass bytes
-                                vector_field_name="vector",
-                                distance_threshold=vector_distance_threshold,
-                                num_results=10,
-                                return_fields=[
-                                    "id_",
-                                    "text",
-                                    "user_id",
-                                    "session_id",
-                                    "namespace",
-                                ],
-                            )
-
-                            # Add same filters as main search
-                            if filter_str != "*":
-                                filter_expression = None
-                                if namespace:
-                                    filter_expression = Namespace(
-                                        eq=namespace
-                                    ).to_filter()
-                                if user_id:
-                                    user_filter = UserId(eq=user_id).to_filter()
-                                    filter_expression = (
-                                        user_filter
-                                        if filter_expression is None
-                                        else filter_expression & user_filter
-                                    )
-                                if session_id:
-                                    session_filter = SessionId(
-                                        eq=session_id
-                                    ).to_filter()
-                                    filter_expression = (
-                                        session_filter
-                                        if filter_expression is None
-                                        else filter_expression & session_filter
-                                    )
-
-                                if filter_expression:
-                                    vector_query.set_filter(filter_expression)
-
-                            # Execute the vector search using the AsyncSearchIndex
-                            try:
-                                vector_search_result = await index.search(vector_query)
-                            except Exception as e:
-                                logger.error(
-                                    f"Error in vector search for memory {memory_id}: {e}"
-                                )
-                                continue
-
-                            # Filter out the current memory and already processed memories
-                            similar_memories = []
-                            for doc in getattr(vector_search_result, "docs", []):
-                                # Extract the ID field safely
-                                similar_id = safe_get(doc, "id_").replace("memory:", "")
-                                if (
-                                    similar_id != memory_id
-                                    and similar_id not in processed_ids
-                                ):
-                                    similar_memories.append(doc)
-
-                            # If we found similar memories, merge them
-                            if similar_memories:
-                                logger.info(
-                                    f"Found {len(similar_memories)} semantic duplicates for memory {memory_id}"
-                                )
-
-                                # Get full memory data for each similar memory
-                                similar_memory_data_list = []
-                                similar_memory_keys = []
-
-                                for similar_memory in similar_memories:
-                                    similar_id = similar_memory["id_"].replace(
-                                        "memory:", ""
-                                    )
-                                    similar_key = Keys.memory_key(
-                                        similar_id,
-                                        getattr(similar_memory, "namespace", ""),
-                                    )
-
-                                    # Get similar memory data with error handling
-                                    similar_data = {}
-                                    try:
-                                        similar_data_raw = await redis_client.hgetall(
-                                            similar_key  # type: ignore
-                                        )
-
-                                        # hgetall returns a dict of field to value
-                                        if similar_data_raw:
-                                            # Convert from bytes to strings
-                                            similar_data = {
-                                                (
-                                                    k.decode()
-                                                    if isinstance(k, bytes)
-                                                    else k
-                                                ): (
-                                                    v.decode()
-                                                    if isinstance(v, bytes)
-                                                    else v
-                                                )
-                                                for k, v in similar_data_raw.items()
-                                            }
-                                        similar_memory_data_list.append(similar_data)
-                                        similar_memory_keys.append(similar_key)
-                                        processed_ids.add(
-                                            similar_id
-                                        )  # Mark as processed
-                                    except Exception as e:
-                                        logger.error(
-                                            f"Error retrieving similar memory {similar_id}: {e}"
-                                        )
-                                        continue
-
-                                # If we have similar memories with data, merge them
-                                if similar_memory_data_list:
-                                    try:
-                                        # Merge the memories
-                                        merged_memory = await merge_memories_with_llm(
-                                            [memory_data] + similar_memory_data_list,
-                                            "semantic",
-                                            llm_client=llm_client,
-                                        )
-
-                                        # Index the merged memory
-                                        merged_memory_obj = LongTermMemory(
-                                            id_=memory_id,  # Reuse the original ID
-                                            text=merged_memory["text"],
-                                            user_id=merged_memory["user_id"],
-                                            session_id=merged_memory["session_id"],
-                                            namespace=merged_memory["namespace"],
-                                            created_at=merged_memory["created_at"],
-                                            last_accessed=merged_memory[
-                                                "last_accessed"
-                                            ],
-                                            topics=merged_memory.get("topics", []),
-                                            entities=merged_memory.get("entities", []),
-                                        )
-
-                                        await index_long_term_memories(
-                                            [merged_memory_obj]
-                                        )
-
-                                        # Delete the similar memories (original is overwritten)
-                                        if similar_memory_keys:
-                                            pipeline = redis_client.pipeline()
-                                            for key in similar_memory_keys:
-                                                pipeline.delete(key)
-
-                                            await pipeline.execute()
-                                            semantic_memories_merged += len(
-                                                similar_memory_keys
-                                            )
-
-                                            logger.info(
-                                                f"Merged {len(similar_memory_keys) + 1} semantic duplicates "
-                                                f"into memory {memory_id}"
-                                            )
-                                    except Exception as e:
-                                        logger.error(
-                                            f"Error merging semantic duplicates: {e}"
-                                        )
-                        except Exception as e:
-                            logger.error(
-                                f"Error processing memory {memory_id} for semantic duplicates: {e}"
-                            )
-                            continue
-
-            logger.info(
-                f"Completed semantic deduplication. Merged {semantic_memories_merged} memories."
-            )
+        # Execute the query to get memories
+        search_result = None
+        try:
+            search_result = await index.search(q)
         except Exception as e:
-            logger.error(f"Error during semantic duplicate compaction: {e}")
+            logger.error(f"Error searching for memories: {e}")
+
+        if search_result and search_result.total > 0:
+            logger.info(
+                f"Found {search_result.total} memories to check for semantic duplicates"
+            )
+
+            # Process memories in batches to avoid overloading Redis
+            batch_size = 50
+            processed_keys = set()  # Track which memories have been processed
+
+            for i in range(0, len(search_result.docs), batch_size):
+                batch = search_result.docs[i : i + batch_size]
+
+                for memory in batch:
+                    memory_key = safe_get(memory, "id")  # We get the Redis key as "id"
+                    memory_id = safe_get(memory, "id_")  # This is our own generated ID
+
+                    # Skip if already processed
+                    if memory_key in processed_keys:
+                        continue
+
+                    # Get memory data with error handling
+                    memory_data = {}
+                    try:
+                        memory_data_raw = await redis_client.hgetall(memory_key)  # type: ignore
+                        if memory_data_raw:
+                            # Convert memory data from bytes to strings
+                            memory_data = {
+                                k.decode() if isinstance(k, bytes) else k: v
+                                if isinstance(v, bytes)
+                                and (k == b"vector" or k == "vector")
+                                else v.decode()
+                                if isinstance(v, bytes)
+                                else v
+                                for k, v in memory_data_raw.items()
+                            }
+                    except Exception as e:
+                        logger.error(f"Error retrieving memory {memory_key}: {e}")
+                        continue
+
+                    # Skip if memory not found
+                    if not memory_data:
+                        continue
+
+                    # Convert to LongTermMemory object for deduplication
+                    memory_obj = LongTermMemory(
+                        id_=memory_id,
+                        text=memory_data.get("text", ""),
+                        user_id=memory_data.get("user_id"),
+                        session_id=memory_data.get("session_id"),
+                        namespace=memory_data.get("namespace"),
+                        created_at=int(memory_data.get("created_at", 0)),
+                        last_accessed=int(memory_data.get("last_accessed", 0)),
+                        topics=memory_data.get("topics", "").split(",")
+                        if memory_data.get("topics")
+                        else [],
+                        entities=memory_data.get("entities", "").split(",")
+                        if memory_data.get("entities")
+                        else [],
+                        memory_type=memory_data.get("memory_type", "semantic"),
+                        discrete_memory_extracted=memory_data.get(
+                            "discrete_memory_extracted", "t"
+                        ),
+                    )
+
+                    # Add this memory to processed list
+                    processed_keys.add(memory_key)
+
+                    # Check for semantic duplicates
+                    (
+                        merged_memory,
+                        was_merged,
+                    ) = await deduplicate_by_semantic_search(
+                        memory=memory_obj,
+                        redis_client=redis_client,
+                        llm_client=llm_client,
+                        namespace=namespace,
+                        user_id=user_id,
+                        session_id=session_id,
+                        vector_distance_threshold=vector_distance_threshold,
+                    )
+
+                    if was_merged:
+                        semantic_memories_merged += 1
+                        # We need to delete the original memory and save the merged one
+                        await redis_client.delete(memory_key)
+
+                        # Re-index the merged memory
+                        await index_long_term_memories(
+                            [merged_memory],
+                            redis_client=redis_client,
+                            deduplicate=False,  # Already deduplicated
+                        )
+        logger.info(
+            f"Completed semantic deduplication. Merged {semantic_memories_merged} memories."
+        )
 
     # Get the count of remaining memories
     total_memories = await count_long_term_memories(
@@ -662,26 +499,82 @@ async def compact_long_term_memories(
 async def index_long_term_memories(
     memories: list[LongTermMemory],
     redis_client: Redis | None = None,
+    deduplicate: bool = False,
+    deduplicate_hash: bool = True,
+    deduplicate_semantic: bool = True,
+    vector_distance_threshold: float = 0.12,
+    llm_client: Any = None,
 ) -> None:
     """
-    Index long-term memories in Redis for search
+    Index long-term memories in Redis for search, with optional deduplication
 
     Args:
         memories: List of long-term memories to index
         redis_client: Optional Redis client to use. If None, a new connection will be created.
+        deduplicate: Whether to deduplicate memories before indexing
+        vector_distance_threshold: Threshold for semantic similarity
+        llm_client: Optional LLM client for semantic merging
     """
     redis = redis_client or await get_redis_conn()
+    model_client = (
+        llm_client or await get_model_client(model_name=settings.generation_model)
+        if deduplicate
+        else None
+    )
     background_tasks = get_background_tasks()
+
+    # Process memories for deduplication if requested
+    processed_memories = []
+    if deduplicate:
+        for memory in memories:
+            current_memory = memory
+            was_deduplicated = False
+
+            # Check for hash-based duplicates
+            if not was_deduplicated:
+                deduped_memory, was_dup = await deduplicate_by_hash(
+                    memory=current_memory,
+                    redis_client=redis,
+                )
+                if was_dup:
+                    # This is a duplicate, skip it
+                    was_deduplicated = True
+                else:
+                    current_memory = deduped_memory or current_memory
+
+            # Check for semantic duplicates
+            if not was_deduplicated:
+                deduped_memory, was_merged = await deduplicate_by_semantic_search(
+                    memory=current_memory,
+                    redis_client=redis,
+                    llm_client=model_client,
+                    vector_distance_threshold=vector_distance_threshold,
+                )
+                if was_merged:
+                    current_memory = deduped_memory or current_memory
+
+            # Add the memory to be indexed if not a pure duplicate
+            if not was_deduplicated:
+                processed_memories.append(current_memory)
+    else:
+        processed_memories = memories
+
+    # If all memories were duplicates, we're done
+    if not processed_memories:
+        logger.info("All memories were duplicates, nothing to index")
+        return
+
+    # Now proceed with indexing the processed memories
     vectorizer = OpenAITextVectorizer()
     embeddings = await vectorizer.aembed_many(
-        [memory.text for memory in memories],
+        [memory.text for memory in processed_memories],
         batch_size=20,
         as_buffer=True,
     )
 
     async with redis.pipeline(transaction=False) as pipe:
         for idx, vector in enumerate(embeddings):
-            memory = memories[idx]
+            memory = processed_memories[idx]
             id_ = memory.id_ if memory.id_ else nanoid.generate()
             key = Keys.memory_key(id_, memory.namespace)
 
@@ -693,6 +586,7 @@ async def index_long_term_memories(
                     "session_id": memory.session_id or "",
                 }
             )
+            print("Memory hash: ", memory_hash)
 
             await pipe.hset(  # type: ignore
                 key,
@@ -705,7 +599,9 @@ async def index_long_term_memories(
                     "created_at": memory.created_at or int(time.time()),
                     "namespace": memory.namespace or "",
                     "memory_hash": memory_hash,  # Store the hash for aggregation
+                    "memory_type": memory.memory_type,
                     "vector": vector,
+                    "discrete_memory_extracted": memory.discrete_memory_extracted,
                 },
             )
 
@@ -715,7 +611,8 @@ async def index_long_term_memories(
 
         await pipe.execute()
 
-    logger.info(f"Indexed {len(memories)} memories")
+    logger.info(f"Indexed {len(processed_memories)} memories")
+    await background_tasks.add_task(extract_discrete_memories)
 
 
 async def search_long_term_memories(
@@ -729,6 +626,7 @@ async def search_long_term_memories(
     topics: Topics | None = None,
     entities: Entities | None = None,
     distance_threshold: float | None = None,
+    memory_type: MemoryType | None = None,
     limit: int = 10,
     offset: int = 0,
 ) -> LongTermMemoryResults:
@@ -753,6 +651,8 @@ async def search_long_term_memories(
         filters.append(topics.to_filter())
     if entities:
         filters.append(entities.to_filter())
+    if memory_type:
+        filters.append(memory_type.to_filter())
     filter_expression = reduce(lambda x, y: x & y, filters) if filters else None
 
     if distance_threshold is not None:
@@ -773,6 +673,8 @@ async def search_long_term_memories(
                 "namespace",
                 "topics",
                 "entities",
+                "memory_type",
+                "memory_hash",
             ],
         )
     else:
@@ -792,6 +694,8 @@ async def search_long_term_memories(
                 "namespace",
                 "topics",
                 "entities",
+                "memory_type",
+                "memory_hash",
             ],
         )
     if filter_expression:
@@ -800,11 +704,17 @@ async def search_long_term_memories(
     q.paging(offset=offset, num=limit)
 
     index = get_search_index(redis)
-    search_result = await index.search(q, q.params)
+    search_result = await index.query(q)
 
     results = []
+    memory_hashes = []
 
-    for doc in search_result.docs:
+    for doc in search_result:
+        if safe_get(doc, "memory_hash") not in memory_hashes:
+            memory_hashes.append(safe_get(doc, "memory_hash"))
+        else:
+            continue
+
         # NOTE: Because this may not be obvious. We index hashes, and we extract
         # topics and entities separately from main long-term indexing. However,
         # when we store the topics and entities, we store them as comma-separated
@@ -831,9 +741,15 @@ async def search_long_term_memories(
                 namespace=safe_get(doc, "namespace"),
                 topics=doc_topics,
                 entities=doc_entities,
+                memory_hash=safe_get(doc, "memory_hash"),
+                memory_type=safe_get(doc, "memory_type", "message"),
             )
         )
-    total_results = search_result.total
+
+    # Handle different types of search_result
+    total_results = len(results)
+    if hasattr(search_result, "total"):
+        total_results = search_result.total
 
     logger.info(f"Found {len(results)} results for query")
     return LongTermMemoryResults(
@@ -841,78 +757,6 @@ async def search_long_term_memories(
         memories=results,
         next_offset=offset + limit if offset + limit < total_results else None,
     )
-
-
-async def migrate_add_memory_hashes(redis: Redis) -> None:
-    """Add memory_hash to all existing memories in Redis"""
-    logger.info("Starting memory hash migration")
-
-    # 1. Scan Redis for all memory keys
-    memory_keys = []
-    cursor = 0
-    pattern = "memory:*"
-
-    while True:
-        cursor, keys = await redis.scan(cursor=cursor, match=pattern, count=100)
-        memory_keys.extend(keys)
-        if cursor == 0:
-            break
-
-    logger.info(f"Found {len(memory_keys)} memory keys to update")
-
-    if not memory_keys:
-        logger.info("No memories found to migrate")
-        return
-
-    # 2. Process memories in batches
-    batch_size = 50
-    migrated_count = 0
-
-    for i in range(0, len(memory_keys), batch_size):
-        batch_keys = memory_keys[i : i + batch_size]
-        pipeline = redis.pipeline()
-
-        # First get the data
-        for key in batch_keys:
-            pipeline.hgetall(key)
-
-        results = await pipeline.execute()
-
-        # Now update with hashes
-        update_pipeline = redis.pipeline()
-        for j, result in enumerate(results):
-            if not result:
-                continue
-
-            # Convert bytes to strings
-            memory = {
-                k.decode() if isinstance(k, bytes) else k: v.decode()
-                if isinstance(v, bytes)
-                else v
-                for k, v in result.items()
-            }
-
-            # Skip if hash already exists
-            if "memory_hash" in memory:
-                continue
-
-            # Generate hash
-            memory_hash = generate_memory_hash(
-                {
-                    "text": memory.get("text", ""),
-                    "user_id": memory.get("user_id", ""),
-                    "session_id": memory.get("session_id", ""),
-                }
-            )
-
-            # Update the memory with the hash
-            update_pipeline.hset(batch_keys[j], "memory_hash", memory_hash)
-            migrated_count += 1
-
-        await update_pipeline.execute()
-        logger.info(f"Migrated {migrated_count} memories so far")
-
-    logger.info(f"Migration completed. Added hashes to {migrated_count} memories")
 
 
 async def count_long_term_memories(
@@ -972,3 +816,212 @@ async def count_long_term_memories(
     except Exception as e:
         logger.error(f"Error counting memories: {e}")
         return 0
+
+
+async def deduplicate_by_hash(
+    memory: LongTermMemory,
+    redis_client: Redis | None = None,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+) -> tuple[LongTermMemory | None, bool]:
+    """
+    Check if a memory has hash-based duplicates and handle accordingly.
+
+    Args:
+        memory: The memory to check for duplicates
+        redis_client: Optional Redis client
+        namespace: Optional namespace filter
+        user_id: Optional user ID filter
+        session_id: Optional session ID filter
+
+    Returns:
+        Tuple of (memory to save (if any), was_duplicate)
+    """
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    # Generate hash for the memory
+    memory_hash = generate_memory_hash(
+        {
+            "text": memory.text,
+            "user_id": memory.user_id or "",
+            "session_id": memory.session_id or "",
+        }
+    )
+
+    # Build filters for the search
+    filters = []
+    if namespace or memory.namespace:
+        ns = namespace or memory.namespace
+        filters.append(f"@namespace:{{{ns}}}")
+    if user_id or memory.user_id:
+        uid = user_id or memory.user_id
+        filters.append(f"@user_id:{{{uid}}}")
+    if session_id or memory.session_id:
+        sid = session_id or memory.session_id
+        filters.append(f"@session_id:{{{sid}}}")
+
+    filter_str = " ".join(filters) if filters else ""
+
+    # Search for existing memories with the same hash
+    index_name = Keys.search_index_name()
+
+    # Use FT.SEARCH to find memories with this hash
+    # TODO: Use RedisVL
+    search_query = (
+        f"FT.SEARCH {index_name} "
+        f"(@memory_hash:{{{memory_hash}}}) {filter_str} "
+        "RETURN 1 id_ "
+        "SORTBY last_accessed DESC"  # Newest first
+    )
+
+    search_results = await redis_client.execute_command(search_query)
+
+    if search_results and search_results[0] > 0:
+        # Found existing memory with the same hash
+        logger.info(f"Found existing memory with hash {memory_hash}")
+
+        # Update the last_accessed timestamp of the existing memory
+        if search_results[0] >= 1:
+            existing_key = search_results[1].decode()
+            await redis_client.hset(
+                existing_key, "last_accessed", str(int(time.time()))
+            )  # type: ignore
+
+            # Don't save this memory, it's a duplicate
+            return None, True
+
+    # No duplicates found, return the original memory
+    return memory, False
+
+
+async def deduplicate_by_semantic_search(
+    memory: LongTermMemory,
+    redis_client: Redis | None = None,
+    llm_client: Any = None,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    vector_distance_threshold: float = 0.12,
+) -> tuple[LongTermMemory | None, bool]:
+    """
+    Check if a memory has semantic duplicates and merge if found.
+
+    Args:
+        memory: The memory to check for semantic duplicates
+        redis_client: Optional Redis client
+        llm_client: Optional LLM client for merging
+        namespace: Optional namespace filter
+        user_id: Optional user ID filter
+        session_id: Optional session ID filter
+        vector_distance_threshold: Distance threshold for semantic similarity
+
+    Returns:
+        Tuple of (memory to save (potentially merged), was_merged)
+    """
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    if not llm_client:
+        llm_client = await get_model_client(model_name="gpt-4o-mini")
+
+    # Get the vector for the memory
+    vectorizer = OpenAITextVectorizer()
+    vector = await vectorizer.aembed(memory.text, as_buffer=True)
+
+    # Build filters
+    filter_expression = None
+    if namespace or memory.namespace:
+        ns = namespace or memory.namespace
+        filter_expression = Namespace(eq=ns).to_filter()
+    if user_id or memory.user_id:
+        uid = user_id or memory.user_id
+        user_filter = UserId(eq=uid).to_filter()
+        filter_expression = (
+            user_filter
+            if filter_expression is None
+            else filter_expression & user_filter
+        )
+    if session_id or memory.session_id:
+        sid = session_id or memory.session_id
+        session_filter = SessionId(eq=sid).to_filter()
+        filter_expression = (
+            session_filter
+            if filter_expression is None
+            else filter_expression & session_filter
+        )
+
+    # Use vector search to find semantically similar memories
+    index = get_search_index(redis_client)
+
+    vector_query = VectorRangeQuery(
+        vector=vector,
+        vector_field_name="vector",
+        distance_threshold=vector_distance_threshold,
+        num_results=5,
+        return_fields=[
+            "id_",
+            "text",
+            "user_id",
+            "session_id",
+            "namespace",
+            "id",
+            "created_at",
+            "last_accessed",
+            "topics",
+            "entities",
+            "memory_type",
+        ],
+    )
+
+    if filter_expression:
+        vector_query.set_filter(filter_expression)
+
+    vector_search_result = await index.query(vector_query)
+
+    if vector_search_result and len(vector_search_result) > 0:
+        # Found semantically similar memories
+        similar_memory_keys = []
+        for similar_memory in vector_search_result:
+            similar_memory_keys.append(similar_memory["id"])
+            similar_memory["created_at"] = similar_memory.get(
+                "created_at", int(time.time())
+            )
+            similar_memory["last_accessed"] = similar_memory.get(
+                "last_accessed", int(time.time())
+            )
+            # Merge the memories
+            merged_memory = await merge_memories_with_llm(
+                [memory.model_dump()] + [similar_memory],
+                llm_client=llm_client,
+            )
+
+            # Convert back to LongTermMemory
+            merged_memory_obj = LongTermMemory(
+                id_=memory.id_ or nanoid.generate(),
+                text=merged_memory["text"],
+                user_id=merged_memory["user_id"],
+                session_id=merged_memory["session_id"],
+                namespace=merged_memory["namespace"],
+                created_at=merged_memory["created_at"],
+                last_accessed=merged_memory["last_accessed"],
+                topics=merged_memory.get("topics", []),
+                entities=merged_memory.get("entities", []),
+                memory_type=merged_memory.get("memory_type", "semantic"),
+                discrete_memory_extracted=merged_memory.get(
+                    "discrete_memory_extracted", "t"
+                ),
+            )
+
+            # Delete the similar memories if requested
+            for key in similar_memory_keys:
+                await redis_client.delete(key)
+
+        logger.info(
+            f"Merged new memory with {len(similar_memory_keys)} semantic duplicates"
+        )
+        return merged_memory_obj, True
+
+    # No similar memories found or error occurred
+    return memory, False

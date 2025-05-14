@@ -66,13 +66,11 @@ async def get_session_memory(
     if not session_exists:
         return None
 
-    # Retrieve messages and metadata
     async with redis.pipeline() as pipe:
         pipe.lrange(messages_key, -window_size, -1)  # Get the most recent messages
         pipe.hgetall(metadata_key)
         messages_data, metadata = await pipe.execute()
 
-    # Parse messages
     messages = []
     for msg_data in messages_data:
         if isinstance(msg_data, bytes):
@@ -80,14 +78,12 @@ async def get_session_memory(
         msg = json.loads(msg_data)
         messages.append(MemoryMessage(**msg))
 
-    # Parse metadata
     metadata_dict = {}
     for k, v in metadata.items():
         key = k.decode("utf-8") if isinstance(k, bytes) else k
         value = v.decode("utf-8") if isinstance(v, bytes) else v
         metadata_dict[key] = value
 
-    # Create SessionMemory object
     return SessionMemory(messages=messages, **metadata_dict)
 
 
@@ -112,6 +108,7 @@ async def set_session_memory(
     messages_json = [json.dumps(msg.model_dump()) for msg in memory.messages]
     metadata = memory.model_dump(
         exclude_none=True,
+        exclude_unset=True,
         exclude={"messages"},
     )
 
@@ -154,6 +151,7 @@ async def set_session_memory(
                 session_id=session_id,
                 text=f"{msg.role}: {msg.content}",
                 namespace=memory.namespace,
+                memory_type="message",
             )
             for msg in memory.messages
         ]

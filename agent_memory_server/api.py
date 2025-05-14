@@ -223,12 +223,16 @@ async def search_long_term_memory(payload: SearchPayload):
     # Extract filter objects from the payload
     filters = payload.get_filters()
 
-    # Pass text, redis, and filter objects to the search function
-    return await long_term_memory.search_long_term_memories(
-        redis=redis,
-        text=payload.text,
-        distance_threshold=payload.distance_threshold,
-        limit=payload.limit,
-        offset=payload.offset,
+    kwargs = {
+        "redis": redis,
+        "distance_threshold": payload.distance_threshold,
+        "limit": payload.limit,
+        "offset": payload.offset,
         **filters,
-    )
+    }
+
+    if payload.text:
+        kwargs["text"] = payload.text
+
+    # Pass text, redis, and filter objects to the search function
+    return await long_term_memory.search_long_term_memories(**kwargs)

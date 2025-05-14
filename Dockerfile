@@ -28,4 +28,4 @@ ENTRYPOINT []
 
 
 # Run the API server
-CMD ["python", "-m", "agent_memory_server.main"]
+CMD ["uv", "run", "agent-memory", "api"]

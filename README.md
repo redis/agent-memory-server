@@ -197,6 +197,18 @@ Example:
 agent-memory task-worker --concurrency 5 --redelivery-timeout 60
 ```
 
+#### `rebuild_index`
+Rebuilds the search index for Redis Memory Server.
+```bash
+agent-memory rebuild_index
+```
+
+#### `migrate_memories`
+Runs data migrations. Migrations are reentrant.
+```bash
+agent-memory migrate_memories
+```
+
 To see help for any command, you can use `--help`:
 ```bash
 agent-memory --help
@@ -207,24 +219,38 @@ agent-memory mcp --help
 
 ## Getting Started
 
-### Local Install
+### Installation
 
 First, you'll need to download this repository. After you've downloaded it, you can install and run the servers.
 
-1. Install the package and required dependencies with pip, ideally into a virtual environment:
-   ```bash
-   pip install -e .
-   ```
+This project uses [uv](https://github.com/astral-sh/uv) for dependency management.
 
-**NOTE:** This project uses `uv` for dependency management, so if you have uv installed, you can run `uv sync` instead of `pip install ...` to install the project's dependencies.
-
-2 (a). The easiest way to start the REST API server and MCP server in SSE mode is to use Docker Compose. See the Docker Compose section of this file for more details.
-
-2 (b). You can also run the REST API and MCP servers directly, e.g.:
-#### REST API (direct, without CLI)
+1. Install uv:
   ```bash
-  python -m agent_memory_server.main
+  pip install uv
   ```
+
+2. Install the package and required dependencies:
+  ```bash
+  uv sync
+  ```
+
+2. Set up environment variables (see Configuration section)
+
+### Running
+
+The easiest way to start the REST and MCP servers is to use Docker Compose. See the Docker Compose section of this file for more details.
+
+But you can also run these servers via the CLI commands. Here's how you
+run the REST API server:
+```bash
+uv run agent-memory api
+```
+
+And the MCP server:
+```
+uv run agent-memory mcp --mode <stdio|sse>
+```
 
 **NOTE:** With uv, prefix the command with `uv`, e.g.: `uv run agent-memory --mode sse`. If you installed from source, you'll probably need to add `--directory` to tell uv where to find the code: `uv run --directory <path/to/checkout> run agent-memory --mode stdio`.
 
@@ -293,52 +319,12 @@ Cursor's MCP config is similar to Claude's, but it also supports SSE servers, so
 
 ## Configuration
 
-You can configure the service using environment variables:
+You can configure the MCP and REST servers and task worker using environment
+variables. See the file `config.py` for all the available settings.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `REDIS_URL` | URL for Redis connection | `redis://localhost:6379` |
-| `LONG_TERM_MEMORY` | Enable/disable long-term memory | `True` |
-| `WINDOW_SIZE` | Maximum messages in short-term memory | `20` |
-| `OPENAI_API_KEY` | API key for OpenAI | - |
-| `ANTHROPIC_API_KEY` | API key for Anthropic | - |
-| `GENERATION_MODEL` | Model for text generation | `gpt-4o-mini` |
-| `EMBEDDING_MODEL` | Model for text embeddings | `text-embedding-3-small` |
-| `PORT` | REST API server port | `8000` |
-| `TOPIC_MODEL` | BERTopic model for topic extraction | `MaartenGr/BERTopic_Wikipedia` |
-| `NER_MODEL` | BERT model for NER | `dbmdz/bert-large-cased-finetuned-conll03-english` |
-| `ENABLE_TOPIC_EXTRACTION` | Enable/disable topic extraction | `True` |
-| `ENABLE_NER` | Enable/disable named entity recognition | `True` |
-| `MCP_PORT` | MCP server port |9000|
-
-
-## Development
-
-### Installation
-
-This project uses [uv](https://github.com/astral-sh/uv) for dependency management.
-
-1. Install dependencies:
-```bash
-uv sync --all-extras
-```
-
-2. Set up environment variables (see Configuration section)
-
-3. Run the API server:
-```bash
-agent-memory api
-```
-
-4. In a separate terminal, run the MCP server (use either the "stdio" or "sse" options to set the running mode) if you want to test with tools like Cursor or Claude:
-```bash
-agent-memory mcp --mode <stdio|sse>
-```
-
-### Running Tests
-```bash
-python -m pytest
-```
+The names of the settings map directly to an environment variable, so for
+example, you can set the `openai_api_key` setting with the `OPENAI_API_KEY`
+environment variable.
 
 ## Running the Background Task Worker
 
@@ -382,16 +368,24 @@ agent-memory schedule-task "agent_memory_server.long_term_memory.compact_long_te
 - **Semantic Deduplication**: Finds and merges memories with similar meaning using vector search
 - **LLM-powered Merging**: Uses language models to intelligently combine memories
 
+## Running Migrations
+When the data model changes, we add a migration in `migrations.py`. You can run
+these to make sure your schema is up to date, like so:
+
+```bash
+uv run agent-memory migrate-memories
+```
+
+## Development
+
+### Running Tests
+```bash
+uv run pytest
+```
+
 ## Contributing
 1. Fork the repository
 2. Create a feature branch
 3. Commit your changes
 4. Push to the branch
 5. Create a Pull Request
-
-### Running Tests
-
-```bash
-# Run all tests
-pytest tests
-```

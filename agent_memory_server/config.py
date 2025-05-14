@@ -20,10 +20,12 @@ class Settings(BaseSettings):
     mcp_port: int = 9000
 
     # Topic and NER model settings
-    topic_model: str = "MaartenGr/BERTopic_Wikipedia"
+    topic_model_source: Literal["NER", "LLM"] = "LLM"
+    topic_model: str = "MaartenGr/BERTopic_Wikipedia"  # LLM model here if using LLM
     ner_model: str = "dbmdz/bert-large-cased-finetuned-conll03-english"
     enable_topic_extraction: bool = True
     enable_ner: bool = True
+    top_k_topics: int = 3
 
     # RedisVL Settings
     redisvl_distance_metric: str = "COSINE"

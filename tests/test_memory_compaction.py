@@ -70,9 +70,7 @@ async def test_merge_memories_with_llm(mock_openai_client, monkeypatch):
         },
     ]
 
-    merged = await merge_memories_with_llm(
-        memories, "hash", llm_client=mock_openai_client
-    )
+    merged = await merge_memories_with_llm(memories, llm_client=mock_openai_client)
     assert merged["text"] == "Merged content"
     assert merged["created_at"] == memories[1]["created_at"]
     assert merged["last_accessed"] == memories[1]["last_accessed"]

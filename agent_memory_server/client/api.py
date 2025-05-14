@@ -13,6 +13,7 @@ from agent_memory_server.filters import (
     CreatedAt,
     Entities,
     LastAccessed,
+    MemoryType,
     Namespace,
     SessionId,
     Topics,
@@ -273,6 +274,7 @@ class MemoryAPIClient:
         last_accessed: LastAccessed | dict[str, Any] | None = None,
         user_id: UserId | dict[str, Any] | None = None,
         distance_threshold: float | None = None,
+        memory_type: MemoryType | dict[str, Any] | None = None,
         limit: int = 10,
         offset: int = 0,
     ) -> LongTermMemoryResults:
@@ -313,6 +315,8 @@ class MemoryAPIClient:
             last_accessed = LastAccessed(**last_accessed)
         if isinstance(user_id, dict):
             user_id = UserId(**user_id)
+        if isinstance(memory_type, dict):
+            memory_type = MemoryType(**memory_type)
 
         # Apply default namespace if needed and no namespace filter specified
         if namespace is None and self.config.default_namespace is not None:
@@ -328,6 +332,7 @@ class MemoryAPIClient:
             last_accessed=last_accessed,
             user_id=user_id,
             distance_threshold=distance_threshold,
+            memory_type=memory_type,
             limit=limit,
             offset=offset,
         )

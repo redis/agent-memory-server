@@ -98,7 +98,7 @@ New summary:
         response = await client.create_chat_completion(model, progressive_prompt)
 
         # Extract completion text
-        completion = response.choices[0]["message"]["content"]
+        completion = response.choices[0].message.content
 
         # Get token usage
         tokens_used = response.total_tokens
@@ -132,6 +132,7 @@ async def summarize_session(
         client: The client wrapper (OpenAI or Anthropic)
         redis_conn: Redis connection
     """
+    print("Summarizing session")
     redis = await get_redis_conn()
     client = await get_model_client(settings.generation_model)
 
@@ -142,8 +143,9 @@ async def summarize_session(
         await pipe.watch(messages_key, metadata_key)
 
         num_messages = await pipe.llen(messages_key)  # type: ignore
+        print(f"<task> Number of messages: {num_messages}")
         if num_messages < window_size:
-            logger.info(f"No messages to summarize for session {session_id}")
+            logger.info(f"Not enough messages to summarize for session {session_id}")
             return
 
         messages_raw = await pipe.lrange(messages_key, 0, window_size - 1)  # type: ignore
@@ -158,6 +160,8 @@ async def summarize_session(
                         msg_raw = msg_raw.decode("utf-8")
                     msg_dict = json.loads(msg_raw)
                     messages.append(MemoryMessage(**msg_dict))
+
+                print("Messages: ", messages)
 
                 model_config = get_model_config(model)
                 max_tokens = model_config.max_tokens
@@ -215,6 +219,7 @@ async def summarize_session(
                 metadata["tokens"] = str(total_tokens)
 
                 pipe.hmset(metadata_key, mapping=metadata)
+                print("Metadata: ", metadata_key, metadata)
 
                 # Messages that were summarized
                 num_summarized = len(messages_to_summarize)

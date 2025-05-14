@@ -51,7 +51,7 @@ def get_search_index(
             },
             "fields": [
                 {"name": "text", "type": "text"},
-                {"name": "memory_hash", "type": "text"},
+                {"name": "memory_hash", "type": "tag"},
                 {"name": "id_", "type": "tag"},
                 {"name": "session_id", "type": "tag"},
                 {"name": "user_id", "type": "tag"},
@@ -60,6 +60,8 @@ def get_search_index(
                 {"name": "entities", "type": "tag"},
                 {"name": "created_at", "type": "numeric"},
                 {"name": "last_accessed", "type": "numeric"},
+                {"name": "memory_type", "type": "tag"},
+                {"name": "discrete_memory_extracted", "type": "tag"},
                 {
                     "name": "vector",
                     "type": "vector",
@@ -82,6 +84,7 @@ async def ensure_search_index_exists(
     index_name: str = settings.redisvl_index_name,
     vector_dimensions: str = settings.redisvl_vector_dimensions,
     distance_metric: str = settings.redisvl_distance_metric,
+    overwrite: bool = False,
 ) -> None:
     """
     Ensure that the async search index exists, create it if it doesn't.
@@ -96,9 +99,14 @@ async def ensure_search_index_exists(
     index = get_search_index(redis, index_name, vector_dimensions, distance_metric)
     if await index.exists():
         logger.info("Async search index already exists")
-        return
+        if overwrite:
+            logger.info("Overwriting existing index")
+            await redis.execute_command("FT.DROPINDEX", index.name)
+        else:
+            return
+    else:
+        logger.info("Async search index doesn't exist, creating...")
 
-    logger.info("Async search index doesn't exist, creating...")
     await index.create()
 
     logger.info(
@@ -117,6 +125,8 @@ def safe_get(doc: Any, key: str, default: Any | None = None) -> Any:
     Returns:
         The value if found, or the default
     """
+    if isinstance(doc, dict):
+        return doc.get(key, default)
     try:
         return getattr(doc, key)
     except (AttributeError, KeyError):
