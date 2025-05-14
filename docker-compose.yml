@@ -49,7 +49,7 @@ services:
       - "9000:9000"
     depends_on:
       - redis
-    command: ["python", "-m", "agent_memory_server.mcp", "sse"]
+    command: ["uv", "run", "agent-memory", "mcp", "--mode", "sse"]
 
   redis:
     image: redis/redis-stack:latest

@@ -1,5 +1,6 @@
 import logging
 import time
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -64,6 +65,17 @@ class SessionMemory(BaseModel):
     )
 
 
+class SessionMemoryResponse(SessionMemory):
+    """Response containing a session's memory"""
+
+
+class SessionListResponse(BaseModel):
+    """Response containing a list of sessions"""
+
+    sessions: list[str]
+    total: int
+
+
 class LongTermMemory(BaseModel):
     """A long-term memory"""
 
@@ -108,17 +120,58 @@ class LongTermMemory(BaseModel):
         default=None,
         description="Hash representation of the memory for deduplication",
     )
+    discrete_memory_extracted: Literal["t", "f"] = Field(
+        default="f",
+        description="Whether memory extraction has run for this memory (only messages)",
+    )
+    memory_type: Literal["episodic", "semantic", "message"] = Field(
+        default="message",
+        description="Type of memory",
+    )
 
 
-class SessionMemoryResponse(SessionMemory):
-    """Response containing a session's memory"""
+class AckResponse(BaseModel):
+    """Generic acknowledgement response"""
+
+    status: str
 
 
-class SessionListResponse(BaseModel):
-    """Response containing a list of sessions"""
+class LongTermMemoryResult(LongTermMemory):
+    """Result from a long-term memory search"""
 
-    sessions: list[str]
+    dist: float
+
+
+class LongTermMemoryResults(BaseModel):
+    """Results from a long-term memory search"""
+
+    memories: list[LongTermMemoryResult]
     total: int
+    next_offset: int | None = None
+
+
+class LongTermMemoryResultsResponse(LongTermMemoryResults):
+    """Response containing long-term memory search results"""
+
+
+class CreateLongTermMemoryPayload(BaseModel):
+    """Payload for creating a long-term memory"""
+
+    memories: list[LongTermMemory]
+
+
+class GetSessionsQuery(BaseModel):
+    """Query parameters for getting sessions"""
+
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+    namespace: str | None = None
+
+
+class HealthCheckResponse(BaseModel):
+    """Response for health check endpoint"""
+
+    now: int
 
 
 class SearchPayload(BaseModel):
@@ -198,47 +251,3 @@ class SearchPayload(BaseModel):
             filters["last_accessed"] = self.last_accessed
 
         return filters
-
-
-class HealthCheckResponse(BaseModel):
-    """Response for health check endpoint"""
-
-    now: int
-
-
-class AckResponse(BaseModel):
-    """Generic acknowledgement response"""
-
-    status: str
-
-
-class LongTermMemoryResult(LongTermMemory):
-    """Result from a long-term memory search"""
-
-    dist: float
-
-
-class LongTermMemoryResults(BaseModel):
-    """Results from a long-term memory search"""
-
-    memories: list[LongTermMemoryResult]
-    total: int
-    next_offset: int | None = None
-
-
-class LongTermMemoryResultsResponse(LongTermMemoryResults):
-    """Response containing long-term memory search results"""
-
-
-class CreateLongTermMemoryPayload(BaseModel):
-    """Payload for creating a long-term memory"""
-
-    memories: list[LongTermMemory]
-
-
-class GetSessionsQuery(BaseModel):
-    """Query parameters for getting sessions"""
-
-    limit: int = Field(default=20, ge=1, le=100)
-    offset: int = Field(default=0, ge=0)
-    namespace: str | None = None

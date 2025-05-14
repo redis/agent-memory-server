@@ -7,6 +7,7 @@ import logging
 from docket import Docket
 
 from agent_memory_server.config import settings
+from agent_memory_server.extraction import extract_discrete_memories
 from agent_memory_server.long_term_memory import (
     compact_long_term_memories,
     extract_memory_structure,
@@ -24,6 +25,7 @@ task_collection = [
     summarize_session,
     index_long_term_memories,
     compact_long_term_memories,
+    extract_discrete_memories,
 ]
 
 

@@ -89,40 +89,39 @@ class TestLongTermMemory:
 
         mock_now = time()
 
-        mock_search = AsyncMock()
-        mock_search.return_value = MockResult(
-            [
-                Document(
-                    id=b"doc1",
-                    id_=nanoid.generate(),
-                    text=b"Hello, world!",
-                    vector_distance=0.25,
-                    created_at=mock_now,
-                    last_accessed=mock_now,
-                    user_id=None,
-                    session_id=None,
-                    namespace=None,
-                    topics=None,
-                    entities=None,
-                ),
-                Document(
-                    id=b"doc2",
-                    id_=nanoid.generate(),
-                    text=b"Hi there!",
-                    vector_distance=0.75,
-                    created_at=mock_now,
-                    last_accessed=mock_now,
-                    user_id=None,
-                    session_id=None,
-                    namespace=None,
-                    topics=None,
-                    entities=None,
-                ),
-            ]
-        )
+        mock_query = AsyncMock()
+        # Return a list of documents directly instead of a MockResult object
+        mock_query.return_value = [
+            Document(
+                id=b"doc1",
+                id_=nanoid.generate(),
+                text=b"Hello, world!",
+                vector_distance=0.25,
+                created_at=mock_now,
+                last_accessed=mock_now,
+                user_id=None,
+                session_id=None,
+                namespace=None,
+                topics=None,
+                entities=None,
+            ),
+            Document(
+                id=b"doc2",
+                id_=nanoid.generate(),
+                text=b"Hi there!",
+                vector_distance=0.75,
+                created_at=mock_now,
+                last_accessed=mock_now,
+                user_id=None,
+                session_id=None,
+                namespace=None,
+                topics=None,
+                entities=None,
+            ),
+        ]
 
         mock_index = MagicMock()
-        mock_index.search = mock_search
+        mock_index.query = mock_query
 
         query = "What is the meaning of life?"
         session_id = SessionId(eq="test-session")
@@ -146,7 +145,7 @@ class TestLongTermMemory:
         # Check that create_embedding was called with the right arguments
         mock_vectorizer.aembed.assert_called_with(query)
 
-        assert mock_index.search.call_count == 1
+        assert mock_index.query.call_count == 1
 
         assert len(results.memories) == 2
         assert isinstance(results.memories[0], LongTermMemoryResult)

@@ -138,7 +138,11 @@ async def set_session_memory(
 
     # Check if window size is exceeded
     current_size = await redis.llen(messages_key)  # type: ignore
+    print(
+        f"Current size: {current_size}", "Current window size: ", settings.window_size
+    )
     if current_size > settings.window_size:
+        print("Queuing summarizing session task")
         # Add summarization task
         await background_tasks.add_task(
             summarize_session,
@@ -148,16 +152,19 @@ async def set_session_memory(
         )
 
     # If long-term memory is enabled, index messages
+    print("Long-term memory is enabled: ", settings.long_term_memory)
     if settings.long_term_memory:
         memories = [
             LongTermMemory(
                 session_id=session_id,
                 text=f"{msg.role}: {msg.content}",
                 namespace=memory.namespace,
+                memory_type="message",
             )
             for msg in memory.messages
         ]
 
+        print("Adding a task")
         await background_tasks.add_task(
             index_long_term_memories,
             memories,

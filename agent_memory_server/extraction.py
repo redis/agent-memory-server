@@ -1,11 +1,25 @@
+import json
 import os
 from typing import Any
 
+import nanoid
 from bertopic import BERTopic
+from redis.asyncio.client import Redis
+from redisvl.query.filter import Tag
+from redisvl.query.query import FilterQuery
+from tenacity.asyncio import AsyncRetrying
+from tenacity.stop import stop_after_attempt
 from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
 
 from agent_memory_server.config import settings
+from agent_memory_server.llms import (
+    AnthropicClientWrapper,
+    OpenAIClientWrapper,
+    get_model_client,
+)
 from agent_memory_server.logging import get_logger
+from agent_memory_server.models import LongTermMemory
+from agent_memory_server.utils.redis import get_redis_conn, get_search_index
 
 
 logger = get_logger(__name__)
@@ -90,7 +104,49 @@ def extract_entities(text: str) -> list[str]:
         return []
 
 
-def extract_topics(text: str, num_topics: int | None = None) -> list[str]:
+async def extract_topics_llm(
+    text: str,
+    num_topics: int | None = None,
+    client: OpenAIClientWrapper | AnthropicClientWrapper | None = None,
+) -> list[str]:
+    """
+    Extract topics from text using the LLM model.
+    """
+    _client = client or await get_model_client(settings.generation_model)
+    _num_topics = num_topics if num_topics is not None else settings.top_k_topics
+
+    prompt = f"""
+    Extract the topic {_num_topics} topics from the following text:
+    {text}
+
+    Return a list of topics in JSON format, for example:
+    {{
+        "topics": ["topic1", "topic2", "topic3"]
+    }}
+    """
+    topics = []
+
+    async for attempt in AsyncRetrying(stop=stop_after_attempt(3)):
+        with attempt:
+            response = await _client.create_chat_completion(
+                model=settings.generation_model,
+                prompt=prompt,
+                response_format={"type": "json_object"},
+            )
+            try:
+                topics = json.loads(response.choices[0].message.content)["topics"]
+            except (json.JSONDecodeError, KeyError):
+                logger.error(
+                    f"Error decoding JSON: {response.choices[0].message.content}"
+                )
+                topics = []
+            if topics:
+                topics = topics[:_num_topics]
+
+    return topics
+
+
+def extract_topics_ner(text: str, num_topics: int | None = None) -> list[str]:
     """
     Extract topics from text using the BERTopic model.
 
@@ -105,12 +161,14 @@ def extract_topics(text: str, num_topics: int | None = None) -> list[str]:
     # Get model instance
     model = get_topic_model()
 
+    _num_topics = num_topics if num_topics is not None else settings.top_k_topics
+
     # Get topic indices and probabilities
     topic_indices, _ = model.transform([text])
 
     topics = []
     for i, topic_idx in enumerate(topic_indices):
-        if num_topics and i >= num_topics:
+        if _num_topics and i >= _num_topics:
             break
         # Convert possible numpy integer to Python int
         topic_idx_int = int(topic_idx)
@@ -135,7 +193,14 @@ async def handle_extraction(text: str) -> tuple[list[str], list[str]]:
     # Extract topics if enabled
     topics = []
     if settings.enable_topic_extraction:
-        topics = extract_topics(text)
+        # Check if the topic_model_source setting exists and use appropriate function
+        if (
+            hasattr(settings, "topic_model_source")
+            and settings.topic_model_source == "NER"
+        ):
+            topics = extract_topics_ner(text)
+        else:
+            topics = await extract_topics_llm(text)
 
     # Extract entities if enabled
     entities = []
@@ -149,3 +214,133 @@ async def handle_extraction(text: str) -> tuple[list[str], list[str]]:
         entities = list(set(entities))
 
     return topics, entities
+
+
+DISCRETE_EXTRACTION_PROMPT = """
+    You are a long-memory manager. Your job is to analyze text and extract
+    information that might be useful in future conversations with users.
+
+    Extract two types of memories:
+    1. EPISODIC: Personal experiences specific to a user or agent.
+       Example: "User prefers window seats" or "User had a bad experience in Paris"
+
+    2. SEMANTIC: User preferences and general knowledge outside of your training data.
+       Example: "Trek discontinued the Trek 520 steel touring bike in 2023"
+
+    For each memory, return a JSON object with the following fields:
+    - type: str --The memory type, either "episodic" or "semantic"
+    - text: str -- The actual information to store
+    - topics: list[str] -- The topics of the memory (top {top_k_topics})
+    - entities: list[str] -- The entities of the memory
+
+    Return a list of memories, for example:
+    {{
+        "memories": [
+            {{
+                "type": "episodic",
+                "text": "User prefers window seats",
+                "topics": ["travel", "airline"],
+                "entities": ["User", "window seat"],
+            }},
+            {{
+                "type": "semantic",
+                "text": "Trek discontinued the Trek 520 steel touring bike in 2023",
+                "topics": ["travel", "bicycle"],
+                "entities": ["Trek", "Trek 520 steel touring bike"],
+            }},
+        ]
+    }}
+
+    IMPORTANT RULES:
+    1. Only extract information that would be genuinely useful for future interactions.
+    2. Do not extract procedural knowledge - that is handled by the system's built-in tools and prompts.
+    3. You are a large language model - do not extract facts that you already know.
+
+    Message:
+    {message}
+
+    Extracted memories:
+    """
+
+
+async def extract_discrete_memories(redis: Redis | None = None):
+    """
+    Extract episodic and semantic memories from text using an LLM.
+    """
+    redis = await get_redis_conn()
+    client = await get_model_client(settings.generation_model)
+    query = FilterQuery(
+        filter_expression=(Tag("discrete_memory_extracted") == "f")
+        & (Tag("memory_type") == "message")
+    )
+    offset = 0
+
+    while True:
+        query.paging(num=25, offset=offset)
+        search_index = get_search_index(redis=redis)
+        messages = await search_index.query(query)
+        discrete_memories = []
+
+        for message in messages:
+            if not message or not message.get("text"):
+                logger.info(f"Deleting memory with no text: {message}")
+                await redis.delete(message["id"])
+                continue
+            id_ = message.get("id_")
+            if not id_:
+                logger.error(f"Skipping memory with no ID: {message}")
+                continue
+
+            async for attempt in AsyncRetrying(stop=stop_after_attempt(3)):
+                with attempt:
+                    response = await client.create_chat_completion(
+                        model=settings.generation_model,
+                        prompt=DISCRETE_EXTRACTION_PROMPT.format(
+                            message=message["text"], top_k_topics=settings.top_k_topics
+                        ),
+                        response_format={"type": "json_object"},
+                    )
+                    try:
+                        new_message = json.loads(response.choices[0].message.content)
+                    except json.JSONDecodeError:
+                        logger.error(
+                            f"Error decoding JSON: {response.choices[0].message.content}"
+                        )
+                        raise
+                    try:
+                        assert isinstance(new_message, dict)
+                        assert isinstance(new_message["memories"], list)
+                    except AssertionError:
+                        logger.error(
+                            f"Invalid response format: {response.choices[0].message.content}"
+                        )
+                        raise
+                    discrete_memories.extend(new_message["memories"])
+
+            await redis.hset(
+                name=message["id"],
+                key="discrete_memory_extracted",
+                value="t",
+            )  # type: ignore
+
+        if len(messages) < 25:
+            break
+        offset += 25
+
+    # TODO: Added to avoid a circular import
+    from agent_memory_server.long_term_memory import index_long_term_memories
+
+    if discrete_memories:
+        long_term_memories = [
+            LongTermMemory(
+                id_=nanoid.generate(),
+                text=new_memory["text"],
+                memory_type=new_memory.get("type", "episodic"),
+                topics=new_memory.get("topics", []),
+                entities=new_memory.get("entities", []),
+                discrete_memory_extracted="t",
+            )
+            for new_memory in discrete_memories
+        ]
+
+        await index_long_term_memories(long_term_memories)

@@ -376,6 +376,7 @@ class OpenAIClientWrapper:
 _model_clients = {}
 
 
+# TODO: This should take a provider as input, not model name, and cache on provider
 async def get_model_client(
     model_name: str,
 ) -> OpenAIClientWrapper | AnthropicClientWrapper:

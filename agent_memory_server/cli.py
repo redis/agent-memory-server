@@ -13,6 +13,11 @@ import uvicorn
 
 from agent_memory_server.config import settings
 from agent_memory_server.logging import configure_logging, get_logger
+from agent_memory_server.migrations import (
+    migrate_add_discrete_memory_extracted_2,
+    migrate_add_memory_hashes_1,
+    migrate_add_memory_type_3,
+)
 from agent_memory_server.utils.redis import ensure_search_index_exists, get_redis_conn
 
 
@@ -32,6 +37,40 @@ def cli():
 def version():
     """Show the version of agent-memory-server."""
     click.echo(f"agent-memory-server version {VERSION}")
+
+
+@cli.command()
+def rebuild_index():
+    """Rebuild the search index."""
+    import asyncio
+
+    async def setup_and_run():
+        redis = await get_redis_conn()
+        await ensure_search_index_exists(redis, overwrite=True)
+
+    asyncio.run(setup_and_run())
+
+
+@cli.command()
+def migrate_memories():
+    """Migrate memories from the old format to the new format."""
+    import asyncio
+
+    click.echo("Starting memory migrations...")
+
+    async def run_migrations():
+        redis = await get_redis_conn()
+        migrations = [
+            migrate_add_memory_hashes_1,
+            migrate_add_discrete_memory_extracted_2,
+            migrate_add_memory_type_3,
+        ]
+        for migration in migrations:
+            await migration(redis=redis)
+
+    asyncio.run(run_migrations())
+
+    click.echo("Memory migrations completed successfully.")
 
 
 @cli.command()

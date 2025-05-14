@@ -109,3 +109,7 @@ class Topics(TagFilter):
 
 class Entities(TagFilter):
     field: str = "entities"
+
+
+class MemoryType(TagFilter):
+    field: str = "memory_type"
