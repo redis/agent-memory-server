@@ -21,11 +21,11 @@ from agent_memory_server.filters import (
 )
 from agent_memory_server.models import (
     AckResponse,
-    CreateLongTermMemoryPayload,
+    CreateLongTermMemoryRequest,
     HealthCheckResponse,
     LongTermMemory,
     LongTermMemoryResults,
-    SearchPayload,
+    SearchRequest,
     SessionListResponse,
     SessionMemory,
     SessionMemoryResponse,
@@ -256,7 +256,7 @@ class MemoryAPIClient:
                 if memory.namespace is None:
                     memory.namespace = self.config.default_namespace
 
-        payload = CreateLongTermMemoryPayload(memories=memories)
+        payload = CreateLongTermMemoryRequest(memories=memories)
         response = await self._client.post(
             "/long-term-memory", json=payload.model_dump(exclude_none=True)
         )
@@ -322,7 +322,7 @@ class MemoryAPIClient:
         if namespace is None and self.config.default_namespace is not None:
             namespace = Namespace(eq=self.config.default_namespace)
 
-        payload = SearchPayload(
+        payload = SearchRequest(
             text=text,
             session_id=session_id,
             namespace=namespace,

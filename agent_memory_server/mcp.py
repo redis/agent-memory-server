@@ -1,16 +1,11 @@
-import asyncio
 import logging
 import os
-import sys
 
-from fastapi import HTTPException
 from mcp.server.fastmcp import FastMCP as _FastMCPBase
-from mcp.server.fastmcp.prompts import base
-from mcp.types import TextContent
 
 from agent_memory_server.api import (
     create_long_term_memory as core_create_long_term_memory,
-    get_session_memory as core_get_session_memory,
+    memory_prompt as core_memory_prompt,
     search_long_term_memory as core_search_long_term_memory,
 )
 from agent_memory_server.config import settings
@@ -19,6 +14,7 @@ from agent_memory_server.filters import (
     CreatedAt,
     Entities,
     LastAccessed,
+    MemoryType,
     Namespace,
     SessionId,
     Topics,
@@ -26,10 +22,14 @@ from agent_memory_server.filters import (
 )
 from agent_memory_server.models import (
     AckResponse,
-    CreateLongTermMemoryPayload,
+    CreateLongTermMemoryRequest,
     LongTermMemory,
     LongTermMemoryResults,
-    SearchPayload,
+    MemoryPromptRequest,
+    MemoryPromptResponse,
+    ModelNameLiteral,
+    SearchRequest,
+    SessionMemoryRequest,
 )
 
 
@@ -213,7 +213,7 @@ async def create_long_term_memories(
             if mem.namespace is None:
                 mem.namespace = DEFAULT_NAMESPACE
 
-    payload = CreateLongTermMemoryPayload(memories=memories)
+    payload = CreateLongTermMemoryRequest(memories=memories)
     return await core_create_long_term_memory(
         payload, background_tasks=get_background_tasks()
     )
@@ -229,6 +229,7 @@ async def search_long_term_memory(
     created_at: CreatedAt | None = None,
     last_accessed: LastAccessed | None = None,
     user_id: UserId | None = None,
+    memory_type: MemoryType | None = None,
     distance_threshold: float | None = None,
     limit: int = 10,
     offset: int = 0,
@@ -284,6 +285,7 @@ async def search_long_term_memory(
         created_at: Filter by creation date
         last_accessed: Filter by last access date
         user_id: Filter by user ID
+        memory_type: Filter by memory type
         distance_threshold: Distance threshold for semantic search
         limit: Maximum number of results
         offset: Offset for pagination
@@ -292,7 +294,7 @@ async def search_long_term_memory(
         LongTermMemoryResults containing matched memories sorted by relevance
     """
     try:
-        payload = SearchPayload(
+        payload = SearchRequest(
             text=text,
             session_id=session_id,
             namespace=namespace,
@@ -301,6 +303,7 @@ async def search_long_term_memory(
             created_at=created_at,
             last_accessed=last_accessed,
             user_id=user_id,
+            memory_type=memory_type,
             distance_threshold=distance_threshold,
             limit=limit,
             offset=offset,
@@ -321,24 +324,30 @@ async def search_long_term_memory(
     return results
 
 
-# NOTE: Prompts don't support search filters in FastMCP, so we need to use a
-# tool instead.
+# Notes that exist outside of the docstring to avoid polluting the LLM prompt:
+# 1. The "prompt" abstraction in FastAPI doesn't support search filters, so we use a tool.
+# 2. Some applications, such as Cursor, get confused with nested objects in tool parameters,
+#    so we use a flat set of parameters instead.
 @mcp_app.tool()
-async def hydrate_memory_prompt(
-    text: str | None = None,
+async def memory_prompt(
+    query: str,
     session_id: SessionId | None = None,
     namespace: Namespace | None = None,
+    window_size: int = settings.window_size,
+    model_name: ModelNameLiteral | None = None,
+    context_window_max: int | None = None,
     topics: Topics | None = None,
     entities: Entities | None = None,
     created_at: CreatedAt | None = None,
     last_accessed: LastAccessed | None = None,
     user_id: UserId | None = None,
+    memory_type: MemoryType | None = None,
     distance_threshold: float | None = None,
     limit: int = 10,
     offset: int = 0,
-) -> list[base.Message]:
+) -> MemoryPromptResponse:
     """
-    Hydrate a user prompt with relevant session history and long-term memories.
+    Hydrate a user query with relevant session history and long-term memories.
 
     CRITICAL: Use this tool for EVERY question that might benefit from memory context,
     especially when you don't have sufficient information to answer confidently.
@@ -363,13 +372,13 @@ async def hydrate_memory_prompt(
 
     COMMON USAGE PATTERNS:
     ```python
-    1. Basic search with just query text:
+    1. Hydrate a user prompt with long-term memory search:
     hydrate_memory_prompt(text="What was my favorite color?")
     ```
 
-    2. Search with simple session filter:
+    2. Hydrate a user prompt with long-term memory search and session filter:
     hydrate_memory_prompt(
-        text="What was my favorite color?",
+        text="What is my favorite color?",
         session_id={
             "eq": "session_12345"
         },
@@ -378,7 +387,7 @@ async def hydrate_memory_prompt(
         }
     )
 
-    3. Search with complex filters:
+    3. Hydrate a user prompt with long-term memory search and complex filters:
     hydrate_memory_prompt(
         text="What was my favorite color?",
         topics={
@@ -392,95 +401,54 @@ async def hydrate_memory_prompt(
     ```
 
     Args:
-        - text: The user's query/message (required)
-        - session_id: Filter by session ID
-        - namespace: Filter by namespace
-        - topics: Filter by topics
-        - entities: Filter by entities
-        - created_at: Filter by creation date
-        - last_accessed: Filter by last access date
-        - user_id: Filter by user ID
+        - text: The user's query
+        - session_id: Add conversation history from a session
+        - namespace: Filter session and long-term memory namespace
+        - topics: Search for long-term memories matching topics
+        - entities: Search for long-term memories matching entities
+        - created_at: Search for long-term memories matching creation date
+        - last_accessed: Search for long-term memories matching last access date
+        - user_id: Search for long-term memories matching user ID
         - distance_threshold: Distance threshold for semantic search
-        - limit: Maximum number of results
-        - offset: Offset for pagination
+        - limit: Maximum number of long-term memory results
+        - offset: Offset for pagination of long-term memory results
 
     Returns:
         A list of messages, including memory context and the user's query
     """
-    messages = []
-    if session_id and session_id.eq:
-        try:
-            session_memory = await core_get_session_memory(session_id.eq)
-        except HTTPException:
-            session_memory = None
-    else:
-        session_memory = None
+    _session_id = session_id.eq if session_id and session_id.eq else None
+    _namespace = namespace.eq if namespace and namespace.eq else None
+    _params: dict[str, SessionMemoryRequest | SearchRequest] = {}
+    session = None
 
-    if session_memory:
-        if session_memory.context:
-            messages.append(
-                base.AssistantMessage(
-                    content=TextContent(
-                        type="text",
-                        text=f"## A summary of the conversation so far\n{session_memory.context}",
-                    ),
-                )
-            )
-        for msg in session_memory.messages:
-            if msg.role == "user":
-                msg_class = base.UserMessage
-            else:
-                msg_class = base.AssistantMessage
-            messages.append(
-                msg_class(
-                    content=TextContent(type="text", text=msg.content),
-                )
-            )
-
-    try:
-        long_term_memories = await core_search_long_term_memory(
-            SearchPayload(
-                text=text,
-                session_id=session_id,
-                namespace=namespace,
-                topics=topics,
-                entities=entities,
-                created_at=created_at,
-                last_accessed=last_accessed,
-                user_id=user_id,
-                distance_threshold=distance_threshold,
-                limit=limit,
-                offset=offset,
-            )
+    if _session_id is not None:
+        session = SessionMemoryRequest(
+            session_id=_session_id,
+            namespace=_namespace,
+            window_size=window_size,
+            model_name=model_name,
+            context_window_max=context_window_max,
         )
-        if long_term_memories.total > 0:
-            long_term_memories_text = "\n".join(
-                [f"- {m.text}" for m in long_term_memories.memories]
-            )
-            messages.append(
-                base.AssistantMessage(
-                    content=TextContent(
-                        type="text",
-                        text=f"## Long term memories related to the user's query\n {long_term_memories_text}",
-                    ),
-                )
-            )
-    except Exception as e:
-        logger.error(f"Error searching long-term memory: {e}")
 
-    # Ensure text is not None
-    safe_text = text or ""
-    messages.append(
-        base.UserMessage(
-            content=TextContent(type="text", text=safe_text),
+    search_payload = SearchRequest(
+        text=query,
+        session_id=session_id,
+        namespace=namespace,
+        topics=topics,
+        entities=entities,
+        created_at=created_at,
+        last_accessed=last_accessed,
+        user_id=user_id,
+        distance_threshold=distance_threshold,
+        memory_type=memory_type,
+        limit=limit,
+        offset=offset,
+    )
+    if search_payload is not None:
+        _params["long_term_search"] = search_payload
+
+    return await core_memory_prompt(
+        params=MemoryPromptRequest(
+            query=query, session=session, long_term_search=search_payload
         )
     )
-
-    return messages
-
-
-if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "sse":
-        asyncio.run(mcp_app.run_sse_async())
-    else:
-        asyncio.run(mcp_app.run_stdio_async())

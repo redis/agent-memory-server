@@ -86,34 +86,49 @@ class TestMCP:
         """Test memory prompt with various parameter combinations."""
         async with client_session(mcp_app._mcp_server) as client:
             prompt = await client.call_tool(
-                "hydrate_memory_prompt",
+                "memory_prompt",
                 {
-                    "text": "Test query",
+                    "query": "Test query",
                     "session_id": {"eq": session},
                     "namespace": {"eq": "test-namespace"},
                 },
             )
             assert isinstance(prompt, CallToolResult)
 
-            # Parse the response content - ensure we're getting text content
             assert prompt.content[0].type == "text"
-            message = json.loads(prompt.content[0].text)
+            messages = json.loads(prompt.content[0].text)
 
-            # The result should be a dictionary with content and role
-            assert isinstance(message, dict)
-            assert "content" in message
-            assert "role" in message
+            assert isinstance(messages, dict)
+            assert "messages" in messages
+            assert len(messages["messages"]) == 5
 
-            # Check the message content and role - accept either user or assistant roles
-            assert message["role"] in ["user", "assistant"]
-            assert message["content"]["type"] == "text"
+            print(messages)
 
-            # If it's an assistant message, check for some basic structure
-            if message["role"] == "assistant":
-                assert "Long term memories" in message["content"]["text"]
-            # If it's a user message, it should contain the original query
-            else:
-                assert "Test query" in message["content"]["text"]
+            # The returned messages structure is:
+            # 0: system (summary)
+            # 1: user ("Hello")
+            # 2: assistant ("Hi there")
+            # 3: system (long term memories)
+            # 4: user ("Test query")
+            assert messages["messages"][0]["role"] == "system"
+            assert messages["messages"][0]["content"]["type"] == "text"
+            assert "summary" in messages["messages"][0]["content"]["text"]
+
+            assert messages["messages"][1]["role"] == "user"
+            assert messages["messages"][1]["content"]["type"] == "text"
+            assert messages["messages"][1]["content"]["text"] == "Hello"
+
+            assert messages["messages"][2]["role"] == "assistant"
+            assert messages["messages"][2]["content"]["type"] == "text"
+            assert messages["messages"][2]["content"]["text"] == "Hi there"
+
+            assert messages["messages"][3]["role"] == "system"
+            assert messages["messages"][3]["content"]["type"] == "text"
+            assert "Long term memories" in messages["messages"][3]["content"]["text"]
+
+            assert messages["messages"][4]["role"] == "user"
+            assert messages["messages"][4]["content"]["type"] == "text"
+            assert "Test query" in messages["messages"][4]["content"]["text"]
 
     @pytest.mark.asyncio
     async def test_memory_prompt_error_handling(self, session, mcp_test_setup):
@@ -121,10 +136,10 @@ class TestMCP:
         async with client_session(mcp_app._mcp_server) as client:
             # Test with a non-existent session id
             prompt = await client.call_tool(
-                "hydrate_memory_prompt",
+                "memory_prompt",
                 {
-                    "text": "Test query",
-                    "session_id": {"eq": "non-existent"},
+                    "query": "Test query",
+                    "session": {"session_id": {"eq": "non-existent"}},
                     "namespace": {"eq": "test-namespace"},
                 },
             )
@@ -134,15 +149,18 @@ class TestMCP:
             assert prompt.content[0].type == "text"
             message = json.loads(prompt.content[0].text)
 
-            # The result should be a dictionary with content and role
+            # The result should be a dictionary containing messages, each with content and role
             assert isinstance(message, dict)
-            assert "content" in message
-            assert "role" in message
+            assert "messages" in message
 
             # Check that we have a user message with the test query
-            assert message["role"] == "user"
-            assert message["content"]["type"] == "text"
-            assert message["content"]["text"] == "Test query"
+            assert message["messages"][0]["role"] == "system"
+            assert message["messages"][0]["content"]["type"] == "text"
+            assert "Long term memories" in message["messages"][0]["content"]["text"]
+
+            assert message["messages"][1]["role"] == "user"
+            assert message["messages"][1]["content"]["type"] == "text"
+            assert "Test query" in message["messages"][1]["content"]["text"]
 
     @pytest.mark.asyncio
     async def test_default_namespace_injection(self, monkeypatch):

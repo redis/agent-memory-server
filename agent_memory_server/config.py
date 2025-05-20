@@ -1,6 +1,7 @@
 import os
 from typing import Literal
 
+import yaml
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 
@@ -8,12 +9,20 @@ from pydantic_settings import BaseSettings
 load_dotenv()
 
 
+def load_yaml_settings():
+    config_path = os.getenv("APP_CONFIG_FILE", "config.yaml")
+    if os.path.exists(config_path):
+        with open(config_path) as f:
+            return yaml.safe_load(f) or {}
+    return {}
+
+
 class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
     long_term_memory: bool = True
     window_size: int = 20
-    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
-    anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
+    openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
     generation_model: str = "gpt-4o-mini"
     embedding_model: str = "text-embedding-3-small"
     port: int = 8000
@@ -40,5 +49,11 @@ class Settings(BaseSettings):
     # Other Application settings
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
 
-settings = Settings()
+
+# Load YAML config first, then let env vars override
+yaml_settings = load_yaml_settings()
+settings = Settings(**yaml_settings)
