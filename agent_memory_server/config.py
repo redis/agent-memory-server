@@ -28,13 +28,22 @@ class Settings(BaseSettings):
     port: int = 8000
     mcp_port: int = 9000
 
-    # Topic and NER model settings
-    topic_model_source: Literal["NER", "LLM"] = "LLM"
-    topic_model: str = "MaartenGr/BERTopic_Wikipedia"  # LLM model here if using LLM
-    ner_model: str = "dbmdz/bert-large-cased-finetuned-conll03-english"
+    # The server indexes messages in long-term memory by default. If this
+    # setting is enabled, we also extract discrete memories from message text
+    # and save them as separate long-term memory records.
+    enable_discrete_memory_extraction: bool = True
+
+    # Topic modeling
+    topic_model_source: Literal["BERTopic", "LLM"] = "LLM"
+    topic_model: str = (
+        "MaartenGr/BERTopic_Wikipedia"  # Use an LLM model name here if using LLM
+    )
     enable_topic_extraction: bool = True
-    enable_ner: bool = True
     top_k_topics: int = 3
+
+    # Used for extracting entities from text
+    ner_model: str = "dbmdz/bert-large-cased-finetuned-conll03-english"
+    enable_ner: bool = True
 
     # RedisVL Settings
     redisvl_distance_metric: str = "COSINE"

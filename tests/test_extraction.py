@@ -6,7 +6,7 @@ import pytest
 from agent_memory_server.config import settings
 from agent_memory_server.extraction import (
     extract_entities,
-    extract_topics_ner,
+    extract_topics_bertopic,
     handle_extraction,
 )
 
@@ -45,7 +45,7 @@ class TestTopicExtraction:
         mock_get_topic_model.return_value = mock_bertopic
         text = "Discussion about AI technology and business"
 
-        topics = extract_topics_ner(text)
+        topics = extract_topics_bertopic(text)
 
         assert set(topics) == {"technology", "business"}
         mock_bertopic.transform.assert_called_once_with([text])
@@ -58,7 +58,7 @@ class TestTopicExtraction:
         mock_bertopic.transform.return_value = (np.array([-1]), np.array([0.0]))
         mock_get_topic_model.return_value = mock_bertopic
 
-        topics = extract_topics_ner("Test message")
+        topics = extract_topics_bertopic("Test message")
 
         assert topics == []
         mock_bertopic.transform.assert_called_once()
