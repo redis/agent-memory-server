@@ -7,6 +7,7 @@ from agent_memory_server.config import settings
 from agent_memory_server.extraction import (
     extract_entities,
     extract_topics_bertopic,
+    extract_topics_llm,
     handle_extraction,
 )
 
@@ -135,3 +136,106 @@ class TestHandleExtraction:
             # Restore settings
             settings.enable_topic_extraction = original_topic_setting
             settings.enable_ner = original_ner_setting
+
+
+@pytest.mark.requires_api_keys
+class TestTopicExtractionIntegration:
+    @pytest.mark.asyncio
+    async def test_bertopic_integration(self):
+        """Integration test for BERTopic topic extraction (skipped if not available)"""
+
+        # Save and set topic_model_source
+        original_source = settings.topic_model_source
+        settings.topic_model_source = "BERTopic"
+        sample_text = (
+            "OpenAI and Google are leading companies in artificial intelligence."
+        )
+        try:
+            try:
+                # Try to import BERTopic and check model loading
+                topics = extract_topics_bertopic(sample_text)
+                # print(f"[DEBUG] BERTopic returned topics: {topics}")
+            except Exception as e:
+                pytest.skip(f"BERTopic integration test skipped: {e}")
+            assert isinstance(topics, list)
+            expected_keywords = {
+                "generative",
+                "transformer",
+                "neural",
+                "learning",
+                "trained",
+                "multimodal",
+                "generates",
+                "models",
+                "encoding",
+                "text",
+            }
+            assert any(t.lower() in expected_keywords for t in topics)
+        finally:
+            settings.topic_model_source = original_source
+
+    @pytest.mark.asyncio
+    async def test_llm_integration(self):
+        """Integration test for LLM-based topic extraction (skipped if no API key)"""
+
+        # Save and set topic_model_source
+        original_source = settings.topic_model_source
+        settings.topic_model_source = "LLM"
+        sample_text = (
+            "OpenAI and Google are leading companies in artificial intelligence."
+        )
+        try:
+            # Check for API key
+            if not (settings.openai_api_key or settings.anthropic_api_key):
+                pytest.skip("No LLM API key available for integration test.")
+            topics = await extract_topics_llm(sample_text)
+            assert isinstance(topics, list)
+            assert any(
+                t.lower() in ["technology", "business", "artificial intelligence"]
+                for t in topics
+            )
+        finally:
+            settings.topic_model_source = original_source
+
+
+class TestHandleExtractionPathSelection:
+    @pytest.mark.asyncio
+    @patch("agent_memory_server.extraction.extract_topics_bertopic")
+    @patch("agent_memory_server.extraction.extract_topics_llm")
+    async def test_handle_extraction_path_selection(
+        self, mock_extract_topics_llm, mock_extract_topics_bertopic
+    ):
+        """Test that handle_extraction uses the correct extraction path based on settings.topic_model_source"""
+
+        sample_text = (
+            "OpenAI and Google are leading companies in artificial intelligence."
+        )
+        original_source = settings.topic_model_source
+        original_enable_topic_extraction = settings.enable_topic_extraction
+        original_enable_ner = settings.enable_ner
+        try:
+            # Enable topic extraction and disable NER for clarity
+            settings.enable_topic_extraction = True
+            settings.enable_ner = False
+
+            # Test BERTopic path
+            settings.topic_model_source = "BERTopic"
+            mock_extract_topics_bertopic.return_value = ["technology"]
+            mock_extract_topics_llm.return_value = ["should not be called"]
+            topics, _ = await handle_extraction(sample_text)
+            mock_extract_topics_bertopic.assert_called_once()
+            mock_extract_topics_llm.assert_not_called()
+            assert topics == ["technology"]
+            mock_extract_topics_bertopic.reset_mock()
+
+            # Test LLM path
+            settings.topic_model_source = "LLM"
+            mock_extract_topics_llm.return_value = ["ai"]
+            topics, _ = await handle_extraction(sample_text)
+            mock_extract_topics_llm.assert_called_once()
+            mock_extract_topics_bertopic.assert_not_called()
+            assert topics == ["ai"]
+        finally:
+            settings.topic_model_source = original_source
+            settings.enable_topic_extraction = original_enable_topic_extraction
+            settings.enable_ner = original_enable_ner
