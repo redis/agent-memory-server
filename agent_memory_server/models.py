@@ -317,4 +317,4 @@ class SystemMessage(base.Message):
 class UserMessage(base.Message):
     """A user message"""
 
-    role: Literal["system"] = "system"
+    role: Literal["user"] = "user"
