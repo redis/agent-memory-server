@@ -25,9 +25,12 @@ from agent_memory_server.models import (
     HealthCheckResponse,
     LongTermMemory,
     LongTermMemoryResults,
+    MemoryPromptRequest,
+    MemoryPromptResponse,
     SearchRequest,
     SessionListResponse,
     SessionMemory,
+    SessionMemoryRequest,
     SessionMemoryResponse,
 )
 
@@ -129,8 +132,8 @@ class MemoryAPIClient:
             SessionListResponse containing session IDs and total count
         """
         params = {
-            "limit": limit,
-            "offset": offset,
+            "limit": str(limit),
+            "offset": str(offset),
         }
         if namespace is not None:
             params["namespace"] = namespace
@@ -342,6 +345,201 @@ class MemoryAPIClient:
         )
         response.raise_for_status()
         return LongTermMemoryResults(**response.json())
+
+    async def memory_prompt(
+        self,
+        query: str,
+        session_id: str | None = None,
+        namespace: str | None = None,
+        window_size: int | None = None,
+        model_name: ModelNameLiteral | None = None,
+        context_window_max: int | None = None,
+        long_term_search: SearchRequest | None = None,
+    ) -> MemoryPromptResponse:
+        """
+        Hydrate a user query with memory context and return a prompt
+        ready to send to an LLM.
+
+        This method can retrieve relevant session history and long-term memories
+        to provide context for the query.
+
+        Args:
+            query: The user's query text
+            session_id: Optional session ID to retrieve history from
+            namespace: Optional namespace for session and long-term memories
+            window_size: Optional number of messages to include from session history
+            model_name: Optional model name to determine context window size
+            context_window_max: Optional direct specification of context window max tokens
+            long_term_search: Optional SearchRequest for specific long-term memory filtering
+
+        Returns:
+            MemoryPromptResponse containing a list of messages with context
+
+        Raises:
+            httpx.HTTPStatusError: If the request fails or if neither session_id nor long_term_search is provided
+        """
+        # Prepare the request payload
+        session_params = None
+        if session_id is not None:
+            session_params = SessionMemoryRequest(
+                session_id=session_id,
+                namespace=namespace or self.config.default_namespace,
+                window_size=window_size or 12,  # Default from settings
+                model_name=model_name,
+                context_window_max=context_window_max,
+            )
+
+        # If no explicit long_term_search is provided but we have a query, create a basic one
+        if long_term_search is None and query:
+            # Use default namespace from config if none provided
+            _namespace = None
+            if namespace is not None:
+                _namespace = Namespace(eq=namespace)
+            elif self.config.default_namespace is not None:
+                _namespace = Namespace(eq=self.config.default_namespace)
+
+            long_term_search = SearchRequest(
+                text=query,
+                namespace=_namespace,
+            )
+
+        # Create the request payload
+        payload = MemoryPromptRequest(
+            query=query,
+            session=session_params,
+            long_term_search=long_term_search,
+        )
+
+        # Make the API call
+        response = await self._client.post(
+            "/memory-prompt", json=payload.model_dump(exclude_none=True)
+        )
+        response.raise_for_status()
+        data = response.json()
+        return MemoryPromptResponse(**data)
+
+    async def hydrate_memory_prompt(
+        self,
+        query: str,
+        session_id: SessionId | dict[str, Any] | None = None,
+        namespace: Namespace | dict[str, Any] | None = None,
+        topics: Topics | dict[str, Any] | None = None,
+        entities: Entities | dict[str, Any] | None = None,
+        created_at: CreatedAt | dict[str, Any] | None = None,
+        last_accessed: LastAccessed | dict[str, Any] | None = None,
+        user_id: UserId | dict[str, Any] | None = None,
+        distance_threshold: float | None = None,
+        memory_type: MemoryType | dict[str, Any] | None = None,
+        limit: int = 10,
+        offset: int = 0,
+        window_size: int = 12,
+        model_name: ModelNameLiteral | None = None,
+        context_window_max: int | None = None,
+    ) -> MemoryPromptResponse:
+        """
+        Hydrate a user query with relevant session history and long-term memories.
+
+        This method enriches the user's query by retrieving:
+        1. Context from the conversation session (if session_id is provided)
+        2. Relevant long-term memories related to the query
+
+        Args:
+            query: The user's query text
+            session_id: Optional filter for session ID
+            namespace: Optional filter for namespace
+            topics: Optional filter for topics in long-term memories
+            entities: Optional filter for entities in long-term memories
+            created_at: Optional filter for creation date
+            last_accessed: Optional filter for last access date
+            user_id: Optional filter for user ID
+            distance_threshold: Optional distance threshold for semantic search
+            memory_type: Optional filter for memory type
+            limit: Maximum number of long-term memory results (default: 10)
+            offset: Offset for pagination (default: 0)
+            window_size: Number of messages to include from session history (default: 12)
+            model_name: Optional model name to determine context window size
+            context_window_max: Optional direct specification of context window max tokens
+
+        Returns:
+            MemoryPromptResponse containing a list of messages with context
+
+        Raises:
+            httpx.HTTPStatusError: If the request fails
+        """
+        # Convert dictionary filters to their proper filter objects if needed
+        if isinstance(session_id, dict):
+            session_id = SessionId(**session_id)
+        if isinstance(namespace, dict):
+            namespace = Namespace(**namespace)
+        if isinstance(topics, dict):
+            topics = Topics(**topics)
+        if isinstance(entities, dict):
+            entities = Entities(**entities)
+        if isinstance(created_at, dict):
+            created_at = CreatedAt(**created_at)
+        if isinstance(last_accessed, dict):
+            last_accessed = LastAccessed(**last_accessed)
+        if isinstance(user_id, dict):
+            user_id = UserId(**user_id)
+        if isinstance(memory_type, dict):
+            memory_type = MemoryType(**memory_type)
+
+        # Apply default namespace if needed and no namespace filter specified
+        if namespace is None and self.config.default_namespace is not None:
+            namespace = Namespace(eq=self.config.default_namespace)
+
+        # Extract session_id value if it exists
+        session_params = None
+        _session_id = None
+        if session_id and hasattr(session_id, "eq") and session_id.eq:
+            _session_id = session_id.eq
+
+        if _session_id:
+            # Get namespace value if it exists
+            _namespace = None
+            if namespace and hasattr(namespace, "eq"):
+                _namespace = namespace.eq
+            elif self.config.default_namespace:
+                _namespace = self.config.default_namespace
+
+            session_params = SessionMemoryRequest(
+                session_id=_session_id,
+                namespace=_namespace,
+                window_size=window_size,
+                model_name=model_name,
+                context_window_max=context_window_max,
+            )
+
+        # Create search request for long-term memory
+        search_payload = SearchRequest(
+            text=query,
+            session_id=session_id,
+            namespace=namespace,
+            topics=topics,
+            entities=entities,
+            created_at=created_at,
+            last_accessed=last_accessed,
+            user_id=user_id,
+            distance_threshold=distance_threshold,
+            memory_type=memory_type,
+            limit=limit,
+            offset=offset,
+        )
+
+        # Create the request payload
+        payload = MemoryPromptRequest(
+            query=query,
+            session=session_params,
+            long_term_search=search_payload,
+        )
+
+        # Make the API call
+        response = await self._client.post(
+            "/memory-prompt", json=payload.model_dump(exclude_none=True)
+        )
+        response.raise_for_status()
+        data = response.json()
+        return MemoryPromptResponse(**data)
 
 
 # Helper function to create a memory client

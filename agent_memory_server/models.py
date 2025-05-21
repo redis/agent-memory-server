@@ -304,10 +304,6 @@ class MemoryPromptRequest(BaseModel):
     long_term_search: SearchRequest | None = None
 
 
-class MemoryPromptResponse(BaseModel):
-    messages: list[base.Message]
-
-
 class SystemMessage(base.Message):
     """A system message"""
 
@@ -317,4 +313,8 @@ class SystemMessage(base.Message):
 class UserMessage(base.Message):
     """A user message"""
 
-    role: Literal["system"] = "system"
+    role: Literal["user"] = "user"
+
+
+class MemoryPromptResponse(BaseModel):
+    messages: list[base.Message | SystemMessage]

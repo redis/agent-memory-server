@@ -278,7 +278,7 @@ async def memory_prompt(params: MemoryPromptRequest) -> MemoryPromptResponse:
                     SystemMessage(
                         content=TextContent(
                             type="text",
-                            text=f"## A summary of the conversation so far\n{session_memory.context}",
+                            text=f"## A summary of the conversation so far:\n{session_memory.context}",
                         ),
                     )
                 )
