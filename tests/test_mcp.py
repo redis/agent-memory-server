@@ -102,8 +102,6 @@ class TestMCP:
             assert "messages" in messages
             assert len(messages["messages"]) == 5
 
-            print(messages)
-
             # The returned messages structure is:
             # 0: system (summary)
             # 1: user ("Hello")

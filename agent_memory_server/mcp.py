@@ -417,14 +417,12 @@ async def memory_prompt(
         A list of messages, including memory context and the user's query
     """
     _session_id = session_id.eq if session_id and session_id.eq else None
-    _namespace = namespace.eq if namespace and namespace.eq else None
-    _params: dict[str, SessionMemoryRequest | SearchRequest] = {}
     session = None
 
     if _session_id is not None:
         session = SessionMemoryRequest(
             session_id=_session_id,
-            namespace=_namespace,
+            namespace=namespace.eq if namespace and namespace.eq else None,
             window_size=window_size,
             model_name=model_name,
             context_window_max=context_window_max,
