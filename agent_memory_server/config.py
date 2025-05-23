@@ -1,6 +1,7 @@
 import os
 from typing import Literal
 
+import yaml
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 
@@ -8,24 +9,41 @@ from pydantic_settings import BaseSettings
 load_dotenv()
 
 
+def load_yaml_settings():
+    config_path = os.getenv("APP_CONFIG_FILE", "config.yaml")
+    if os.path.exists(config_path):
+        with open(config_path) as f:
+            return yaml.safe_load(f) or {}
+    return {}
+
+
 class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
     long_term_memory: bool = True
     window_size: int = 20
-    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
-    anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
+    openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
     generation_model: str = "gpt-4o-mini"
     embedding_model: str = "text-embedding-3-small"
     port: int = 8000
     mcp_port: int = 9000
 
-    # Topic and NER model settings
-    topic_model_source: Literal["NER", "LLM"] = "LLM"
-    topic_model: str = "MaartenGr/BERTopic_Wikipedia"  # LLM model here if using LLM
-    ner_model: str = "dbmdz/bert-large-cased-finetuned-conll03-english"
+    # The server indexes messages in long-term memory by default. If this
+    # setting is enabled, we also extract discrete memories from message text
+    # and save them as separate long-term memory records.
+    enable_discrete_memory_extraction: bool = True
+
+    # Topic modeling
+    topic_model_source: Literal["BERTopic", "LLM"] = "LLM"
+    topic_model: str = (
+        "MaartenGr/BERTopic_Wikipedia"  # Use an LLM model name here if using LLM
+    )
     enable_topic_extraction: bool = True
-    enable_ner: bool = True
     top_k_topics: int = 3
+
+    # Used for extracting entities from text
+    ner_model: str = "dbmdz/bert-large-cased-finetuned-conll03-english"
+    enable_ner: bool = True
 
     # RedisVL Settings
     redisvl_distance_metric: str = "COSINE"
@@ -40,5 +58,11 @@ class Settings(BaseSettings):
     # Other Application settings
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
 
-settings = Settings()
+
+# Load YAML config first, then let env vars override
+yaml_settings = load_yaml_settings()
+settings = Settings(**yaml_settings)

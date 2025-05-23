@@ -5,23 +5,27 @@ This file contains tests that demonstrate how to use the Memory API client.
 """
 
 from collections.abc import AsyncGenerator
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from mcp.server.fastmcp.prompts import base
+from mcp.types import TextContent
 
 from agent_memory_server.api import router as memory_router
 from agent_memory_server.client.api import MemoryAPIClient, MemoryClientConfig
-from agent_memory_server.filters import Namespace
+from agent_memory_server.filters import Namespace, SessionId, Topics
 from agent_memory_server.healthcheck import router as health_router
 from agent_memory_server.models import (
     LongTermMemory,
     LongTermMemoryResult,
     LongTermMemoryResultsResponse,
     MemoryMessage,
+    MemoryPromptResponse,
     SessionMemory,
     SessionMemoryResponse,
+    SystemMessage,
 )
 
 
@@ -226,64 +230,206 @@ async def test_client_with_context_manager(memory_app: FastAPI):
         # The client will be automatically closed when the context block exits
 
 
-# Example usage is left in the file for documentation purposes,
-# but commented out so it doesn't run during tests
-"""
-# This example demonstrates basic usage of the API client
-if __name__ == "__main__":
-    async def example():
-        # Create a client
-        base_url = "http://localhost:8000"  # Adjust to your server URL
+@pytest.mark.asyncio
+async def test_memory_prompt(memory_test_client: MemoryAPIClient):
+    """Test the memory_prompt method"""
+    session_id = "test-client-session"
+    query = "What was my favorite color?"
 
-        # Using context manager for automatic cleanup
-        async with MemoryAPIClient(
-            MemoryClientConfig(
-                base_url=base_url,
-                default_namespace="example-namespace"
-            )
-        ) as client:
-            # Check server health
-            health = await client.health_check()
-            print(f"Server is healthy, current time: {health.now}")
+    # Create expected response
+    expected_messages = [
+        base.UserMessage(
+            content=TextContent(type="text", text="What is your favorite color?"),
+        ),
+        base.AssistantMessage(
+            content=TextContent(type="text", text="I like blue, how about you?"),
+        ),
+        base.UserMessage(
+            content=TextContent(type="text", text=query),
+        ),
+    ]
 
-            # Store a conversation
-            session_id = "example-session"
-            memory = SessionMemory(
-                messages=[
-                    MemoryMessage(role="user", content="What is the weather like today?"),
-                    MemoryMessage(role="assistant", content="It's sunny and warm!"),
-                ]
-            )
-            await client.put_session_memory(session_id, memory)
-            print(f"Stored conversation in session {session_id}")
+    # Create expected response payload
+    expected_response = MemoryPromptResponse(messages=expected_messages)
 
-            # Retrieve the conversation
-            session = await client.get_session_memory(session_id)
-            print(f"Retrieved {len(session.messages)} messages from session {session_id}")
+    # Mock the HTTP client's post method directly
+    with patch.object(memory_test_client._client, "post") as mock_post:
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock(return_value=None)
+        mock_response.json = MagicMock(return_value=expected_response.model_dump())
+        mock_post.return_value = mock_response
 
-            # Create long-term memory
-            memories = [
-                LongTermMemory(
-                    text="User lives in San Francisco",
-                    topics=["location", "personal_info"],
-                ),
-            ]
-            await client.create_long_term_memory(memories)
-            print("Created long-term memory")
+        # Test the client method
+        response = await memory_test_client.memory_prompt(
+            query=query,
+            session_id=session_id,
+            namespace="test-namespace",
+            window_size=5,
+            model_name="gpt-4o",
+            context_window_max=4000,
+        )
 
-            # Search for relevant memories
-            results = await client.search_long_term_memory(
-                text="Where does the user live?",
-                limit=5,
-            )
-            print(f"Found {results.total} relevant memories")
-            for memory in results.memories:
-                print(f"- {memory.text} (relevance: {1.0 - memory.dist:.2f})")
+        # Verify the response
+        assert len(response.messages) == 3
+        assert isinstance(response.messages[0].content, TextContent)
+        assert response.messages[0].content.text.startswith(
+            "What is your favorite color?"
+        )
+        assert isinstance(response.messages[-1].content, TextContent)
+        assert response.messages[-1].content.text == query
 
-            # Clean up
-            await client.delete_session_memory(session_id)
-            print(f"Deleted session {session_id}")
+        # Test without session_id (only semantic search)
+        mock_post.reset_mock()
+        mock_post.return_value = mock_response
 
-    # Run the example
-    asyncio.run(example())
-"""
+        response = await memory_test_client.memory_prompt(
+            query=query,
+        )
+
+        # Verify the response is the same (it's mocked)
+        assert len(response.messages) == 3
+
+
+@pytest.mark.asyncio
+async def test_hydrate_memory_prompt(memory_test_client: MemoryAPIClient):
+    """Test the hydrate_memory_prompt method with filters"""
+    query = "What was my favorite color?"
+
+    # Create expected response
+    expected_messages = [
+        base.AssistantMessage(
+            content=TextContent(
+                type="text",
+                text="The user's favorite color is blue",
+            ),
+        ),
+        base.UserMessage(
+            content=TextContent(type="text", text=query),
+        ),
+    ]
+
+    # Create expected response payload
+    expected_response = MemoryPromptResponse(messages=expected_messages)
+
+    # Mock the HTTP client's post method directly
+    with patch.object(memory_test_client._client, "post") as mock_post:
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock(return_value=None)
+        mock_response.json = MagicMock(return_value=expected_response.model_dump())
+        mock_post.return_value = mock_response
+
+        # Test with filter dictionaries
+        response = await memory_test_client.hydrate_memory_prompt(
+            query=query,
+            session_id={"eq": "test-session"},
+            namespace={"eq": "test-namespace"},
+            topics={"any": ["preferences", "colors"]},
+            limit=5,
+        )
+
+        # Verify the response
+        assert len(response.messages) == 2
+        assert isinstance(response.messages[0].content, TextContent)
+        assert "favorite color" in response.messages[0].content.text
+        assert isinstance(response.messages[1].content, TextContent)
+        assert response.messages[1].content.text == query
+
+        # Test with filter objects
+        mock_post.reset_mock()
+        mock_post.return_value = mock_response
+
+        response = await memory_test_client.hydrate_memory_prompt(
+            query=query,
+            session_id=SessionId(eq="test-session"),
+            namespace=Namespace(eq="test-namespace"),
+            topics=Topics(any=["preferences"]),
+            window_size=10,
+            model_name="gpt-4o",
+        )
+
+        # Response should be the same because it's mocked
+        assert len(response.messages) == 2
+
+        # Test with no filters (just query)
+        mock_post.reset_mock()
+        mock_post.return_value = mock_response
+
+        response = await memory_test_client.hydrate_memory_prompt(
+            query=query,
+        )
+
+        # Response should still be the same (mocked)
+        assert len(response.messages) == 2
+
+
+@pytest.mark.asyncio
+async def test_memory_prompt_integration(memory_test_client: MemoryAPIClient):
+    """Test the memory_prompt method with both session and long-term search"""
+    session_id = "test-client-session"
+    query = "What was my favorite color?"
+
+    # Create expected response with both session and LTM content
+    expected_messages = [
+        SystemMessage(
+            content=TextContent(
+                type="text",
+                text="## A summary of the conversation so far\nPrevious conversation about website design preferences.",
+            ),
+        ),
+        base.UserMessage(
+            content=TextContent(
+                type="text", text="What is a good color for a website?"
+            ),
+        ),
+        base.AssistantMessage(
+            content=TextContent(
+                type="text",
+                text="It depends on the website's purpose. Blue is often used for professional sites.",
+            ),
+        ),
+        SystemMessage(
+            content=TextContent(
+                type="text",
+                text="## Long term memories related to the user's query\n - The user's favorite color is blue",
+            ),
+        ),
+        base.UserMessage(
+            content=TextContent(type="text", text=query),
+        ),
+    ]
+
+    # Create expected response payload
+    expected_response = MemoryPromptResponse(messages=expected_messages)
+
+    # Mock the HTTP client's post method directly
+    with patch.object(memory_test_client._client, "post") as mock_post:
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock(return_value=None)
+        mock_response.json = MagicMock(return_value=expected_response.model_dump())
+        mock_post.return_value = mock_response
+
+        # Let the client method run with our mocked response
+        response = await memory_test_client.memory_prompt(
+            query=query,
+            session_id=session_id,
+            namespace="test-namespace",
+        )
+
+        # Check that both session memory and LTM are in the response
+        assert len(response.messages) == 5
+
+        # Extract text from contents
+        message_texts = []
+        for m in response.messages:
+            if isinstance(m.content, TextContent):
+                message_texts.append(m.content.text)
+
+        # The messages should include at least one from the session
+        assert any("website" in text for text in message_texts)
+        # And at least one from LTM
+        assert any("favorite color is blue" in text for text in message_texts)
+        # And the query itself
+        assert query in message_texts[-1]

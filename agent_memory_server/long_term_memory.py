@@ -500,8 +500,6 @@ async def index_long_term_memories(
     memories: list[LongTermMemory],
     redis_client: Redis | None = None,
     deduplicate: bool = False,
-    deduplicate_hash: bool = True,
-    deduplicate_semantic: bool = True,
     vector_distance_threshold: float = 0.12,
     llm_client: Any = None,
 ) -> None:
@@ -612,7 +610,14 @@ async def index_long_term_memories(
         await pipe.execute()
 
     logger.info(f"Indexed {len(processed_memories)} memories")
-    await background_tasks.add_task(extract_discrete_memories)
+    if settings.enable_discrete_memory_extraction:
+        # Extract discrete memories from the indexed messages and persist
+        # them as separate long-term memory records. This process also
+        # runs deduplication if requested.
+        await background_tasks.add_task(
+            extract_discrete_memories,
+            deduplicate=deduplicate,
+        )
 
 
 async def search_long_term_memories(

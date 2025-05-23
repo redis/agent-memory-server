@@ -121,6 +121,12 @@ class TestMemoryEndpoints:
         assert "status" in data
         assert data["status"] == "ok"
 
+        updated_session = await client.get(
+            "/sessions/test-session/memory?namespace=test-namespace"
+        )
+        assert updated_session.status_code == 200
+        assert updated_session.json()["messages"] == payload["messages"]
+
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
     async def test_put_memory_stores_messages_in_long_term_memory(
@@ -258,3 +264,268 @@ class TestSearchEndpoint:
         assert data["memories"][1]["id_"] == "2"
         assert data["memories"][1]["text"] == "Assistant: Hi there!"
         assert data["memories"][1]["dist"] == 0.75
+
+
+@pytest.mark.requires_api_keys
+class TestMemoryPromptEndpoint:
+    @patch("agent_memory_server.api.messages.get_session_memory")
+    @pytest.mark.asyncio
+    async def test_memory_prompt_with_session_id(self, mock_get_session_memory, client):
+        """Test the memory_prompt endpoint with only session_id provided"""
+        # Mock the session memory
+        mock_session_memory = SessionMemoryResponse(
+            messages=[
+                MemoryMessage(role="user", content="Hello"),
+                MemoryMessage(role="assistant", content="Hi there"),
+            ],
+            context="Previous conversation context",
+            namespace="test-namespace",
+            tokens=150,
+        )
+        mock_get_session_memory.return_value = mock_session_memory
+
+        # Call the endpoint
+        query = "What's the weather like?"
+        response = await client.post(
+            "/memory-prompt",
+            json={
+                "query": query,
+                "session": {
+                    "session_id": "test-session",
+                    "namespace": "test-namespace",
+                    "window_size": 10,
+                    "model_name": "gpt-4o",
+                    "context_window_max": 1000,
+                },
+            },
+        )
+
+        # Check status code
+        assert response.status_code == 200
+
+        # Check response data
+        data = response.json()
+        assert isinstance(data, dict)
+        assert (
+            len(data["messages"]) == 4
+        )  # Context message + 2 session messages + query
+
+        # Verify the messages content
+        assert data["messages"][0]["role"] == "system"
+        assert "Previous conversation context" in data["messages"][0]["content"]["text"]
+        assert data["messages"][1]["role"] == "user"
+        assert data["messages"][1]["content"]["text"] == "Hello"
+        assert data["messages"][2]["role"] == "assistant"
+        assert data["messages"][2]["content"]["text"] == "Hi there"
+        assert data["messages"][3]["role"] == "user"
+        assert data["messages"][3]["content"]["text"] == query
+
+    @patch("agent_memory_server.api.long_term_memory.search_long_term_memories")
+    @pytest.mark.asyncio
+    async def test_memory_prompt_with_long_term_memory(self, mock_search, client):
+        """Test the memory_prompt endpoint with only long_term_search_payload provided"""
+        # Mock the long-term memory search
+        mock_search.return_value = LongTermMemoryResultsResponse(
+            memories=[
+                LongTermMemoryResult(id_="1", text="User likes coffee", dist=0.25),
+                LongTermMemoryResult(
+                    id_="2", text="User is allergic to peanuts", dist=0.35
+                ),
+            ],
+            total=2,
+        )
+
+        # Prepare the payload
+        payload = {
+            "query": "What should I eat?",
+            "long_term_search": {
+                "text": "food preferences allergies",
+            },
+        }
+
+        # Call the endpoint
+        response = await client.post("/memory-prompt", json=payload)
+
+        # Check status code
+        assert response.status_code == 200
+
+        # Check response data
+        data = response.json()
+        assert isinstance(data, dict)
+        assert len(data["messages"]) == 2  # Long-term memory message + query
+
+        # Verify the messages content
+        assert data["messages"][0]["role"] == "system"
+        assert "Long term memories" in data["messages"][0]["content"]["text"]
+        assert "User likes coffee" in data["messages"][0]["content"]["text"]
+        assert "User is allergic to peanuts" in data["messages"][0]["content"]["text"]
+        assert data["messages"][1]["role"] == "user"
+        assert data["messages"][1]["content"]["text"] == "What should I eat?"
+
+    @patch("agent_memory_server.api.messages.get_session_memory")
+    @patch("agent_memory_server.api.long_term_memory.search_long_term_memories")
+    @pytest.mark.asyncio
+    async def test_memory_prompt_with_both_sources(
+        self, mock_search, mock_get_session_memory, client
+    ):
+        """Test the memory_prompt endpoint with both session_id and long_term_search_payload"""
+        # Mock session memory
+        mock_session_memory = SessionMemoryResponse(
+            messages=[
+                MemoryMessage(role="user", content="How do you make pasta?"),
+                MemoryMessage(
+                    role="assistant",
+                    content="Boil water, add pasta, cook until al dente.",
+                ),
+            ],
+            context="Cooking conversation",
+            namespace="test-namespace",
+            tokens=200,
+        )
+        mock_get_session_memory.return_value = mock_session_memory
+
+        # Mock the long-term memory search
+        mock_search.return_value = LongTermMemoryResultsResponse(
+            memories=[
+                LongTermMemoryResult(
+                    id_="1", text="User prefers gluten-free pasta", dist=0.3
+                ),
+            ],
+            total=1,
+        )
+
+        # Prepare the payload
+        payload = {
+            "query": "What pasta should I buy?",
+            "session": {
+                "session_id": "test-session",
+                "namespace": "test-namespace",
+            },
+            "long_term_search": {
+                "text": "pasta preferences",
+            },
+        }
+
+        # Call the endpoint
+        response = await client.post("/memory-prompt", json=payload)
+
+        # Check status code
+        assert response.status_code == 200
+
+        # Check response data
+        data = response.json()
+        assert isinstance(data, dict)
+        assert (
+            len(data["messages"]) == 5
+        )  # Context + 2 session messages + long-term memory + query
+
+        # Verify the messages content (order matters)
+        assert data["messages"][0]["role"] == "system"
+        assert "Cooking conversation" in data["messages"][0]["content"]["text"]
+        assert data["messages"][1]["role"] == "user"
+        assert data["messages"][1]["content"]["text"] == "How do you make pasta?"
+        assert data["messages"][2]["role"] == "assistant"
+        assert (
+            data["messages"][2]["content"]["text"]
+            == "Boil water, add pasta, cook until al dente."
+        )
+        assert data["messages"][3]["role"] == "system"
+        assert "Long term memories" in data["messages"][3]["content"]["text"]
+        assert (
+            "User prefers gluten-free pasta" in data["messages"][3]["content"]["text"]
+        )
+        assert data["messages"][4]["role"] == "user"
+        assert data["messages"][4]["content"]["text"] == "What pasta should I buy?"
+
+    @pytest.mark.asyncio
+    async def test_memory_prompt_without_required_params(self, client):
+        """Test the memory_prompt endpoint without required parameters"""
+        # Call the endpoint without session or long_term_search
+        response = await client.post("/memory-prompt", json={"query": "test"})
+
+        # Check status code (should be 400 Bad Request)
+        assert response.status_code == 400
+
+        # Check error message
+        data = response.json()
+        assert "detail" in data
+        assert "Either session or long_term_search must be provided" in data["detail"]
+
+    @patch("agent_memory_server.api.messages.get_session_memory")
+    @pytest.mark.asyncio
+    async def test_memory_prompt_session_not_found(
+        self, mock_get_session_memory, client
+    ):
+        """Test the memory_prompt endpoint when session is not found"""
+        # Mock the session memory to return None (session not found)
+        mock_get_session_memory.return_value = None
+
+        # Call the endpoint
+        query = "What's the weather like?"
+        response = await client.post(
+            "/memory-prompt",
+            json={
+                "query": query,
+                "session": {
+                    "session_id": "nonexistent-session",
+                    "namespace": "test-namespace",
+                },
+            },
+        )
+
+        # Check status code (should be successful)
+        assert response.status_code == 200
+
+        # Check response data (should only contain the query)
+        data = response.json()
+        assert isinstance(data, dict)
+        assert len(data["messages"]) == 1
+        assert data["messages"][0]["role"] == "user"
+        assert data["messages"][0]["content"]["text"] == query
+
+    @patch("agent_memory_server.api.messages.get_session_memory")
+    @patch("agent_memory_server.api.get_model_config")
+    @pytest.mark.asyncio
+    async def test_memory_prompt_with_model_name(
+        self, mock_get_model_config, mock_get_session_memory, client
+    ):
+        """Test the memory_prompt endpoint with model_name parameter"""
+        # Mock the model config
+        model_config = MagicMock()
+        model_config.max_tokens = 4000
+        mock_get_model_config.return_value = model_config
+
+        # Mock the session memory
+        mock_session_memory = SessionMemoryResponse(
+            messages=[
+                MemoryMessage(role="user", content="Hello"),
+                MemoryMessage(role="assistant", content="Hi there"),
+            ],
+            context="Previous context",
+            namespace="test-namespace",
+            tokens=150,
+        )
+        mock_get_session_memory.return_value = mock_session_memory
+
+        # Call the endpoint with model_name
+        query = "What's the weather like?"
+        response = await client.post(
+            "/memory-prompt",
+            json={
+                "query": query,
+                "session": {
+                    "session_id": "test-session",
+                    "model_name": "gpt-4o",
+                },
+            },
+        )
+
+        # Check the model config was used
+        mock_get_model_config.assert_called_once_with("gpt-4o")
+
+        # Check status code
+        assert response.status_code == 200
+
+        # Verify the effective window size was used in get_session_memory
+        mock_get_session_memory.assert_called_once()
+        assert mock_get_session_memory.call_args[1]["window_size"] <= 4000

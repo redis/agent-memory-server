@@ -146,7 +146,7 @@ async def extract_topics_llm(
     return topics
 
 
-def extract_topics_ner(text: str, num_topics: int | None = None) -> list[str]:
+def extract_topics_bertopic(text: str, num_topics: int | None = None) -> list[str]:
     """
     Extract topics from text using the BERTopic model.
 
@@ -193,12 +193,8 @@ async def handle_extraction(text: str) -> tuple[list[str], list[str]]:
     # Extract topics if enabled
     topics = []
     if settings.enable_topic_extraction:
-        # Check if the topic_model_source setting exists and use appropriate function
-        if (
-            hasattr(settings, "topic_model_source")
-            and settings.topic_model_source == "NER"
-        ):
-            topics = extract_topics_ner(text)
+        if settings.topic_model_source == "BERTopic":
+            topics = extract_topics_bertopic(text)
         else:
             topics = await extract_topics_llm(text)
 
@@ -263,7 +259,10 @@ DISCRETE_EXTRACTION_PROMPT = """
     """
 
 
-async def extract_discrete_memories(redis: Redis | None = None):
+async def extract_discrete_memories(
+    redis: Redis | None = None,
+    deduplicate: bool = True,
+):
     """
     Extract episodic and semantic memories from text using an LLM.
     """
@@ -345,5 +344,5 @@ async def extract_discrete_memories(redis: Redis | None = None):
 
         await index_long_term_memories(
             long_term_memories,
-            deduplicate=True,
+            deduplicate=deduplicate,
         )

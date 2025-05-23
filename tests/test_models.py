@@ -10,7 +10,7 @@ from agent_memory_server.filters import (
 from agent_memory_server.models import (
     LongTermMemoryResult,
     MemoryMessage,
-    SearchPayload,
+    SearchRequest,
     SessionMemory,
     SessionMemoryResponse,
 )
@@ -127,7 +127,7 @@ class TestModels:
         user_id = UserId(eq="test-user")
 
         # Create payload with filter objects
-        payload = SearchPayload(
+        payload = SearchRequest(
             text="Test query",
             session_id=session_id,
             namespace=namespace,

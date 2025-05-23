@@ -2,8 +2,10 @@ import logging
 import time
 from typing import Literal
 
+from mcp.server.fastmcp.prompts import base
 from pydantic import BaseModel, Field
 
+from agent_memory_server.config import settings
 from agent_memory_server.filters import (
     CreatedAt,
     Entities,
@@ -19,6 +21,33 @@ from agent_memory_server.filters import (
 logger = logging.getLogger(__name__)
 
 JSONTypes = str | float | int | bool | list | dict
+
+# These should match the keys in MODEL_CONFIGS
+ModelNameLiteral = Literal[
+    "gpt-3.5-turbo",
+    "gpt-3.5-turbo-16k",
+    "gpt-4",
+    "gpt-4-32k",
+    "gpt-4o",
+    "gpt-4o-mini",
+    "o1",
+    "o1-mini",
+    "o3-mini",
+    "text-embedding-ada-002",
+    "text-embedding-3-small",
+    "text-embedding-3-large",
+    "claude-3-opus-20240229",
+    "claude-3-sonnet-20240229",
+    "claude-3-haiku-20240307",
+    "claude-3-5-sonnet-20240620",
+    "claude-3-7-sonnet-20250219",
+    "claude-3-5-sonnet-20241022",
+    "claude-3-5-haiku-20241022",
+    "claude-3-7-sonnet-latest",
+    "claude-3-5-sonnet-latest",
+    "claude-3-5-haiku-latest",
+    "claude-3-opus-latest",
+]
 
 
 class MemoryMessage(BaseModel):
@@ -64,6 +93,14 @@ class SessionMemory(BaseModel):
         description="Timestamp when the session memory was last updated",
         default_factory=lambda: int(time.time()),
     )
+
+
+class SessionMemoryRequest(BaseModel):
+    session_id: str
+    namespace: str | None = None
+    window_size: int = settings.window_size
+    model_name: ModelNameLiteral | None = None
+    context_window_max: int | None = None
 
 
 class SessionMemoryResponse(SessionMemory):
@@ -155,7 +192,7 @@ class LongTermMemoryResultsResponse(LongTermMemoryResults):
     """Response containing long-term memory search results"""
 
 
-class CreateLongTermMemoryPayload(BaseModel):
+class CreateLongTermMemoryRequest(BaseModel):
     """Payload for creating a long-term memory"""
 
     memories: list[LongTermMemory]
@@ -175,7 +212,7 @@ class HealthCheckResponse(BaseModel):
     now: int
 
 
-class SearchPayload(BaseModel):
+class SearchRequest(BaseModel):
     """Payload for long-term memory search"""
 
     text: str | None = Field(
@@ -259,3 +296,25 @@ class SearchPayload(BaseModel):
             filters["memory_type"] = self.memory_type
 
         return filters
+
+
+class MemoryPromptRequest(BaseModel):
+    query: str
+    session: SessionMemoryRequest | None = None
+    long_term_search: SearchRequest | None = None
+
+
+class SystemMessage(base.Message):
+    """A system message"""
+
+    role: Literal["system"] = "system"
+
+
+class UserMessage(base.Message):
+    """A user message"""
+
+    role: Literal["user"] = "user"
+
+
+class MemoryPromptResponse(BaseModel):
+    messages: list[base.Message | SystemMessage]
