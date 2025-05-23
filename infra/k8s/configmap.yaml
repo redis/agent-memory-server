@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-memory-server-config
+  namespace: redis-memory-server
+data:
+  LONG_TERM_MEMORY: "True"
+  WINDOW_SIZE: "20"
+  GENERATION_MODEL: "gpt-4o-mini"
+  EMBEDDING_MODEL: "text-embedding-3-small"
+  ENABLE_TOPIC_EXTRACTION: "True"
+  ENABLE_NER: "True"
+  PORT: "8000"
+  MCP_PORT: "9000"

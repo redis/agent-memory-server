@@ -222,3 +222,5 @@ libs/redis/docs/.Trash*
 .idea/*
 .vscode/settings.json
 .cursor
+.venv/
+env/

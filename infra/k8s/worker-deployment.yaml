@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-memory-server-worker
+  namespace: redis-memory-server
+  labels:
+    app: redis-memory-server-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-memory-server-worker
+  template:
+    metadata:
+      labels:
+        app: redis-memory-server-worker
+    spec:
+      containers:
+      - name: worker
+        image: YOUR_REGISTRY/redis-memory-server:latest
+        command: ["uv", "run", "agent-memory", "task-worker", "--concurrency", "10"]
+        envFrom:
+        - configMapRef:
+            name: redis-memory-server-config
+        - secretRef:
+            name: redis-memory-server-secrets
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+      imagePullSecrets:
+      - name: registry-secret  # If using private registry
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: redis-memory-server-worker-hpa
+  namespace: redis-memory-server
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: redis-memory-server-worker
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

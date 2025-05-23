@@ -5,12 +5,14 @@ A Redis-powered memory server built for AI agents and applications. It manages b
 ## Features
 
 - **Short-Term Memory**
+
   - Storage for messages, token count, context, and metadata for a session
   - Automatically and recursively summarizes conversations
   - Client model-aware token limit management (adapts to the context window of the client's LLM)
   - Supports all major OpenAI and Anthropic models
 
 - **Long-Term Memory**
+
   - Storage for long-term memories across sessions
   - Semantic search to retrieve memories with advanced filtering system
   - Filter by session, namespace, topics, entities, timestamps, and more
@@ -23,14 +25,17 @@ A Redis-powered memory server built for AI agents and applications. It manages b
   - Both a REST interface and MCP server
 
 ## System Diagram
+
 ![System Diagram](diagram.png)
 
 ## Project Status and Roadmap
+
 ### Project Status: In Development, Pre-Release
 
 This project is under active development and is **pre-release** software. Think of it as an early beta!
 
 ### Roadmap
+
 - [x] Long-term memory deduplication and compaction
 - [ ] Configurable strategy for moving session memory to long-term memory
 - [ ] Authentication/authorization hooks
@@ -44,13 +49,15 @@ The following endpoints are available:
 - **GET /health**
   A simple health check endpoint returning the current server time.
   Example Response:
+
   ```json
-  {"now": 1616173200}
+  { "now": 1616173200 }
   ```
 
 - **GET /sessions/**
   Retrieves a paginated list of session IDs.
   _Query Parameters:_
+
   - `page` (int): Page number (default: 1)
   - `size` (int): Number of sessions per page (default: 10)
   - `namespace` (string, optional): Filter sessions by namespace.
@@ -59,6 +66,7 @@ The following endpoints are available:
   Retrieves conversation memory for a session, including messages and
   summarized older messages.
   _Query Parameters:_
+
   - `namespace` (string, optional): The namespace to use for the session
   - `window_size` (int, optional): Number of messages to include in the response (default from config)
   - `model_name` (string, optional): The client's LLM model name to determine appropriate context window size
@@ -67,11 +75,12 @@ The following endpoints are available:
 - **POST /sessions/{session_id}/memory**
   Adds messages (and optional context) to a session's memory.
   _Request Body Example:_
+
   ```json
   {
     "messages": [
-      {"role": "user", "content": "Hello"},
-      {"role": "assistant", "content": "Hi there"}
+      { "role": "user", "content": "Hello" },
+      { "role": "assistant", "content": "Hi there" }
     ]
   }
   ```
@@ -82,23 +91,26 @@ The following endpoints are available:
 - **POST /long-term-memory/search**
   Performs semantic search on long-term memories with advanced filtering options.
   _Request Body Example:_
+
   ```json
   {
     "text": "Search query text",
     "limit": 10,
     "offset": 0,
-    "session_id": {"eq": "session-123"},
-    "namespace": {"eq": "default"},
-    "topics": {"any": ["AI", "Machine Learning"]},
-    "entities": {"all": ["OpenAI", "Claude"]},
-    "created_at": {"gte": 1672527600, "lte": 1704063599},
-    "last_accessed": {"gt": 1704063600},
-    "user_id": {"eq": "user-456"}
+    "session_id": { "eq": "session-123" },
+    "namespace": { "eq": "default" },
+    "topics": { "any": ["AI", "Machine Learning"] },
+    "entities": { "all": ["OpenAI", "Claude"] },
+    "created_at": { "gte": 1672527600, "lte": 1704063599 },
+    "last_accessed": { "gt": 1704063600 },
+    "user_id": { "eq": "user-456" }
   }
   ```
 
   _Filter options:_
+
   - Tag filters (session_id, namespace, topics, entities, user_id):
+
     - `eq`: Equals this value
     - `ne`: Not equals this value
     - `any`: Contains any of these values
@@ -114,6 +126,7 @@ The following endpoints are available:
     - `between`: Between two values
 
 ## MCP Server Interface
+
 Agent Memory Server offers an MCP (Model Context Protocol) server interface powered by FastMCP, providing tool-based long-term memory management:
 
 - **create_long_term_memories**: Store long-term memories.
@@ -129,87 +142,117 @@ The `agent-memory-server` provides a command-line interface (CLI) for managing t
 Here's a list of available commands and their functions:
 
 #### `version`
+
 Displays the current version of `agent-memory-server`.
+
 ```bash
 agent-memory version
 ```
 
 #### `api`
+
 Starts the REST API server.
+
 ```bash
 agent-memory api [OPTIONS]
 ```
+
 **Options:**
-*   `--port INTEGER`: Port to run the server on. (Default: value from `settings.port`, usually 8000)
-*   `--host TEXT`: Host to run the server on. (Default: "0.0.0.0")
-*   `--reload`: Enable auto-reload for development.
+
+- `--port INTEGER`: Port to run the server on. (Default: value from `settings.port`, usually 8000)
+- `--host TEXT`: Host to run the server on. (Default: "0.0.0.0")
+- `--reload`: Enable auto-reload for development.
 
 Example:
+
 ```bash
 agent-memory api --port 8080 --reload
 ```
 
 #### `mcp`
+
 Starts the Model Context Protocol (MCP) server.
+
 ```bash
 agent-memory mcp [OPTIONS]
 ```
+
 **Options:**
-*   `--port INTEGER`: Port to run the MCP server on. (Default: value from `settings.mcp_port`, usually 9000)
-*   `--sse`: Run the MCP server in Server-Sent Events (SSE) mode. If not provided, it runs in stdio mode.
+
+- `--port INTEGER`: Port to run the MCP server on. (Default: value from `settings.mcp_port`, usually 9000)
+- `--sse`: Run the MCP server in Server-Sent Events (SSE) mode. If not provided, it runs in stdio mode.
 
 Example (SSE mode):
+
 ```bash
 agent-memory mcp --port 9001 --sse
 ```
+
 Example (stdio mode):
+
 ```bash
 agent-memory mcp --port 9001
 ```
 
 #### `schedule-task`
+
 Schedules a background task to be processed by a Docket worker.
+
 ```bash
 agent-memory schedule-task <TASK_PATH> [OPTIONS]
 ```
+
 **Arguments:**
-*   `TASK_PATH`: The Python import path to the task function. For example: `"agent_memory_server.long_term_memory.compact_long_term_memories"`
+
+- `TASK_PATH`: The Python import path to the task function. For example: `"agent_memory_server.long_term_memory.compact_long_term_memories"`
 
 **Options:**
-*   `--args TEXT` / `-a TEXT`: Arguments to pass to the task in `key=value` format. Can be specified multiple times. Values are automatically converted to boolean, integer, or float if possible, otherwise they remain strings.
+
+- `--args TEXT` / `-a TEXT`: Arguments to pass to the task in `key=value` format. Can be specified multiple times. Values are automatically converted to boolean, integer, or float if possible, otherwise they remain strings.
 
 Example:
+
 ```bash
 agent-memory schedule-task "agent_memory_server.long_term_memory.compact_long_term_memories" -a limit=500 -a namespace=my_namespace -a compact_semantic_duplicates=false
 ```
 
 #### `task-worker`
+
 Starts a Docket worker to process background tasks from the queue. This worker uses the Docket name configured in settings.
+
 ```bash
 agent-memory task-worker [OPTIONS]
 ```
+
 **Options:**
-*   `--concurrency INTEGER`: Number of tasks to process concurrently. (Default: 10)
-*   `--redelivery-timeout INTEGER`: Seconds to wait before a task is redelivered to another worker if the current worker fails or times out. (Default: 30)
+
+- `--concurrency INTEGER`: Number of tasks to process concurrently. (Default: 10)
+- `--redelivery-timeout INTEGER`: Seconds to wait before a task is redelivered to another worker if the current worker fails or times out. (Default: 30)
 
 Example:
+
 ```bash
 agent-memory task-worker --concurrency 5 --redelivery-timeout 60
 ```
 
 #### `rebuild_index`
+
 Rebuilds the search index for Redis Memory Server.
+
 ```bash
 agent-memory rebuild_index
 ```
 
 #### `migrate_memories`
+
 Runs data migrations. Migrations are reentrant.
+
 ```bash
 agent-memory migrate_memories
 ```
 
 To see help for any command, you can use `--help`:
+
 ```bash
 agent-memory --help
 agent-memory api --help
@@ -226,14 +269,16 @@ First, you'll need to download this repository. After you've downloaded it, you 
 This project uses [uv](https://github.com/astral-sh/uv) for dependency management.
 
 1. Install uv:
-  ```bash
-  pip install uv
-  ```
+
+```bash
+pip install uv
+```
 
 2. Install the package and required dependencies:
-  ```bash
-  uv sync
-  ```
+
+```bash
+uv sync
+```
 
 2. Set up environment variables (see Configuration section)
 
@@ -243,11 +288,13 @@ The easiest way to start the REST and MCP servers is to use Docker Compose. See 
 
 But you can also run these servers via the CLI commands. Here's how you
 run the REST API server:
+
 ```bash
 uv run agent-memory api
 ```
 
 And the MCP server:
+
 ```
 uv run agent-memory mcp --mode <stdio|sse>
 ```
@@ -273,30 +320,34 @@ To start the API using Docker Compose, follow these steps:
    docker-compose down
 
 ## Using the MCP Server with Claude Desktop, Cursor, etc.
+
 You can use the MCP server that comes with this project in any application or SDK that supports MCP tools.
 
 ### Claude
+
 <img src="claude.png">
 
 For example, with Claude, use the following configuration:
-  ```json
-  {
-    "mcpServers": {
-      "redis-memory-server": {
-          "command": "uv",
-          "args": [
-              "--directory",
-              "/ABSOLUTE/PATH/TO/REPO/DIRECTORY/agent-memory-server",
-              "run",
-              "agent-memory",
-              "-mcp",
-              "--mode",
-              "stdio"
-          ]
-      }
+
+```json
+{
+  "mcpServers": {
+    "redis-memory-server": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/ABSOLUTE/PATH/TO/REPO/DIRECTORY/agent-memory-server",
+        "run",
+        "agent-memory",
+        "-mcp",
+        "--mode",
+        "stdio"
+      ]
     }
   }
-  ```
+}
+```
+
 **NOTE:** On a Mac, this configuration requires that you use `brew install uv` to install uv. Probably any method that makes the `uv`
 command globally accessible, so Claude can find it, would work.
 
@@ -306,16 +357,15 @@ command globally accessible, so Claude can find it, would work.
 
 Cursor's MCP config is similar to Claude's, but it also supports SSE servers, so you can run the server in SSE mode and pass in the URL:
 
-  ```json
-  {
-    "mcpServers": {
-      "redis-memory-server": {
-        "url": "http://localhost:9000/sse"
-      }
+```json
+{
+  "mcpServers": {
+    "redis-memory-server": {
+      "url": "http://localhost:9000/sse"
     }
   }
-  ```
-
+}
+```
 
 ## Configuration
 
@@ -369,6 +419,7 @@ agent-memory schedule-task "agent_memory_server.long_term_memory.compact_long_te
 - **LLM-powered Merging**: Uses language models to intelligently combine memories
 
 ## Running Migrations
+
 When the data model changes, we add a migration in `migrations.py`. You can run
 these to make sure your schema is up to date, like so:
 
@@ -379,11 +430,13 @@ uv run agent-memory migrate-memories
 ## Development
 
 ### Running Tests
+
 ```bash
 uv run pytest
 ```
 
 ## Contributing
+
 1. Fork the repository
 2. Create a feature branch
 3. Commit your changes
