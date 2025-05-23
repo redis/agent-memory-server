@@ -10,6 +10,10 @@ from mcp.types import CallToolResult
 from agent_memory_server.mcp import mcp_app
 from agent_memory_server.models import (
     LongTermMemory,
+    LongTermMemoryResult,
+    MemoryPromptRequest,
+    MemoryPromptResponse,
+    SystemMessage,
 )
 
 
@@ -166,7 +170,6 @@ class TestMCP:
         Ensure that when default_namespace is set on mcp_app, search_long_term_memory injects it automatically.
         """
         from agent_memory_server.models import (
-            LongTermMemoryResult,
             LongTermMemoryResults,
         )
 
@@ -214,3 +217,60 @@ class TestMCP:
         finally:
             # Restore original namespace
             mcp_app.default_namespace = original_ns
+
+    @pytest.mark.asyncio
+    async def test_memory_prompt_parameter_passing(self, session, monkeypatch):
+        """
+        Test that memory_prompt correctly passes parameters to core_memory_prompt.
+        This test verifies the implementation details to catch bugs like the _params issue.
+        """
+        # Capture the parameters passed to core_memory_prompt
+        captured_params = {}
+
+        async def mock_core_memory_prompt(params: MemoryPromptRequest):
+            captured_params["query"] = params.query
+            captured_params["session"] = params.session
+            captured_params["long_term_search"] = params.long_term_search
+
+            # Return a minimal valid response
+            return MemoryPromptResponse(
+                messages=[
+                    SystemMessage(content={"type": "text", "text": "Test response"})
+                ]
+            )
+
+        # Patch the core function
+        monkeypatch.setattr(
+            "agent_memory_server.mcp.core_memory_prompt", mock_core_memory_prompt
+        )
+
+        async with client_session(mcp_app._mcp_server) as client:
+            prompt = await client.call_tool(
+                "memory_prompt",
+                {
+                    "query": "Test query",
+                    "session_id": {"eq": session},
+                    "namespace": {"eq": "test-namespace"},
+                    "topics": {"any": ["test-topic"]},
+                    "entities": {"any": ["test-entity"]},
+                    "limit": 5,
+                },
+            )
+
+            # Verify the tool was called successfully
+            assert isinstance(prompt, CallToolResult)
+
+            # Verify that core_memory_prompt was called with the correct parameters
+            assert captured_params["query"] == "Test query"
+
+            # Verify session parameters were passed correctly
+            assert captured_params["session"] is not None
+            assert captured_params["session"].session_id == session
+            assert captured_params["session"].namespace == "test-namespace"
+
+            # Verify long_term_search parameters were passed correctly
+            assert captured_params["long_term_search"] is not None
+            assert captured_params["long_term_search"].text == "Test query"
+            assert captured_params["long_term_search"].limit == 5
+            assert captured_params["long_term_search"].topics is not None
+            assert captured_params["long_term_search"].entities is not None

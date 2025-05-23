@@ -442,11 +442,10 @@ async def memory_prompt(
         limit=limit,
         offset=offset,
     )
+    _params = {}
+    if session is not None:
+        _params["session"] = session
     if search_payload is not None:
         _params["long_term_search"] = search_payload
 
-    return await core_memory_prompt(
-        params=MemoryPromptRequest(
-            query=query, session=session, long_term_search=search_payload
-        )
-    )
+    return await core_memory_prompt(params=MemoryPromptRequest(query=query, **_params))
