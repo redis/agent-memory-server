@@ -4,10 +4,12 @@ Redis Memory Server API Client
 This module provides a client for the REST API of the Redis Memory Server.
 """
 
+import contextlib
 from typing import Any, Literal
 
 import httpx
 from pydantic import BaseModel
+from ulid import ULID
 
 from agent_memory_server.filters import (
     CreatedAt,
@@ -21,17 +23,17 @@ from agent_memory_server.filters import (
 )
 from agent_memory_server.models import (
     AckResponse,
-    CreateLongTermMemoryRequest,
+    CreateMemoryRecordRequest,
     HealthCheckResponse,
-    LongTermMemory,
-    LongTermMemoryResults,
     MemoryPromptRequest,
     MemoryPromptResponse,
+    MemoryRecord,
+    MemoryRecordResults,
     SearchRequest,
     SessionListResponse,
-    SessionMemory,
-    SessionMemoryRequest,
-    SessionMemoryResponse,
+    WorkingMemory,
+    WorkingMemoryRequest,
+    WorkingMemoryResponse,
 )
 
 
@@ -151,7 +153,7 @@ class MemoryAPIClient:
         window_size: int | None = None,
         model_name: ModelNameLiteral | None = None,
         context_window_max: int | None = None,
-    ) -> SessionMemoryResponse:
+    ) -> WorkingMemoryResponse:
         """
         Get memory for a session, including messages and context.
 
@@ -163,7 +165,7 @@ class MemoryAPIClient:
             context_window_max: Optional direct specification of context window tokens
 
         Returns:
-            SessionMemoryResponse containing messages, context and metadata
+            WorkingMemoryResponse containing messages, context and metadata
 
         Raises:
             httpx.HTTPStatusError: If the session is not found (404) or other errors
@@ -188,30 +190,31 @@ class MemoryAPIClient:
             f"/sessions/{session_id}/memory", params=params
         )
         response.raise_for_status()
-        return SessionMemoryResponse(**response.json())
+        return WorkingMemoryResponse(**response.json())
 
     async def put_session_memory(
-        self, session_id: str, memory: SessionMemory
-    ) -> AckResponse:
+        self, session_id: str, memory: WorkingMemory
+    ) -> WorkingMemoryResponse:
         """
         Store session memory. Replaces existing session memory if it exists.
 
         Args:
             session_id: The session ID to store memory for
-            memory: SessionMemory object with messages and optional context
+            memory: WorkingMemory object with messages and optional context
 
         Returns:
-            AckResponse indicating success
+            WorkingMemoryResponse with the updated memory (potentially summarized if window size exceeded)
         """
         # If namespace not specified in memory but set in config, use config's namespace
         if memory.namespace is None and self.config.default_namespace is not None:
             memory.namespace = self.config.default_namespace
 
         response = await self._client.put(
-            f"/sessions/{session_id}/memory", json=memory.model_dump(exclude_none=True)
+            f"/sessions/{session_id}/memory",
+            json=memory.model_dump(exclude_none=True, mode="json"),
         )
         response.raise_for_status()
-        return AckResponse(**response.json())
+        return WorkingMemoryResponse(**response.json())
 
     async def delete_session_memory(
         self, session_id: str, namespace: str | None = None
@@ -238,14 +241,140 @@ class MemoryAPIClient:
         response.raise_for_status()
         return AckResponse(**response.json())
 
+    async def set_working_memory_data(
+        self,
+        session_id: str,
+        data: dict[str, Any],
+        namespace: str | None = None,
+        preserve_existing: bool = True,
+    ) -> WorkingMemoryResponse:
+        """
+        Convenience method to set JSON data in working memory.
+
+        This method allows you to easily store arbitrary JSON data in working memory
+        without having to construct a full WorkingMemory object.
+
+        Args:
+            session_id: The session ID to set data for
+            data: Dictionary of JSON data to store
+            namespace: Optional namespace for the session
+            preserve_existing: If True, preserve existing messages and memories (default: True)
+
+        Returns:
+            WorkingMemoryResponse with the updated memory
+
+        Example:
+            ```python
+            # Store user preferences
+            await client.set_working_memory_data(
+                session_id="session123",
+                data={
+                    "user_settings": {"theme": "dark", "language": "en"},
+                    "preferences": {"notifications": True}
+                }
+            )
+            ```
+        """
+        # Get existing memory if preserving
+        existing_memory = None
+        if preserve_existing:
+            with contextlib.suppress(Exception):
+                existing_memory = await self.get_session_memory(
+                    session_id=session_id,
+                    namespace=namespace,
+                )
+
+        # Create new working memory with the data
+        working_memory = WorkingMemory(
+            session_id=session_id,
+            namespace=namespace or self.config.default_namespace,
+            messages=existing_memory.messages if existing_memory else [],
+            memories=existing_memory.memories if existing_memory else [],
+            data=data,
+            context=existing_memory.context if existing_memory else None,
+            user_id=existing_memory.user_id if existing_memory else None,
+        )
+
+        return await self.put_session_memory(session_id, working_memory)
+
+    async def add_memories_to_working_memory(
+        self,
+        session_id: str,
+        memories: list[MemoryRecord],
+        namespace: str | None = None,
+        replace: bool = False,
+    ) -> WorkingMemoryResponse:
+        """
+        Convenience method to add structured memories to working memory.
+
+        This method allows you to easily add MemoryRecord objects to working memory
+        without having to manually construct and manage the full WorkingMemory object.
+
+        Args:
+            session_id: The session ID to add memories to
+            memories: List of MemoryRecord objects to add
+            namespace: Optional namespace for the session
+            replace: If True, replace all existing memories; if False, append to existing (default: False)
+
+        Returns:
+            WorkingMemoryResponse with the updated memory
+
+        Example:
+            ```python
+            # Add a semantic memory
+            await client.add_memories_to_working_memory(
+                session_id="session123",
+                memories=[
+                    MemoryRecord(
+                        text="User prefers dark mode",
+                        memory_type="semantic",
+                        topics=["preferences", "ui"],
+                        id="pref_dark_mode"
+                    )
+                ]
+            )
+            ```
+        """
+        # Get existing memory
+        existing_memory = None
+        with contextlib.suppress(Exception):
+            existing_memory = await self.get_session_memory(
+                session_id=session_id,
+                namespace=namespace,
+            )
+
+        # Determine final memories list
+        if replace or not existing_memory:
+            final_memories = memories
+        else:
+            final_memories = existing_memory.memories + memories
+
+        # Auto-generate IDs for memories that don't have them
+        for memory in final_memories:
+            if not memory.id:
+                memory.id = str(ULID())
+
+        # Create new working memory with the memories
+        working_memory = WorkingMemory(
+            session_id=session_id,
+            namespace=namespace or self.config.default_namespace,
+            messages=existing_memory.messages if existing_memory else [],
+            memories=final_memories,
+            data=existing_memory.data if existing_memory else {},
+            context=existing_memory.context if existing_memory else None,
+            user_id=existing_memory.user_id if existing_memory else None,
+        )
+
+        return await self.put_session_memory(session_id, working_memory)
+
     async def create_long_term_memory(
-        self, memories: list[LongTermMemory]
+        self, memories: list[MemoryRecord]
     ) -> AckResponse:
         """
         Create long-term memories for later retrieval.
 
         Args:
-            memories: List of LongTermMemory objects to store
+            memories: List of MemoryRecord objects to store
 
         Returns:
             AckResponse indicating success
@@ -259,9 +388,9 @@ class MemoryAPIClient:
                 if memory.namespace is None:
                     memory.namespace = self.config.default_namespace
 
-        payload = CreateLongTermMemoryRequest(memories=memories)
+        payload = CreateMemoryRecordRequest(memories=memories)
         response = await self._client.post(
-            "/long-term-memory", json=payload.model_dump(exclude_none=True)
+            "/long-term-memory", json=payload.model_dump(exclude_none=True, mode="json")
         )
         response.raise_for_status()
         return AckResponse(**response.json())
@@ -280,7 +409,7 @@ class MemoryAPIClient:
         memory_type: MemoryType | dict[str, Any] | None = None,
         limit: int = 10,
         offset: int = 0,
-    ) -> LongTermMemoryResults:
+    ) -> MemoryRecordResults:
         """
         Search long-term memories using semantic search and filters.
 
@@ -298,7 +427,7 @@ class MemoryAPIClient:
             offset: Offset for pagination (default: 0)
 
         Returns:
-            LongTermMemoryResults with matching memories and metadata
+            MemoryRecordResults with matching memories and metadata
 
         Raises:
             httpx.HTTPStatusError: If long-term memory is disabled (400) or other errors
@@ -341,10 +470,106 @@ class MemoryAPIClient:
         )
 
         response = await self._client.post(
-            "/long-term-memory/search", json=payload.model_dump(exclude_none=True)
+            "/long-term-memory/search",
+            json=payload.model_dump(exclude_none=True, mode="json"),
         )
         response.raise_for_status()
-        return LongTermMemoryResults(**response.json())
+        return MemoryRecordResults(**response.json())
+
+    async def search_memories(
+        self,
+        text: str,
+        session_id: SessionId | dict[str, Any] | None = None,
+        namespace: Namespace | dict[str, Any] | None = None,
+        topics: Topics | dict[str, Any] | None = None,
+        entities: Entities | dict[str, Any] | None = None,
+        created_at: CreatedAt | dict[str, Any] | None = None,
+        last_accessed: LastAccessed | dict[str, Any] | None = None,
+        user_id: UserId | dict[str, Any] | None = None,
+        distance_threshold: float | None = None,
+        memory_type: MemoryType | dict[str, Any] | None = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> MemoryRecordResults:
+        """
+        Search across all memory types (working memory and long-term memory).
+
+        This method searches both working memory (ephemeral, session-scoped) and
+        long-term memory (persistent, indexed) to provide comprehensive results.
+
+        For working memory:
+        - Uses simple text matching
+        - Searches across all sessions (unless session_id filter is provided)
+        - Returns memories that haven't been promoted to long-term storage
+
+        For long-term memory:
+        - Uses semantic vector search
+        - Includes promoted memories from working memory
+        - Supports advanced filtering by topics, entities, etc.
+
+        Args:
+            text: Search query text for semantic similarity
+            session_id: Optional session ID filter
+            namespace: Optional namespace filter
+            topics: Optional topics filter
+            entities: Optional entities filter
+            created_at: Optional creation date filter
+            last_accessed: Optional last accessed date filter
+            user_id: Optional user ID filter
+            distance_threshold: Optional distance threshold for search results
+            memory_type: Optional memory type filter
+            limit: Maximum number of results to return (default: 10)
+            offset: Offset for pagination (default: 0)
+
+        Returns:
+            MemoryRecordResults with matching memories from both memory types
+
+        Raises:
+            httpx.HTTPStatusError: If the request fails
+        """
+        # Convert dictionary filters to their proper filter objects if needed
+        if isinstance(session_id, dict):
+            session_id = SessionId(**session_id)
+        if isinstance(namespace, dict):
+            namespace = Namespace(**namespace)
+        if isinstance(topics, dict):
+            topics = Topics(**topics)
+        if isinstance(entities, dict):
+            entities = Entities(**entities)
+        if isinstance(created_at, dict):
+            created_at = CreatedAt(**created_at)
+        if isinstance(last_accessed, dict):
+            last_accessed = LastAccessed(**last_accessed)
+        if isinstance(user_id, dict):
+            user_id = UserId(**user_id)
+        if isinstance(memory_type, dict):
+            memory_type = MemoryType(**memory_type)
+
+        # Apply default namespace if needed and no namespace filter specified
+        if namespace is None and self.config.default_namespace is not None:
+            namespace = Namespace(eq=self.config.default_namespace)
+
+        payload = SearchRequest(
+            text=text,
+            session_id=session_id,
+            namespace=namespace,
+            topics=topics,
+            entities=entities,
+            created_at=created_at,
+            last_accessed=last_accessed,
+            user_id=user_id,
+            distance_threshold=distance_threshold,
+            memory_type=memory_type,
+            limit=limit,
+            offset=offset,
+        )
+
+        response = await self._client.post(
+            "/memory/search",
+            json=payload.model_dump(exclude_none=True, mode="json"),
+        )
+        response.raise_for_status()
+        return MemoryRecordResults(**response.json())
 
     async def memory_prompt(
         self,
@@ -381,7 +606,7 @@ class MemoryAPIClient:
         # Prepare the request payload
         session_params = None
         if session_id is not None:
-            session_params = SessionMemoryRequest(
+            session_params = WorkingMemoryRequest(
                 session_id=session_id,
                 namespace=namespace or self.config.default_namespace,
                 window_size=window_size or 12,  # Default from settings
@@ -412,7 +637,7 @@ class MemoryAPIClient:
 
         # Make the API call
         response = await self._client.post(
-            "/memory-prompt", json=payload.model_dump(exclude_none=True)
+            "/memory-prompt", json=payload.model_dump(exclude_none=True, mode="json")
         )
         response.raise_for_status()
         data = response.json()
@@ -502,7 +727,7 @@ class MemoryAPIClient:
             elif self.config.default_namespace:
                 _namespace = self.config.default_namespace
 
-            session_params = SessionMemoryRequest(
+            session_params = WorkingMemoryRequest(
                 session_id=_session_id,
                 namespace=_namespace,
                 window_size=window_size,
@@ -535,7 +760,7 @@ class MemoryAPIClient:
 
         # Make the API call
         response = await self._client.post(
-            "/memory-prompt", json=payload.model_dump(exclude_none=True)
+            "/memory-prompt", json=payload.model_dump(exclude_none=True, mode="json")
         )
         response.raise_for_status()
         data = response.json()

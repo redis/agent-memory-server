@@ -56,6 +56,15 @@ class Keys:
         )
 
     @staticmethod
+    def working_memory_key(session_id: str, namespace: str | None = None) -> str:
+        """Get the working memory key for a session."""
+        return (
+            f"working_memory:{namespace}:{session_id}"
+            if namespace
+            else f"working_memory:{session_id}"
+        )
+
+    @staticmethod
     def search_index_name() -> str:
         """Return the name of the search index."""
         return settings.redisvl_index_name

@@ -1,6 +1,4 @@
-import asyncio
 import contextlib
-import json
 import os
 import time
 from unittest import mock
@@ -31,11 +29,6 @@ from agent_memory_server.utils.redis import ensure_search_index_exists
 
 
 load_dotenv()
-
-
-@pytest.fixture(scope="session")
-def event_loop(request):
-    return asyncio.get_event_loop()
 
 
 @pytest.fixture()
@@ -108,116 +101,105 @@ async def session(use_test_redis_connection, async_redis_client):
 
     try:
         session_id = "test-session"
+        namespace = "test-namespace"
 
-        # Add messages to session memory
+        # Create working memory data
+        from agent_memory_server.models import MemoryMessage, WorkingMemory
+
         messages = [
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi there"},
+            MemoryMessage(role="user", content="Hello"),
+            MemoryMessage(role="assistant", content="Hi there"),
         ]
 
-        # Create session directly in Redis
-        sessions_key = Keys.sessions_key(namespace="test-namespace")
-        messages_key = Keys.messages_key(session_id, namespace="test-namespace")
-        metadata_key = Keys.metadata_key(session_id, namespace="test-namespace")
-
-        # Convert messages to JSON
-        messages_json = [json.dumps(msg) for msg in messages]
-
-        # Create metadata
-        metadata = {
-            "context": "Sample context",
-            "user_id": "test-user",
-            "tokens": "150",
-            "namespace": "test-namespace",
-        }
-        # Add session to Redis
-        current_time = int(time.time())
-
-        # First check if the key exists
-        await use_test_redis_connection.exists(sessions_key)
-
-        # Add session to Redis
-        async with use_test_redis_connection.pipeline(transaction=True) as pipe:
-            pipe.zadd(sessions_key, {session_id: current_time})
-            pipe.rpush(messages_key, *messages_json)
-            pipe.hset(metadata_key, mapping=metadata)
-            await pipe.execute()
-
-        # Verify session was created
-        session_exists = await use_test_redis_connection.zscore(
-            sessions_key, session_id
+        working_memory = WorkingMemory(
+            messages=messages,
+            memories=[],  # No structured memories for this test
+            context="Sample context",
+            user_id="test-user",
+            tokens=150,
+            session_id=session_id,
+            namespace=namespace,
         )
 
-        if session_exists is None:
-            # List all keys in Redis for debugging
-            all_keys = await use_test_redis_connection.keys("*")
-            logging.error(f"Session not found. All keys: {all_keys}")
-        else:
-            # List all sessions in the sessions set
-            await use_test_redis_connection.zrange(sessions_key, 0, -1)
-            # Index the messages as long-term memories directly without background tasks
-            import nanoid
-            from redisvl.utils.vectorize import OpenAITextVectorizer
+        # Store in unified working memory format
+        from agent_memory_server.working_memory import set_working_memory
 
-            from agent_memory_server.models import LongTermMemory
+        await set_working_memory(
+            working_memory=working_memory,
+            redis_client=use_test_redis_connection,
+        )
 
-            # Create LongTermMemory objects for each message
-            memories = []
-            for msg in messages:
-                memories.append(
-                    LongTermMemory(
-                        text=f"{msg['role']}: {msg['content']}",
-                        session_id=session_id,
-                        namespace="test-namespace",
-                        user_id="test-user",
-                    )
+        # Also add session to sessions list for compatibility
+        sessions_key = Keys.sessions_key(namespace=namespace)
+        current_time = int(time.time())
+        await use_test_redis_connection.zadd(sessions_key, {session_id: current_time})
+
+        # Index the messages as long-term memories directly without background tasks
+        import ulid
+        from redisvl.utils.vectorize import OpenAITextVectorizer
+
+        from agent_memory_server.models import MemoryRecord
+
+        # Create MemoryRecord objects for each message
+        long_term_memories = []
+        for msg in messages:
+            memory = MemoryRecord(
+                text=f"{msg.role}: {msg.content}",
+                session_id=session_id,
+                namespace=namespace,
+                user_id="test-user",
+            )
+            long_term_memories.append(memory)
+
+        # Index the memories directly
+        vectorizer = OpenAITextVectorizer()
+        embeddings = await vectorizer.aembed_many(
+            [memory.text for memory in long_term_memories],
+            batch_size=20,
+            as_buffer=True,
+        )
+
+        async with use_test_redis_connection.pipeline(transaction=False) as pipe:
+            for idx, vector in enumerate(embeddings):
+                memory = long_term_memories[idx]
+                id_ = memory.id_ if memory.id_ else str(ulid.ULID())
+                key = Keys.memory_key(id_, memory.namespace)
+
+                # Generate memory hash for the memory
+                from agent_memory_server.long_term_memory import (
+                    generate_memory_hash,
                 )
 
-            # Index the memories directly
-            vectorizer = OpenAITextVectorizer()
-            embeddings = await vectorizer.aembed_many(
-                [memory.text for memory in memories],
-                batch_size=20,
-                as_buffer=True,
-            )
+                memory_hash = generate_memory_hash(
+                    {
+                        "text": memory.text,
+                        "user_id": memory.user_id or "",
+                        "session_id": memory.session_id or "",
+                    }
+                )
 
-            async with use_test_redis_connection.pipeline(transaction=False) as pipe:
-                for idx, vector in enumerate(embeddings):
-                    memory = memories[idx]
-                    id_ = memory.id_ if memory.id_ else nanoid.generate()
-                    key = Keys.memory_key(id_, memory.namespace)
+                await pipe.hset(  # type: ignore
+                    key,
+                    mapping={
+                        "text": memory.text,
+                        "id_": id_,
+                        "session_id": memory.session_id or "",
+                        "user_id": memory.user_id or "",
+                        "last_accessed": int(memory.last_accessed.timestamp())
+                        if memory.last_accessed
+                        else int(time.time()),
+                        "created_at": int(memory.created_at.timestamp())
+                        if memory.created_at
+                        else int(time.time()),
+                        "namespace": memory.namespace or "",
+                        "memory_hash": memory_hash,
+                        "vector": vector,
+                        "topics": "",
+                        "entities": "",
+                    },
+                )
 
-                    # Generate memory hash for the memory
-                    from agent_memory_server.long_term_memory import (
-                        generate_memory_hash,
-                    )
-
-                    memory_hash = generate_memory_hash(
-                        {
-                            "text": memory.text,
-                            "user_id": memory.user_id or "",
-                            "session_id": memory.session_id or "",
-                        }
-                    )
-
-                    await pipe.hset(
-                        key,
-                        mapping={
-                            "text": memory.text,
-                            "id_": id_,
-                            "session_id": memory.session_id or "",
-                            "user_id": memory.user_id or "",
-                            "last_accessed": memory.last_accessed or int(time.time()),
-                            "created_at": memory.created_at or int(time.time()),
-                            "namespace": memory.namespace or "",
-                            "memory_hash": memory_hash,
-                            "vector": vector,
-                            "topics": "",
-                            "entities": "",
-                        },
-                    )
-
-                await pipe.execute()
+            await pipe.execute()
 
         return session_id
     except Exception:

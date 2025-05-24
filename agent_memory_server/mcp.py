@@ -1,11 +1,14 @@
 import logging
 import os
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP as _FastMCPBase
+from ulid import ULID
 
 from agent_memory_server.api import (
     create_long_term_memory as core_create_long_term_memory,
     memory_prompt as core_memory_prompt,
+    put_session_memory as core_put_session_memory,
     search_long_term_memory as core_search_long_term_memory,
 )
 from agent_memory_server.config import settings
@@ -22,14 +25,17 @@ from agent_memory_server.filters import (
 )
 from agent_memory_server.models import (
     AckResponse,
-    CreateLongTermMemoryRequest,
-    LongTermMemory,
-    LongTermMemoryResults,
+    CreateMemoryRecordRequest,
+    MemoryMessage,
     MemoryPromptRequest,
     MemoryPromptResponse,
+    MemoryRecord,
+    MemoryRecordResults,
     ModelNameLiteral,
     SearchRequest,
-    SessionMemoryRequest,
+    WorkingMemory,
+    WorkingMemoryRequest,
+    WorkingMemoryResponse,
 )
 
 
@@ -112,6 +118,15 @@ class FastMCP(_FastMCPBase):
                 and "namespace" not in arguments
             ):
                 arguments["namespace"] = Namespace(eq=self.default_namespace)
+        elif name in ("set_working_memory",):
+            if namespace and "namespace" not in arguments:
+                arguments["namespace"] = namespace
+            elif (
+                not namespace
+                and self.default_namespace
+                and "namespace" not in arguments
+            ):
+                arguments["namespace"] = self.default_namespace
 
         return await super().call_tool(name, arguments)
 
@@ -154,7 +169,7 @@ mcp_app = FastMCP(
 
 @mcp_app.tool()
 async def create_long_term_memories(
-    memories: list[LongTermMemory],
+    memories: list[MemoryRecord],
 ) -> AckResponse:
     """
     Create long-term memories that can be searched later.
@@ -202,7 +217,7 @@ async def create_long_term_memories(
     ```
 
     Args:
-        memories: A list of LongTermMemory objects to create
+        memories: A list of MemoryRecord objects to create
 
     Returns:
         An acknowledgement response indicating success
@@ -213,7 +228,7 @@ async def create_long_term_memories(
             if mem.namespace is None:
                 mem.namespace = DEFAULT_NAMESPACE
 
-    payload = CreateLongTermMemoryRequest(memories=memories)
+    payload = CreateMemoryRecordRequest(memories=memories)
     return await core_create_long_term_memory(
         payload, background_tasks=get_background_tasks()
     )
@@ -233,7 +248,7 @@ async def search_long_term_memory(
     distance_threshold: float | None = None,
     limit: int = 10,
     offset: int = 0,
-) -> LongTermMemoryResults:
+) -> MemoryRecordResults:
     """
     Search for memories related to a text query.
 
@@ -241,6 +256,12 @@ async def search_long_term_memory(
 
     This tool performs a semantic search on stored memories using the query text and filters
     in the payload. Results are ranked by relevance.
+
+    DATETIME INPUT FORMAT:
+    - All datetime filters accept ISO 8601 formatted strings (e.g., "2023-01-01T00:00:00Z")
+    - Timezone-aware datetimes are recommended (use "Z" for UTC or "+HH:MM" for other timezones)
+    - Supported operations: gt, gte, lt, lte, eq, ne, between
+    - Example: {"gt": "2023-01-01T00:00:00Z", "lt": "2024-01-01T00:00:00Z"}
 
     IMPORTANT NOTES ON SESSION IDs:
     - When including a session_id filter, use the EXACT session identifier
@@ -270,9 +291,33 @@ async def search_long_term_memory(
             "any": ["preferences", "settings"]
         },
         created_at={
-            "gt": 1640995200
+            "gt": "2023-01-01T00:00:00Z"
         },
         limit=5
+    )
+    ```
+
+    4. Search with datetime range filters:
+    ```python
+    search_long_term_memory(
+        text="recent conversations",
+        created_at={
+            "gte": "2024-01-01T00:00:00Z",
+            "lt": "2024-02-01T00:00:00Z"
+        },
+        last_accessed={
+            "gt": "2024-01-15T12:00:00Z"
+        }
+    )
+    ```
+
+    5. Search with between datetime filter:
+    ```python
+    search_long_term_memory(
+        text="holiday discussions",
+        created_at={
+            "between": ["2023-12-20T00:00:00Z", "2023-12-31T23:59:59Z"]
+        }
     )
     ```
 
@@ -291,7 +336,7 @@ async def search_long_term_memory(
         offset: Offset for pagination
 
     Returns:
-        LongTermMemoryResults containing matched memories sorted by relevance
+        MemoryRecordResults containing matched memories sorted by relevance
     """
     try:
         payload = SearchRequest(
@@ -309,14 +354,14 @@ async def search_long_term_memory(
             offset=offset,
         )
         results = await core_search_long_term_memory(payload)
-        results = LongTermMemoryResults(
+        results = MemoryRecordResults(
             total=results.total,
             memories=results.memories,
             next_offset=results.next_offset,
         )
     except Exception as e:
         logger.error(f"Error in search_long_term_memory tool: {e}")
-        results = LongTermMemoryResults(
+        results = MemoryRecordResults(
             total=0,
             memories=[],
             next_offset=None,
@@ -365,6 +410,12 @@ async def memory_prompt(
     The function uses the text field from the payload as the user's query,
     and any filters to retrieve relevant memories.
 
+    DATETIME INPUT FORMAT:
+    - All datetime filters accept ISO 8601 formatted strings (e.g., "2023-01-01T00:00:00Z")
+    - Timezone-aware datetimes are recommended (use "Z" for UTC or "+HH:MM" for other timezones)
+    - Supported operations: gt, gte, lt, lte, eq, ne, between
+    - Example: {"gt": "2023-01-01T00:00:00Z", "lt": "2024-01-01T00:00:00Z"}
+
     IMPORTANT NOTES ON SESSION IDs:
     - When filtering by session_id, you must provide the EXACT session identifier
     - NEVER invent or guess a session ID - if you don't know it, omit this filter
@@ -394,9 +445,21 @@ async def memory_prompt(
             "any": ["preferences", "settings"]
         },
         created_at={
-            "gt": 1640995200
+            "gt": "2023-01-01T00:00:00Z"
         },
         limit=5
+    )
+
+    4. Search with datetime range filters:
+    hydrate_memory_prompt(
+        text="What did we discuss recently?",
+        created_at={
+            "gte": "2024-01-01T00:00:00Z",
+            "lt": "2024-02-01T00:00:00Z"
+        },
+        last_accessed={
+            "gt": "2024-01-15T12:00:00Z"
+        }
     )
     ```
 
@@ -420,7 +483,7 @@ async def memory_prompt(
     session = None
 
     if _session_id is not None:
-        session = SessionMemoryRequest(
+        session = WorkingMemoryRequest(
             session_id=_session_id,
             namespace=namespace.eq if namespace and namespace.eq else None,
             window_size=window_size,
@@ -449,3 +512,143 @@ async def memory_prompt(
         _params["long_term_search"] = search_payload
 
     return await core_memory_prompt(params=MemoryPromptRequest(query=query, **_params))
+
+
+@mcp_app.tool()
+async def set_working_memory(
+    session_id: str,
+    memories: list[MemoryRecord] | None = None,
+    messages: list[MemoryMessage] | None = None,
+    context: str | None = None,
+    data: dict[str, Any] | None = None,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    ttl_seconds: int = 3600,
+) -> WorkingMemoryResponse:
+    """
+    Set working memory for a session. This works like the PUT /sessions/{id}/memory API endpoint.
+
+    Replaces existing working memory with new content. Can store structured memory records
+    and messages, but agents should primarily use this for memory records and JSON data,
+    not conversation messages.
+
+    USAGE PATTERNS:
+
+    1. Store structured memory records:
+    ```python
+    set_working_memory(
+        session_id="current_session",
+        memories=[
+            {
+                "text": "User prefers dark mode",
+                "id": "pref_dark_mode",
+                "memory_type": "semantic",
+                "topics": ["preferences", "ui"]
+            }
+        ]
+    )
+    ```
+
+    2. Store arbitrary JSON data separately:
+    ```python
+    set_working_memory(
+        session_id="current_session",
+        data={
+            "user_settings": {"theme": "dark", "lang": "en"},
+            "preferences": {"notifications": True, "sound": False}
+        }
+    )
+    ```
+
+    3. Store both memories and JSON data:
+    ```python
+    set_working_memory(
+        session_id="current_session",
+        memories=[
+            {
+                "text": "User prefers dark mode",
+                "id": "pref_dark_mode",
+                "memory_type": "semantic",
+                "topics": ["preferences", "ui"]
+            }
+        ],
+        data={
+            "current_settings": {"theme": "dark", "lang": "en"}
+        }
+    )
+    ```
+
+    4. Replace entire working memory state:
+    ```python
+    set_working_memory(
+        session_id="current_session",
+        memories=[...],  # structured memories
+        messages=[...],  # conversation history
+        context="Summary of previous conversation",
+        user_id="user123"
+    )
+    ```
+
+    Args:
+        session_id: The session ID to set memory for (required)
+        memories: List of structured memory records (semantic, episodic, message types)
+        messages: List of conversation messages (role/content pairs)
+        context: Optional summary/context text
+        data: Optional dictionary for storing arbitrary JSON data
+        namespace: Optional namespace for scoping
+        user_id: Optional user ID
+        ttl_seconds: TTL for the working memory (default 1 hour)
+
+    Returns:
+        Updated working memory response (may include summarization if window exceeded)
+    """
+    # Apply default namespace if configured
+    memory_namespace = namespace
+    if not memory_namespace and DEFAULT_NAMESPACE:
+        memory_namespace = DEFAULT_NAMESPACE
+
+    # Auto-generate IDs for memories that don't have them
+    processed_memories = []
+    if memories:
+        for memory in memories:
+            # Handle both MemoryRecord objects and dict inputs
+            if isinstance(memory, MemoryRecord):
+                # Already a MemoryRecord object, ensure it has an ID
+                memory_id = memory.id or str(ULID())
+                processed_memory = memory.model_copy(
+                    update={
+                        "id": memory_id,
+                        "persisted_at": None,  # Mark as pending promotion
+                    }
+                )
+            else:
+                # Dictionary input, convert to MemoryRecord
+                memory_dict = dict(memory)
+                if not memory_dict.get("id"):
+                    memory_dict["id"] = str(ULID())
+                memory_dict["persisted_at"] = None
+                processed_memory = MemoryRecord(**memory_dict)
+
+            processed_memories.append(processed_memory)
+
+    # Create the working memory object
+    working_memory_obj = WorkingMemory(
+        session_id=session_id,
+        namespace=memory_namespace,
+        memories=processed_memories,
+        messages=messages or [],
+        context=context,
+        data=data or {},
+        user_id=user_id,
+        ttl_seconds=ttl_seconds,
+    )
+
+    # Update working memory via the API - this handles summarization and background promotion
+    result = await core_put_session_memory(
+        session_id=session_id,
+        memory=working_memory_obj,
+        background_tasks=get_background_tasks(),
+    )
+
+    # Convert to WorkingMemoryResponse to satisfy return type
+    return WorkingMemoryResponse(**result.model_dump())

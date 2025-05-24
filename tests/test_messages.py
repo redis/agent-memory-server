@@ -1,6 +1,6 @@
 import json
 import time
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -13,7 +13,7 @@ from agent_memory_server.messages import (
     list_sessions,
     set_session_memory,
 )
-from agent_memory_server.models import LongTermMemory, MemoryMessage, SessionMemory
+from agent_memory_server.models import MemoryMessage, WorkingMemory
 from agent_memory_server.summarization import summarize_session
 
 
@@ -141,9 +141,11 @@ class TestSetSessionMemory:
 
         mock_background_tasks = MagicMock()
 
-        memory = SessionMemory(
+        memory = WorkingMemory(
             messages=[MemoryMessage(role="user", content="Hello")],
+            memories=[],
             context="test context",
+            session_id="test-session",
         )
 
         settings_patch = patch.multiple(
@@ -190,9 +192,11 @@ class TestSetSessionMemory:
         mock_background_tasks = MagicMock()
         mock_background_tasks.add_task = AsyncMock()
 
-        memory = SessionMemory(
+        memory = WorkingMemory(
             messages=[MemoryMessage(role="user", content="Hello")],
+            memories=[],
             context="test context",
+            session_id="test-session",
         )
 
         settings_patch = patch.multiple(
@@ -241,9 +245,11 @@ class TestSetSessionMemory:
         mock_background_tasks = MagicMock()
         mock_background_tasks.add_task = AsyncMock()
 
-        memory = SessionMemory(
+        memory = WorkingMemory(
             messages=[MemoryMessage(role="user", content="Hello")],
+            memories=[],
             context="test context",
+            session_id="test-session",
         )
 
         settings_patch = patch.multiple(
@@ -260,12 +266,18 @@ class TestSetSessionMemory:
 
         # Verify long-term memory indexing task was added
         assert mock_background_tasks.add_task.call_count == 1
-        assert mock_background_tasks.add_task.call_args_list == [
-            call(
-                index_long_term_memories,
-                [LongTermMemory(session_id="test-session", text="user: Hello")],
-            ),
-        ]
+
+        # Check that the function was called with index_long_term_memories
+        call_args = mock_background_tasks.add_task.call_args_list[0]
+        assert call_args[0][0] == index_long_term_memories
+
+        # Check the memory record has the expected content
+        memory_records = call_args[0][1]
+        assert len(memory_records) == 1
+        memory_record = memory_records[0]
+        assert memory_record.session_id == "test-session"
+        assert memory_record.text == "user: Hello"
+        # Don't check datetime fields as they are auto-generated
 
 
 @pytest.mark.asyncio

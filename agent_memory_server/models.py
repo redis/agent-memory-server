@@ -1,5 +1,6 @@
 import logging
-import time
+from datetime import UTC, datetime
+from enum import Enum
 from typing import Literal
 
 from mcp.server.fastmcp.prompts import base
@@ -9,6 +10,7 @@ from agent_memory_server.config import settings
 from agent_memory_server.filters import (
     CreatedAt,
     Entities,
+    EventDate,
     LastAccessed,
     MemoryType,
     Namespace,
@@ -21,6 +23,15 @@ from agent_memory_server.filters import (
 logger = logging.getLogger(__name__)
 
 JSONTypes = str | float | int | bool | list | dict
+
+
+class MemoryTypeEnum(str, Enum):
+    """Enum for memory types with string values"""
+
+    EPISODIC = "episodic"
+    SEMANTIC = "semantic"
+    MESSAGE = "message"
+
 
 # These should match the keys in MODEL_CONFIGS
 ModelNameLiteral = Literal[
@@ -57,56 +68,6 @@ class MemoryMessage(BaseModel):
     content: str
 
 
-class SessionMemory(BaseModel):
-    """A session's memory"""
-
-    messages: list[MemoryMessage]
-    session_id: str | None = Field(
-        default=None,
-        description="Optional session ID for the session memory",
-    )
-    context: str | None = Field(
-        default=None,
-        description="Optional summary of past session messages",
-    )
-    user_id: str | None = Field(
-        default=None,
-        description="Optional user ID for the session memory",
-    )
-    namespace: str | None = Field(
-        default=None,
-        description="Optional namespace for the session memory",
-    )
-    tokens: int = Field(
-        default=0,
-        description="Optional number of tokens in the session memory",
-    )
-    last_accessed: int = Field(
-        default_factory=lambda: int(time.time()),
-        description="Timestamp when the session memory was last accessed",
-    )
-    created_at: int = Field(
-        default_factory=lambda: int(time.time()),
-        description="Timestamp when the session memory was created",
-    )
-    updated_at: int = Field(
-        description="Timestamp when the session memory was last updated",
-        default_factory=lambda: int(time.time()),
-    )
-
-
-class SessionMemoryRequest(BaseModel):
-    session_id: str
-    namespace: str | None = None
-    window_size: int = settings.window_size
-    model_name: ModelNameLiteral | None = None
-    context_window_max: int | None = None
-
-
-class SessionMemoryResponse(SessionMemory):
-    """Response containing a session's memory"""
-
-
 class SessionListResponse(BaseModel):
     """Response containing a list of sessions"""
 
@@ -114,45 +75,45 @@ class SessionListResponse(BaseModel):
     total: int
 
 
-class LongTermMemory(BaseModel):
-    """A long-term memory"""
+class MemoryRecord(BaseModel):
+    """A memory record"""
 
     text: str
     id_: str | None = Field(
         default=None,
-        description="Optional ID for the long-term memory",
+        description="Optional ID for the memory record",
     )
     session_id: str | None = Field(
         default=None,
-        description="Optional session ID for the long-term memory",
+        description="Optional session ID for the memory record",
     )
     user_id: str | None = Field(
         default=None,
-        description="Optional user ID for the long-term memory",
+        description="Optional user ID for the memory record",
     )
     namespace: str | None = Field(
         default=None,
-        description="Optional namespace for the long-term memory",
+        description="Optional namespace for the memory record",
     )
-    last_accessed: int = Field(
-        default_factory=lambda: int(time.time()),
-        description="Timestamp when the memory was last accessed",
+    last_accessed: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="Datetime when the memory was last accessed",
     )
-    created_at: int = Field(
-        default_factory=lambda: int(time.time()),
-        description="Timestamp when the memory was created",
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="Datetime when the memory was created",
     )
-    updated_at: int = Field(
-        description="Timestamp when the memory was last updated",
-        default_factory=lambda: int(time.time()),
+    updated_at: datetime = Field(
+        description="Datetime when the memory was last updated",
+        default_factory=lambda: datetime.now(UTC),
     )
     topics: list[str] | None = Field(
         default=None,
-        description="Optional topics for the long-term memory",
+        description="Optional topics for the memory record",
     )
     entities: list[str] | None = Field(
         default=None,
-        description="Optional entities for the long-term memory",
+        description="Optional entities for the memory record",
     )
     memory_hash: str | None = Field(
         default=None,
@@ -162,10 +123,99 @@ class LongTermMemory(BaseModel):
         default="f",
         description="Whether memory extraction has run for this memory (only messages)",
     )
-    memory_type: Literal["episodic", "semantic", "message"] = Field(
-        default="message",
+    memory_type: MemoryTypeEnum = Field(
+        default=MemoryTypeEnum.MESSAGE,
         description="Type of memory",
     )
+    id: str | None = Field(
+        default=None,
+        description="Client-provided ID for deduplication and overwrites",
+    )
+    persisted_at: datetime | None = Field(
+        default=None,
+        description="Server-assigned timestamp when memory was persisted to long-term storage",
+    )
+    extracted_from: list[str] | None = Field(
+        default=None,
+        description="List of message IDs that this memory was extracted from",
+    )
+    event_date: datetime | None = Field(
+        default=None,
+        description="Date/time when the event described in this memory occurred (primarily for episodic memories)",
+    )
+
+
+class WorkingMemory(BaseModel):
+    """Working memory for a session - contains both messages and structured memory records"""
+
+    # Support both message-based memory (conversation) and structured memory records
+    messages: list[MemoryMessage] = Field(
+        default_factory=list,
+        description="Conversation messages (role/content pairs)",
+    )
+    memories: list[MemoryRecord] = Field(
+        default_factory=list,
+        description="Structured memory records for promotion to long-term storage",
+    )
+
+    # Arbitrary JSON data storage (separate from memories)
+    data: dict[str, JSONTypes] | None = Field(
+        default=None,
+        description="Arbitrary JSON data storage (key-value pairs)",
+    )
+
+    # Session context and metadata (moved from SessionMemory)
+    context: str | None = Field(
+        default=None,
+        description="Optional summary of past session messages",
+    )
+    user_id: str | None = Field(
+        default=None,
+        description="Optional user ID for the working memory",
+    )
+    tokens: int = Field(
+        default=0,
+        description="Optional number of tokens in the working memory",
+    )
+
+    # Required session scoping
+    session_id: str
+    namespace: str | None = Field(
+        default=None,
+        description="Optional namespace for the working memory",
+    )
+
+    # TTL and timestamps
+    ttl_seconds: int = Field(
+        default=3600,  # 1 hour default
+        description="TTL for the working memory in seconds",
+    )
+    last_accessed: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="Datetime when the working memory was last accessed",
+    )
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="Datetime when the working memory was created",
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="Datetime when the working memory was last updated",
+    )
+
+
+class WorkingMemoryResponse(WorkingMemory):
+    """Response containing working memory"""
+
+
+class WorkingMemoryRequest(BaseModel):
+    """Request parameters for working memory operations"""
+
+    session_id: str
+    namespace: str | None = None
+    window_size: int = settings.window_size
+    model_name: ModelNameLiteral | None = None
+    context_window_max: int | None = None
 
 
 class AckResponse(BaseModel):
@@ -174,28 +224,28 @@ class AckResponse(BaseModel):
     status: str
 
 
-class LongTermMemoryResult(LongTermMemory):
-    """Result from a long-term memory search"""
+class MemoryRecordResult(MemoryRecord):
+    """Result from a memory search"""
 
     dist: float
 
 
-class LongTermMemoryResults(BaseModel):
-    """Results from a long-term memory search"""
+class MemoryRecordResults(BaseModel):
+    """Results from a memory search"""
 
-    memories: list[LongTermMemoryResult]
+    memories: list[MemoryRecordResult]
     total: int
     next_offset: int | None = None
 
 
-class LongTermMemoryResultsResponse(LongTermMemoryResults):
-    """Response containing long-term memory search results"""
+class MemoryRecordResultsResponse(MemoryRecordResults):
+    """Response containing memory search results"""
 
 
-class CreateLongTermMemoryRequest(BaseModel):
-    """Payload for creating a long-term memory"""
+class CreateMemoryRecordRequest(BaseModel):
+    """Payload for creating memory records"""
 
-    memories: list[LongTermMemory]
+    memories: list[MemoryRecord]
 
 
 class GetSessionsQuery(BaseModel):
@@ -255,6 +305,10 @@ class SearchRequest(BaseModel):
         default=None,
         description="Optional memory type to filter by",
     )
+    event_date: EventDate | None = Field(
+        default=None,
+        description="Optional event date to filter by (for episodic memories)",
+    )
     limit: int = Field(
         default=10,
         ge=1,
@@ -295,12 +349,15 @@ class SearchRequest(BaseModel):
         if self.memory_type is not None:
             filters["memory_type"] = self.memory_type
 
+        if self.event_date is not None:
+            filters["event_date"] = self.event_date
+
         return filters
 
 
 class MemoryPromptRequest(BaseModel):
     query: str
-    session: SessionMemoryRequest | None = None
+    session: WorkingMemoryRequest | None = None
     long_term_search: SearchRequest | None = None
 
 

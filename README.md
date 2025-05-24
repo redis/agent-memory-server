@@ -114,11 +114,12 @@ The following endpoints are available:
     - `between`: Between two values
 
 ## MCP Server Interface
-Agent Memory Server offers an MCP (Model Context Protocol) server interface powered by FastMCP, providing tool-based long-term memory management:
+Agent Memory Server offers an MCP (Model Context Protocol) server interface powered by FastMCP, providing tool-based memory management for LLMs and agents:
 
-- **create_long_term_memories**: Store long-term memories.
-- **search_memory**: Perform semantic search across long-term memories.
-- **memory_prompt**: Generate prompts enriched with session context and long-term memories.
+- **set_working_memory**: Set working memory for a session (like PUT /sessions/{id}/memory API). Stores structured memory records and JSON data in working memory with automatic promotion to long-term storage.
+- **create_long_term_memories**: Create long-term memories directly, bypassing working memory. Useful for bulk memory creation.
+- **search_long_term_memory**: Perform semantic search across long-term memories with advanced filtering options.
+- **memory_prompt**: Generate prompts enriched with session context and long-term memories. Essential for retrieving relevant context before answering questions.
 
 ## Command Line Interface
 
