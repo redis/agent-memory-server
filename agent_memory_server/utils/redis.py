@@ -65,6 +65,7 @@ def get_search_index(
                 {"name": "id", "type": "tag"},
                 {"name": "persisted_at", "type": "numeric"},
                 {"name": "extracted_from", "type": "tag"},
+                {"name": "event_date", "type": "numeric"},
                 {
                     "name": "vector",
                     "type": "vector",

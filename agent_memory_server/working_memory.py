@@ -15,6 +15,13 @@ from agent_memory_server.utils.redis import get_redis_conn
 logger = logging.getLogger(__name__)
 
 
+def json_datetime_handler(obj):
+    """JSON serializer for datetime objects."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+
 async def get_working_memory(
     session_id: str,
     namespace: str | None = None,
@@ -67,13 +74,13 @@ async def get_working_memory(
             ttl_seconds=working_memory_data.get("ttl_seconds", 3600),
             data=working_memory_data.get("data") or {},
             last_accessed=datetime.fromtimestamp(
-                working_memory_data.get("last_accessed", int(time.time()))
+                working_memory_data.get("last_accessed", int(time.time())), UTC
             ),
             created_at=datetime.fromtimestamp(
-                working_memory_data.get("created_at", int(time.time()))
+                working_memory_data.get("created_at", int(time.time())), UTC
             ),
             updated_at=datetime.fromtimestamp(
-                working_memory_data.get("updated_at", int(time.time()))
+                working_memory_data.get("updated_at", int(time.time())), UTC
             ),
         )
 
@@ -108,8 +115,12 @@ async def set_working_memory(
 
     # Convert to JSON-serializable format with timestamp conversion
     data = {
-        "messages": [message.model_dump() for message in working_memory.messages],
-        "memories": [memory.model_dump() for memory in working_memory.memories],
+        "messages": [
+            message.model_dump(mode="json") for message in working_memory.messages
+        ],
+        "memories": [
+            memory.model_dump(mode="json") for memory in working_memory.memories
+        ],
         "context": working_memory.context,
         "user_id": working_memory.user_id,
         "tokens": working_memory.tokens,
@@ -127,7 +138,9 @@ async def set_working_memory(
         await redis_client.setex(
             key,
             working_memory.ttl_seconds,
-            json.dumps(data, default=str),  # default=str handles datetime serialization
+            json.dumps(
+                data, default=json_datetime_handler
+            ),  # Add custom handler for any remaining datetime objects
         )
         logger.info(
             f"Set working memory for session {working_memory.session_id} with TTL {working_memory.ttl_seconds}s"

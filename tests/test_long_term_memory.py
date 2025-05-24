@@ -16,7 +16,7 @@ from agent_memory_server.long_term_memory import (
     search_long_term_memories,
     search_memories,
 )
-from agent_memory_server.models import MemoryRecord, MemoryRecordResult
+from agent_memory_server.models import MemoryRecord, MemoryRecordResult, MemoryTypeEnum
 from agent_memory_server.utils.redis import ensure_search_index_exists
 
 
@@ -174,7 +174,7 @@ class TestLongTermMemory:
                     id_="long-term-1",
                     text="Long-term: User likes coffee",
                     dist=0.3,
-                    memory_type="semantic",
+                    memory_type=MemoryTypeEnum.SEMANTIC,
                     created_at=datetime.fromtimestamp(1000),
                     updated_at=datetime.fromtimestamp(1000),
                     last_accessed=datetime.fromtimestamp(1000),
@@ -192,7 +192,7 @@ class TestLongTermMemory:
                     text="Working memory: coffee preferences",
                     id="working-1",
                     id_="working-1",  # Set both id and id_ for consistency
-                    memory_type="semantic",
+                    memory_type=MemoryTypeEnum.SEMANTIC,
                     persisted_at=None,  # Not persisted yet
                 )
             ],
@@ -298,7 +298,7 @@ class TestLongTermMemory:
             text="Already persisted memory",
             id="persisted-id",
             namespace="test",
-            memory_type="semantic",
+            memory_type=MemoryTypeEnum.SEMANTIC,
             persisted_at=datetime.now(UTC),
         )
 
@@ -306,7 +306,7 @@ class TestLongTermMemory:
             text="Unpersisted memory 1",
             id="unpersisted-1",
             namespace="test",
-            memory_type="semantic",
+            memory_type=MemoryTypeEnum.SEMANTIC,
             persisted_at=None,
         )
 
@@ -314,7 +314,7 @@ class TestLongTermMemory:
             text="Unpersisted memory 2",
             id="unpersisted-2",
             namespace="test",
-            memory_type="episodic",
+            memory_type=MemoryTypeEnum.EPISODIC,
             persisted_at=None,
         )
 
@@ -403,7 +403,7 @@ class TestLongTermMemory:
             text="Already persisted memory",
             id="persisted-id",
             namespace="test",
-            memory_type="semantic",
+            memory_type=MemoryTypeEnum.SEMANTIC,
             persisted_at=datetime.now(UTC),
         )
 
@@ -411,7 +411,7 @@ class TestLongTermMemory:
             text="Unpersisted memory 1",
             id="unpersisted-1",
             namespace="test",
-            memory_type="semantic",
+            memory_type=MemoryTypeEnum.SEMANTIC,
             persisted_at=None,
         )
 
@@ -419,7 +419,7 @@ class TestLongTermMemory:
             text="Unpersisted memory 2",
             id="unpersisted-2",
             namespace="test",
-            memory_type="episodic",
+            memory_type=MemoryTypeEnum.EPISODIC,
             persisted_at=None,
         )
 
@@ -507,7 +507,7 @@ class TestLongTermMemory:
                     text="Unpersisted memory 1",
                     id="unpersisted-1",  # Same id as before
                     namespace="test",
-                    memory_type="semantic",
+                    memory_type=MemoryTypeEnum.SEMANTIC,
                     persisted_at=None,  # Client doesn't know about server timestamps
                 ),
                 # New memory from client
@@ -515,7 +515,7 @@ class TestLongTermMemory:
                     text="New memory from client",
                     id="new-memory-3",
                     namespace="test",
-                    memory_type="semantic",
+                    memory_type=MemoryTypeEnum.SEMANTIC,
                     persisted_at=None,
                 ),
             ],
