@@ -4,23 +4,27 @@ A Redis-powered memory server built for AI agents and applications. It manages b
 
 ## Features
 
-- **Short-Term Memory**
-  - Storage for messages, token count, context, and metadata for a session
-  - Automatically and recursively summarizes conversations
+- **Working Memory**
+  - Session-scoped storage for messages, structured memories, context, and metadata
+  - Automatically summarizes conversations when they exceed the window size
   - Client model-aware token limit management (adapts to the context window of the client's LLM)
   - Supports all major OpenAI and Anthropic models
+  - Automatic promotion of structured memories to long-term storage
 
 - **Long-Term Memory**
-  - Storage for long-term memories across sessions
+  - Persistent storage for memories across sessions
   - Semantic search to retrieve memories with advanced filtering system
   - Filter by session, namespace, topics, entities, timestamps, and more
   - Supports both exact match and semantic similarity search
-  - Automatic topic modeling for stored memories with BERTopic
+  - Automatic topic modeling for stored memories with BERTopic or configured LLM
   - Automatic Entity Recognition using BERT
+  - Memory deduplication and compaction
 
 - **Other Features**
-  - Namespace support for session and long-term memory isolation
+  - Namespace support for session and working memory isolation
   - Both a REST interface and MCP server
+  - Background task processing for memory indexing and promotion
+  - Unified search across working memory and long-term memory
 
 ## System Diagram
 ![System Diagram](diagram.png)
@@ -32,10 +36,10 @@ This project is under active development and is **pre-release** software. Think 
 
 ### Roadmap
 - [x] Long-term memory deduplication and compaction
-- [ ] Configurable strategy for moving session memory to long-term memory
-- [ ] Authentication/authorization hooks
 - [x] Use a background task system instead of `BackgroundTask`
-- [ ] Separate Redis connections for long-term and short-term memory
+- [ ] Configurable strategy for moving working memory to long-term memory
+- [ ] Authentication/authorization hooks
+- [ ] Separate Redis connections for long-term and working memory
 
 ## REST API Endpoints
 
@@ -51,36 +55,64 @@ The following endpoints are available:
 - **GET /sessions/**
   Retrieves a paginated list of session IDs.
   _Query Parameters:_
-  - `page` (int): Page number (default: 1)
-  - `size` (int): Number of sessions per page (default: 10)
+  - `limit` (int): Number of sessions per page (default: 10)
+  - `offset` (int): Number of sessions to skip (default: 0)
   - `namespace` (string, optional): Filter sessions by namespace.
 
 - **GET /sessions/{session_id}/memory**
-  Retrieves conversation memory for a session, including messages and
-  summarized older messages.
+  Retrieves working memory for a session, including messages, structured memories,
+  context, and metadata.
   _Query Parameters:_
   - `namespace` (string, optional): The namespace to use for the session
   - `window_size` (int, optional): Number of messages to include in the response (default from config)
   - `model_name` (string, optional): The client's LLM model name to determine appropriate context window size
   - `context_window_max` (int, optional): Direct specification of max context window tokens (overrides model_name)
 
-- **POST /sessions/{session_id}/memory**
-  Adds messages (and optional context) to a session's memory.
+- **PUT /sessions/{session_id}/memory**
+  Sets working memory for a session, replacing any existing memory.
+  Automatically summarizes conversations that exceed the window size.
   _Request Body Example:_
   ```json
   {
     "messages": [
       {"role": "user", "content": "Hello"},
       {"role": "assistant", "content": "Hi there"}
-    ]
+    ],
+    "memories": [
+      {
+        "id": "mem-123",
+        "text": "User prefers direct communication",
+        "memory_type": "semantic"
+      }
+    ],
+    "context": "Previous conversation summary...",
+    "session_id": "session-123",
+    "namespace": "default"
   }
   ```
 
 - **DELETE /sessions/{session_id}/memory**
-  Deletes all stored memory (messages, context, token count) for a session.
+  Deletes all working memory (messages, context, structured memories, metadata) for a session.
+
+- **POST /long-term-memory**
+  Creates long-term memories directly, bypassing working memory.
+  _Request Body Example:_
+  ```json
+  {
+    "memories": [
+      {
+        "id": "mem-456",
+        "text": "User is interested in AI and machine learning",
+        "memory_type": "semantic",
+        "session_id": "session-123",
+        "namespace": "default"
+      }
+    ]
+  }
+  ```
 
 - **POST /long-term-memory/search**
-  Performs semantic search on long-term memories with advanced filtering options.
+  Performs vector search on long-term memories with advanced filtering options.
   _Request Body Example:_
   ```json
   {
@@ -97,7 +129,27 @@ The following endpoints are available:
   }
   ```
 
-  _Filter options:_
+- **POST /memory-prompt**
+  Generates prompts enriched with relevant memory context from both working
+  memory and long-term memory. Useful for retrieving context before answering questions.
+  _Request Body Example:_
+  ```json
+  {
+    "query": "What did we discuss about AI?",
+    "session": {
+      "session_id": "session-123",
+      "namespace": "default",
+      "window_size": 10
+    },
+    "long_term_search": {
+      "text": "AI discussion",
+      "limit": 5,
+      "namespace": {"eq": "default"}
+    }
+  }
+  ```
+
+  _Filter options for search endpoints:_
   - Tag filters (session_id, namespace, topics, entities, user_id):
     - `eq`: Equals this value
     - `ne`: Not equals this value
