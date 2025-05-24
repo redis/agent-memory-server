@@ -1,4 +1,3 @@
-import asyncio
 import contextlib
 import os
 import time
@@ -30,11 +29,6 @@ from agent_memory_server.utils.redis import ensure_search_index_exists
 
 
 load_dotenv()
-
-
-@pytest.fixture(scope="session")
-def event_loop(request):
-    return asyncio.get_event_loop()
 
 
 @pytest.fixture()
