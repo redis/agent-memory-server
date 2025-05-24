@@ -11,9 +11,9 @@ from agent_memory_server.config import settings
 from agent_memory_server.dependencies import DocketBackgroundTasks
 from agent_memory_server.long_term_memory import index_long_term_memories
 from agent_memory_server.models import (
-    LongTermMemory,
     MemoryMessage,
-    SessionMemory,
+    MemoryRecord,
+    WorkingMemory,
 )
 from agent_memory_server.summarization import summarize_session
 from agent_memory_server.utils.keys import Keys
@@ -56,7 +56,7 @@ async def get_session_memory(
     session_id: str,
     window_size: int = settings.window_size,
     namespace: str | None = None,
-) -> SessionMemory | None:
+) -> WorkingMemory | None:
     """Get a session's memory"""
     sessions_key = Keys.sessions_key(namespace=namespace)
     messages_key = Keys.messages_key(session_id, namespace=namespace)
@@ -84,13 +84,19 @@ async def get_session_memory(
         value = v.decode("utf-8") if isinstance(v, bytes) else v
         metadata_dict[key] = value
 
-    return SessionMemory(messages=messages, **metadata_dict)
+    return WorkingMemory(
+        messages=messages,
+        memories=[],  # Empty list for structured memories since this is old session storage
+        session_id=session_id,
+        namespace=namespace,
+        **metadata_dict,
+    )
 
 
 async def set_session_memory(
     redis: Redis,
     session_id: str,
-    memory: SessionMemory,
+    memory: WorkingMemory,
     background_tasks: DocketBackgroundTasks,
 ):
     """
@@ -109,7 +115,7 @@ async def set_session_memory(
     metadata = memory.model_dump(
         exclude_none=True,
         exclude_unset=True,
-        exclude={"messages"},
+        exclude={"messages", "memories", "ttl_seconds"},
     )
 
     async with redis.pipeline(transaction=True) as pipe:
@@ -147,7 +153,7 @@ async def set_session_memory(
     # If long-term memory is enabled, index messages
     if settings.long_term_memory:
         memories = [
-            LongTermMemory(
+            MemoryRecord(
                 session_id=session_id,
                 text=f"{msg.role}: {msg.content}",
                 namespace=memory.namespace,

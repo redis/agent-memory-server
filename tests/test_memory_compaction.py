@@ -8,7 +8,7 @@ from agent_memory_server.long_term_memory import (
     generate_memory_hash,
     merge_memories_with_llm,
 )
-from agent_memory_server.models import LongTermMemory
+from agent_memory_server.models import MemoryRecord
 
 
 def test_generate_memory_hash():
@@ -102,7 +102,7 @@ async def index_without_background(memories, redis_client):
     """Version of index_long_term_memories without background tasks for testing"""
     import time
 
-    import nanoid
+    import ulid
     from redisvl.utils.vectorize import OpenAITextVectorizer
 
     from agent_memory_server.utils.keys import Keys
@@ -119,7 +119,7 @@ async def index_without_background(memories, redis_client):
     async with redis.pipeline(transaction=False) as pipe:
         for idx, vector in enumerate(embeddings):
             memory = memories[idx]
-            id_ = memory.id_ if memory.id_ else nanoid.generate()
+            id_ = memory.id_ if memory.id_ else str(ulid.ULID())
             key = Keys.memory_key(id_, memory.namespace)
 
             # Generate memory hash for the memory
@@ -131,15 +131,19 @@ async def index_without_background(memories, redis_client):
                 }
             )
 
-            await pipe.hset(
+            pipe.hset(
                 key,
                 mapping={
                     "text": memory.text,
                     "id_": id_,
                     "session_id": memory.session_id or "",
                     "user_id": memory.user_id or "",
-                    "last_accessed": memory.last_accessed or int(time.time()),
-                    "created_at": memory.created_at or int(time.time()),
+                    "last_accessed": int(memory.last_accessed.timestamp())
+                    if memory.last_accessed
+                    else int(time.time()),
+                    "created_at": int(memory.created_at.timestamp())
+                    if memory.created_at
+                    else int(time.time()),
                     "namespace": memory.namespace or "",
                     "memory_hash": memory_hash,
                     "vector": vector,
@@ -166,8 +170,8 @@ async def test_hash_deduplication_integration(
     monkeypatch.setattr(ltm, "merge_memories_with_llm", dummy_merge)
 
     # Create two identical memories
-    mem1 = LongTermMemory(text="dup", user_id="u", session_id="s", namespace="n")
-    mem2 = LongTermMemory(text="dup", user_id="u", session_id="s", namespace="n")
+    mem1 = MemoryRecord(text="dup", user_id="u", session_id="s", namespace="n")
+    mem2 = MemoryRecord(text="dup", user_id="u", session_id="s", namespace="n")
     # Use our version without background tasks
     await index_without_background([mem1, mem2], redis_client=async_redis_client)
 
@@ -200,8 +204,8 @@ async def test_semantic_deduplication_integration(
     monkeypatch.setattr(ltm, "merge_memories_with_llm", dummy_merge)
 
     # Create two semantically similar but text-different memories
-    mem1 = LongTermMemory(text="apple", user_id="u", session_id="s", namespace="n")
-    mem2 = LongTermMemory(text="apple!", user_id="u", session_id="s", namespace="n")
+    mem1 = MemoryRecord(text="apple", user_id="u", session_id="s", namespace="n")
+    mem2 = MemoryRecord(text="apple!", user_id="u", session_id="s", namespace="n")
     # Use our version without background tasks
     await index_without_background([mem1, mem2], redis_client=async_redis_client)
 
@@ -233,11 +237,11 @@ async def test_full_compaction_integration(
     monkeypatch.setattr(ltm, "merge_memories_with_llm", dummy_merge)
 
     # Setup: two exact duplicates, two semantically similar, one unique
-    dup1 = LongTermMemory(text="dup", user_id="u", session_id="s", namespace="n")
-    dup2 = LongTermMemory(text="dup", user_id="u", session_id="s", namespace="n")
-    sim1 = LongTermMemory(text="x", user_id="u", session_id="s", namespace="n")
-    sim2 = LongTermMemory(text="x!", user_id="u", session_id="s", namespace="n")
-    uniq = LongTermMemory(text="unique", user_id="u", session_id="s", namespace="n")
+    dup1 = MemoryRecord(text="dup", user_id="u", session_id="s", namespace="n")
+    dup2 = MemoryRecord(text="dup", user_id="u", session_id="s", namespace="n")
+    sim1 = MemoryRecord(text="x", user_id="u", session_id="s", namespace="n")
+    sim2 = MemoryRecord(text="x!", user_id="u", session_id="s", namespace="n")
+    uniq = MemoryRecord(text="unique", user_id="u", session_id="s", namespace="n")
     # Use our version without background tasks
     await index_without_background(
         [dup1, dup2, sim1, sim2, uniq], redis_client=async_redis_client

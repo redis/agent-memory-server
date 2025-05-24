@@ -2,8 +2,8 @@
 Simplest possible migrations you could have.
 """
 
-import nanoid
 from redis.asyncio import Redis
+from ulid import ULID
 
 from agent_memory_server.logging import get_logger
 from agent_memory_server.long_term_memory import generate_memory_hash
@@ -98,7 +98,7 @@ async def migrate_add_discrete_memory_extracted_2(redis: Redis | None = None) ->
         id_ = await redis.hget(name=key, key="id_")  # type: ignore
         if not id_:
             logger.info("Updating memory with no ID to set ID")
-            await redis.hset(name=key, key="id_", value=nanoid.generate())  # type: ignore
+            await redis.hset(name=key, key="id_", value=str(ULID()))  # type: ignore
         # extracted: bytes | None = await redis.hget(
         #     name=key, key="discrete_memory_extracted"
         # )  # type: ignore
@@ -126,7 +126,7 @@ async def migrate_add_memory_type_3(redis: Redis | None = None) -> None:
         id_ = await redis.hget(name=key, key="id_")  # type: ignore
         if not id_:
             logger.info("Updating memory with no ID to set ID")
-            await redis.hset(name=key, key="id_", value=nanoid.generate())  # type: ignore
+            await redis.hset(name=key, key="id_", value=str(ULID()))  # type: ignore
         memory_type: bytes | None = await redis.hget(name=key, key="memory_type")  # type: ignore
         if not memory_type:
             await redis.hset(name=key, key="memory_type", value="message")  # type: ignore

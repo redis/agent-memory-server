@@ -18,14 +18,14 @@ from agent_memory_server.client.api import MemoryAPIClient, MemoryClientConfig
 from agent_memory_server.filters import Namespace, SessionId, Topics
 from agent_memory_server.healthcheck import router as health_router
 from agent_memory_server.models import (
-    LongTermMemory,
-    LongTermMemoryResult,
-    LongTermMemoryResultsResponse,
     MemoryMessage,
     MemoryPromptResponse,
-    SessionMemory,
-    SessionMemoryResponse,
+    MemoryRecord,
+    MemoryRecordResult,
+    MemoryRecordResultsResponse,
     SystemMessage,
+    WorkingMemory,
+    WorkingMemoryResponse,
 )
 
 
@@ -74,27 +74,35 @@ async def test_session_lifecycle(memory_test_client: MemoryAPIClient):
     session_id = "test-client-session"
 
     # Mock memory data
-    memory = SessionMemory(
+    memory = WorkingMemory(
         messages=[
             MemoryMessage(role="user", content="Hello from the client!"),
             MemoryMessage(role="assistant", content="Hi there, I'm the memory server!"),
         ],
+        memories=[],
         context="This is a test session created by the API client.",
+        session_id=session_id,
     )
 
     # First, mock PUT response for creating a session
-    with patch("agent_memory_server.messages.set_session_memory") as mock_set_memory:
+    with patch(
+        "agent_memory_server.working_memory.set_working_memory"
+    ) as mock_set_memory:
         mock_set_memory.return_value = None
 
         # Step 1: Create new session memory
         response = await memory_test_client.put_session_memory(session_id, memory)
-        assert response.status == "ok"
+        assert response.messages[0].content == "Hello from the client!"
+        assert response.messages[1].content == "Hi there, I'm the memory server!"
+        assert response.context == "This is a test session created by the API client."
 
     # Next, mock GET response for retrieving session memory
-    with patch("agent_memory_server.messages.get_session_memory") as mock_get_memory:
+    with patch(
+        "agent_memory_server.working_memory.get_working_memory"
+    ) as mock_get_memory:
         # Get memory data and explicitly exclude session_id to avoid duplicate parameter
         memory_data = memory.model_dump(exclude={"session_id"})
-        mock_response = SessionMemoryResponse(**memory_data, session_id=session_id)
+        mock_response = WorkingMemoryResponse(**memory_data, session_id=session_id)
         mock_get_memory.return_value = mock_response
 
         # Step 2: Retrieve the session memory
@@ -113,7 +121,9 @@ async def test_session_lifecycle(memory_test_client: MemoryAPIClient):
         assert session_id in sessions.sessions
 
     # Mock delete session
-    with patch("agent_memory_server.messages.delete_session_memory") as mock_delete:
+    with patch(
+        "agent_memory_server.working_memory.delete_working_memory"
+    ) as mock_delete:
         mock_delete.return_value = None
 
         # Step 4: Delete the session
@@ -121,17 +131,14 @@ async def test_session_lifecycle(memory_test_client: MemoryAPIClient):
         assert response.status == "ok"
 
     # Verify it's gone by mocking a 404 response
-    with patch("agent_memory_server.messages.get_session_memory") as mock_get_memory:
+    with patch(
+        "agent_memory_server.working_memory.get_working_memory"
+    ) as mock_get_memory:
         mock_get_memory.return_value = None
 
-        # This should raise an httpx.HTTPStatusError (404) since we return None from the mock
-        from httpx import HTTPStatusError
-
-        with pytest.raises(HTTPStatusError) as excinfo:
-            await memory_test_client.get_session_memory(session_id)
-
-        # Verify it's the correct error (404 Not Found)
-        assert excinfo.value.response.status_code == 404
+        # This should not raise an error anymore since the unified API returns empty working memory instead of 404
+        session = await memory_test_client.get_session_memory(session_id)
+        assert len(session.messages) == 0  # Should return empty working memory
 
 
 @pytest.mark.asyncio
@@ -139,15 +146,17 @@ async def test_long_term_memory(memory_test_client: MemoryAPIClient):
     """Test long-term memory creation and search"""
     # Create some test memories
     memories = [
-        LongTermMemory(
-            text="The user prefers dark mode in all applications",
-            topics=["preferences", "ui"],
-            user_id="test-user",
+        MemoryRecord(
+            text="User prefers dark mode",
+            id="test-client-1",
+            memory_type="semantic",
+            user_id="user123",
         ),
-        LongTermMemory(
-            text="The user's favorite color is blue",
-            topics=["preferences", "colors"],
-            user_id="test-user",
+        MemoryRecord(
+            text="User is working on a Python project",
+            id="test-client-2",
+            memory_type="episodic",
+            user_id="user123",
         ),
     ]
 
@@ -166,24 +175,25 @@ async def test_long_term_memory(memory_test_client: MemoryAPIClient):
     with patch(
         "agent_memory_server.long_term_memory.search_long_term_memories"
     ) as mock_search:
-        mock_search.return_value = LongTermMemoryResultsResponse(
+        mock_search.return_value = MemoryRecordResultsResponse(
+            total=2,
             memories=[
-                LongTermMemoryResult(
+                MemoryRecordResult(
                     id_="1",
-                    text="The user's favorite color is blue",
-                    dist=0.2,
-                    topics=["preferences", "colors"],
-                    user_id="test-user",
+                    text="User prefers dark mode",
+                    dist=0.1,
+                    user_id="user123",
+                    namespace="preferences",
                 ),
-                LongTermMemoryResult(
+                MemoryRecordResult(
                     id_="2",
-                    text="The user prefers dark mode in all applications",
-                    dist=0.4,
-                    topics=["preferences", "ui"],
-                    user_id="test-user",
+                    text="User likes coffee",
+                    dist=0.2,
+                    user_id="user123",
+                    namespace="preferences",
                 ),
             ],
-            total=2,
+            next_offset=None,
         )
 
         # Search with various filters
@@ -195,8 +205,10 @@ async def test_long_term_memory(memory_test_client: MemoryAPIClient):
             )
 
             assert results.total == 2
-            # The "favorite color" memory should be the most relevant
-            assert any("blue" in memory.text.lower() for memory in results.memories)
+            # Check that we got the memories we created
+            assert any(
+                "dark mode" in memory.text.lower() for memory in results.memories
+            )
 
             # Try another search using filter objects instead of dictionaries
             results = await memory_test_client.search_long_term_memory(

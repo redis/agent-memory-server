@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from agent_memory_server.filters import (
     CreatedAt,
     Entities,
@@ -8,11 +10,11 @@ from agent_memory_server.filters import (
     UserId,
 )
 from agent_memory_server.models import (
-    LongTermMemoryResult,
     MemoryMessage,
+    MemoryRecordResult,
     SearchRequest,
-    SessionMemory,
-    SessionMemoryResponse,
+    WorkingMemory,
+    WorkingMemoryResponse,
 )
 
 
@@ -23,92 +25,113 @@ class TestModels:
         assert msg.role == "user"
         assert msg.content == "Hello, world!"
 
-    def test_session_memory(self):
-        """Test SessionMemory model"""
+    def test_working_memory(self):
+        """Test WorkingMemory model"""
         messages = [
             MemoryMessage(role="user", content="Hello"),
             MemoryMessage(role="assistant", content="Hi there"),
         ]
 
-        # Test without any optional fields
-        payload = SessionMemory(messages=messages)
+        # Test with required fields
+        payload = WorkingMemory(
+            messages=messages,
+            memories=[],
+            session_id="test-session",
+        )
         assert payload.messages == messages
+        assert payload.memories == []
+        assert payload.session_id == "test-session"
         assert payload.context is None
         assert payload.user_id is None
-        assert payload.session_id is None
         assert payload.namespace is None
         assert payload.tokens == 0
-        assert payload.last_accessed > 1
-        assert payload.created_at > 1
+        assert payload.last_accessed > datetime(2020, 1, 1, tzinfo=UTC)
+        assert payload.created_at > datetime(2020, 1, 1, tzinfo=UTC)
+        assert isinstance(payload.last_accessed, datetime)
+        assert isinstance(payload.created_at, datetime)
 
         # Test with all fields
-        payload = SessionMemory(
+        test_datetime = datetime(2023, 1, 1, tzinfo=UTC)
+        payload = WorkingMemory(
             messages=messages,
+            memories=[],
             context="Previous conversation summary",
             user_id="user_id",
             session_id="session_id",
             namespace="namespace",
             tokens=100,
-            last_accessed=100,
-            created_at=100,
+            last_accessed=test_datetime,
+            created_at=test_datetime,
         )
         assert payload.messages == messages
+        assert payload.memories == []
         assert payload.context == "Previous conversation summary"
         assert payload.user_id == "user_id"
         assert payload.session_id == "session_id"
         assert payload.namespace == "namespace"
         assert payload.tokens == 100
-        assert payload.last_accessed == 100
-        assert payload.created_at == 100
+        assert payload.last_accessed == test_datetime
+        assert payload.created_at == test_datetime
 
-    def test_memory_response(self):
-        """Test SessionMemoryResponse model"""
+    def test_working_memory_response(self):
+        """Test WorkingMemoryResponse model"""
         messages = [
             MemoryMessage(role="user", content="Hello"),
             MemoryMessage(role="assistant", content="Hi there"),
         ]
 
-        # Test without any optional fields
-        response = SessionMemoryResponse(messages=messages)
+        # Test with required fields
+        response = WorkingMemoryResponse(
+            messages=messages,
+            memories=[],
+            session_id="test-session",
+        )
         assert response.messages == messages
+        assert response.memories == []
+        assert response.session_id == "test-session"
         assert response.context is None
         assert response.tokens == 0
         assert response.user_id is None
-        assert response.session_id is None
         assert response.namespace is None
-        assert response.last_accessed > 1
-        assert response.created_at > 1
+        assert response.last_accessed > datetime(2020, 1, 1, tzinfo=UTC)
+        assert response.created_at > datetime(2020, 1, 1, tzinfo=UTC)
+        assert isinstance(response.last_accessed, datetime)
+        assert isinstance(response.created_at, datetime)
 
         # Test with all fields
-        response = SessionMemoryResponse(
+        test_datetime = datetime(2023, 1, 1, tzinfo=UTC)
+        response = WorkingMemoryResponse(
             messages=messages,
+            memories=[],
             context="Conversation summary",
             tokens=150,
             user_id="user_id",
             session_id="session_id",
             namespace="namespace",
-            last_accessed=100,
-            created_at=100,
+            last_accessed=test_datetime,
+            created_at=test_datetime,
         )
         assert response.messages == messages
+        assert response.memories == []
         assert response.context == "Conversation summary"
         assert response.tokens == 150
         assert response.user_id == "user_id"
         assert response.session_id == "session_id"
         assert response.namespace == "namespace"
-        assert response.last_accessed == 100
-        assert response.created_at == 100
+        assert response.last_accessed == test_datetime
+        assert response.created_at == test_datetime
 
-    def test_long_term_memory_result(self):
-        """Test LongTermMemoryResult model"""
-        result = LongTermMemoryResult(
+    def test_memory_record_result(self):
+        """Test MemoryRecordResult model"""
+        test_datetime = datetime(2023, 1, 1, tzinfo=UTC)
+        result = MemoryRecordResult(
             text="Paris is the capital of France",
             dist=0.75,
             id_="123",
             session_id="session_id",
             user_id="user_id",
-            last_accessed=100,
-            created_at=100,
+            last_accessed=test_datetime,
+            created_at=test_datetime,
             namespace="namespace",
         )
         assert result.text == "Paris is the capital of France"
@@ -122,8 +145,14 @@ class TestModels:
         namespace = Namespace(eq="test-namespace")
         topics = Topics(any=["topic1", "topic2"])
         entities = Entities(any=["entity1", "entity2"])
-        created_at = CreatedAt(gt=1000, lt=2000)
-        last_accessed = LastAccessed(gt=3000, lt=4000)
+        created_at = CreatedAt(
+            gt=datetime(2023, 1, 1, tzinfo=UTC),
+            lt=datetime(2023, 12, 31, tzinfo=UTC),
+        )
+        last_accessed = LastAccessed(
+            gt=datetime(2023, 6, 1, tzinfo=UTC),
+            lt=datetime(2023, 12, 1, tzinfo=UTC),
+        )
         user_id = UserId(eq="test-user")
 
         # Create payload with filter objects

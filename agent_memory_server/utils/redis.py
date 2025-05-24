@@ -62,6 +62,9 @@ def get_search_index(
                 {"name": "last_accessed", "type": "numeric"},
                 {"name": "memory_type", "type": "tag"},
                 {"name": "discrete_memory_extracted", "type": "tag"},
+                {"name": "id", "type": "tag"},
+                {"name": "persisted_at", "type": "numeric"},
+                {"name": "extracted_from", "type": "tag"},
                 {
                     "name": "vector",
                     "type": "vector",

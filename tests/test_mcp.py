@@ -1,19 +1,22 @@
 import json
+from datetime import UTC, datetime
 from unittest import mock
 
 import pytest
 from mcp.shared.memory import (
     create_connected_server_and_client_session as client_session,
 )
-from mcp.types import CallToolResult
+from mcp.types import CallToolResult, TextContent
 
 from agent_memory_server.mcp import mcp_app
 from agent_memory_server.models import (
-    LongTermMemory,
-    LongTermMemoryResult,
     MemoryPromptRequest,
     MemoryPromptResponse,
+    MemoryRecord,
+    MemoryRecordResult,
+    MemoryRecordResults,
     SystemMessage,
+    WorkingMemoryResponse,
 )
 
 
@@ -43,7 +46,11 @@ class TestMCP:
                 "create_long_term_memories",
                 {
                     "memories": [
-                        LongTermMemory(text="Hello", session_id=session),
+                        MemoryRecord(
+                            text="Hello",
+                            id="test-client-mcp",
+                            session_id=session,
+                        ),
                     ],
                 },
             )
@@ -169,25 +176,21 @@ class TestMCP:
         """
         Ensure that when default_namespace is set on mcp_app, search_long_term_memory injects it automatically.
         """
-        from agent_memory_server.models import (
-            LongTermMemoryResults,
-        )
-
         # Capture injected namespace
         injected = {}
 
         async def fake_core_search(payload):
             injected["namespace"] = payload.namespace.eq if payload.namespace else None
             # Return a dummy result with total>0 to skip fake fallback
-            return LongTermMemoryResults(
+            return MemoryRecordResults(
                 total=1,
                 memories=[
-                    LongTermMemoryResult(
+                    MemoryRecordResult(
                         id_="id",
                         text="x",
                         dist=0.0,
-                        created_at=1,
-                        last_accessed=1,
+                        created_at=datetime.now(UTC),
+                        last_accessed=datetime.now(UTC),
                         user_id="",
                         session_id="",
                         namespace=payload.namespace.eq if payload.namespace else None,
@@ -235,7 +238,9 @@ class TestMCP:
             # Return a minimal valid response
             return MemoryPromptResponse(
                 messages=[
-                    SystemMessage(content={"type": "text", "text": "Test response"})
+                    SystemMessage(
+                        content=TextContent(type="text", text="Test response")
+                    )
                 ]
             )
 
@@ -274,3 +279,154 @@ class TestMCP:
             assert captured_params["long_term_search"].limit == 5
             assert captured_params["long_term_search"].topics is not None
             assert captured_params["long_term_search"].entities is not None
+
+    @pytest.mark.asyncio
+    async def test_set_working_memory_tool(self, mcp_test_setup):
+        """Test the set_working_memory tool function"""
+        from unittest.mock import patch
+
+        # Mock the working memory response
+        mock_response = WorkingMemoryResponse(
+            messages=[],
+            memories=[],
+            session_id="test-session",
+            namespace="test-namespace",
+            context="",
+            tokens=0,
+        )
+
+        async with client_session(mcp_app._mcp_server) as client:
+            with patch(
+                "agent_memory_server.mcp.core_put_session_memory"
+            ) as mock_put_memory:
+                mock_put_memory.return_value = mock_response
+
+                # Test set_working_memory tool call with structured memories
+                result = await client.call_tool(
+                    "set_working_memory",
+                    {
+                        "session_id": "test-session",
+                        "memories": [
+                            {
+                                "text": "User prefers dark mode",
+                                "memory_type": "semantic",
+                                "topics": ["preferences", "ui"],
+                                "id": "pref_dark_mode",
+                            }
+                        ],
+                        "namespace": "test-namespace",
+                    },
+                )
+
+                assert isinstance(result, CallToolResult)
+                assert len(result.content) > 0
+                assert result.content[0].type == "text"
+
+                # Verify the API was called
+                mock_put_memory.assert_called_once()
+
+                # Verify the working memory was structured correctly
+                call_args = mock_put_memory.call_args
+                working_memory = call_args[1]["memory"]
+                assert len(working_memory.memories) == 1
+                memory = working_memory.memories[0]
+                assert memory.text == "User prefers dark mode"
+                assert memory.memory_type == "semantic"
+                assert memory.topics == ["preferences", "ui"]
+                assert memory.id == "pref_dark_mode"
+                assert memory.persisted_at is None  # Pending promotion
+
+    @pytest.mark.asyncio
+    async def test_set_working_memory_with_json_data(self, mcp_test_setup):
+        """Test set_working_memory with JSON data in the data field"""
+        from unittest.mock import patch
+
+        # Mock the working memory response
+        mock_response = WorkingMemoryResponse(
+            messages=[],
+            memories=[],
+            session_id="test-session",
+            namespace="test-namespace",
+            context="",
+            tokens=0,
+        )
+
+        test_data = {
+            "user_settings": {"theme": "dark", "language": "en"},
+            "preferences": {"notifications": True, "sound": False},
+        }
+
+        async with client_session(mcp_app._mcp_server) as client:
+            with patch(
+                "agent_memory_server.mcp.core_put_session_memory"
+            ) as mock_put_memory:
+                mock_put_memory.return_value = mock_response
+
+                # Test set_working_memory with JSON data in the data field
+                result = await client.call_tool(
+                    "set_working_memory",
+                    {
+                        "session_id": "test-session",
+                        "data": test_data,
+                        "namespace": "test-namespace",
+                    },
+                )
+
+                assert isinstance(result, CallToolResult)
+                assert len(result.content) > 0
+                assert result.content[0].type == "text"
+
+                # Verify the API was called
+                mock_put_memory.assert_called_once()
+
+                # Verify the working memory contains JSON data
+                call_args = mock_put_memory.call_args
+                working_memory = call_args[1]["memory"]
+                assert working_memory.data == test_data
+
+                # Verify no memories were created (since we're using data field)
+                assert len(working_memory.memories) == 0
+
+    @pytest.mark.asyncio
+    async def test_set_working_memory_auto_id_generation(self, mcp_test_setup):
+        """Test that set_working_memory auto-generates ID when not provided"""
+        from unittest.mock import patch
+
+        # Mock the working memory response
+        mock_response = WorkingMemoryResponse(
+            messages=[],
+            memories=[],
+            session_id="test-session",
+            namespace="test-namespace",
+            context="",
+            tokens=0,
+        )
+
+        async with client_session(mcp_app._mcp_server) as client:
+            with patch(
+                "agent_memory_server.mcp.core_put_session_memory"
+            ) as mock_put_memory:
+                mock_put_memory.return_value = mock_response
+
+                # Test set_working_memory without explicit ID
+                result = await client.call_tool(
+                    "set_working_memory",
+                    {
+                        "session_id": "test-session",
+                        "memories": [
+                            {
+                                "text": "User completed tutorial",
+                                "memory_type": "episodic",
+                            }
+                        ],
+                    },
+                )
+
+                assert isinstance(result, CallToolResult)
+
+                # Verify ID was auto-generated
+                call_args = mock_put_memory.call_args
+                working_memory = call_args[1]["memory"]
+                memory = working_memory.memories[0]
+                assert memory.id is not None
+                assert len(memory.id) > 0  # ULID generates non-empty strings

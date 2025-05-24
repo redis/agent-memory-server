@@ -2,7 +2,6 @@ import json
 import os
 from typing import Any
 
-import nanoid
 from bertopic import BERTopic
 from redis.asyncio.client import Redis
 from redisvl.query.filter import Tag
@@ -10,6 +9,7 @@ from redisvl.query.query import FilterQuery
 from tenacity.asyncio import AsyncRetrying
 from tenacity.stop import stop_after_attempt
 from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
+from ulid import ULID
 
 from agent_memory_server.config import settings
 from agent_memory_server.llms import (
@@ -18,7 +18,7 @@ from agent_memory_server.llms import (
     get_model_client,
 )
 from agent_memory_server.logging import get_logger
-from agent_memory_server.models import LongTermMemory
+from agent_memory_server.models import MemoryRecord
 from agent_memory_server.utils.redis import get_redis_conn, get_search_index
 
 
@@ -228,18 +228,19 @@ DISCRETE_EXTRACTION_PROMPT = """
     - text: str -- The actual information to store
     - topics: list[str] -- The topics of the memory (top {top_k_topics})
     - entities: list[str] -- The entities of the memory
+    -
 
     Return a list of memories, for example:
     {{
         "memories": [
             {{
-                "type": "episodic",
+                "type": "semantic",
                 "text": "User prefers window seats",
                 "topics": ["travel", "airline"],
                 "entities": ["User", "window seat"],
             }},
             {{
-                "type": "semantic",
+                "type": "episodic",
                 "text": "Trek discontinued the Trek 520 steel touring bike in 2023",
                 "topics": ["travel", "bicycle"],
                 "entities": ["Trek", "Trek 520 steel touring bike"],
@@ -331,8 +332,8 @@ async def extract_discrete_memories(
 
     if discrete_memories:
         long_term_memories = [
-            LongTermMemory(
-                id_=nanoid.generate(),
+            MemoryRecord(
+                id_=str(ULID()),
                 text=new_memory["text"],
                 memory_type=new_memory.get("type", "episodic"),
                 topics=new_memory.get("topics", []),
