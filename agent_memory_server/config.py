@@ -55,8 +55,19 @@ class Settings(BaseSettings):
     docket_name: str = "memory-server"
     use_docket: bool = True
 
+    # OAuth2/JWT Authentication settings
+    oauth2_issuer_url: str | None = None
+    oauth2_audience: str | None = None
+    oauth2_jwks_url: str | None = None
+    disable_auth: bool = False
+
     # Other Application settings
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+
+    @property
+    def app_port(self) -> int:
+        """Get the application port"""
+        return self.port
 
     class Config:
         env_file = ".env"

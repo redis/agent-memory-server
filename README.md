@@ -21,6 +21,7 @@ A Redis-powered memory server built for AI agents and applications. It manages b
   - Memory deduplication and compaction
 
 - **Other Features**
+  - OAuth2/JWT authentication for secure API access with local development bypass
   - Namespace support for session and working memory isolation
   - Both a REST interface and MCP server
   - Background task processing for memory indexing and promotion
@@ -37,8 +38,8 @@ This project is under active development and is **pre-release** software. Think 
 ### Roadmap
 - [x] Long-term memory deduplication and compaction
 - [x] Use a background task system instead of `BackgroundTask`
+- [x] Authentication/authorization hooks (OAuth2/JWT)
 - [ ] Configurable strategy for moving working memory to long-term memory
-- [ ] Authentication/authorization hooks
 - [ ] Separate Redis connections for long-term and working memory
 
 ## REST API Endpoints
@@ -378,6 +379,105 @@ variables. See the file `config.py` for all the available settings.
 The names of the settings map directly to an environment variable, so for
 example, you can set the `openai_api_key` setting with the `OPENAI_API_KEY`
 environment variable.
+
+### Authentication (OAuth2/JWT)
+
+The Agent Memory Server supports OAuth2 JWT Bearer token authentication for secure API access. All API endpoints (except `/health`, `/docs`, and `/openapi.json`) require valid authentication when enabled.
+
+#### Configuration
+
+Set the following environment variables to configure OAuth2 authentication:
+
+```bash
+# Required: Your OAuth2 issuer URL (e.g., Auth0, Cognito, Okta domain)
+OAUTH2_ISSUER_URL=https://your-auth-provider.com
+
+# Required: Expected audience in JWT tokens
+OAUTH2_AUDIENCE=your-api-audience
+
+# Optional: Custom JWKS URL (if not using standard /.well-known/jwks.json)
+OAUTH2_JWKS_URL=https://your-auth-provider.com/.well-known/jwks.json
+
+# For local development: Disable authentication entirely
+DISABLE_AUTH=false  # Set to 'true' for local development
+```
+
+#### Supported OAuth2 Providers
+
+The server works with any OAuth2 provider that issues standard JWT tokens with JWKS support:
+
+- **AWS Cognito**: Use your Cognito User Pool domain as the issuer URL
+- **Auth0**: Use your Auth0 domain (e.g., `https://yourapp.auth0.com`)
+- **Okta**: Use your Okta domain (e.g., `https://yourorg.okta.com`)
+- **Azure AD**: Use your Azure AD tenant endpoint
+- **Custom OAuth2 providers**: Any provider supporting JWKS key rotation
+
+#### Usage Examples
+
+**Making authenticated API calls with curl:**
+
+```bash
+# Get an access token from your OAuth2 provider first
+export ACCESS_TOKEN="your-jwt-access-token"
+
+# Call protected endpoints
+curl -H "Authorization: Bearer $ACCESS_TOKEN" \
+     -X GET "http://localhost:8000/sessions/"
+
+curl -H "Authorization: Bearer $ACCESS_TOKEN" \
+     -H "Content-Type: application/json" \
+     -X POST "http://localhost:8000/memory/search" \
+     -d '{"text": "search query", "limit": 10}'
+```
+
+**Python example:**
+
+```python
+import httpx
+
+# Get access token from your OAuth2 provider
+access_token = "your-jwt-access-token"
+
+headers = {"Authorization": f"Bearer {access_token}"}
+
+async with httpx.AsyncClient() as client:
+    # List sessions
+    response = await client.get(
+        "http://localhost:8000/sessions/", 
+        headers=headers
+    )
+    
+    # Search memories
+    response = await client.post(
+        "http://localhost:8000/memory/search",
+        headers=headers,
+        json={"text": "search query", "limit": 10}
+    )
+```
+
+#### Local Development
+
+For local development and testing, you can disable authentication entirely:
+
+```bash
+# In your .env file or environment
+DISABLE_AUTH=true
+```
+
+When `DISABLE_AUTH=true`, all API endpoints are accessible without any token, and requests are treated as coming from a local development user.
+
+**⚠️ Important:** Never set `DISABLE_AUTH=true` in production environments.
+
+#### Token Validation
+
+The server validates JWT tokens for:
+
+- **Signature**: Verified using JWKS public keys from the issuer
+- **Expiry**: Tokens must not be expired (`exp` claim)
+- **Audience**: Must match configured `OAUTH2_AUDIENCE` (`aud` claim)
+- **Issuer**: Must match configured `OAUTH2_ISSUER_URL` (`iss` claim)
+
+Invalid or expired tokens result in `401 Unauthorized` responses with details about the validation failure.
 
 ## Running the Background Task Worker
 
