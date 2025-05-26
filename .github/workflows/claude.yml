@@ -35,3 +35,26 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
+          # Define which tools Claude can use
+          allowed_tools: |
+            Bash(git status)
+            Bash(git log)
+            Bash(git show)
+            Bash(git blame)
+            Bash(git reflog)
+            Bash(git stash list)
+            Bash(git ls-files)
+            Bash(git branch)
+            Bash(git tag)
+            Bash(git diff)
+            Bash(uv:*)
+            Bash(uv run:*)(
+            Bash(cd:*)
+            Bash(grep:*)
+            Bash(ls:*)
+            Bash(python -m pytest)
+            Bash
+            View
+            GlobTool
+            GrepTool
+            BatchTool
