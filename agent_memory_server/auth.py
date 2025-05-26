@@ -109,7 +109,7 @@ async def verify_jwt_token(token: str) -> Dict[str, Any]:
             )
         
         # Verify and decode the token
-        algorithms = ['RS256', 'ES256', 'HS256']  # Common algorithms
+        algorithms = ['RS256', 'ES256']  # Allowed asymmetric algorithms
         payload = jwt.decode(
             token,
             key,

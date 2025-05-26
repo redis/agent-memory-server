@@ -58,21 +58,6 @@ def disabled_auth_settings():
     )
 
 
-@pytest.fixture
-def valid_jwt_token():
-    """Create a valid JWT token for testing"""
-    now = datetime.now(timezone.utc)
-    payload = {
-        "sub": "test-user-123",
-        "iss": "https://test-issuer.example.com", 
-        "aud": "test-audience",
-        "exp": now + timedelta(hours=1),
-        "iat": now,
-        "scope": "read write"
-    }
-    
-    # Create a simple token (won't verify with real JWKS but good for basic tests)
-    return jwt.encode(payload, "test-secret", algorithm="HS256")
 
 
 @pytest.fixture
