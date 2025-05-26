@@ -52,6 +52,7 @@ jobs:
             Bash(cd:*)
             Bash(grep:*)
             Bash(ls:*)
+            Bash(python -m pytest)
             View
             GlobTool
             GrepTool
