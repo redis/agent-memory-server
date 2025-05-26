@@ -6,6 +6,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from agent_memory_server.api import router as memory_router
+from agent_memory_server.auth import verify_auth_config
 from agent_memory_server.config import settings
 from agent_memory_server.docket_tasks import register_tasks
 from agent_memory_server.healthcheck import router as health_router
@@ -25,6 +26,13 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Initialize the application on startup"""
     logger.info("Starting Redis Agent Memory Server 🤘")
+
+    # Verify OAuth2/JWT authentication configuration
+    try:
+        verify_auth_config()
+    except Exception as e:
+        logger.error(f"Authentication configuration error: {e}")
+        raise
 
     # Check for required API keys
     available_providers = []

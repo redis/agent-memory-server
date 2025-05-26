@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     docket_name: str = "memory-server"
     use_docket: bool = True
 
+    # OAuth2/JWT Authentication settings
+    disable_auth: bool = False
+    oauth2_issuer_url: str | None = None
+    oauth2_audience: str | None = None
+    oauth2_jwks_url: str | None = None
+    oauth2_algorithms: list[str] = ["RS256"]
+
     # Other Application settings
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
