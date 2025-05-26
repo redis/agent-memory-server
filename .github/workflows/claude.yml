@@ -53,6 +53,7 @@ jobs:
             Bash(grep:*)
             Bash(ls:*)
             Bash(python -m pytest)
+            Bash
             View
             GlobTool
             GrepTool
