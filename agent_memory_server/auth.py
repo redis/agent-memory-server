@@ -1,4 +1,5 @@
 import os
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
@@ -32,7 +33,7 @@ class JWKSCache:
         self._cache: Dict[str, Any] = {}
         self._cache_time: Optional[float] = None
         self._cache_duration = cache_duration
-        self._lock = False
+        self._lock = threading.Lock()
 
     def get_jwks(self, jwks_url: str) -> Dict[str, Any]:
         current_time = time.time()
@@ -41,41 +42,39 @@ class JWKSCache:
             current_time - self._cache_time > self._cache_duration or
             not self._cache):
             
-            if self._lock:
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="JWKS refresh in progress, try again later"
-                )
-            
-            try:
-                self._lock = True
-                logger.info("Fetching JWKS keys", jwks_url=jwks_url)
+            with self._lock:
+                # Double-check pattern: another thread might have updated cache while waiting
+                if (self._cache_time is not None and 
+                    current_time - self._cache_time <= self._cache_duration and
+                    self._cache):
+                    return self._cache
                 
-                with httpx.Client(timeout=10.0) as client:
-                    response = client.get(jwks_url)
-                    response.raise_for_status()
+                try:
+                    logger.info("Fetching JWKS keys", jwks_url=jwks_url)
                     
-                jwks_data = response.json()
-                self._cache = jwks_data
-                self._cache_time = current_time
-                
-                logger.info("Successfully cached JWKS keys", 
-                           key_count=len(jwks_data.get("keys", [])))
-                           
-            except httpx.HTTPError as e:
-                logger.error("Failed to fetch JWKS", error=str(e), jwks_url=jwks_url)
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail=f"Unable to fetch JWKS from {jwks_url}: {str(e)}"
-                )
-            except Exception as e:
-                logger.error("Unexpected error fetching JWKS", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Internal server error while fetching JWKS"
-                )
-            finally:
-                self._lock = False
+                    with httpx.Client(timeout=10.0) as client:
+                        response = client.get(jwks_url)
+                        response.raise_for_status()
+                        
+                    jwks_data = response.json()
+                    self._cache = jwks_data
+                    self._cache_time = current_time
+                    
+                    logger.info("Successfully cached JWKS keys", 
+                               key_count=len(jwks_data.get("keys", [])))
+                               
+                except httpx.HTTPError as e:
+                    logger.error("Failed to fetch JWKS", error=str(e), jwks_url=jwks_url)
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=f"Unable to fetch JWKS from {jwks_url}: {str(e)}"
+                    )
+                except Exception as e:
+                    logger.error("Unexpected error fetching JWKS", error=str(e))
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Internal server error while fetching JWKS"
+                    )
                 
         return self._cache
 
