@@ -36,4 +36,4 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
           # Define which tools Claude can use
-          allowed_tools: "Bash,Bash(python:*),Bash(ruff:*),Bash(uv:*),Bash(pip:*),Bash(pytest:*),Bash(git status),Bash(git log),Bash(git show),Bash(git blame),Bash(git reflog),Bash(git stash list),Bash(git ls-files),Bash(git branch),Bash(git tag),Bash(git diff),Bash(make:*),Bash(pytest:*),Bash(cd:*),Bash(ls:*),Bash(make),Bash(make:*),View,GlobTool,GrepTool,BatchTool"
+          allowed_tools: "Bash,Bash(python:*),Bash(ruff:*),Bash(uv:*),Bash(pip:*),Bash(pytest:*),Bash(git status),Bash(git log),Bash(git show),Bash(git blame),Bash(git reflog),Bash(git stash list),Bash(git ls-files),Bash(git branch),Bash(git tag),Bash(git diff),Bash(make:*),Bash(pytest:*),Bash(cd:*),Bash(ls:*),Bash(make),Bash(make:*),View,GlobTool,GrepTool,BatchTool,Bash(cd /home/runner/work/agent-memory-server/agent-memory-server && ruff check),Bash(cd /home/runner/work/agent-memory-server/agent-memory-server && pytest*)"
