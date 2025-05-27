@@ -119,7 +119,6 @@ dev = [
     "ruff>=0.3.0",
     "testcontainers>=3.7.0",
     "pre-commit>=3.6.0",
-    "httpx-mock>=0.13.0",
     "freezegun>=1.2.0",
 ]
 
