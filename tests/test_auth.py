@@ -167,7 +167,7 @@ class TestJWKSCache:
         assert cache._cache == {}
         assert cache._cache_time is None
         assert cache._cache_duration == 3600
-        assert cache._lock is False
+        assert hasattr(cache._lock, 'acquire')  # Should be a threading.Lock
     
     def test_jwks_cache_custom_duration(self):
         """Test JWKS cache with custom duration"""

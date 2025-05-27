@@ -165,7 +165,7 @@ def on_start_logger(port: int):
 # Run the application
 if __name__ == "__main__":
     # Parse command line arguments for port
-    port = settings.app_port
+    port = settings.port
 
     # Check if --port argument is provided
     if "--port" in sys.argv:
