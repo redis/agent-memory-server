@@ -1,4 +1,5 @@
 version = 1
+revision = 1
 requires-python = "==3.12.*"
 
 [[package]]
@@ -28,6 +29,7 @@ dependencies = [
     { name = "anthropic" },
     { name = "bertopic" },
     { name = "click" },
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "mcp" },
@@ -40,6 +42,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "python-jose", extra = ["cryptography"] },
     { name = "python-ulid" },
+    { name = "pyyaml" },
     { name = "redisvl" },
     { name = "sentence-transformers" },
     { name = "sniffio" },
@@ -66,6 +69,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.15.0" },
     { name = "bertopic", specifier = ">=0.16.4,<0.17.0" },
     { name = "click", specifier = ">=8.1.0" },
+    { name = "cryptography", specifier = ">=3.4.8" },
     { name = "fastapi", specifier = ">=0.115.11" },
     { name = "httpx", specifier = ">=0.25.0" },
     { name = "mcp", specifier = ">=1.6.0" },
@@ -78,6 +82,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "python-jose", extras = ["cryptography"], specifier = ">=3.3.0" },
     { name = "python-ulid", specifier = ">=3.0.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "redisvl", specifier = ">=0.6.0" },
     { name = "sentence-transformers", specifier = ">=3.4.1" },
     { name = "sniffio", specifier = ">=1.3.1" },

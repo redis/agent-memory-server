@@ -248,12 +248,13 @@ class TestJWKSCache:
     async def test_jwks_cache_thread_safety(self):
         """Test JWKS cache thread safety with concurrent access"""
         cache = JWKSCache()
-        
+
         # This test verifies that the lock is a proper threading.Lock object
         # and can be used in a context manager
         import threading
+
         assert isinstance(cache._lock, threading.Lock)
-        
+
         # Test that we can acquire and release the lock
         with cache._lock:
             # Lock is acquired here
