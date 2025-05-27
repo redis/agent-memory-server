@@ -1,14 +1,13 @@
-import os
 import threading
 import time
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 import structlog
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import jwt, jwk, JWTError
+from jose import JWTError, jwk, jwt
 from pydantic import BaseModel
 
 from agent_memory_server.config import settings
@@ -19,23 +18,23 @@ logger = structlog.get_logger()
 
 class UserInfo(BaseModel):
     sub: str
-    aud: Optional[str] = None
-    scope: Optional[str] = None
-    exp: Optional[int] = None
-    iat: Optional[int] = None
-    iss: Optional[str] = None
-    email: Optional[str] = None
-    roles: Optional[list[str]] = None
+    aud: str | None = None
+    scope: str | None = None
+    exp: int | None = None
+    iat: int | None = None
+    iss: str | None = None
+    email: str | None = None
+    roles: list[str] | None = None
 
 
 class JWKSCache:
     def __init__(self, cache_duration: int = 3600):
-        self._cache: Dict[str, Any] = {}
-        self._cache_time: Optional[float] = None
+        self._cache: dict[str, Any] = {}
+        self._cache_time: float | None = None
         self._cache_duration = cache_duration
         self._lock = threading.Lock()
 
-    def get_jwks(self, jwks_url: str) -> Dict[str, Any]:
+    def get_jwks(self, jwks_url: str) -> dict[str, Any]:
         current_time = time.time()
         
         if (self._cache_time is None or 
@@ -68,13 +67,13 @@ class JWKSCache:
                     raise HTTPException(
                         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                         detail=f"Unable to fetch JWKS from {jwks_url}: {str(e)}"
-                    )
+                    ) from e
                 except Exception as e:
                     logger.error("Unexpected error fetching JWKS", error=str(e))
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         detail="Internal server error while fetching JWKS"
-                    )
+                    ) from e
                 
         return self._cache
 
@@ -105,7 +104,7 @@ def get_public_key(token: str) -> str:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token header"
-        )
+        ) from e
     
     kid = unverified_header.get("kid")
     if not kid:
@@ -167,7 +166,7 @@ def verify_jwt(token: str) -> UserInfo:
             options=decode_options
         )
         
-        current_time = int(datetime.now(timezone.utc).timestamp())
+        current_time = int(datetime.now(UTC).timestamp())
         
         exp = payload.get("exp")
         if exp and exp < current_time:
@@ -230,16 +229,16 @@ def verify_jwt(token: str) -> UserInfo:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid JWT: {str(e)}"
-        )
+        ) from e
     except Exception as e:
         logger.error("Unexpected error during JWT validation", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error during authentication"
-        )
+        ) from e
 
 
-def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(oauth2_scheme)) -> UserInfo:
+def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(oauth2_scheme)) -> UserInfo:
     if settings.disable_auth:
         logger.debug("Authentication disabled, returning default user")
         return UserInfo(
