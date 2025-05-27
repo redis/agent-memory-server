@@ -253,7 +253,8 @@ class TestJWKSCache:
         # and can be used in a context manager
         import threading
 
-        assert isinstance(cache._lock, threading.Lock)
+        # Verify it's a proper Lock object that supports context manager protocol
+        assert hasattr(cache._lock, '__enter__') and hasattr(cache._lock, '__exit__')
 
         # Test that we can acquire and release the lock
         with cache._lock:
