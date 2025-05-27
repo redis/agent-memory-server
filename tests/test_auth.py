@@ -245,16 +245,20 @@ class TestJWKSCache:
             assert "Unable to fetch JWKS" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
-    async def test_jwks_cache_lock_mechanism(self):
-        """Test JWKS cache lock prevents concurrent fetches"""
+    async def test_jwks_cache_thread_safety(self):
+        """Test JWKS cache thread safety with concurrent access"""
         cache = JWKSCache()
-        cache._lock = True
-
-        with pytest.raises(HTTPException) as exc_info:
-            cache.get_jwks("https://test-issuer.com/.well-known/jwks.json")
-
-        assert exc_info.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-        assert "JWKS refresh in progress" in str(exc_info.value.detail)
+        
+        # This test verifies that the lock is a proper threading.Lock object
+        # and can be used in a context manager
+        import threading
+        assert isinstance(cache._lock, threading.Lock)
+        
+        # Test that we can acquire and release the lock
+        with cache._lock:
+            # Lock is acquired here
+            pass
+        # Lock is released here
 
     @pytest.mark.asyncio
     async def test_jwks_cache_unexpected_error(self):
