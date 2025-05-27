@@ -1,6 +1,10 @@
 # CLAUDE.md - Redis Agent Memory Server Project Context
 
 ## Frequently Used Commands
+Get started in a new environment by installing `uv`:
+```bash
+pip install uv
+```
 
 ```bash
 # Development workflow
