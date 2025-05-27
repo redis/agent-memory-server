@@ -204,6 +204,7 @@ ENABLE_NER=true
 
 ## Development Workflow
 
+0. **Install uv**: `pip install uv` to get started with uv
 1. **Setup**: `uv install` to install dependencies
 2. **Redis**: Start Redis Stack via `docker-compose up redis`
 3. **Development**: Use `DISABLE_AUTH=true` for local testing
