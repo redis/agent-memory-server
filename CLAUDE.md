@@ -29,7 +29,8 @@ docker-compose up redis      # Start only Redis Stack
 docker-compose down          # Stop all services
 ```
 
-Pre-commit hooks are configured and should be run before commits:
+IMPORTANT: This project uses `pre-commit`. You should run `pre-commit`
+before committing:
 ```bash
 uv run pre-commit run --all-files
 ```
