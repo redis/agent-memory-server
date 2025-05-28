@@ -90,21 +90,27 @@ def jwks_data():
         key_size=2048,
     )
 
-    # Convert to JWK format
-    rsa_key = RSAKey(key=key, algorithm="RS256")
-    jwk_dict = rsa_key.to_dict()
-    jwk_dict["kid"] = "test-kid-123"
-    jwk_dict["use"] = "sig"
-    jwk_dict["alg"] = "RS256"
-
+    # Convert to PEM format first
     private_pem = key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption(),
     )
 
+    # Convert to JWK format using PEM string
+    rsa_key = RSAKey(key=private_pem.decode("utf-8"), algorithm="RS256")
+    jwk_dict = rsa_key.to_dict()
+
+    # Remove private key components to make it a public-only JWK
+    public_jwk_dict = {
+        k: v for k, v in jwk_dict.items() if k not in ["d", "p", "q", "dp", "dq", "qi"]
+    }
+    public_jwk_dict["kid"] = "test-kid-123"
+    public_jwk_dict["use"] = "sig"
+    public_jwk_dict["alg"] = "RS256"
+
     return {
-        "keys": [jwk_dict],
+        "keys": [public_jwk_dict],
         "private_key": private_pem.decode("utf-8"),
         "kid": "test-kid-123",
     }
@@ -181,9 +187,10 @@ class TestJWKSCache:
             mock_response.json.return_value = {"keys": jwks_data["keys"]}
             mock_response.raise_for_status.return_value = None
 
-            mock_context = Mock()
-            mock_context.__enter__.return_value.get.return_value = mock_response
-            mock_client.return_value = mock_context
+            mock_client.return_value.__enter__.return_value.get.return_value = (
+                mock_response
+            )
+            mock_client.return_value.__exit__.return_value = None
 
             result = cache.get_jwks(jwks_url)
 
@@ -216,9 +223,10 @@ class TestJWKSCache:
             mock_response.json.return_value = {"keys": jwks_data["keys"]}
             mock_response.raise_for_status.return_value = None
 
-            mock_context = Mock()
-            mock_context.__enter__.return_value.get.return_value = mock_response
-            mock_client.return_value = mock_context
+            mock_client.return_value.__enter__.return_value.get.return_value = (
+                mock_response
+            )
+            mock_client.return_value.__exit__.return_value = None
 
             result = cache.get_jwks("https://test-issuer.com/.well-known/jwks.json")
 
@@ -232,11 +240,11 @@ class TestJWKSCache:
         jwks_url = "https://test-issuer.com/.well-known/jwks.json"
 
         with patch("httpx.Client") as mock_client:
-            mock_context = Mock()
-            mock_context.__enter__.return_value.get.side_effect = httpx.HTTPError(
-                "Connection failed"
-            )
-            mock_client.return_value = mock_context
+            mock_response = Mock()
+            mock_response.get.side_effect = httpx.HTTPError("Connection failed")
+
+            mock_client.return_value.__enter__.return_value = mock_response
+            mock_client.return_value.__exit__.return_value = None
 
             with pytest.raises(HTTPException) as exc_info:
                 cache.get_jwks(jwks_url)
@@ -407,8 +415,8 @@ class TestJWTVerification:
             # Extract public key from JWKS data
             from jose.jwk import RSAKey
 
-            rsa_key = RSAKey(jwks_data["keys"][0])
-            mock_get_key.return_value = rsa_key.to_pem()
+            rsa_key = RSAKey(jwks_data["keys"][0], algorithm="RS256")
+            mock_get_key.return_value = rsa_key.to_pem().decode("utf-8")
 
             result = verify_jwt(valid_token)
 
@@ -437,8 +445,8 @@ class TestJWTVerification:
         with patch("agent_memory_server.auth.get_public_key") as mock_get_key:
             from jose.jwk import RSAKey
 
-            rsa_key = RSAKey(jwks_data["keys"][0])
-            mock_get_key.return_value = rsa_key.to_pem()
+            rsa_key = RSAKey(jwks_data["keys"][0], algorithm="RS256")
+            mock_get_key.return_value = rsa_key.to_pem().decode("utf-8")
 
             with pytest.raises(HTTPException) as exc_info:
                 verify_jwt(expired_token)
@@ -470,8 +478,8 @@ class TestJWTVerification:
         with patch("agent_memory_server.auth.get_public_key") as mock_get_key:
             from jose.jwk import RSAKey
 
-            rsa_key = RSAKey(jwks_data["keys"][0])
-            mock_get_key.return_value = rsa_key.to_pem()
+            rsa_key = RSAKey(jwks_data["keys"][0], algorithm="RS256")
+            mock_get_key.return_value = rsa_key.to_pem().decode("utf-8")
 
             with pytest.raises(HTTPException) as exc_info:
                 verify_jwt(future_token)
@@ -503,8 +511,8 @@ class TestJWTVerification:
         with patch("agent_memory_server.auth.get_public_key") as mock_get_key:
             from jose.jwk import RSAKey
 
-            rsa_key = RSAKey(jwks_data["keys"][0])
-            mock_get_key.return_value = rsa_key.to_pem()
+            rsa_key = RSAKey(jwks_data["keys"][0], algorithm="RS256")
+            mock_get_key.return_value = rsa_key.to_pem().decode("utf-8")
 
             with pytest.raises(HTTPException) as exc_info:
                 verify_jwt(wrong_aud_token)
@@ -536,8 +544,8 @@ class TestJWTVerification:
         with patch("agent_memory_server.auth.get_public_key") as mock_get_key:
             from jose.jwk import RSAKey
 
-            rsa_key = RSAKey(jwks_data["keys"][0])
-            mock_get_key.return_value = rsa_key.to_pem()
+            rsa_key = RSAKey(jwks_data["keys"][0], algorithm="RS256")
+            mock_get_key.return_value = rsa_key.to_pem().decode("utf-8")
 
             result = verify_jwt(list_aud_token)
             assert result.sub == "test-user-123"
@@ -565,8 +573,8 @@ class TestJWTVerification:
         with patch("agent_memory_server.auth.get_public_key") as mock_get_key:
             from jose.jwk import RSAKey
 
-            rsa_key = RSAKey(jwks_data["keys"][0])
-            mock_get_key.return_value = rsa_key.to_pem()
+            rsa_key = RSAKey(jwks_data["keys"][0], algorithm="RS256")
+            mock_get_key.return_value = rsa_key.to_pem().decode("utf-8")
 
             with pytest.raises(HTTPException) as exc_info:
                 verify_jwt(no_sub_token)
@@ -599,8 +607,8 @@ class TestJWTVerification:
         with patch("agent_memory_server.auth.get_public_key") as mock_get_key:
             from jose.jwk import RSAKey
 
-            rsa_key = RSAKey(jwks_data["keys"][0])
-            mock_get_key.return_value = rsa_key.to_pem()
+            rsa_key = RSAKey(jwks_data["keys"][0], algorithm="RS256")
+            mock_get_key.return_value = rsa_key.to_pem().decode("utf-8")
 
             result = verify_jwt(scope_str_token)
             assert result.scope is None
@@ -630,8 +638,8 @@ class TestJWTVerification:
         with patch("agent_memory_server.auth.get_public_key") as mock_get_key:
             from jose.jwk import RSAKey
 
-            rsa_key = RSAKey(jwks_data["keys"][0])
-            mock_get_key.return_value = rsa_key.to_pem()
+            rsa_key = RSAKey(jwks_data["keys"][0], algorithm="RS256")
+            mock_get_key.return_value = rsa_key.to_pem().decode("utf-8")
 
             result = verify_jwt(roles_str_token)
             assert result.roles == ["admin"]
@@ -659,8 +667,8 @@ class TestJWTVerification:
         with patch("agent_memory_server.auth.get_public_key") as mock_get_key:
             from jose.jwk import RSAKey
 
-            rsa_key = RSAKey(jwks_data["keys"][0])
-            mock_get_key.return_value = rsa_key.to_pem()
+            rsa_key = RSAKey(jwks_data["keys"][0], algorithm="RS256")
+            mock_get_key.return_value = rsa_key.to_pem().decode("utf-8")
 
             result = verify_jwt(no_aud_token)
             assert result.sub == "test-user-123"
@@ -948,8 +956,8 @@ class TestIntegrationScenarios:
         with patch("agent_memory_server.auth.get_public_key") as mock_get_key:
             from jose.jwk import RSAKey
 
-            rsa_key = RSAKey(jwks_data["keys"][0])
-            mock_get_key.return_value = rsa_key.to_pem()
+            rsa_key = RSAKey(jwks_data["keys"][0], algorithm="RS256")
+            mock_get_key.return_value = rsa_key.to_pem().decode("utf-8")
 
             result = verify_jwt(auth0_token)
 
@@ -994,8 +1002,8 @@ class TestIntegrationScenarios:
         with patch("agent_memory_server.auth.get_public_key") as mock_get_key:
             from jose.jwk import RSAKey
 
-            rsa_key = RSAKey(jwks_data["keys"][0])
-            mock_get_key.return_value = rsa_key.to_pem()
+            rsa_key = RSAKey(jwks_data["keys"][0], algorithm="RS256")
+            mock_get_key.return_value = rsa_key.to_pem().decode("utf-8")
 
             result = verify_jwt(cognito_token)
 
@@ -1079,11 +1087,11 @@ class TestErrorHandling:
         cache = JWKSCache()
 
         with patch("httpx.Client") as mock_client:
-            mock_context = Mock()
-            mock_context.__enter__.return_value.get.side_effect = (
-                httpx.TimeoutException("Timeout")
-            )
-            mock_client.return_value = mock_context
+            mock_response = Mock()
+            mock_response.get.side_effect = httpx.TimeoutException("Timeout")
+
+            mock_client.return_value.__enter__.return_value = mock_response
+            mock_client.return_value.__exit__.return_value = None
 
             with pytest.raises(HTTPException) as exc_info:
                 cache.get_jwks("https://test-issuer.com/.well-known/jwks.json")
@@ -1121,9 +1129,8 @@ class TestErrorHandling:
             mock_response.json.side_effect = json.JSONDecodeError("Invalid JSON", "", 0)
             mock_response.raise_for_status.return_value = None
 
-            mock_context = Mock()
-            mock_context.__enter__.return_value.get.return_value = mock_response
-            mock_client.return_value = mock_context
+            mock_client.return_value.__enter__.return_value = mock_response
+            mock_client.return_value.__exit__.return_value = None
 
             with pytest.raises(HTTPException) as exc_info:
                 cache.get_jwks("https://test-issuer.com/.well-known/jwks.json")
@@ -1147,9 +1154,10 @@ class TestErrorHandling:
             mock_response.json.return_value = large_jwks
             mock_response.raise_for_status.return_value = None
 
-            mock_context = Mock()
-            mock_context.__enter__.return_value.get.return_value = mock_response
-            mock_client.return_value = mock_context
+            mock_client.return_value.__enter__.return_value.get.return_value = (
+                mock_response
+            )
+            mock_client.return_value.__exit__.return_value = None
 
             # Should handle large responses gracefully
             result = cache.get_jwks("https://test-issuer.com/.well-known/jwks.json")

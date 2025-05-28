@@ -18,7 +18,7 @@ logger = structlog.get_logger()
 
 class UserInfo(BaseModel):
     sub: str
-    aud: str | None = None
+    aud: str | list[str] | None = None
     scope: str | None = None
     exp: int | None = None
     iat: int | None = None
@@ -128,7 +128,8 @@ def get_public_key(token: str) -> str:
     for key in keys:
         if key.get("kid") == kid:
             try:
-                public_key = jwk.construct(key).to_pem()
+                public_key_bytes = jwk.construct(key).to_pem()
+                public_key = public_key_bytes.decode("utf-8")
                 break
             except Exception as e:
                 logger.error("Failed to construct public key", kid=kid, error=str(e))
