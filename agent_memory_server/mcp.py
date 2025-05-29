@@ -176,6 +176,46 @@ async def create_long_term_memories(
 
     This tool saves memories contained in the payload for future retrieval.
 
+    MEMORY TYPES - SEMANTIC vs EPISODIC:
+
+    There are two main types of long-term memories you can create:
+
+    1. **SEMANTIC MEMORIES** (memory_type="semantic"):
+       - General facts, knowledge, and user preferences that are timeless
+       - Information that remains relevant across multiple conversations
+       - User preferences, settings, and general knowledge
+       - Examples:
+         * "User prefers dark mode in all applications"
+         * "User is a data scientist working with Python"
+         * "User dislikes spicy food"
+         * "The company's API rate limit is 1000 requests per hour"
+
+    2. **EPISODIC MEMORIES** (memory_type="episodic"):
+       - Specific events, experiences, or time-bound information
+       - Things that happened at a particular time or in a specific context
+       - MUST have a time dimension to be truly episodic
+       - Should include an event_date when the event occurred
+       - Examples:
+         * "User visited Paris last month and had trouble with the metro"
+         * "User reported a login bug on January 15th, 2024"
+         * "User completed the onboarding process yesterday"
+         * "User mentioned they're traveling to Tokyo next week"
+
+    WHEN TO USE EACH TYPE:
+
+    Use SEMANTIC for:
+    - User preferences and settings
+    - Skills, roles, and background information
+    - General facts and knowledge
+    - Persistent user characteristics
+    - System configuration and rules
+
+    Use EPISODIC for:
+    - Specific events and experiences
+    - Time-bound activities and plans
+    - Historical interactions and outcomes
+    - Contextual information tied to specific moments
+
     IMPORTANT NOTES ON SESSION IDs:
     - When including a session_id, use the EXACT session identifier from the current conversation
     - NEVER invent or guess a session ID - if you don't know it, omit the field
@@ -183,35 +223,71 @@ async def create_long_term_memories(
 
     COMMON USAGE PATTERNS:
 
-    1. Basic memory creation:
+    1. Create semantic memories (user preferences):
     ```python
     create_long_term_memories(
         memories=[
-          {
-            "text": "The user prefers dark mode in all applications",
-            "user_id": "user_789",
-            "namespace": "user_preferences",
-            "topics": ["preferences", "ui"],
-          }
+            {
+                "text": "User prefers dark mode in all applications",
+                "memory_type": "semantic",
+                "user_id": "user_789",
+                "namespace": "user_preferences",
+                "topics": ["preferences", "ui", "theme"]
+            }
         ]
     )
     ```
 
-    2. Create multiple memories at once:
+    2. Create episodic memories (specific events):
     ```python
     create_long_term_memories(
         memories=[
-            {"text": "Memory 1"},
-            {"text": "Memory 2"},
+            {
+                "text": "User reported login issues during morning session",
+                "memory_type": "episodic",
+                "event_date": "2024-01-15T09:30:00Z",  # Semantic memories must have an event_date!
+                "user_id": "user_789",
+                "topics": ["bug_report", "authentication"],
+                "entities": ["login", "authentication_system"]
+            }
         ]
     )
+    ```
 
-    3. Create memories with different namespaces:
+    3. Create multiple memories of different types:
     ```python
     create_long_term_memories(
         memories=[
-            {"text": "Memory 1", "namespace": "user_preferences"},
-            {"text": "Memory 2", "namespace": "user_settings"},
+            {
+                "text": "User is a Python developer",
+                "memory_type": "semantic",
+                "topics": ["skills", "programming"]
+            },
+            {
+                "text": "User completed Python certification course last week",
+                "memory_type": "episodic",
+                "event_date": "2024-01-10T00:00:00Z",
+                "topics": ["education", "achievement"]
+            }
+        ]
+    )
+    ```
+
+    4. Create memories with different namespaces:
+    ```python
+    create_long_term_memories(
+        memories=[
+            {
+                "text": "User prefers email notifications",
+                "memory_type": "semantic",
+                "namespace": "user_preferences"
+            },
+            {
+                "text": "System maintenance scheduled for next weekend",
+                "memory_type": "episodic",
+                "namespace": "system_events",
+                "event_date": "2024-01-20T02:00:00Z"
+            }
         ]
     )
     ```

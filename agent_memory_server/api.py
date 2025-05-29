@@ -4,6 +4,7 @@ from mcp.server.fastmcp.prompts import base
 from mcp.types import TextContent
 
 from agent_memory_server import long_term_memory, messages, working_memory
+from agent_memory_server.auth import UserInfo, get_current_user
 from agent_memory_server.config import settings
 from agent_memory_server.dependencies import get_background_tasks
 from agent_memory_server.llms import get_model_client, get_model_config
@@ -53,6 +54,7 @@ def _get_effective_window_size(
 @router.get("/sessions/", response_model=SessionListResponse)
 async def list_sessions(
     options: GetSessionsQuery = Depends(),
+    current_user: UserInfo = Depends(get_current_user),
 ):
     """
     Get a list of session IDs, with optional pagination.
@@ -85,6 +87,7 @@ async def get_session_memory(
     window_size: int = settings.window_size,
     model_name: ModelNameLiteral | None = None,
     context_window_max: int | None = None,
+    current_user: UserInfo = Depends(get_current_user),
 ):
     """
     Get working memory for a session.
@@ -220,6 +223,7 @@ async def put_session_memory(
     session_id: str,
     memory: WorkingMemory,
     background_tasks=Depends(get_background_tasks),
+    current_user: UserInfo = Depends(get_current_user),
 ):
     """
     Set working memory for a session. Replaces existing working memory.
@@ -294,6 +298,7 @@ async def put_session_memory(
 async def delete_session_memory(
     session_id: str,
     namespace: str | None = None,
+    current_user: UserInfo = Depends(get_current_user),
 ):
     """
     Delete working memory for a session.
@@ -323,6 +328,7 @@ async def delete_session_memory(
 async def create_long_term_memory(
     payload: CreateMemoryRecordRequest,
     background_tasks=Depends(get_background_tasks),
+    current_user: UserInfo = Depends(get_current_user),
 ):
     """
     Create a long-term memory
@@ -357,7 +363,10 @@ async def create_long_term_memory(
 
 
 @router.post("/long-term-memory/search", response_model=MemoryRecordResultsResponse)
-async def search_long_term_memory(payload: SearchRequest):
+async def search_long_term_memory(
+    payload: SearchRequest,
+    current_user: UserInfo = Depends(get_current_user),
+):
     """
     Run a semantic search on long-term memory with filtering options.
 
@@ -391,7 +400,10 @@ async def search_long_term_memory(payload: SearchRequest):
 
 
 @router.post("/memory/search", response_model=MemoryRecordResultsResponse)
-async def search_memory(payload: SearchRequest):
+async def search_memory(
+    payload: SearchRequest,
+    current_user: UserInfo = Depends(get_current_user),
+):
     """
     Run a search across all memory types (working memory and long-term memory).
 
@@ -435,7 +447,10 @@ async def search_memory(payload: SearchRequest):
 
 
 @router.post("/memory-prompt", response_model=MemoryPromptResponse)
-async def memory_prompt(params: MemoryPromptRequest) -> MemoryPromptResponse:
+async def memory_prompt(
+    params: MemoryPromptRequest,
+    current_user: UserInfo = Depends(get_current_user),
+) -> MemoryPromptResponse:
     """
     Hydrate a user query with memory context and return a prompt
     ready to send to an LLM.

@@ -206,6 +206,13 @@ poetry.toml
 # LSP config files
 pyrightconfig.json
 
+# Security: Exclude files that may contain secrets
+.env-old
+auth0-test-config.env
+*.env.backup
+*.env.local
+*-config.env
+
 ### venv ###
 # Virtualenv
 # http://iamzed.com/2009/05/07/a-primer-on-virtualenv/
@@ -222,3 +229,5 @@ libs/redis/docs/.Trash*
 .idea/*
 .vscode/settings.json
 .cursor
+
+*.pyc

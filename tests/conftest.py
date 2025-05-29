@@ -386,6 +386,15 @@ def app_with_mock_background_tasks(use_test_redis_connection, mock_background_ta
     return app
 
 
+@pytest.fixture(autouse=True)
+def disable_auth_for_tests():
+    """Disable authentication for all tests"""
+    original_value = settings.disable_auth
+    settings.disable_auth = True
+    yield
+    settings.disable_auth = original_value
+
+
 @pytest.fixture()
 async def client(app):
     async with AsyncClient(
