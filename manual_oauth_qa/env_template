@@ -1,0 +1,42 @@
+# Auth0 Manual Testing Configuration Template
+# Copy this file to .env and update with your actual values
+
+# Redis Configuration
+REDIS_URL=redis://localhost:6379
+
+# Authentication Configuration (Auth0)
+DISABLE_AUTH=false
+OAUTH2_ISSUER_URL=https://your-domain.auth0.com/
+OAUTH2_AUDIENCE=https://api.redis-memory-server.com
+OAUTH2_ALGORITHMS=["RS256"]
+
+# Auth0 Client Credentials (get these from Auth0 Dashboard)
+AUTH0_CLIENT_ID=your-auth0-client-id
+AUTH0_CLIENT_SECRET=your-auth0-client-secret
+
+# Optional: Explicit JWKS URL (auto-derived from issuer if not set)
+# OAUTH2_JWKS_URL=https://your-domain.auth0.com/.well-known/jwks.json
+
+# AI Service API Keys
+OPENAI_API_KEY=your-openai-api-key-here
+ANTHROPIC_API_KEY=your-anthropic-api-key-here
+
+# Model Configuration
+GENERATION_MODEL=gpt-4o-mini
+EMBEDDING_MODEL=text-embedding-3-small
+
+# Memory Configuration
+LONG_TERM_MEMORY=true
+WINDOW_SIZE=20
+ENABLE_TOPIC_EXTRACTION=true
+ENABLE_NER=true
+
+# Logging
+LOG_LEVEL=DEBUG
+
+# Server Configuration
+PORT=8000
+MCP_PORT=9000
+
+# Background Tasks
+USE_DOCKET=true
