@@ -28,6 +28,56 @@ class Settings(BaseSettings):
     port: int = 8000
     mcp_port: int = 9000
 
+    # Long-term memory backend configuration
+    long_term_memory_backend: str = (
+        "redis"  # redis, chroma, pinecone, weaviate, qdrant, etc.
+    )
+
+    # Redis backend settings (existing)
+    # redis_url already defined above
+
+    # Chroma backend settings
+    chroma_host: str = "localhost"
+    chroma_port: int = 8000
+    chroma_collection_name: str = "agent_memory"
+    chroma_persist_directory: str | None = None
+
+    # Pinecone backend settings
+    pinecone_api_key: str | None = None
+    pinecone_environment: str | None = None
+    pinecone_index_name: str = "agent-memory"
+
+    # Weaviate backend settings
+    weaviate_url: str = "http://localhost:8080"
+    weaviate_api_key: str | None = None
+    weaviate_class_name: str = "AgentMemory"
+
+    # Qdrant backend settings
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_api_key: str | None = None
+    qdrant_collection_name: str = "agent_memory"
+
+    # Milvus backend settings
+    milvus_host: str = "localhost"
+    milvus_port: int = 19530
+    milvus_collection_name: str = "agent_memory"
+    milvus_user: str | None = None
+    milvus_password: str | None = None
+
+    # PostgreSQL/PGVector backend settings
+    postgres_url: str | None = None
+    postgres_table_name: str = "agent_memory"
+
+    # LanceDB backend settings
+    lancedb_uri: str = "./lancedb"
+    lancedb_table_name: str = "agent_memory"
+
+    # OpenSearch backend settings
+    opensearch_url: str = "http://localhost:9200"
+    opensearch_username: str | None = None
+    opensearch_password: str | None = None
+    opensearch_index_name: str = "agent-memory"
+
     # The server indexes messages in long-term memory by default. If this
     # setting is enabled, we also extract discrete memories from message text
     # and save them as separate long-term memory records.
@@ -45,7 +95,7 @@ class Settings(BaseSettings):
     ner_model: str = "dbmdz/bert-large-cased-finetuned-conll03-english"
     enable_ner: bool = True
 
-    # RedisVL Settings
+    # RedisVL Settings (kept for backwards compatibility)
     redisvl_distance_metric: str = "COSINE"
     redisvl_vector_dimensions: str = "1536"
     redisvl_index_name: str = "memory"

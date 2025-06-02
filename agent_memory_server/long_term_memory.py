@@ -3,12 +3,11 @@ import json
 import logging
 import time
 from datetime import UTC, datetime
-from functools import reduce
 from typing import Any
 
 from redis.asyncio import Redis
 from redis.commands.search.query import Query
-from redisvl.query import VectorQuery, VectorRangeQuery
+from redisvl.query import VectorRangeQuery
 from redisvl.utils.vectorize import OpenAITextVectorizer
 from ulid import ULID
 
@@ -44,6 +43,7 @@ from agent_memory_server.utils.redis import (
     get_search_index,
     safe_get,
 )
+from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
 
 
 DEFAULT_MEMORY_LIMIT = 1000
@@ -582,26 +582,26 @@ async def index_long_term_memories(
     llm_client: Any = None,
 ) -> None:
     """
-    Index long-term memories in Redis for search, with optional deduplication
+    Index long-term memories using the pluggable VectorStore adapter.
 
     Args:
         memories: List of long-term memories to index
-        redis_client: Optional Redis client to use. If None, a new connection will be created.
+        redis_client: Optional Redis client (kept for compatibility, may be unused depending on backend)
         deduplicate: Whether to deduplicate memories before indexing
         vector_distance_threshold: Threshold for semantic similarity
         llm_client: Optional LLM client for semantic merging
     """
-    redis = redis_client or await get_redis_conn()
-    model_client = (
-        llm_client or await get_model_client(model_name=settings.generation_model)
-        if deduplicate
-        else None
-    )
     background_tasks = get_background_tasks()
 
     # Process memories for deduplication if requested
     processed_memories = []
     if deduplicate:
+        # Get Redis client for deduplication operations (still needed for existing dedup logic)
+        redis = redis_client or await get_redis_conn()
+        model_client = llm_client or await get_model_client(
+            model_name=settings.generation_model
+        )
+
         for memory in memories:
             current_memory = memory
             was_deduplicated = False
@@ -653,65 +653,24 @@ async def index_long_term_memories(
         logger.info("All memories were duplicates, nothing to index")
         return
 
-    # Now proceed with indexing the processed memories
-    vectorizer = OpenAITextVectorizer()
-    embeddings = await vectorizer.aembed_many(
-        [memory.text for memory in processed_memories],
-        batch_size=20,
-        as_buffer=True,
-    )
+    # Get the VectorStore adapter and add memories
+    adapter = await get_vectorstore_adapter()
 
-    async with redis.pipeline(transaction=False) as pipe:
-        for idx, vector in enumerate(embeddings):
-            memory = processed_memories[idx]
-            id_ = memory.id_ if memory.id_ else str(ULID())
-            key = Keys.memory_key(id_, memory.namespace)
+    # Add memories to the vector store
+    try:
+        ids = await adapter.add_memories(processed_memories)
+        logger.info(f"Indexed {len(processed_memories)} memories with IDs: {ids}")
+    except Exception as e:
+        logger.error(f"Error indexing memories: {e}")
+        raise
 
-            # Generate memory hash for the memory
-            memory_hash = generate_memory_hash(
-                {
-                    "text": memory.text,
-                    "user_id": memory.user_id or "",
-                    "session_id": memory.session_id or "",
-                }
-            )
-            print("Memory hash: ", memory_hash)
+    # Schedule background tasks for topic/entity extraction
+    for memory in processed_memories:
+        memory_id = memory.id_ or str(ULID())
+        await background_tasks.add_task(
+            extract_memory_structure, memory_id, memory.text, memory.namespace
+        )
 
-            await pipe.hset(  # type: ignore
-                key,
-                mapping={
-                    "text": memory.text,
-                    "id_": id_,
-                    "session_id": memory.session_id or "",
-                    "user_id": memory.user_id or "",
-                    "last_accessed": int(memory.last_accessed.timestamp()),
-                    "created_at": int(memory.created_at.timestamp()),
-                    "updated_at": int(memory.updated_at.timestamp()),
-                    "namespace": memory.namespace or "",
-                    "memory_hash": memory_hash,  # Store the hash for aggregation
-                    "memory_type": memory.memory_type,
-                    "vector": vector,
-                    "discrete_memory_extracted": memory.discrete_memory_extracted,
-                    "id": memory.id or "",
-                    "persisted_at": int(memory.persisted_at.timestamp())
-                    if memory.persisted_at
-                    else 0,
-                    "extracted_from": ",".join(memory.extracted_from)
-                    if memory.extracted_from
-                    else "",
-                    "event_date": int(memory.event_date.timestamp())
-                    if memory.event_date
-                    else 0,
-                },
-            )
-
-            await background_tasks.add_task(
-                extract_memory_structure, id_, memory.text, memory.namespace
-            )
-
-        await pipe.execute()
-
-    logger.info(f"Indexed {len(processed_memories)} memories")
     if settings.enable_discrete_memory_extraction:
         # Extract discrete memories from the indexed messages and persist
         # them as separate long-term memory records. This process also
@@ -724,7 +683,7 @@ async def index_long_term_memories(
 
 async def search_long_term_memories(
     text: str,
-    redis: Redis,
+    redis: Redis | None = None,
     session_id: SessionId | None = None,
     user_id: UserId | None = None,
     namespace: Namespace | None = None,
@@ -739,172 +698,45 @@ async def search_long_term_memories(
     offset: int = 0,
 ) -> MemoryRecordResults:
     """
-    Search for long-term memories using vector similarity and filters.
+    Search for long-term memories using the pluggable VectorStore adapter.
+
+    Args:
+        text: Search query text
+        redis: Redis client (kept for compatibility but may be unused depending on backend)
+        session_id: Optional session ID filter
+        user_id: Optional user ID filter
+        namespace: Optional namespace filter
+        created_at: Optional created at filter
+        last_accessed: Optional last accessed filter
+        topics: Optional topics filter
+        entities: Optional entities filter
+        distance_threshold: Optional similarity threshold
+        memory_type: Optional memory type filter
+        event_date: Optional event date filter
+        limit: Maximum number of results
+        offset: Offset for pagination
+
+    Returns:
+        MemoryRecordResults containing matching memories
     """
-    vectorizer = OpenAITextVectorizer()
-    vector = await vectorizer.aembed(text)
-    filters = []
+    # Get the VectorStore adapter
+    adapter = await get_vectorstore_adapter()
 
-    if session_id:
-        filters.append(session_id.to_filter())
-    if user_id:
-        filters.append(user_id.to_filter())
-    if namespace:
-        filters.append(namespace.to_filter())
-    if created_at:
-        filters.append(created_at.to_filter())
-    if last_accessed:
-        filters.append(last_accessed.to_filter())
-    if topics:
-        filters.append(topics.to_filter())
-    if entities:
-        filters.append(entities.to_filter())
-    if memory_type:
-        filters.append(memory_type.to_filter())
-    if event_date:
-        filters.append(event_date.to_filter())
-    filter_expression = reduce(lambda x, y: x & y, filters) if filters else None
-
-    if distance_threshold is not None:
-        q = VectorRangeQuery(
-            vector=vector,
-            vector_field_name="vector",
-            distance_threshold=distance_threshold,
-            num_results=limit,
-            return_score=True,
-            return_fields=[
-                "text",
-                "id_",
-                "dist",
-                "created_at",
-                "last_accessed",
-                "user_id",
-                "session_id",
-                "namespace",
-                "topics",
-                "entities",
-                "memory_type",
-                "memory_hash",
-                "id",
-                "persisted_at",
-                "extracted_from",
-                "event_date",
-            ],
-        )
-    else:
-        q = VectorQuery(
-            vector=vector,
-            vector_field_name="vector",
-            num_results=limit,
-            return_score=True,
-            return_fields=[
-                "text",
-                "id_",
-                "dist",
-                "created_at",
-                "last_accessed",
-                "user_id",
-                "session_id",
-                "namespace",
-                "topics",
-                "entities",
-                "memory_type",
-                "memory_hash",
-                "id",
-                "persisted_at",
-                "extracted_from",
-                "event_date",
-            ],
-        )
-    if filter_expression:
-        q.set_filter(filter_expression)
-
-    q.paging(offset=offset, num=limit)
-
-    index = get_search_index(redis)
-    search_result = await index.query(q)
-
-    results = []
-    memory_hashes = []
-
-    for doc in search_result:
-        if safe_get(doc, "memory_hash") not in memory_hashes:
-            memory_hashes.append(safe_get(doc, "memory_hash"))
-        else:
-            continue
-
-        # NOTE: Because this may not be obvious. We index hashes, and we extract
-        # topics and entities separately from main long-term indexing. However,
-        # when we store the topics and entities, we store them as comma-separated
-        # strings in the hash. Our search index picks these up and indexes them
-        # in TAG fields, and we get them back as comma-separated strings.
-        doc_topics = safe_get(doc, "topics", [])
-        if isinstance(doc_topics, str):
-            doc_topics = doc_topics.split(",")  # type: ignore
-
-        doc_entities = safe_get(doc, "entities", [])
-        if isinstance(doc_entities, str):
-            doc_entities = doc_entities.split(",")  # type: ignore
-
-        # Handle extracted_from field
-        doc_extracted_from = safe_get(doc, "extracted_from", [])
-        if isinstance(doc_extracted_from, str) and doc_extracted_from:
-            doc_extracted_from = doc_extracted_from.split(",")  # type: ignore
-        elif not doc_extracted_from:
-            doc_extracted_from = []
-
-        # Handle event_date field
-        doc_event_date = safe_get(doc, "event_date", 0)
-        parsed_event_date = None
-        if doc_event_date and int(doc_event_date) != 0:
-            parsed_event_date = datetime.fromtimestamp(int(doc_event_date))
-
-        results.append(
-            MemoryRecordResult(
-                id_=safe_get(doc, "id_"),
-                text=safe_get(doc, "text", ""),
-                dist=float(safe_get(doc, "vector_distance", 0)),
-                created_at=datetime.fromtimestamp(int(safe_get(doc, "created_at", 0))),
-                updated_at=datetime.fromtimestamp(int(safe_get(doc, "updated_at", 0))),
-                last_accessed=datetime.fromtimestamp(
-                    int(safe_get(doc, "last_accessed", 0))
-                ),
-                user_id=safe_get(doc, "user_id"),
-                session_id=safe_get(doc, "session_id"),
-                namespace=safe_get(doc, "namespace"),
-                topics=doc_topics,
-                entities=doc_entities,
-                memory_hash=safe_get(doc, "memory_hash"),
-                memory_type=safe_get(doc, "memory_type", "message"),
-                id=safe_get(doc, "id"),
-                persisted_at=datetime.fromtimestamp(
-                    int(safe_get(doc, "persisted_at", 0))
-                )
-                if safe_get(doc, "persisted_at", 0) != 0
-                else None,
-                extracted_from=doc_extracted_from,
-                event_date=parsed_event_date,
-            )
-        )
-
-    # Handle different types of search_result - fix the linter error
-    total_results = len(results)
-    try:
-        # Check if search_result has a total attribute and use it
-        total_attr = getattr(search_result, "total", None)
-        if total_attr is not None:
-            total_results = int(total_attr)
-    except (AttributeError, TypeError):
-        # Fallback to list length if search_result is a list or doesn't have total
-        total_results = (
-            len(search_result) if isinstance(search_result, list) else len(results)
-        )
-
-    logger.info(f"Found {len(results)} results for query")
-    return MemoryRecordResults(
-        total=total_results,
-        memories=results,
-        next_offset=offset + limit if offset + limit < total_results else None,
+    # Delegate search to the adapter
+    return await adapter.search_memories(
+        query=text,
+        session_id=session_id,
+        user_id=user_id,
+        namespace=namespace,
+        created_at=created_at,
+        last_accessed=last_accessed,
+        topics=topics,
+        entities=entities,
+        memory_type=memory_type,
+        event_date=event_date,
+        distance_threshold=distance_threshold,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -1109,54 +941,26 @@ async def count_long_term_memories(
     """
     Count the total number of long-term memories matching the given filters.
 
+    Uses the pluggable VectorStore adapter instead of direct Redis calls.
+
     Args:
         namespace: Optional namespace filter
         user_id: Optional user ID filter
         session_id: Optional session ID filter
-        redis_client: Optional Redis client
+        redis_client: Optional Redis client (kept for compatibility)
 
     Returns:
         Total count of memories matching filters
     """
-    # TODO: Use RedisVL here.
-    if not redis_client:
-        redis_client = await get_redis_conn()
+    # Get the VectorStore adapter
+    adapter = await get_vectorstore_adapter()
 
-    # Build filters for the query
-    filters = []
-    if namespace:
-        filters.append(f"@namespace:{{{namespace}}}")
-    if user_id:
-        filters.append(f"@user_id:{{{user_id}}}")
-    if session_id:
-        filters.append(f"@session_id:{{{session_id}}}")
-
-    filter_str = " ".join(filters) if filters else "*"
-
-    # Execute a search to get the total count
-    index_name = Keys.search_index_name()
-    query = f"FT.SEARCH {index_name} {filter_str} LIMIT 0 0"
-
-    try:
-        # First try to check if the index exists
-        try:
-            await redis_client.execute_command(f"FT.INFO {index_name}")
-        except Exception as info_e:
-            if "unknown index name" in str(info_e).lower():
-                # Index doesn't exist, create it
-                logger.info(f"Search index {index_name} doesn't exist, creating it")
-                await ensure_search_index_exists(redis_client)
-            else:
-                logger.warning(f"Error checking index: {info_e}")
-
-        result = await redis_client.execute_command(query)
-        # First element in the result is the total count
-        if result and len(result) > 0:
-            return result[0]
-        return 0
-    except Exception as e:
-        logger.error(f"Error counting memories: {e}")
-        return 0
+    # Delegate to the adapter
+    return await adapter.count_memories(
+        namespace=namespace,
+        user_id=user_id,
+        session_id=session_id,
+    )
 
 
 async def deduplicate_by_hash(

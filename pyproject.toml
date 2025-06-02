@@ -15,6 +15,7 @@ dependencies = [
     "anthropic>=0.15.0",
     "bertopic<0.17.0,>=0.16.4",
     "fastapi>=0.115.11",
+    "langchain-core>=0.3.0",
     "mcp>=1.6.0",
     "python-ulid>=3.0.0",
     "numba>=0.60.0",
@@ -36,6 +37,8 @@ dependencies = [
     "httpx>=0.25.0",
     "PyYAML>=6.0",
     "cryptography>=3.4.8",
+    "langchain-openai>=0.3.18",
+    "langchain-redis>=0.2.1",
 ]
 
 [project.scripts]
@@ -126,3 +129,29 @@ dev = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+
+[project.optional-dependencies]
+# VectorStore backends
+chroma = ["chromadb>=0.4.0"]
+pinecone = ["pinecone-client>=5.0.0"]
+weaviate = ["weaviate-client>=4.9.0"]
+qdrant = ["qdrant-client>=1.12.0"]
+milvus = ["pymilvus>=2.5.0"]
+pgvector = ["psycopg2-binary>=2.9.0", "langchain-postgres>=0.0.1"]
+lancedb = ["lancedb>=0.15.0"]
+opensearch = ["opensearch-py>=2.7.0"]
+# Keep Redis as the default
+redis = ["langchain-redis>=0.1.0"]
+# Install all backends
+all = [
+    "chromadb>=0.4.0",
+    "pinecone-client>=5.0.0",
+    "weaviate-client>=4.9.0",
+    "qdrant-client>=1.12.0",
+    "pymilvus>=2.5.0",
+    "psycopg2-binary>=2.9.0",
+    "langchain-postgres>=0.0.1",
+    "lancedb>=0.15.0",
+    "opensearch-py>=2.7.0",
+    "langchain-redis>=0.1.0",
+]

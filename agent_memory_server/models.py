@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Literal
 
+import ulid
 from mcp.server.fastmcp.prompts import base
 from pydantic import BaseModel, Field
 
@@ -375,3 +376,9 @@ class UserMessage(base.Message):
 
 class MemoryPromptResponse(BaseModel):
     messages: list[base.Message | SystemMessage]
+
+
+class LenientMemoryRecord(MemoryRecord):
+    """A memory record that can be created without an ID"""
+
+    id: str | None = Field(default=str(ulid.ULID()))

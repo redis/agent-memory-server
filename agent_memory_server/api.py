@@ -88,7 +88,7 @@ async def get_session_memory(
     model_name: ModelNameLiteral | None = None,
     context_window_max: int | None = None,
     current_user: UserInfo = Depends(get_current_user),
-):
+) -> WorkingMemory:
     """
     Get working memory for a session.
 

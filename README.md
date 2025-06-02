@@ -15,6 +15,16 @@ A Redis-powered memory server built for AI agents and applications. It manages b
 - **Long-Term Memory**
 
   - Persistent storage for memories across sessions
+  - **Pluggable Vector Store Backends** - Support for multiple vector databases through LangChain VectorStore interface:
+    - **Redis** (default) - RedisStack with RediSearch
+    - **Chroma** - Open-source vector database
+    - **Pinecone** - Managed vector database service
+    - **Weaviate** - Open-source vector search engine
+    - **Qdrant** - Vector similarity search engine
+    - **Milvus** - Cloud-native vector database
+    - **PostgreSQL/PGVector** - PostgreSQL with vector extensions
+    - **LanceDB** - Embedded vector database
+    - **OpenSearch** - Open-source search and analytics suite
   - Semantic search to retrieve memories with advanced filtering system
   - Filter by session, namespace, topics, entities, timestamps, and more
   - Supports both exact match and semantic similarity search
@@ -81,6 +91,8 @@ For complete setup instructions, see [Getting Started Guide](docs/getting-starte
 Configure servers and workers using environment variables. Includes background task management, memory compaction, and data migrations.
 
 For complete configuration details, see [Configuration Guide](docs/configuration.md).
+
+For vector store backend options and setup, see [Vector Store Backends](docs/vector-store-backends.md).
 
 ## Development
 
