@@ -212,7 +212,9 @@ class TestLongTermMemory:
             patch(
                 "agent_memory_server.working_memory.get_working_memory"
             ) as mock_get_wm,
-            patch("agent_memory_server.messages.list_sessions") as mock_list_sessions,
+            patch(
+                "agent_memory_server.working_memory.list_sessions"
+            ) as mock_list_sessions,
         ):
             mock_search_lt.return_value = mock_long_term_results
             mock_get_wm.return_value = test_working_memory
