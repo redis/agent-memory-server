@@ -993,13 +993,13 @@ async def search_memories(
                 session_ids_to_search = [session_id.eq]
             else:
                 # Get all sessions for broader search
-                from agent_memory_server import messages
+                from agent_memory_server import working_memory
 
                 namespace_value = None
                 if namespace and hasattr(namespace, "eq"):
                     namespace_value = namespace.eq
 
-                _, session_ids_to_search = await messages.list_sessions(
+                _, session_ids_to_search = await working_memory.list_sessions(
                     redis=redis,
                     limit=1000,  # Get a reasonable number of sessions
                     offset=0,

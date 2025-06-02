@@ -23,6 +23,7 @@ from agent_memory_server.models import (
     MemoryRecord,
     MemoryRecordResult,
     MemoryRecordResultsResponse,
+    MemoryTypeEnum,
     SystemMessage,
     WorkingMemory,
     WorkingMemoryResponse,
@@ -113,7 +114,9 @@ async def test_session_lifecycle(memory_test_client: MemoryAPIClient):
         assert session.context == "This is a test session created by the API client."
 
     # Mock list sessions
-    with patch("agent_memory_server.messages.list_sessions") as mock_list_sessions:
+    with patch(
+        "agent_memory_server.working_memory.list_sessions"
+    ) as mock_list_sessions:
         mock_list_sessions.return_value = (1, [session_id])
 
         # Step 3: List sessions and verify our test session is included
@@ -149,13 +152,13 @@ async def test_long_term_memory(memory_test_client: MemoryAPIClient):
         MemoryRecord(
             text="User prefers dark mode",
             id="test-client-1",
-            memory_type="semantic",
+            memory_type=MemoryTypeEnum.SEMANTIC,
             user_id="user123",
         ),
         MemoryRecord(
             text="User is working on a Python project",
             id="test-client-2",
-            memory_type="episodic",
+            memory_type=MemoryTypeEnum.EPISODIC,
             user_id="user123",
         ),
     ]

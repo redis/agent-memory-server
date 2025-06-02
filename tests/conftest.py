@@ -18,7 +18,7 @@ from agent_memory_server.config import settings
 from agent_memory_server.dependencies import DocketBackgroundTasks, get_background_tasks
 from agent_memory_server.healthcheck import router as health_router
 from agent_memory_server.llms import OpenAIClientWrapper
-from agent_memory_server.messages import (
+from agent_memory_server.models import (
     MemoryMessage,
 )
 
