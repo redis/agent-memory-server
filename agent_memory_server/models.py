@@ -5,6 +5,7 @@ from typing import Literal
 
 from mcp.server.fastmcp.prompts import base
 from pydantic import BaseModel, Field
+from ulid import ULID
 
 from agent_memory_server.config import settings
 from agent_memory_server.filters import (
@@ -78,11 +79,8 @@ class SessionListResponse(BaseModel):
 class MemoryRecord(BaseModel):
     """A memory record"""
 
+    id: str = Field(description="Client-provided ID for deduplication and overwrites")
     text: str
-    id_: str | None = Field(
-        default=None,
-        description="Optional ID for the memory record",
-    )
     session_id: str | None = Field(
         default=None,
         description="Optional session ID for the memory record",
@@ -127,10 +125,6 @@ class MemoryRecord(BaseModel):
         default=MemoryTypeEnum.MESSAGE,
         description="Type of memory",
     )
-    id: str | None = Field(
-        default=None,
-        description="Client-provided ID for deduplication and overwrites",
-    )
     persisted_at: datetime | None = Field(
         default=None,
         description="Server-assigned timestamp when memory was persisted to long-term storage",
@@ -145,6 +139,15 @@ class MemoryRecord(BaseModel):
     )
 
 
+class ClientMemoryRecord(MemoryRecord):
+    """A memory record with a client-provided ID"""
+
+    id: str = Field(
+        default=str(ULID()),
+        description="Client-provided ID for deduplication and overwrites",
+    )
+
+
 class WorkingMemory(BaseModel):
     """Working memory for a session - contains both messages and structured memory records"""
 
@@ -153,7 +156,7 @@ class WorkingMemory(BaseModel):
         default_factory=list,
         description="Conversation messages (role/content pairs)",
     )
-    memories: list[MemoryRecord] = Field(
+    memories: list[MemoryRecord | ClientMemoryRecord] = Field(
         default_factory=list,
         description="Structured memory records for promotion to long-term storage",
     )

@@ -2,6 +2,7 @@ import tiktoken
 from fastapi import APIRouter, Depends, HTTPException
 from mcp.server.fastmcp.prompts import base
 from mcp.types import TextContent
+from ulid import ULID
 
 from agent_memory_server import long_term_memory, working_memory
 from agent_memory_server.auth import UserInfo, get_current_user
@@ -278,6 +279,7 @@ async def put_session_memory(
 
             memories = [
                 MemoryRecord(
+                    id=str(ULID()),
                     session_id=session_id,
                     text=f"{msg.role}: {msg.content}",
                     namespace=updated_memory.namespace,

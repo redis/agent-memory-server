@@ -182,14 +182,14 @@ async def test_long_term_memory(memory_test_client: MemoryAPIClient):
             total=2,
             memories=[
                 MemoryRecordResult(
-                    id_="1",
+                    id="result-1",
                     text="User prefers dark mode",
                     dist=0.1,
                     user_id="user123",
                     namespace="preferences",
                 ),
                 MemoryRecordResult(
-                    id_="2",
+                    id="result-2",
                     text="User likes coffee",
                     dist=0.2,
                     user_id="user123",

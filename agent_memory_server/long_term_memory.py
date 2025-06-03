@@ -494,7 +494,7 @@ async def compact_long_term_memories(
                         discrete_memory_extracted_value = "t"
 
                     memory_obj = MemoryRecord(
-                        id_=memory_id,
+                        id=memory_id,
                         text=str(memory_data.get("text", "")),
                         user_id=str(memory_data.get("user_id"))
                         if memory_data.get("user_id")
@@ -664,7 +664,7 @@ async def index_long_term_memories(
     async with redis.pipeline(transaction=False) as pipe:
         for idx, vector in enumerate(embeddings):
             memory = processed_memories[idx]
-            id_ = memory.id_ if memory.id_ else str(ULID())
+            id_ = memory.id if memory.id else str(ULID())
             key = Keys.memory_key(id_, memory.namespace)
 
             # Generate memory hash for the memory
@@ -861,7 +861,8 @@ async def search_long_term_memories(
 
         results.append(
             MemoryRecordResult(
-                id_=safe_get(doc, "id_"),
+                id=safe_get(doc, "id_")
+                or safe_get(doc, "id", ""),  # Use id_ or fallback to id
                 text=safe_get(doc, "text", ""),
                 dist=float(safe_get(doc, "vector_distance", 0)),
                 created_at=datetime.fromtimestamp(int(safe_get(doc, "created_at", 0))),
@@ -876,7 +877,6 @@ async def search_long_term_memories(
                 entities=doc_entities,
                 memory_hash=safe_get(doc, "memory_hash"),
                 memory_type=safe_get(doc, "memory_type", "message"),
-                id=safe_get(doc, "id"),
                 persisted_at=datetime.fromtimestamp(
                     int(safe_get(doc, "persisted_at", 0))
                 )
@@ -1049,7 +1049,7 @@ async def search_memories(
                             if text.lower() in memory.text.lower():
                                 working_memory_results.append(
                                     MemoryRecordResult(
-                                        id_=memory.id_ or "",
+                                        id=memory.id or "",  # Use id instead of id_
                                         text=memory.text,
                                         dist=0.0,  # No vector distance for working memory
                                         created_at=memory.created_at or 0,
@@ -1062,7 +1062,6 @@ async def search_memories(
                                         entities=memory.entities or [],
                                         memory_hash="",  # Working memory doesn't have hash
                                         memory_type=memory.memory_type,
-                                        id=memory.id,
                                         persisted_at=memory.persisted_at,
                                         event_date=memory.event_date,
                                     )
@@ -1427,7 +1426,7 @@ async def deduplicate_by_semantic_search(
 
             # Convert back to LongTermMemory
             merged_memory_obj = MemoryRecord(
-                id_=memory.id_ or str(ULID()),
+                id=memory.id or str(ULID()),
                 text=merged_memory["text"],
                 user_id=merged_memory["user_id"],
                 session_id=merged_memory["session_id"],

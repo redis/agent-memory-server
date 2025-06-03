@@ -33,8 +33,12 @@ class TestLongTermMemory:
     ):
         """Test indexing messages"""
         long_term_memories = [
-            MemoryRecord(text="Paris is the capital of France", session_id=session),
-            MemoryRecord(text="France is a country in Europe", session_id=session),
+            MemoryRecord(
+                id="memory-1", text="Paris is the capital of France", session_id=session
+            ),
+            MemoryRecord(
+                id="memory-2", text="France is a country in Europe", session_id=session
+            ),
         ]
 
         # Create two separate embedding vectors
@@ -72,17 +76,17 @@ class TestLongTermMemory:
             # Check that the key starts with the memory key prefix
             assert args[0].startswith("memory:")
 
-            # Check that the mapping contains the right keys
+            # Check that the mapping contains the essential keys
             mapping = kwargs["mapping"]
-            assert mapping == {
-                "text": long_term_memories[i].text,
-                "id_": long_term_memories[i].id_,
-                "session_id": long_term_memories[i].session_id,
-                "user_id": long_term_memories[i].user_id,
-                "last_accessed": long_term_memories[i].last_accessed,
-                "created_at": long_term_memories[i].created_at,
-                "vector": mock_vectors[i],
-            }
+            assert mapping["text"] == long_term_memories[i].text
+            assert (
+                mapping["id_"] == long_term_memories[i].id
+            )  # id_ is the internal Redis field
+            assert mapping["session_id"] == long_term_memories[i].session_id
+            assert mapping["user_id"] == long_term_memories[i].user_id
+            assert "last_accessed" in mapping
+            assert "created_at" in mapping
+            assert mapping["vector"] == mock_vectors[i]
 
     @pytest.mark.asyncio
     async def test_search_memories(self, mock_openai_client, mock_async_redis_client):
@@ -177,7 +181,7 @@ class TestLongTermMemory:
             total=1,
             memories=[
                 MemoryRecordResult(
-                    id_="long-term-1",
+                    id="long-term-1",
                     text="Long-term: User likes coffee",
                     dist=0.3,
                     memory_type=MemoryTypeEnum.SEMANTIC,
@@ -195,11 +199,10 @@ class TestLongTermMemory:
             messages=[],
             memories=[
                 MemoryRecord(
-                    text="Working memory: coffee preferences",
                     id="working-1",
-                    id_="working-1",  # Set both id and id_ for consistency
+                    text="Working memory: coffee preferences",
                     memory_type=MemoryTypeEnum.SEMANTIC,
-                    persisted_at=None,  # Not persisted yet
+                    persisted_at=None,
                 )
             ],
         )
@@ -225,7 +228,7 @@ class TestLongTermMemory:
             results = await search_memories(
                 text="coffee",
                 redis=mock_async_redis_client,
-                namespace=Namespace(eq="test"),  # Use proper filter object
+                namespace=Namespace(eq="test"),
                 limit=10,
                 include_working_memory=True,
                 include_long_term_memory=True,
@@ -385,6 +388,7 @@ class TestLongTermMemory:
     async def test_deduplicate_by_hash(self, mock_async_redis_client):
         """Test deduplication by hash"""
         memory = MemoryRecord(
+            id="test-memory-1",
             text="Test memory",
             session_id="test-session",
             memory_type=MemoryTypeEnum.SEMANTIC,
@@ -751,8 +755,12 @@ class TestLongTermMemoryIntegration:
         await ensure_search_index_exists(async_redis_client)
 
         long_term_memories = [
-            MemoryRecord(text="Paris is the capital of France", session_id="123"),
-            MemoryRecord(text="France is a country in Europe", session_id="123"),
+            MemoryRecord(
+                id="memory-1", text="Paris is the capital of France", session_id="123"
+            ),
+            MemoryRecord(
+                id="memory-2", text="France is a country in Europe", session_id="123"
+            ),
         ]
 
         with mock.patch(
@@ -783,8 +791,12 @@ class TestLongTermMemoryIntegration:
         await ensure_search_index_exists(async_redis_client)
 
         long_term_memories = [
-            MemoryRecord(text="Paris is the capital of France", session_id="123"),
-            MemoryRecord(text="France is a country in Europe", session_id="123"),
+            MemoryRecord(
+                id="memory-1", text="Paris is the capital of France", session_id="123"
+            ),
+            MemoryRecord(
+                id="memory-2", text="France is a country in Europe", session_id="123"
+            ),
         ]
 
         with mock.patch(

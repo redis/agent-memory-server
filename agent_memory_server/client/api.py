@@ -23,6 +23,7 @@ from agent_memory_server.filters import (
 )
 from agent_memory_server.models import (
     AckResponse,
+    ClientMemoryRecord,
     CreateMemoryRecordRequest,
     HealthCheckResponse,
     MemoryPromptRequest,
@@ -300,7 +301,7 @@ class MemoryAPIClient:
     async def add_memories_to_working_memory(
         self,
         session_id: str,
-        memories: list[MemoryRecord],
+        memories: list[ClientMemoryRecord | MemoryRecord],
         namespace: str | None = None,
         replace: bool = False,
     ) -> WorkingMemoryResponse:
@@ -368,7 +369,7 @@ class MemoryAPIClient:
         return await self.put_session_memory(session_id, working_memory)
 
     async def create_long_term_memory(
-        self, memories: list[MemoryRecord]
+        self, memories: list[ClientMemoryRecord | MemoryRecord]
     ) -> AckResponse:
         """
         Create long-term memories for later retrieval.

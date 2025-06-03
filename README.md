@@ -28,6 +28,8 @@ A Redis-powered memory server built for AI agents and applications. It manages b
   - Background task processing for memory indexing and promotion
   - Unified search across working memory and long-term memory
 
+For detailed information about memory types, their differences, and when to use each, see the [Memory Types Guide](docs/memory-types.md).
+
 ## Authentication
 
 The Redis Agent Memory Server supports OAuth2/JWT Bearer token authentication for secure API access. It's compatible with Auth0, AWS Cognito, Okta, Azure AD, and other standard OAuth2 providers.

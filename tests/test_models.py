@@ -125,9 +125,9 @@ class TestModels:
         """Test MemoryRecordResult model"""
         test_datetime = datetime(2023, 1, 1, tzinfo=UTC)
         result = MemoryRecordResult(
+            id="record-123",
             text="Paris is the capital of France",
             dist=0.75,
-            id_="123",
             session_id="session_id",
             user_id="user_id",
             last_accessed=test_datetime,

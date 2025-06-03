@@ -13,6 +13,7 @@ from agent_memory_server.models import (
     MemoryMessage,
     MemoryRecordResult,
     MemoryRecordResultsResponse,
+    MemoryTypeEnum,
     SessionListResponse,
     WorkingMemory,
     WorkingMemoryResponse,
@@ -324,8 +325,8 @@ class TestSearchEndpoint:
         mock_search.return_value = MemoryRecordResultsResponse(
             total=2,
             memories=[
-                MemoryRecordResult(id_="1", text="User: Hello, world!", dist=0.25),
-                MemoryRecordResult(id_="2", text="Assistant: Hi there!", dist=0.75),
+                MemoryRecordResult(id="1", text="User: Hello, world!", dist=0.25),
+                MemoryRecordResult(id="2", text="Assistant: Hi there!", dist=0.75),
             ],
             next_offset=None,
         )
@@ -347,12 +348,12 @@ class TestSearchEndpoint:
         assert len(data["memories"]) == 2
 
         # Check first result
-        assert data["memories"][0]["id_"] == "1"
+        assert data["memories"][0]["id"] == "1"
         assert data["memories"][0]["text"] == "User: Hello, world!"
         assert data["memories"][0]["dist"] == 0.25
 
         # Check second result
-        assert data["memories"][1]["id_"] == "2"
+        assert data["memories"][1]["id"] == "2"
         assert data["memories"][1]["text"] == "Assistant: Hi there!"
         assert data["memories"][1]["dist"] == 0.75
 
@@ -420,9 +421,9 @@ class TestMemoryPromptEndpoint:
         mock_search.return_value = MemoryRecordResultsResponse(
             total=2,
             memories=[
-                MemoryRecordResult(id_="1", text="User likes coffee", dist=0.25),
+                MemoryRecordResult(id="1", text="User likes coffee", dist=0.25),
                 MemoryRecordResult(
-                    id_="2", text="User is allergic to peanuts", dist=0.35
+                    id="2", text="User is allergic to peanuts", dist=0.35
                 ),
             ],
             next_offset=None,
@@ -483,7 +484,7 @@ class TestMemoryPromptEndpoint:
             total=1,
             memories=[
                 MemoryRecordResult(
-                    id_="1", text="User prefers gluten-free pasta", dist=0.3
+                    id="1", text="User prefers gluten-free pasta", dist=0.3
                 ),
             ],
             next_offset=None,
@@ -664,9 +665,9 @@ class TestLongTermMemoryEndpoint:
         }
 
         response = await client.post("/long-term-memory", json=payload)
-        assert response.status_code == 400
+        assert response.status_code == 422
         data = response.json()
-        assert "id is required" in data["detail"]
+        assert "Field required" in str(data["detail"])
 
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
@@ -700,24 +701,24 @@ class TestUnifiedSearchEndpoint:
             total=3,
             memories=[
                 MemoryRecordResult(
-                    id_="working-1",
+                    id="working-1",
                     text="Working memory: User prefers dark mode",
                     dist=0.0,
-                    memory_type="semantic",
+                    memory_type=MemoryTypeEnum.SEMANTIC,
                     persisted_at=None,  # Working memory
                 ),
                 MemoryRecordResult(
-                    id_="long-1",
+                    id="long-1",
                     text="Long-term: User likes coffee",
                     dist=0.25,
-                    memory_type="semantic",
+                    memory_type=MemoryTypeEnum.SEMANTIC,
                     persisted_at=datetime(2023, 1, 1, 0, 0, 0),  # Long-term memory
                 ),
                 MemoryRecordResult(
-                    id_="long-2",
+                    id="long-2",
                     text="Long-term: User is allergic to peanuts",
                     dist=0.35,
-                    memory_type="semantic",
+                    memory_type=MemoryTypeEnum.SEMANTIC,
                     persisted_at=datetime(2023, 1, 1, 1, 0, 0),  # Long-term memory
                 ),
             ],
@@ -744,18 +745,18 @@ class TestUnifiedSearchEndpoint:
         memories = data["memories"]
 
         # First result should be working memory (dist=0.0)
-        assert memories[0]["id_"] == "working-1"
+        assert memories[0]["id"] == "working-1"
         assert "Working memory" in memories[0]["text"]
         assert memories[0]["dist"] == 0.0
         assert memories[0]["persisted_at"] is None
 
         # Other results should be long-term memory
-        assert memories[1]["id_"] == "long-1"
+        assert memories[1]["id"] == "long-1"
         assert "Long-term" in memories[1]["text"]
         assert memories[1]["dist"] == 0.25
         assert memories[1]["persisted_at"] is not None
 
-        assert memories[2]["id_"] == "long-2"
+        assert memories[2]["id"] == "long-2"
         assert "Long-term" in memories[2]["text"]
         assert memories[2]["dist"] == 0.35
         assert memories[2]["persisted_at"] is not None
@@ -768,10 +769,10 @@ class TestUnifiedSearchEndpoint:
             total=1,
             memories=[
                 MemoryRecordResult(
-                    id_="filtered-1",
+                    id="filtered-1",
                     text="User's semantic preference",
                     dist=0.1,
-                    memory_type="semantic",
+                    memory_type=MemoryTypeEnum.SEMANTIC,
                     user_id="test-user",
                     session_id="test-session",
                 ),

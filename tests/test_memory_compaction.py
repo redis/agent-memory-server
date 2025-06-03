@@ -119,7 +119,7 @@ async def index_without_background(memories, redis_client):
     async with redis.pipeline(transaction=False) as pipe:
         for idx, vector in enumerate(embeddings):
             memory = memories[idx]
-            id_ = memory.id_ if memory.id_ else str(ulid.ULID())
+            id_ = memory.id if memory.id else str(ulid.ULID())
             key = Keys.memory_key(id_, memory.namespace)
 
             # Generate memory hash for the memory
@@ -170,8 +170,12 @@ async def test_hash_deduplication_integration(
     monkeypatch.setattr(ltm, "merge_memories_with_llm", dummy_merge)
 
     # Create two identical memories
-    mem1 = MemoryRecord(text="dup", user_id="u", session_id="s", namespace="n")
-    mem2 = MemoryRecord(text="dup", user_id="u", session_id="s", namespace="n")
+    mem1 = MemoryRecord(
+        id="dup-1", text="dup", user_id="u", session_id="s", namespace="n"
+    )
+    mem2 = MemoryRecord(
+        id="dup-2", text="dup", user_id="u", session_id="s", namespace="n"
+    )
     # Use our version without background tasks
     await index_without_background([mem1, mem2], redis_client=async_redis_client)
 
@@ -204,8 +208,12 @@ async def test_semantic_deduplication_integration(
     monkeypatch.setattr(ltm, "merge_memories_with_llm", dummy_merge)
 
     # Create two semantically similar but text-different memories
-    mem1 = MemoryRecord(text="apple", user_id="u", session_id="s", namespace="n")
-    mem2 = MemoryRecord(text="apple!", user_id="u", session_id="s", namespace="n")
+    mem1 = MemoryRecord(
+        id="apple-1", text="apple", user_id="u", session_id="s", namespace="n"
+    )
+    mem2 = MemoryRecord(
+        id="apple-2", text="apple!", user_id="u", session_id="s", namespace="n"
+    )  # Semantically similar
     # Use our version without background tasks
     await index_without_background([mem1, mem2], redis_client=async_redis_client)
 
@@ -237,11 +245,21 @@ async def test_full_compaction_integration(
     monkeypatch.setattr(ltm, "merge_memories_with_llm", dummy_merge)
 
     # Setup: two exact duplicates, two semantically similar, one unique
-    dup1 = MemoryRecord(text="dup", user_id="u", session_id="s", namespace="n")
-    dup2 = MemoryRecord(text="dup", user_id="u", session_id="s", namespace="n")
-    sim1 = MemoryRecord(text="x", user_id="u", session_id="s", namespace="n")
-    sim2 = MemoryRecord(text="x!", user_id="u", session_id="s", namespace="n")
-    uniq = MemoryRecord(text="unique", user_id="u", session_id="s", namespace="n")
+    dup1 = MemoryRecord(
+        id="dup-1", text="dup", user_id="u", session_id="s", namespace="n"
+    )
+    dup2 = MemoryRecord(
+        id="dup-2", text="dup", user_id="u", session_id="s", namespace="n"
+    )
+    sim1 = MemoryRecord(
+        id="sim-1", text="x", user_id="u", session_id="s", namespace="n"
+    )
+    sim2 = MemoryRecord(
+        id="sim-2", text="x!", user_id="u", session_id="s", namespace="n"
+    )
+    uniq = MemoryRecord(
+        id="uniq-1", text="unique", user_id="u", session_id="s", namespace="n"
+    )
     # Use our version without background tasks
     await index_without_background(
         [dup1, dup2, sim1, sim2, uniq], redis_client=async_redis_client
