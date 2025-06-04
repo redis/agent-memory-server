@@ -136,7 +136,7 @@ async def _summarize_working_memory(
     return updated_memory
 
 
-@router.get("/sessions/", response_model=SessionListResponse)
+@router.get("/v1/working-memory/", response_model=SessionListResponse)
 async def list_sessions(
     options: GetSessionsQuery = Depends(),
     current_user: UserInfo = Depends(get_current_user),
@@ -165,7 +165,7 @@ async def list_sessions(
     )
 
 
-@router.get("/sessions/{session_id}/memory", response_model=WorkingMemoryResponse)
+@router.get("/v1/working-memory/{session_id}", response_model=WorkingMemoryResponse)
 async def get_session_memory(
     session_id: str,
     namespace: str | None = None,
@@ -219,7 +219,7 @@ async def get_session_memory(
     return working_mem
 
 
-@router.put("/sessions/{session_id}/memory", response_model=WorkingMemoryResponse)
+@router.put("/v1/working-memory/{session_id}", response_model=WorkingMemoryResponse)
 async def put_session_memory(
     session_id: str,
     memory: WorkingMemory,
@@ -296,7 +296,7 @@ async def put_session_memory(
     return updated_memory
 
 
-@router.delete("/sessions/{session_id}/memory", response_model=AckResponse)
+@router.delete("/v1/working-memory/{session_id}", response_model=AckResponse)
 async def delete_session_memory(
     session_id: str,
     namespace: str | None = None,
@@ -326,7 +326,7 @@ async def delete_session_memory(
     return AckResponse(status="ok")
 
 
-@router.post("/long-term-memory", response_model=AckResponse)
+@router.post("/v1/long-term-memory/", response_model=AckResponse)
 async def create_long_term_memory(
     payload: CreateMemoryRecordRequest,
     background_tasks=Depends(get_background_tasks),
@@ -364,7 +364,7 @@ async def create_long_term_memory(
     return AckResponse(status="ok")
 
 
-@router.post("/long-term-memory/search", response_model=MemoryRecordResultsResponse)
+@router.post("/v1/long-term-memory/search", response_model=MemoryRecordResultsResponse)
 async def search_long_term_memory(
     payload: SearchRequest,
     current_user: UserInfo = Depends(get_current_user),
@@ -401,7 +401,7 @@ async def search_long_term_memory(
     return await long_term_memory.search_long_term_memories(**kwargs)
 
 
-@router.post("/memory/search", response_model=MemoryRecordResultsResponse)
+@router.post("/v1/memory/search", response_model=MemoryRecordResultsResponse)
 async def search_memory(
     payload: SearchRequest,
     current_user: UserInfo = Depends(get_current_user),
@@ -448,7 +448,7 @@ async def search_memory(
     return await long_term_memory.search_memories(**kwargs)
 
 
-@router.post("/memory-prompt", response_model=MemoryPromptResponse)
+@router.post("/v1/memory/prompt", response_model=MemoryPromptResponse)
 async def memory_prompt(
     params: MemoryPromptRequest,
     current_user: UserInfo = Depends(get_current_user),

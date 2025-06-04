@@ -64,7 +64,7 @@ OAUTH2_AUDIENCE=your-application-id
 # Make authenticated API request
 curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
      -H "Content-Type: application/json" \
-     http://localhost:8000/sessions/
+     http://localhost:8000/v1/working-memory/
 
 # Python example
 import httpx
@@ -74,7 +74,7 @@ headers = {
     "Content-Type": "application/json"
 }
 
-response = httpx.get("http://localhost:8000/sessions/", headers=headers)
+response = httpx.get("http://localhost:8000/v1/working-memory/", headers=headers)
 ```
 
 ### Development Mode (Local Testing)
@@ -85,7 +85,7 @@ export DISABLE_AUTH=true
 
 # Now you can make requests without tokens
 curl -H "Content-Type: application/json" \
-     http://localhost:8000/sessions/
+     http://localhost:8000/v1/working-memory/
 ```
 
 ## Token Requirements

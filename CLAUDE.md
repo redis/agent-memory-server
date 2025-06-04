@@ -191,10 +191,10 @@ ENABLE_NER=true
 ## API Interfaces
 
 ### REST API (Port 8000)
-- Session management (`/sessions/`)
-- Working memory operations (`/sessions/{id}/memory`)
-- Long-term memory search (`/memories/search`)
-- Memory hydration (`/memories/hydrate`)
+- Session management (`/v1/working-memory/`)
+- Working memory operations (`/v1/working-memory/{id}`)
+- Long-term memory search (`/v1/long-term-memory/search`)
+- Memory hydration (`/v1/memory/prompt`)
 
 ### MCP Server (Port 9000)
 - `create_long_term_memories` - Store persistent memories

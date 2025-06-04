@@ -116,7 +116,7 @@ class MemoryAPIClient:
         Returns:
             HealthCheckResponse with current server timestamp
         """
-        response = await self._client.get("/health")
+        response = await self._client.get("/v1/health")
         response.raise_for_status()
         return HealthCheckResponse(**response.json())
 
@@ -143,7 +143,7 @@ class MemoryAPIClient:
         elif self.config.default_namespace is not None:
             params["namespace"] = self.config.default_namespace
 
-        response = await self._client.get("/sessions/", params=params)
+        response = await self._client.get("/v1/working-memory/", params=params)
         response.raise_for_status()
         return SessionListResponse(**response.json())
 
@@ -188,7 +188,7 @@ class MemoryAPIClient:
             params["context_window_max"] = context_window_max
 
         response = await self._client.get(
-            f"/sessions/{session_id}/memory", params=params
+            f"/v1/working-memory/{session_id}", params=params
         )
         response.raise_for_status()
         return WorkingMemoryResponse(**response.json())
@@ -211,7 +211,7 @@ class MemoryAPIClient:
             memory.namespace = self.config.default_namespace
 
         response = await self._client.put(
-            f"/sessions/{session_id}/memory",
+            f"/v1/working-memory/{session_id}",
             json=memory.model_dump(exclude_none=True, mode="json"),
         )
         response.raise_for_status()
@@ -237,7 +237,7 @@ class MemoryAPIClient:
             params["namespace"] = self.config.default_namespace
 
         response = await self._client.delete(
-            f"/sessions/{session_id}/memory", params=params
+            f"/v1/working-memory/{session_id}", params=params
         )
         response.raise_for_status()
         return AckResponse(**response.json())
@@ -391,7 +391,8 @@ class MemoryAPIClient:
 
         payload = CreateMemoryRecordRequest(memories=memories)
         response = await self._client.post(
-            "/long-term-memory", json=payload.model_dump(exclude_none=True, mode="json")
+            "/v1/long-term-memory/",
+            json=payload.model_dump(exclude_none=True, mode="json"),
         )
         response.raise_for_status()
         return AckResponse(**response.json())
@@ -471,7 +472,7 @@ class MemoryAPIClient:
         )
 
         response = await self._client.post(
-            "/long-term-memory/search",
+            "/v1/long-term-memory/search",
             json=payload.model_dump(exclude_none=True, mode="json"),
         )
         response.raise_for_status()
@@ -566,7 +567,7 @@ class MemoryAPIClient:
         )
 
         response = await self._client.post(
-            "/memory/search",
+            "/v1/memory/search",
             json=payload.model_dump(exclude_none=True, mode="json"),
         )
         response.raise_for_status()
@@ -638,7 +639,7 @@ class MemoryAPIClient:
 
         # Make the API call
         response = await self._client.post(
-            "/memory-prompt", json=payload.model_dump(exclude_none=True, mode="json")
+            "/v1/memory/prompt", json=payload.model_dump(exclude_none=True, mode="json")
         )
         response.raise_for_status()
         data = response.json()
@@ -761,7 +762,7 @@ class MemoryAPIClient:
 
         # Make the API call
         response = await self._client.post(
-            "/memory-prompt", json=payload.model_dump(exclude_none=True, mode="json")
+            "/v1/memory/prompt", json=payload.model_dump(exclude_none=True, mode="json")
         )
         response.raise_for_status()
         data = response.json()

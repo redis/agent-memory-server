@@ -2,7 +2,7 @@
 
 The following endpoints are available:
 
-- **GET /health**
+- **GET /v1/health**
   A simple health check endpoint returning the current server time.
   Example Response:
 
@@ -10,7 +10,7 @@ The following endpoints are available:
   { "now": 1616173200 }
   ```
 
-- **GET /sessions/**
+- **GET /v1/working-memory/**
   Retrieves a paginated list of session IDs.
   _Query Parameters:_
 
@@ -18,7 +18,7 @@ The following endpoints are available:
   - `offset` (int): Number of sessions to skip (default: 0)
   - `namespace` (string, optional): Filter sessions by namespace.
 
-- **GET /sessions/{session_id}/memory**
+- **GET /v1/working-memory/{session_id}**
   Retrieves working memory for a session, including messages, structured memories,
   context, and metadata.
   _Query Parameters:_
@@ -28,7 +28,7 @@ The following endpoints are available:
   - `model_name` (string, optional): The client's LLM model name to determine appropriate context window size
   - `context_window_max` (int, optional): Direct specification of max context window tokens (overrides model_name)
 
-- **PUT /sessions/{session_id}/memory**
+- **PUT /v1/working-memory/{session_id}**
   Sets working memory for a session, replacing any existing memory.
   Automatically summarizes conversations that exceed the window size.
   _Request Body Example:_
@@ -52,10 +52,10 @@ The following endpoints are available:
   }
   ```
 
-- **DELETE /sessions/{session_id}/memory**
+- **DELETE /v1/working-memory/{session_id}**
   Deletes all working memory (messages, context, structured memories, metadata) for a session.
 
-- **POST /long-term-memory**
+- **POST /v1/long-term-memory/**
   Creates long-term memories directly, bypassing working memory.
   _Request Body Example:_
 
@@ -73,7 +73,7 @@ The following endpoints are available:
   }
   ```
 
-- **POST /long-term-memory/search**
+- **POST /v1/long-term-memory/search**
   Performs vector search on long-term memories with advanced filtering options.
   _Request Body Example:_
 
@@ -92,7 +92,7 @@ The following endpoints are available:
   }
   ```
 
-- **POST /memory-prompt**
+- **POST /v1/memory/prompt**
   Generates prompts enriched with relevant memory context from both working
   memory and long-term memory. Useful for retrieving context before answering questions.
   _Request Body Example:_

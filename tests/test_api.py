@@ -44,7 +44,7 @@ class TestHealthEndpoint:
     @pytest.mark.asyncio
     async def test_health_endpoint(self, client):
         """Test the health endpoint"""
-        response = await client.get("/health")
+        response = await client.get("/v1/health")
 
         assert response.status_code == 200
 
@@ -56,7 +56,7 @@ class TestHealthEndpoint:
 class TestMemoryEndpoints:
     async def test_list_sessions_empty(self, client):
         """Test the list_sessions endpoint with no sessions"""
-        response = await client.get("/sessions/?offset=0&limit=10")
+        response = await client.get("/v1/working-memory/?offset=0&limit=10")
 
         assert response.status_code == 200
 
@@ -68,7 +68,7 @@ class TestMemoryEndpoints:
     async def test_list_sessions_with_sessions(self, client, session):
         """Test the list_sessions endpoint with a session"""
         response = await client.get(
-            "/sessions/?offset=0&limit=10&namespace=test-namespace"
+            "/v1/working-memory/?offset=0&limit=10&namespace=test-namespace"
         )
         assert response.status_code == 200
 
@@ -82,7 +82,7 @@ class TestMemoryEndpoints:
         session_id = session
 
         response = await client.get(
-            f"/sessions/{session_id}/memory?namespace=test-namespace"
+            f"/v1/working-memory/{session_id}?namespace=test-namespace"
         )
 
         assert response.status_code == 200
@@ -120,7 +120,7 @@ class TestMemoryEndpoints:
             "session_id": "test-session",
         }
 
-        response = await client.put("/sessions/test-session/memory", json=payload)
+        response = await client.put("/v1/working-memory/test-session", json=payload)
 
         assert response.status_code == 200
 
@@ -138,7 +138,7 @@ class TestMemoryEndpoints:
 
         # Verify we can still retrieve the session memory
         updated_session = await client.get(
-            "/sessions/test-session/memory?namespace=test-namespace"
+            "/v1/working-memory/test-session?namespace=test-namespace"
         )
         assert updated_session.status_code == 200
         assert updated_session.json()["messages"] == payload["messages"]
@@ -163,7 +163,7 @@ class TestMemoryEndpoints:
         mock_settings = Settings(long_term_memory=True)
 
         with patch("agent_memory_server.api.settings", mock_settings):
-            response = await client.put("/sessions/test-session/memory", json=payload)
+            response = await client.put("/v1/working-memory/test-session", json=payload)
 
         assert response.status_code == 200
 
@@ -206,7 +206,7 @@ class TestMemoryEndpoints:
         mock_settings = Settings(long_term_memory=True)
 
         with patch("agent_memory_server.api.settings", mock_settings):
-            response = await client.put("/sessions/test-session/memory", json=payload)
+            response = await client.put("/v1/working-memory/test-session", json=payload)
 
         assert response.status_code == 200
 
@@ -266,7 +266,7 @@ class TestMemoryEndpoints:
             )
             mock_summarize.return_value = mock_summarized_memory
 
-            response = await client.put("/sessions/test-session/memory", json=payload)
+            response = await client.put("/v1/working-memory/test-session", json=payload)
 
         assert response.status_code == 200
 
@@ -288,7 +288,7 @@ class TestMemoryEndpoints:
         session_id = session
 
         response = await client.get(
-            f"/sessions/{session_id}/memory?namespace=test-namespace"
+            f"/v1/working-memory/{session_id}?namespace=test-namespace"
         )
 
         assert response.status_code == 200
@@ -297,7 +297,7 @@ class TestMemoryEndpoints:
         assert len(data["messages"]) == 2
 
         response = await client.delete(
-            f"/sessions/{session_id}/memory?namespace=test-namespace"
+            f"/v1/working-memory/{session_id}?namespace=test-namespace"
         )
 
         assert response.status_code == 200
@@ -307,7 +307,7 @@ class TestMemoryEndpoints:
         assert data["status"] == "ok"
 
         response = await client.get(
-            f"/sessions/{session_id}/memory?namespace=test-namespace"
+            f"/v1/working-memory/{session_id}?namespace=test-namespace"
         )
         assert response.status_code == 200
 
@@ -335,7 +335,7 @@ class TestSearchEndpoint:
         payload = {"text": "What is the capital of France?"}
 
         # Call endpoint with the correct URL format (matching the router definition)
-        response = await client.post("/long-term-memory/search", json=payload)
+        response = await client.post("/v1/v1/long-term-memory//search", json=payload)
 
         # Check status code
         assert response.status_code == 200, response.text
@@ -380,7 +380,7 @@ class TestMemoryPromptEndpoint:
         # Call the endpoint
         query = "What's the weather like?"
         response = await client.post(
-            "/memory-prompt",
+            "/v1/memory/prompt",
             json={
                 "query": query,
                 "session": {
@@ -438,7 +438,7 @@ class TestMemoryPromptEndpoint:
         }
 
         # Call the endpoint
-        response = await client.post("/memory-prompt", json=payload)
+        response = await client.post("/v1/memory/prompt", json=payload)
 
         # Check status code
         assert response.status_code == 200
@@ -503,7 +503,7 @@ class TestMemoryPromptEndpoint:
         }
 
         # Call the endpoint
-        response = await client.post("/memory-prompt", json=payload)
+        response = await client.post("/v1/memory/prompt", json=payload)
 
         # Check status code
         assert response.status_code == 200
@@ -537,7 +537,7 @@ class TestMemoryPromptEndpoint:
     async def test_memory_prompt_without_required_params(self, client):
         """Test the memory_prompt endpoint without required parameters"""
         # Call the endpoint without session or long_term_search
-        response = await client.post("/memory-prompt", json={"query": "test"})
+        response = await client.post("/v1/memory/prompt", json={"query": "test"})
 
         # Check status code (should be 400 Bad Request)
         assert response.status_code == 400
@@ -559,7 +559,7 @@ class TestMemoryPromptEndpoint:
         # Call the endpoint
         query = "What's the weather like?"
         response = await client.post(
-            "/memory-prompt",
+            "/v1/memory/prompt",
             json={
                 "query": query,
                 "session": {
@@ -607,7 +607,7 @@ class TestMemoryPromptEndpoint:
         # Call the endpoint with model_name
         query = "What's the weather like?"
         response = await client.post(
-            "/memory-prompt",
+            "/v1/memory/prompt",
             json={
                 "query": query,
                 "session": {
@@ -645,7 +645,7 @@ class TestLongTermMemoryEndpoint:
             ]
         }
 
-        response = await client.post("/long-term-memory", json=payload)
+        response = await client.post("/v1/long-term-memory/", json=payload)
         assert response.status_code == 200
 
     @pytest.mark.asyncio
@@ -664,7 +664,7 @@ class TestLongTermMemoryEndpoint:
             ]
         }
 
-        response = await client.post("/long-term-memory", json=payload)
+        response = await client.post("/v1/long-term-memory/", json=payload)
         assert response.status_code == 422
         data = response.json()
         assert "Field required" in str(data["detail"])
@@ -684,7 +684,7 @@ class TestLongTermMemoryEndpoint:
             ]
         }
 
-        response = await client.post("/long-term-memory", json=payload)
+        response = await client.post("/v1/long-term-memory/", json=payload)
         assert response.status_code == 200
 
         data = response.json()
@@ -729,7 +729,7 @@ class TestUnifiedSearchEndpoint:
         payload = {"text": "What are the user's preferences?"}
 
         # Call the unified search endpoint
-        response = await client.post("/memory/search", json=payload)
+        response = await client.post("/v1/memory/search", json=payload)
 
         # Check status code
         assert response.status_code == 200, response.text
@@ -790,7 +790,7 @@ class TestUnifiedSearchEndpoint:
         }
 
         # Call the unified search endpoint
-        response = await client.post("/memory/search", json=payload)
+        response = await client.post("/v1/memory/search", json=payload)
 
         # Check status code
         assert response.status_code == 200
