@@ -335,7 +335,7 @@ class TestSearchEndpoint:
         payload = {"text": "What is the capital of France?"}
 
         # Call endpoint with the correct URL format (matching the router definition)
-        response = await client.post("/v1/v1/long-term-memory//search", json=payload)
+        response = await client.post("/v1/long-term-memory/search", json=payload)
 
         # Check status code
         assert response.status_code == 200, response.text
