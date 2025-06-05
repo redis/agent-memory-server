@@ -4,7 +4,10 @@ Redis Memory Server API Client
 This module provides a client for the REST API of the Redis Memory Server.
 """
 
+import asyncio
 import contextlib
+from collections.abc import AsyncIterator
+from datetime import datetime
 from typing import Any, Literal
 
 import httpx
@@ -767,6 +770,423 @@ class MemoryAPIClient:
         response.raise_for_status()
         data = response.json()
         return MemoryPromptResponse(**data)
+
+    # === Memory Lifecycle Management ===
+
+    async def promote_working_memories_to_long_term(
+        self,
+        session_id: str,
+        memory_ids: list[str] | None = None,
+        namespace: str | None = None,
+    ) -> AckResponse:
+        """
+        Explicitly promote specific working memories to long-term storage.
+
+        Note: Memory promotion normally happens automatically when working memory
+        is saved. This method is for cases where you need manual control over
+        the promotion timing or want to promote specific memories immediately.
+
+        Args:
+            session_id: The session containing memories to promote
+            memory_ids: Specific memory IDs to promote (if None, promotes all unpromoted)
+            namespace: Optional namespace filter
+
+        Returns:
+            Acknowledgement of promotion operation
+        """
+        # Get current working memory
+        working_memory = await self.get_session_memory(
+            session_id=session_id, namespace=namespace
+        )
+
+        # Filter memories if specific IDs are requested
+        memories_to_promote = working_memory.memories
+        if memory_ids is not None:
+            memories_to_promote = [
+                memory for memory in working_memory.memories if memory.id in memory_ids
+            ]
+
+        if not memories_to_promote:
+            return AckResponse(status="ok")
+
+        # Create long-term memories
+        return await self.create_long_term_memory(memories_to_promote)
+
+    # === Batch Operations ===
+
+    async def bulk_create_long_term_memories(
+        self,
+        memory_batches: list[list[ClientMemoryRecord | MemoryRecord]],
+        batch_size: int = 100,
+        delay_between_batches: float = 0.1,
+    ) -> list[AckResponse]:
+        """
+        Create multiple batches of memories with proper rate limiting.
+
+        Args:
+            memory_batches: List of memory record batches
+            batch_size: Maximum memories per batch request
+            delay_between_batches: Delay in seconds between batches
+
+        Returns:
+            List of acknowledgement responses for each batch
+        """
+        results = []
+
+        for batch in memory_batches:
+            # Split large batches into smaller chunks
+            for i in range(0, len(batch), batch_size):
+                chunk = batch[i : i + batch_size]
+                response = await self.create_long_term_memory(chunk)
+                results.append(response)
+
+                # Rate limiting delay
+                if delay_between_batches > 0:
+                    await asyncio.sleep(delay_between_batches)
+
+        return results
+
+    # === Pagination Utilities ===
+
+    async def search_all_long_term_memories(
+        self,
+        text: str,
+        session_id: SessionId | dict[str, Any] | None = None,
+        namespace: Namespace | dict[str, Any] | None = None,
+        topics: Topics | dict[str, Any] | None = None,
+        entities: Entities | dict[str, Any] | None = None,
+        created_at: CreatedAt | dict[str, Any] | None = None,
+        last_accessed: LastAccessed | dict[str, Any] | None = None,
+        user_id: UserId | dict[str, Any] | None = None,
+        distance_threshold: float | None = None,
+        memory_type: MemoryType | dict[str, Any] | None = None,
+        batch_size: int = 50,
+    ) -> AsyncIterator[MemoryRecord]:
+        """
+        Auto-paginating search that yields all matching long-term memory results.
+
+        Automatically handles pagination to retrieve all results without
+        requiring manual offset management.
+
+        Args:
+            text: Search query text
+            session_id: Optional session ID filter
+            namespace: Optional namespace filter
+            topics: Optional topics filter
+            entities: Optional entities filter
+            created_at: Optional creation date filter
+            last_accessed: Optional last accessed date filter
+            user_id: Optional user ID filter
+            distance_threshold: Optional distance threshold
+            memory_type: Optional memory type filter
+            batch_size: Number of results to fetch per API call
+
+        Yields:
+            Individual memory records from all result pages
+        """
+        offset = 0
+        while True:
+            results = await self.search_long_term_memory(
+                text=text,
+                session_id=session_id,
+                namespace=namespace,
+                topics=topics,
+                entities=entities,
+                created_at=created_at,
+                last_accessed=last_accessed,
+                user_id=user_id,
+                distance_threshold=distance_threshold,
+                memory_type=memory_type,
+                limit=batch_size,
+                offset=offset,
+            )
+
+            if not results.memories:
+                break
+
+            for memory in results.memories:
+                yield memory
+
+            # If we got fewer results than batch_size, we've reached the end
+            if len(results.memories) < batch_size:
+                break
+
+            offset += batch_size
+
+    async def search_all_memories(
+        self,
+        text: str,
+        session_id: SessionId | dict[str, Any] | None = None,
+        namespace: Namespace | dict[str, Any] | None = None,
+        topics: Topics | dict[str, Any] | None = None,
+        entities: Entities | dict[str, Any] | None = None,
+        created_at: CreatedAt | dict[str, Any] | None = None,
+        last_accessed: LastAccessed | dict[str, Any] | None = None,
+        user_id: UserId | dict[str, Any] | None = None,
+        distance_threshold: float | None = None,
+        memory_type: MemoryType | dict[str, Any] | None = None,
+        batch_size: int = 50,
+    ) -> AsyncIterator[MemoryRecord]:
+        """
+        Auto-paginating version of unified memory search.
+
+        Searches both working memory and long-term memory with automatic pagination.
+
+        Args:
+            text: Search query text
+            session_id: Optional session ID filter
+            namespace: Optional namespace filter
+            topics: Optional topics filter
+            entities: Optional entities filter
+            created_at: Optional creation date filter
+            last_accessed: Optional last accessed date filter
+            user_id: Optional user ID filter
+            distance_threshold: Optional distance threshold
+            memory_type: Optional memory type filter
+            batch_size: Number of results to fetch per API call
+
+        Yields:
+            Individual memory records from all result pages
+        """
+        offset = 0
+        while True:
+            results = await self.search_memories(
+                text=text,
+                session_id=session_id,
+                namespace=namespace,
+                topics=topics,
+                entities=entities,
+                created_at=created_at,
+                last_accessed=last_accessed,
+                user_id=user_id,
+                distance_threshold=distance_threshold,
+                memory_type=memory_type,
+                limit=batch_size,
+                offset=offset,
+            )
+
+            if not results.memories:
+                break
+
+            for memory in results.memories:
+                yield memory
+
+            # If we got fewer results than batch_size, we've reached the end
+            if len(results.memories) < batch_size:
+                break
+
+            offset += batch_size
+
+    # === Client-Side Validation ===
+
+    def validate_memory_record(self, memory: ClientMemoryRecord | MemoryRecord) -> None:
+        """
+        Validate memory record before sending to server.
+
+        Checks:
+        - Required fields are present
+        - Memory type is valid
+        - Dates are properly formatted
+        - Text content is not empty
+        - ID format is valid
+
+        Raises:
+            ValueError: If validation fails with descriptive message
+        """
+        if not memory.text or not memory.text.strip():
+            raise ValueError("Memory text cannot be empty")
+
+        if memory.memory_type not in [
+            "episodic",
+            "semantic",
+            "message",
+        ]:
+            raise ValueError(f"Invalid memory type: {memory.memory_type}")
+
+        if memory.id and not self._is_valid_ulid(memory.id):
+            raise ValueError(f"Invalid ID format: {memory.id}")
+
+        if (
+            hasattr(memory, "created_at")
+            and memory.created_at
+            and not isinstance(memory.created_at, datetime)
+        ):
+            try:
+                datetime.fromisoformat(str(memory.created_at))
+            except ValueError as e:
+                raise ValueError(
+                    f"Invalid created_at format: {memory.created_at}"
+                ) from e
+
+        if (
+            hasattr(memory, "last_accessed")
+            and memory.last_accessed
+            and not isinstance(memory.last_accessed, datetime)
+        ):
+            try:
+                datetime.fromisoformat(str(memory.last_accessed))
+            except ValueError as e:
+                raise ValueError(
+                    f"Invalid last_accessed format: {memory.last_accessed}"
+                ) from e
+
+    def validate_search_filters(self, **filters) -> None:
+        """Validate search filter parameters before API call."""
+        valid_filter_keys = {
+            "session_id",
+            "namespace",
+            "topics",
+            "entities",
+            "created_at",
+            "last_accessed",
+            "user_id",
+            "distance_threshold",
+            "memory_type",
+            "limit",
+            "offset",
+        }
+
+        for key in filters:
+            if key not in valid_filter_keys:
+                raise ValueError(f"Invalid filter key: {key}")
+
+        if "limit" in filters and (
+            not isinstance(filters["limit"], int) or filters["limit"] <= 0
+        ):
+            raise ValueError("Limit must be a positive integer")
+
+        if "offset" in filters and (
+            not isinstance(filters["offset"], int) or filters["offset"] < 0
+        ):
+            raise ValueError("Offset must be a non-negative integer")
+
+        if "distance_threshold" in filters and (
+            not isinstance(filters["distance_threshold"], int | float)
+            or filters["distance_threshold"] < 0
+        ):
+            raise ValueError("Distance threshold must be a non-negative number")
+
+    def _is_valid_ulid(self, ulid_str: str) -> bool:
+        """Check if a string is a valid ULID format."""
+        try:
+            ULID.from_str(ulid_str)
+            return True
+        except ValueError:
+            return False
+
+    # === Enhanced Convenience Methods ===
+
+    async def update_working_memory_data(
+        self,
+        session_id: str,
+        data_updates: dict[str, Any],
+        namespace: str | None = None,
+        merge_strategy: Literal["replace", "merge", "deep_merge"] = "merge",
+    ) -> WorkingMemoryResponse:
+        """
+        Update specific data fields in working memory without replacing everything.
+
+        Args:
+            session_id: Target session
+            data_updates: Dictionary of updates to apply
+            namespace: Optional namespace
+            merge_strategy: How to handle existing data
+
+        Returns:
+            WorkingMemoryResponse with updated memory
+        """
+        # Get existing memory
+        existing_memory = None
+        with contextlib.suppress(Exception):
+            existing_memory = await self.get_session_memory(
+                session_id=session_id, namespace=namespace
+            )
+
+        # Determine final data based on merge strategy
+        if existing_memory and existing_memory.data:
+            if merge_strategy == "replace":
+                final_data = data_updates
+            elif merge_strategy == "merge":
+                final_data = {**existing_memory.data, **data_updates}
+            elif merge_strategy == "deep_merge":
+                final_data = self._deep_merge_dicts(existing_memory.data, data_updates)
+            else:
+                raise ValueError(f"Invalid merge strategy: {merge_strategy}")
+        else:
+            final_data = data_updates
+
+        # Create updated working memory
+        working_memory = WorkingMemory(
+            session_id=session_id,
+            namespace=namespace or self.config.default_namespace,
+            messages=existing_memory.messages if existing_memory else [],
+            memories=existing_memory.memories if existing_memory else [],
+            data=final_data,
+            context=existing_memory.context if existing_memory else None,
+            user_id=existing_memory.user_id if existing_memory else None,
+        )
+
+        return await self.put_session_memory(session_id, working_memory)
+
+    async def append_messages_to_working_memory(
+        self,
+        session_id: str,
+        messages: list[Any],  # Using Any since MemoryMessage isn't imported
+        namespace: str | None = None,
+        auto_summarize: bool = True,
+    ) -> WorkingMemoryResponse:
+        """
+        Append new messages to existing working memory.
+
+        More efficient than retrieving, modifying, and setting full memory.
+
+        Args:
+            session_id: Target session
+            messages: List of messages to append
+            namespace: Optional namespace
+            auto_summarize: Whether to allow automatic summarization
+
+        Returns:
+            WorkingMemoryResponse with updated memory
+        """
+        # Get existing memory
+        existing_memory = None
+        with contextlib.suppress(Exception):
+            existing_memory = await self.get_session_memory(
+                session_id=session_id, namespace=namespace
+            )
+
+        # Combine messages
+        final_messages = (
+            existing_memory.messages if existing_memory else []
+        ) + messages
+
+        # Create updated working memory
+        working_memory = WorkingMemory(
+            session_id=session_id,
+            namespace=namespace or self.config.default_namespace,
+            messages=final_messages,
+            memories=existing_memory.memories if existing_memory else [],
+            data=existing_memory.data if existing_memory else {},
+            context=existing_memory.context if existing_memory else None,
+            user_id=existing_memory.user_id if existing_memory else None,
+        )
+
+        return await self.put_session_memory(session_id, working_memory)
+
+    def _deep_merge_dicts(self, base: dict, updates: dict) -> dict:
+        """Recursively merge two dictionaries."""
+        result = base.copy()
+        for key, value in updates.items():
+            if (
+                key in result
+                and isinstance(result[key], dict)
+                and isinstance(value, dict)
+            ):
+                result[key] = self._deep_merge_dicts(result[key], value)
+            else:
+                result[key] = value
+        return result
 
 
 # Helper function to create a memory client
