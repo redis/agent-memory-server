@@ -86,13 +86,13 @@ Working memory contains:
 
 ```http
 # Get working memory for a session
-GET /sessions/{session_id}/memory?namespace=demo&window_size=50
+GET /v1/working-memory/{session_id}?namespace=demo&window_size=50
 
 # Set working memory (replaces existing)
-PUT /sessions/{session_id}/memory
+PUT /v1/working-memory/{session_id}
 
 # Delete working memory
-DELETE /sessions/{session_id}/memory?namespace=demo
+DELETE /v1/working-memory/{session_id}?namespace=demo
 ```
 
 ### Automatic Promotion
@@ -200,13 +200,13 @@ Long-term memory supports three types of memories:
 
 ```http
 # Create long-term memories
-POST /long-term-memory
+POST /v1/long-term-memory/
 
 # Search long-term memories only
-POST /long-term-memory/search
+POST /v1/long-term-memory/search
 
 # Search across all memory types
-POST /memory/search
+POST /v1/memory/search
 ```
 
 ### Search Capabilities
@@ -295,7 +295,7 @@ results = await search_memories(
 
 ## Memory Prompt Integration
 
-The memory system integrates with AI prompts through the `/memory-prompt` endpoint:
+The memory system integrates with AI prompts through the `/v1/memory/prompt` endpoint:
 
 ```python
 # Get memory-enriched prompt
