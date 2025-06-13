@@ -42,7 +42,6 @@ requires-dist = [
 
 [[package]]
 name = "agent-memory-server"
-version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "accelerate" },

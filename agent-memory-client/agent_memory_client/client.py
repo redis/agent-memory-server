@@ -8,8 +8,10 @@ import asyncio
 import contextlib
 import re
 from collections.abc import AsyncIterator
-from datetime import datetime
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from typing_extensions import Self
 
 import httpx
 import ulid
@@ -71,15 +73,15 @@ class MemoryAPIClient:
             timeout=config.timeout,
         )
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the underlying HTTP client."""
         await self._client.aclose()
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "Self":
         """Support using the client as an async context manager."""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Close the client when exiting the context manager."""
         await self.close()
 
@@ -176,13 +178,13 @@ class MemoryAPIClient:
             params["namespace"] = self.config.default_namespace
 
         if window_size is not None:
-            params["window_size"] = window_size
+            params["window_size"] = str(window_size)
 
         if model_name is not None:
             params["model_name"] = model_name
 
         if context_window_max is not None:
-            params["context_window_max"] = context_window_max
+            params["context_window_max"] = str(context_window_max)
 
         try:
             response = await self._client.get(
@@ -861,31 +863,11 @@ class MemoryAPIClient:
         if memory.id and not self._is_valid_ulid(memory.id):
             raise MemoryValidationError(f"Invalid ID format: {memory.id}")
 
-        if (
-            hasattr(memory, "created_at")
-            and memory.created_at
-            and not isinstance(memory.created_at, datetime)
-        ):
-            try:
-                datetime.fromisoformat(str(memory.created_at))
-            except ValueError as e:
-                raise MemoryValidationError(
-                    f"Invalid created_at format: {memory.created_at}"
-                ) from e
+        # created_at is validated by Pydantic
 
-        if (
-            hasattr(memory, "last_accessed")
-            and memory.last_accessed
-            and not isinstance(memory.last_accessed, datetime)
-        ):
-            try:
-                datetime.fromisoformat(str(memory.last_accessed))
-            except ValueError as e:
-                raise MemoryValidationError(
-                    f"Invalid last_accessed format: {memory.last_accessed}"
-                ) from e
+        # last_accessed is validated by Pydantic
 
-    def validate_search_filters(self, **filters) -> None:
+    def validate_search_filters(self, **filters: Any) -> None:
         """Validate search filter parameters before API call."""
         valid_filter_keys = {
             "session_id",
@@ -1022,7 +1004,10 @@ class MemoryAPIClient:
                     {"role": msg.role, "content": msg.content}
                 )
             else:
-                converted_existing_messages.append(msg)
+                # Fallback for any other message type
+                converted_existing_messages.append(
+                    {"role": "user", "content": str(msg)}
+                )
 
         # Convert new messages to dict format if they're objects
         new_messages = []
@@ -1074,21 +1059,21 @@ class MemoryAPIClient:
         Returns:
             Dict with messages hydrated with relevant memory context
         """
-        payload = {"query": query}
+        payload: dict[str, Any] = {"query": query}
 
         # Add session parameters if provided
         if session_id is not None:
-            session_params = {"session_id": session_id}
+            session_params: dict[str, Any] = {"session_id": session_id}
             if namespace is not None:
                 session_params["namespace"] = namespace
             elif self.config.default_namespace is not None:
                 session_params["namespace"] = self.config.default_namespace
             if window_size is not None:
-                session_params["window_size"] = window_size
+                session_params["window_size"] = str(window_size)
             if model_name is not None:
                 session_params["model_name"] = model_name
             if context_window_max is not None:
-                session_params["context_window_max"] = context_window_max
+                session_params["context_window_max"] = str(context_window_max)
             payload["session"] = session_params
 
         # Add long-term search parameters if provided
@@ -1101,7 +1086,10 @@ class MemoryAPIClient:
                 json=payload,
             )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            if isinstance(result, dict):
+                return result
+            return {"response": result}
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
             raise
@@ -1143,7 +1131,7 @@ class MemoryAPIClient:
             Dict with messages hydrated with relevant long-term memories
         """
         # Build long-term search parameters
-        long_term_search = {"limit": limit}
+        long_term_search: dict[str, Any] = {"limit": limit}
 
         if session_id is not None:
             long_term_search["session_id"] = session_id
@@ -1171,7 +1159,9 @@ class MemoryAPIClient:
             long_term_search=long_term_search,
         )
 
-    def _deep_merge_dicts(self, base: dict, updates: dict) -> dict:
+    def _deep_merge_dicts(
+        self, base: dict[str, Any], updates: dict[str, Any]
+    ) -> dict[str, Any]:
         """Recursively merge two dictionaries."""
         result = base.copy()
         for key, value in updates.items():
