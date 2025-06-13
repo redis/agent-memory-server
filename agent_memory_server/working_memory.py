@@ -22,10 +22,34 @@ def json_datetime_handler(obj):
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
+async def list_sessions(
+    redis,
+    limit: int = 10,
+    offset: int = 0,
+    namespace: str | None = None,
+) -> tuple[int, list[str]]:
+    """List sessions"""
+    # Calculate start and end indices (0-indexed start, inclusive end)
+    start = offset
+    end = offset + limit - 1
+
+    sessions_key = Keys.sessions_key(namespace=namespace)
+
+    async with redis.pipeline() as pipe:
+        pipe.zcard(sessions_key)
+        pipe.zrange(sessions_key, start, end)
+        total, session_ids = await pipe.execute()
+
+    return total, [
+        s.decode("utf-8") if isinstance(s, bytes) else s for s in session_ids
+    ]
+
+
 async def get_working_memory(
     session_id: str,
     namespace: str | None = None,
     redis_client: Redis | None = None,
+    effective_window_size: int | None = None,
 ) -> WorkingMemory | None:
     """
     Get working memory for a session.

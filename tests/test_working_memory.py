@@ -1,8 +1,9 @@
 """Tests for working memory functionality."""
 
 import pytest
+from pydantic import ValidationError
 
-from agent_memory_server.models import MemoryRecord, WorkingMemory
+from agent_memory_server.models import MemoryRecord, MemoryTypeEnum, WorkingMemory
 from agent_memory_server.working_memory import (
     delete_working_memory,
     get_working_memory,
@@ -22,13 +23,13 @@ class TestWorkingMemory:
             MemoryRecord(
                 text="User prefers dark mode",
                 id="client-1",
-                memory_type="semantic",
+                memory_type=MemoryTypeEnum.SEMANTIC,
                 user_id="user123",
             ),
             MemoryRecord(
                 text="User is working on a Python project",
                 id="client-2",
-                memory_type="episodic",
+                memory_type=MemoryTypeEnum.EPISODIC,
                 user_id="user123",
             ),
         ]
@@ -82,7 +83,7 @@ class TestWorkingMemory:
             MemoryRecord(
                 text="Test memory",
                 id="client-1",
-                memory_type="semantic",
+                memory_type=MemoryTypeEnum.SEMANTIC,
             ),
         ]
 
@@ -122,11 +123,19 @@ class TestWorkingMemory:
         """Test that working memory validates id requirement"""
         session_id = "test-session"
 
-        # Create memory without id
+        # Test that creating MemoryRecord without id raises a validation error
+        with pytest.raises(ValidationError, match="Field required"):
+            MemoryRecord(  # type: ignore[call-arg]
+                text="Memory without id",
+                memory_type=MemoryTypeEnum.SEMANTIC,
+            )
+
+        # Test that creating working memory with a valid memory record works
         memories = [
             MemoryRecord(
-                text="Memory without id",
-                memory_type="semantic",
+                id="test-memory-1",  # Add required id field
+                text="Memory with id",
+                memory_type=MemoryTypeEnum.SEMANTIC,
             ),
         ]
 
@@ -135,9 +144,14 @@ class TestWorkingMemory:
             session_id=session_id,
         )
 
-        # Should raise ValueError
-        with pytest.raises(
-            ValueError,
-            match="All memory records in working memory must have an id",
-        ):
-            await set_working_memory(working_mem, redis_client=async_redis_client)
+        # Should work without error
+        await set_working_memory(working_mem, redis_client=async_redis_client)
+
+        # Verify it was stored
+        retrieved = await get_working_memory(
+            session_id=session_id,
+            redis_client=async_redis_client,
+        )
+        assert retrieved is not None
+        assert len(retrieved.memories) == 1
+        assert retrieved.memories[0].id == "test-memory-1"

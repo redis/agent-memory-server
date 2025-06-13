@@ -1,9 +1,10 @@
 import tiktoken
+import ulid
 from fastapi import APIRouter, Depends, HTTPException
 from mcp.server.fastmcp.prompts import base
 from mcp.types import TextContent
 
-from agent_memory_server import long_term_memory, messages, working_memory
+from agent_memory_server import long_term_memory, working_memory
 from agent_memory_server.auth import UserInfo, get_current_user
 from agent_memory_server.config import settings
 from agent_memory_server.dependencies import get_background_tasks
@@ -49,89 +50,6 @@ def _get_effective_window_size(
     else:
         effective_window_size = window_size
     return effective_window_size
-
-
-@router.get("/sessions/", response_model=SessionListResponse)
-async def list_sessions(
-    options: GetSessionsQuery = Depends(),
-    current_user: UserInfo = Depends(get_current_user),
-):
-    """
-    Get a list of session IDs, with optional pagination.
-
-    Args:
-        options: Query parameters (page, size, namespace)
-
-    Returns:
-        List of session IDs
-    """
-    redis = await get_redis_conn()
-
-    total, session_ids = await messages.list_sessions(
-        redis=redis,
-        limit=options.limit,
-        offset=options.offset,
-        namespace=options.namespace,
-    )
-
-    return SessionListResponse(
-        sessions=session_ids,
-        total=total,
-    )
-
-
-@router.get("/sessions/{session_id}/memory", response_model=WorkingMemoryResponse)
-async def get_session_memory(
-    session_id: str,
-    namespace: str | None = None,
-    window_size: int = settings.window_size,
-    model_name: ModelNameLiteral | None = None,
-    context_window_max: int | None = None,
-    current_user: UserInfo = Depends(get_current_user),
-) -> WorkingMemory:
-    """
-    Get working memory for a session.
-
-    This includes stored conversation messages, context, and structured memory records.
-
-    Args:
-        session_id: The session ID
-        namespace: The namespace to use for the session
-        window_size: The number of messages to include in the response
-        model_name: The client's LLM model name (will determine context window size if provided)
-        context_window_max: Direct specification of the context window max tokens (overrides model_name)
-
-    Returns:
-        Working memory containing messages, context, and structured memory records
-    """
-    redis = await get_redis_conn()
-    effective_window_size = _get_effective_window_size(
-        window_size=window_size,
-        context_window_max=context_window_max,
-        model_name=model_name,
-    )
-
-    # Get unified working memory
-    working_mem = await working_memory.get_working_memory(
-        session_id=session_id,
-        namespace=namespace,
-        redis_client=redis,
-    )
-
-    if not working_mem:
-        # Return empty working memory if none exists
-        working_mem = WorkingMemory(
-            messages=[],
-            memories=[],
-            session_id=session_id,
-            namespace=namespace,
-        )
-
-    # Apply window size to messages if needed
-    if len(working_mem.messages) > effective_window_size:
-        working_mem.messages = working_mem.messages[-effective_window_size:]
-
-    return working_mem
 
 
 async def _summarize_working_memory(
@@ -218,7 +136,90 @@ async def _summarize_working_memory(
     return updated_memory
 
 
-@router.put("/sessions/{session_id}/memory", response_model=WorkingMemoryResponse)
+@router.get("/v1/working-memory/", response_model=SessionListResponse)
+async def list_sessions(
+    options: GetSessionsQuery = Depends(),
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """
+    Get a list of session IDs, with optional pagination.
+
+    Args:
+        options: Query parameters (page, size, namespace)
+
+    Returns:
+        List of session IDs
+    """
+    redis = await get_redis_conn()
+
+    total, session_ids = await working_memory.list_sessions(
+        redis=redis,
+        limit=options.limit,
+        offset=options.offset,
+        namespace=options.namespace,
+    )
+
+    return SessionListResponse(
+        sessions=session_ids,
+        total=total,
+    )
+
+
+@router.get("/v1/working-memory/{session_id}", response_model=WorkingMemoryResponse)
+async def get_session_memory(
+    session_id: str,
+    namespace: str | None = None,
+    window_size: int = settings.window_size,
+    model_name: ModelNameLiteral | None = None,
+    context_window_max: int | None = None,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """
+    Get working memory for a session.
+
+    This includes stored conversation messages, context, and structured memory records.
+
+    Args:
+        session_id: The session ID
+        namespace: The namespace to use for the session
+        window_size: The number of messages to include in the response
+        model_name: The client's LLM model name (will determine context window size if provided)
+        context_window_max: Direct specification of the context window max tokens (overrides model_name)
+
+    Returns:
+        Working memory containing messages, context, and structured memory records
+    """
+    redis = await get_redis_conn()
+    effective_window_size = _get_effective_window_size(
+        window_size=window_size,
+        context_window_max=context_window_max,
+        model_name=model_name,
+    )
+
+    # Get unified working memory
+    working_mem = await working_memory.get_working_memory(
+        session_id=session_id,
+        namespace=namespace,
+        redis_client=redis,
+    )
+
+    if not working_mem:
+        # Return empty working memory if none exists
+        working_mem = WorkingMemory(
+            messages=[],
+            memories=[],
+            session_id=session_id,
+            namespace=namespace,
+        )
+
+    # Apply window size to messages if needed
+    if len(working_mem.messages) > effective_window_size:
+        working_mem.messages = working_mem.messages[-effective_window_size:]
+
+    return working_mem
+
+
+@router.put("/v1/working-memory/{session_id}", response_model=WorkingMemoryResponse)
 async def put_session_memory(
     session_id: str,
     memory: WorkingMemory,
@@ -249,7 +250,7 @@ async def put_session_memory(
         if not mem.id:
             raise HTTPException(
                 status_code=400,
-                detail="All memory records in working memory must have an id",
+                detail="All memory records in working memory must have an ID",
             )
 
     # Handle summarization if needed (before storing)
@@ -278,6 +279,7 @@ async def put_session_memory(
 
             memories = [
                 MemoryRecord(
+                    id=str(ulid.new()),
                     session_id=session_id,
                     text=f"{msg.role}: {msg.content}",
                     namespace=updated_memory.namespace,
@@ -294,7 +296,7 @@ async def put_session_memory(
     return updated_memory
 
 
-@router.delete("/sessions/{session_id}/memory", response_model=AckResponse)
+@router.delete("/v1/working-memory/{session_id}", response_model=AckResponse)
 async def delete_session_memory(
     session_id: str,
     namespace: str | None = None,
@@ -324,7 +326,7 @@ async def delete_session_memory(
     return AckResponse(status="ok")
 
 
-@router.post("/long-term-memory", response_model=AckResponse)
+@router.post("/v1/long-term-memory/", response_model=AckResponse)
 async def create_long_term_memory(
     payload: CreateMemoryRecordRequest,
     background_tasks=Depends(get_background_tasks),
@@ -362,7 +364,7 @@ async def create_long_term_memory(
     return AckResponse(status="ok")
 
 
-@router.post("/long-term-memory/search", response_model=MemoryRecordResultsResponse)
+@router.post("/v1/long-term-memory/search", response_model=MemoryRecordResultsResponse)
 async def search_long_term_memory(
     payload: SearchRequest,
     current_user: UserInfo = Depends(get_current_user),
@@ -399,7 +401,7 @@ async def search_long_term_memory(
     return await long_term_memory.search_long_term_memories(**kwargs)
 
 
-@router.post("/memory/search", response_model=MemoryRecordResultsResponse)
+@router.post("/v1/memory/search", response_model=MemoryRecordResultsResponse)
 async def search_memory(
     payload: SearchRequest,
     current_user: UserInfo = Depends(get_current_user),
@@ -446,7 +448,7 @@ async def search_memory(
     return await long_term_memory.search_memories(**kwargs)
 
 
-@router.post("/memory-prompt", response_model=MemoryPromptResponse)
+@router.post("/v1/memory/prompt", response_model=MemoryPromptResponse)
 async def memory_prompt(
     params: MemoryPromptRequest,
     current_user: UserInfo = Depends(get_current_user),

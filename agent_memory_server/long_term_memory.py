@@ -5,11 +5,11 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
+import ulid
 from redis.asyncio import Redis
 from redis.commands.search.query import Query
 from redisvl.query import VectorRangeQuery
 from redisvl.utils.vectorize import OpenAITextVectorizer
-from ulid import ULID
 
 from agent_memory_server.config import settings
 from agent_memory_server.dependencies import get_background_tasks
@@ -244,7 +244,7 @@ async def merge_memories_with_llm(memories: list[dict], llm_client: Any = None) 
     # Create the merged memory
     merged_memory = {
         "text": merged_text.strip(),
-        "id_": str(ULID()),
+        "id_": str(ulid.new()),
         "user_id": user_id,
         "session_id": session_id,
         "namespace": namespace,
@@ -494,7 +494,7 @@ async def compact_long_term_memories(
                         discrete_memory_extracted_value = "t"
 
                     memory_obj = MemoryRecord(
-                        id_=memory_id,
+                        id=memory_id,
                         text=str(memory_data.get("text", "")),
                         user_id=str(memory_data.get("user_id"))
                         if memory_data.get("user_id")
@@ -666,7 +666,7 @@ async def index_long_term_memories(
 
     # Schedule background tasks for topic/entity extraction
     for memory in processed_memories:
-        memory_id = memory.id_ or str(ULID())
+        memory_id = memory.id or str(ulid.new())
         await background_tasks.add_task(
             extract_memory_structure, memory_id, memory.text, memory.namespace
         )
@@ -825,13 +825,13 @@ async def search_memories(
                 session_ids_to_search = [session_id.eq]
             else:
                 # Get all sessions for broader search
-                from agent_memory_server import messages
+                from agent_memory_server import working_memory
 
                 namespace_value = None
                 if namespace and hasattr(namespace, "eq"):
                     namespace_value = namespace.eq
 
-                _, session_ids_to_search = await messages.list_sessions(
+                _, session_ids_to_search = await working_memory.list_sessions(
                     redis=redis,
                     limit=1000,  # Get a reasonable number of sessions
                     offset=0,
@@ -881,7 +881,7 @@ async def search_memories(
                             if text.lower() in memory.text.lower():
                                 working_memory_results.append(
                                     MemoryRecordResult(
-                                        id_=memory.id_ or "",
+                                        id=memory.id or "",  # Use id instead of id_
                                         text=memory.text,
                                         dist=0.0,  # No vector distance for working memory
                                         created_at=memory.created_at or 0,
@@ -894,7 +894,6 @@ async def search_memories(
                                         entities=memory.entities or [],
                                         memory_hash="",  # Working memory doesn't have hash
                                         memory_type=memory.memory_type,
-                                        id=memory.id,
                                         persisted_at=memory.persisted_at,
                                         event_date=memory.event_date,
                                     )
@@ -1231,7 +1230,7 @@ async def deduplicate_by_semantic_search(
 
             # Convert back to LongTermMemory
             merged_memory_obj = MemoryRecord(
-                id_=memory.id_ or str(ULID()),
+                id=memory.id or str(ulid.new()),
                 text=merged_memory["text"],
                 user_id=merged_memory["user_id"],
                 session_id=merged_memory["session_id"],
@@ -1451,7 +1450,7 @@ async def extract_memories_from_messages(
 
                     # Create a new memory record from the extraction
                     extracted_memory = MemoryRecord(
-                        id=str(ULID()),  # Server-generated ID
+                        id=str(ulid.new()),  # Server-generated ID
                         text=memory_data["text"],
                         memory_type=memory_data.get("type", "semantic"),
                         topics=memory_data.get("topics", []),

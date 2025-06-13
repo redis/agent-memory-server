@@ -8,7 +8,7 @@ from agent_memory_server.models import HealthCheckResponse
 router = APIRouter()
 
 
-@router.get("/health", response_model=HealthCheckResponse)
+@router.get("/v1/health", response_model=HealthCheckResponse)
 async def get_health():
     """
     Health check endpoint

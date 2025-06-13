@@ -9,26 +9,17 @@ environment variable.
 
 ## Running the Background Task Worker
 
-The Redis Memory Server uses Docket for background task management. There are two ways to run the worker:
-
-### 1. Using the Docket CLI
-
-After installing the package, you can run the worker using the Docket CLI command:
+The Redis Memory Server uses Docket for background task management. You can run a worker instance like this:
 
 ```bash
-docket worker --tasks agent_memory_server.docket_tasks:task_collection --docket memory-server
+uv run agent-memory task-worker
 ```
 
 You can customize the concurrency and redelivery timeout:
 
 ```bash
-docket worker --tasks agent_memory_server.docket_tasks:task_collection --concurrency 5 --redelivery-timeout 60 --docket memory-server
+uv run agent-memory task-worker --concurrency 5 --redelivery-timeout 60
 ```
-
-**NOTE:** The name passed with `--docket` is effectively the name of a task queue where
-the worker will look for work. This name should match the docket name your API server
-is using, configured with the `docket_name` setting via environment variable
-or directly in `agent_memory_server.config.Settings`.
 
 ## Memory Compaction
 
@@ -40,7 +31,7 @@ Memory compaction is available as a task function in `agent_memory_server.long_t
 by running the `agent-memory schedule-task` command:
 
 ```bash
-agent-memory schedule-task "agent_memory_server.long_term_memory.compact_long_term_memories"
+uv run agent-memory schedule-task "agent_memory_server.long_term_memory.compact_long_term_memories"
 ```
 
 ### Key Features

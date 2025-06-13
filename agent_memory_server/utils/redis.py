@@ -71,7 +71,7 @@ def get_search_index(
                     "type": "vector",
                     "attrs": {
                         "algorithm": "HNSW",
-                        "dims": vector_dimensions,
+                        "dims": int(vector_dimensions),
                         "distance_metric": distance_metric,
                         "datatype": "float32",
                     },

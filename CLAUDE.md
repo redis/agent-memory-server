@@ -8,11 +8,14 @@ pip install uv
 
 ```bash
 # Development workflow
-uv install                    # Install dependencies
+uv venv                      # Create a virtualenv (once)
+source .venv/bin/activate    # Activate the virtualenv (start of terminal session)
+uv install --all-extras      # Install dependencies
+uv sync --all-extras         # Sync latest dependencies
 uv run ruff check            # Run linting
 uv run ruff format           # Format code
-uv run pytest               # Run tests
-uv run pytest tests/        # Run specific test directory
+uv run pytest                # Run tests
+uv run pytest tests/         # Run specific test directory
 
 # Server commands
 uv run agent-memory api      # Start REST API server (default port 8000)
@@ -191,10 +194,10 @@ ENABLE_NER=true
 ## API Interfaces
 
 ### REST API (Port 8000)
-- Session management (`/sessions/`)
-- Working memory operations (`/sessions/{id}/memory`)
-- Long-term memory search (`/memories/search`)
-- Memory hydration (`/memories/hydrate`)
+- Session management (`/v1/working-memory/`)
+- Working memory operations (`/v1/working-memory/{id}`)
+- Long-term memory search (`/v1/long-term-memory/search`)
+- Memory hydration (`/v1/memory/prompt`)
 
 ### MCP Server (Port 9000)
 - `create_long_term_memories` - Store persistent memories

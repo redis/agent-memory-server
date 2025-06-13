@@ -162,14 +162,14 @@ echo "Access Token: $TOKEN"
 # Test sessions endpoint
 curl -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
-     http://localhost:8000/sessions/
+     http://localhost:8000/v1/working-memory/
 
 # Test memory prompt
 curl -X POST \
      -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
      -d '{"query": "What is the capital of France?", "session_id": "test-session"}' \
-     http://localhost:8000/memory-prompt
+     http://localhost:8000/v1/memory/prompt
 
 # Test long-term memory creation
 curl -X POST \
@@ -184,14 +184,14 @@ curl -X POST \
          }
        ]
      }' \
-     http://localhost:8000/long-term-memory
+     http://localhost:8000/v1/long-term-memory/
 
 # Test memory search
 curl -X POST \
      -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
      -d '{"text": "Auth0 test", "limit": 5}' \
-     http://localhost:8000/long-term-memory/search
+     http://localhost:8000/v1/long-term-memory/search
 ```
 
 #### Test Authentication Rejection
@@ -199,12 +199,12 @@ curl -X POST \
 ```bash
 # Test without token (should return 401)
 curl -H "Content-Type: application/json" \
-     http://localhost:8000/sessions/
+     http://localhost:8000/v1/working-memory/
 
 # Test with invalid token (should return 401)
 curl -H "Authorization: Bearer invalid.jwt.token" \
      -H "Content-Type: application/json" \
-     http://localhost:8000/sessions/
+     http://localhost:8000/v1/working-memory/
 ```
 
 ### Method 3: Using Python Requests
@@ -234,7 +234,7 @@ headers = {
     "Content-Type": "application/json"
 }
 
-response = requests.get("http://localhost:8000/sessions/", headers=headers)
+response = requests.get("http://localhost:8000/v1/working-memory/", headers=headers)
 print(f"Status: {response.status_code}")
 print(f"Response: {response.json()}")
 ```

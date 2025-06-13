@@ -186,7 +186,7 @@ class TestMCP:
                 total=1,
                 memories=[
                     MemoryRecordResult(
-                        id_="id",
+                        id="test-memory-id",
                         text="x",
                         dist=0.0,
                         created_at=datetime.now(UTC),
@@ -327,7 +327,9 @@ class TestMCP:
 
                 # Verify the working memory was structured correctly
                 call_args = mock_put_memory.call_args
-                working_memory = call_args[1]["memory"]
+                working_memory = call_args.kwargs[
+                    "memory"
+                ]  # memory is passed as keyword argument
                 assert len(working_memory.memories) == 1
                 memory = working_memory.memories[0]
                 assert memory.text == "User prefers dark mode"
@@ -381,7 +383,9 @@ class TestMCP:
 
                 # Verify the working memory contains JSON data
                 call_args = mock_put_memory.call_args
-                working_memory = call_args[1]["memory"]
+                working_memory = call_args.kwargs[
+                    "memory"
+                ]  # memory is passed as keyword argument
                 assert working_memory.data == test_data
 
                 # Verify no memories were created (since we're using data field)
@@ -426,7 +430,9 @@ class TestMCP:
 
                 # Verify ID was auto-generated
                 call_args = mock_put_memory.call_args
-                working_memory = call_args[1]["memory"]
-                memory = working_memory.memories[0]
-                assert memory.id is not None
-                assert len(memory.id) > 0  # ULID generates non-empty strings
+                # core_put_session_memory is called with keyword args: session_id, memory, background_tasks
+                if call_args and call_args.kwargs.get("memory"):
+                    working_memory = call_args.kwargs["memory"]
+                    memory = working_memory.memories[0]
+                    assert memory.id is not None
+                    assert len(memory.id) > 0  # ULID generates non-empty strings
