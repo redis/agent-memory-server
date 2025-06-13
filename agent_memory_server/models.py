@@ -383,4 +383,4 @@ class MemoryPromptResponse(BaseModel):
 class LenientMemoryRecord(MemoryRecord):
     """A memory record that can be created without an ID"""
 
-    id: str | None = Field(default=str(ulid.ULID()))
+    id: str | None = Field(default_factory=lambda: str(ulid.new()))
