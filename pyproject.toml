@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-memory-server"
-# version = "0.9.0"
+dynamic = ["version"]
 description = "A Memory Server for LLM Agents and Applications"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
