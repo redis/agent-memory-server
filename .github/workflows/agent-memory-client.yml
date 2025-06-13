@@ -28,29 +28,24 @@ jobs:
         uses: astral-sh/setup-uv@v3
 
       - name: Install dependencies
-        run: |
-          cd agent-memory-client
-          uv sync --extra dev
+        working-directory: agent-memory-client
+        run: uv sync --extra dev
 
       - name: Lint with Ruff
-        run: |
-          cd agent-memory-client
-          uv run ruff check agent_memory_client
+        working-directory: agent-memory-client
+        run: uv run ruff check agent_memory_client
 
       - name: Check formatting with Ruff formatter
-        run: |
-          cd agent-memory-client
-          uv run ruff format --check agent_memory_client
+        working-directory: agent-memory-client
+        run: uv run ruff format --check agent_memory_client
 
       - name: Type check with mypy
-        run: |
-          cd agent-memory-client
-          uv run mypy agent_memory_client
+        working-directory: agent-memory-client
+        run: uv run mypy agent_memory_client
 
       - name: Run tests
-        run: |
-          cd agent-memory-client
-          uv run pytest tests/ --cov=agent_memory_client --cov-report=xml
+        working-directory: agent-memory-client
+        run: uv run pytest tests/ --cov=agent_memory_client --cov-report=xml
 
   publish-testpypi:
     name: Publish to TestPyPI
