@@ -12,7 +12,7 @@ license = { text = "MIT" }
 authors = [{ name = "Andrew Brookins", email = "andrew.brookins@redis.com" }]
 dependencies = [
     "accelerate>=1.6.0",
-    "agent-memory-client @ file:///Users/andrew.brookins/src/redis-memory-server/agent-memory-client",
+    "agent-memory-client @ git+https://github.com/username/agent-memory-client@main",
     "anthropic>=0.15.0",
     "bertopic<0.17.0,>=0.16.4",
     "fastapi>=0.115.11",
