@@ -16,10 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added support for arbitrary JSON data storage alongside memory structures
   - Improved automatic conversation summarization in working memory
 
-
-- **Working Memory -> Long-term Memory Promotion**:
+- **Long-term Memory Promotion**:
   - Implemented seamless flow from working memory to long-term memory via background task processing
   - Agent only has to think about working memory, long-term memory is managed automatically (but can be managed manually, too)
+  - Use any LangChain `VectorStore` subclass for long-term storage, defaults to `RedisVectorStore`
   - Structured memories automatically promoted with vector embeddings and metadata indexing
   - Deduplication and compaction systems for long-term memory management
   - Background task worker system using Docket for reliable memory processing
