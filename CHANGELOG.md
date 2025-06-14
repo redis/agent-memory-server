@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.0] - 2025-06-13
 
-*Changes from the initial release:**
+*Changes from the initial release:*
 
 ### Architecture Evolution
 - **Working Memory (formerly Short-term Memory)**:
