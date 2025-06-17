@@ -339,7 +339,7 @@ async def put_working_memory(
 
             memories = [
                 MemoryRecord(
-                    id=str(ulid.new()),
+                    id=str(ulid.ULID()),
                     session_id=session_id,
                     text=f"{msg.role}: {msg.content}",
                     namespace=updated_memory.namespace,

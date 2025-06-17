@@ -98,7 +98,7 @@ async def migrate_add_discrete_memory_extracted_2(redis: Redis | None = None) ->
         id_ = await redis.hget(name=key, key="id_")  # type: ignore
         if not id_:
             logger.info("Updating memory with no ID to set ID")
-            await redis.hset(name=key, key="id_", value=str(ulid.new()))  # type: ignore
+            await redis.hset(name=key, key="id_", value=str(ulid.ULID()))  # type: ignore
         # extracted: bytes | None = await redis.hget(
         #     name=key, key="discrete_memory_extracted"
         # )  # type: ignore
@@ -126,7 +126,7 @@ async def migrate_add_memory_type_3(redis: Redis | None = None) -> None:
         id_ = await redis.hget(name=key, key="id_")  # type: ignore
         if not id_:
             logger.info("Updating memory with no ID to set ID")
-            await redis.hset(name=key, key="id_", value=str(ulid.new()))  # type: ignore
+            await redis.hset(name=key, key="id_", value=str(ulid.ULID()))  # type: ignore
         memory_type: bytes | None = await redis.hget(name=key, key="memory_type")  # type: ignore
         if not memory_type:
             await redis.hset(name=key, key="memory_type", value="message")  # type: ignore

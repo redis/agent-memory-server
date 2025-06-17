@@ -303,35 +303,6 @@ class TestPaginationUtilities:
             # Should have made 3 API calls
             assert mock_search.call_count == 3
 
-    @pytest.mark.asyncio
-    async def test_search_all_memories(self, enhanced_test_client):
-        """Test auto-paginating unified memory search."""
-        # Similar test for unified search
-        response = MemoryRecordResults(
-            total=25,
-            memories=[
-                MemoryRecordResult(
-                    id=f"memory-{i}",
-                    text=f"Memory text {i}",
-                    dist=0.1,
-                )
-                for i in range(25)
-            ],
-            next_offset=None,
-        )
-
-        with patch.object(enhanced_test_client, "search_memories") as mock_search:
-            mock_search.return_value = response
-
-            all_memories = []
-            async for memory in enhanced_test_client.search_all_memories(
-                text="test query", batch_size=50
-            ):
-                all_memories.append(memory)
-
-            assert len(all_memories) == 25
-            assert mock_search.call_count == 1
-
 
 class TestClientSideValidation:
     """Tests for client-side validation methods."""

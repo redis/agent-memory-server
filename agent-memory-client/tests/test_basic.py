@@ -83,7 +83,6 @@ def test_enhanced_methods():
 
     # Test pagination
     assert hasattr(client, "search_all_long_term_memories")
-    assert hasattr(client, "search_all_memories")
 
     # Test enhanced convenience methods
     assert hasattr(client, "update_working_memory_data")

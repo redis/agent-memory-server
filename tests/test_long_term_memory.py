@@ -108,7 +108,7 @@ class TestLongTermMemory:
         mock_query.return_value = [
             Document(
                 id=b"doc1",
-                id_=str(ulid.new()),
+                id_=str(ulid.ULID()),
                 text=b"Hello, world!",
                 vector_distance=0.25,
                 created_at=mock_now,
@@ -121,7 +121,7 @@ class TestLongTermMemory:
             ),
             Document(
                 id=b"doc2",
-                id_=str(ulid.new()),
+                id_=str(ulid.ULID()),
                 text=b"Hi there!",
                 vector_distance=0.75,
                 created_at=mock_now,

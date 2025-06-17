@@ -333,7 +333,7 @@ async def extract_discrete_memories(
     if discrete_memories:
         long_term_memories = [
             MemoryRecord(
-                id_=str(ulid.new()),
+                id_=str(ulid.ULID()),
                 text=new_memory["text"],
                 memory_type=new_memory.get("type", "episodic"),
                 topics=new_memory.get("topics", []),

@@ -34,6 +34,7 @@ from .models import (
     HealthCheckResponse,
     MemoryRecord,
     MemoryRecordResults,
+    MemoryTypeEnum,
     ModelNameLiteral,
     SessionListResponse,
     WorkingMemory,
@@ -442,7 +443,7 @@ class MemoryAPIClient:
         # Auto-generate IDs for memories that don't have them
         for memory in final_memories:
             if not memory.id:
-                memory.id = str(ulid.new())
+                memory.id = str(ulid.ULID())
 
         # Create new working memory with the memories
         working_memory = WorkingMemory(
@@ -617,136 +618,10 @@ class MemoryAPIClient:
                 exclude_none=True, mode="json"
             )
         if user_id:
-            payload["user_id"] = user_id.model_dump(exclude_none=True)
-        if memory_type:
-            payload["memory_type"] = memory_type.model_dump(exclude_none=True)
-        if distance_threshold is not None:
-            payload["distance_threshold"] = distance_threshold
-
-        try:
-            response = await self._client.post(
-                "/v1/long-term-memory/search",
-                json=payload,
-            )
-            response.raise_for_status()
-            return MemoryRecordResults(**response.json())
-        except httpx.HTTPStatusError as e:
-            self._handle_http_error(e.response)
-            raise
-
-    async def search_memories(
-        self,
-        text: str,
-        session_id: SessionId | dict[str, Any] | None = None,
-        namespace: Namespace | dict[str, Any] | None = None,
-        topics: Topics | dict[str, Any] | None = None,
-        entities: Entities | dict[str, Any] | None = None,
-        created_at: CreatedAt | dict[str, Any] | None = None,
-        last_accessed: LastAccessed | dict[str, Any] | None = None,
-        user_id: UserId | dict[str, Any] | None = None,
-        distance_threshold: float | None = None,
-        memory_type: MemoryType | dict[str, Any] | None = None,
-        limit: int = 10,
-        offset: int = 0,
-    ) -> MemoryRecordResults:
-        """
-        Search across all memory types (working memory and long-term memory).
-
-        This method searches both working memory (ephemeral, session-scoped) and
-        long-term memory (persistent, indexed) to provide comprehensive results.
-
-        For working memory:
-        - Uses simple text matching
-        - Searches across all sessions (unless session_id filter is provided)
-        - Returns memories that haven't been promoted to long-term storage
-
-        For long-term memory:
-        - Uses semantic vector search
-        - Includes promoted memories from working memory
-        - Supports advanced filtering by topics, entities, etc.
-
-        Args:
-            text: Search query text for semantic similarity
-            session_id: Optional session ID filter
-            namespace: Optional namespace filter
-            topics: Optional topics filter
-            entities: Optional entities filter
-            created_at: Optional creation date filter
-            last_accessed: Optional last accessed date filter
-            user_id: Optional user ID filter
-            distance_threshold: Optional distance threshold for search results
-            memory_type: Optional memory type filter
-            limit: Maximum number of results to return (default: 10)
-            offset: Offset for pagination (default: 0)
-
-        Returns:
-            MemoryRecordResults with matching memories from both memory types
-
-        Raises:
-            MemoryServerError: If the request fails
-
-        Example:
-            ```python
-            # Search for user preferences with topic filtering
-            from .filters import Topics
-
-            results = await client.search_memories(
-                text="user prefers dark mode",
-                topics=Topics(any=["preferences", "ui"]),
-                limit=5
-            )
-
-            for memory in results.memories:
-                print(f"Found: {memory.text}")
-            ```
-        """
-        # Convert dictionary filters to their proper filter objects if needed
-        if isinstance(session_id, dict):
-            session_id = SessionId(**session_id)
-        if isinstance(namespace, dict):
-            namespace = Namespace(**namespace)
-        if isinstance(topics, dict):
-            topics = Topics(**topics)
-        if isinstance(entities, dict):
-            entities = Entities(**entities)
-        if isinstance(created_at, dict):
-            created_at = CreatedAt(**created_at)
-        if isinstance(last_accessed, dict):
-            last_accessed = LastAccessed(**last_accessed)
-        if isinstance(user_id, dict):
-            user_id = UserId(**user_id)
-        if isinstance(memory_type, dict):
-            memory_type = MemoryType(**memory_type)
-
-        # Apply default namespace if needed and no namespace filter specified
-        if namespace is None and self.config.default_namespace is not None:
-            namespace = Namespace(eq=self.config.default_namespace)
-
-        payload = {
-            "text": text,
-            "limit": limit,
-            "offset": offset,
-        }
-
-        # Add filters if provided
-        if session_id:
-            payload["session_id"] = session_id.model_dump(exclude_none=True)
-        if namespace:
-            payload["namespace"] = namespace.model_dump(exclude_none=True)
-        if topics:
-            payload["topics"] = topics.model_dump(exclude_none=True)
-        if entities:
-            payload["entities"] = entities.model_dump(exclude_none=True)
-        if created_at:
-            payload["created_at"] = created_at.model_dump(
-                exclude_none=True, mode="json"
-            )
-        if last_accessed:
-            payload["last_accessed"] = last_accessed.model_dump(
-                exclude_none=True, mode="json"
-            )
-        if user_id:
-            payload["user_id"] = user_id.model_dump(exclude_none=True)
+            if isinstance(user_id, dict):
+                payload["user_id"] = user_id
+            else:
+                payload["user_id"] = user_id.model_dump(exclude_none=True)
         if memory_type:
             payload["memory_type"] = memory_type.model_dump(exclude_none=True)
         if distance_threshold is not None:
@@ -1076,7 +951,7 @@ class MemoryAPIClient:
             # Create memory record
             memory = ClientMemoryRecord(
                 text=text,
-                memory_type=memory_type,
+                memory_type=MemoryTypeEnum(memory_type),
                 topics=topics,
                 entities=entities,
                 namespace=namespace or self.config.default_namespace,
@@ -1111,7 +986,7 @@ class MemoryAPIClient:
         self,
         session_id: str,
         data: dict[str, Any],
-        merge_strategy: str = "merge",
+        merge_strategy: Literal["replace", "merge", "deep_merge"] = "merge",
         namespace: str | None = None,
         user_id: str | None = None,
     ) -> dict[str, Any]:
@@ -1997,70 +1872,6 @@ class MemoryAPIClient:
 
             offset += batch_size
 
-    async def search_all_memories(
-        self,
-        text: str,
-        session_id: SessionId | dict[str, Any] | None = None,
-        namespace: Namespace | dict[str, Any] | None = None,
-        topics: Topics | dict[str, Any] | None = None,
-        entities: Entities | dict[str, Any] | None = None,
-        created_at: CreatedAt | dict[str, Any] | None = None,
-        last_accessed: LastAccessed | dict[str, Any] | None = None,
-        user_id: UserId | dict[str, Any] | None = None,
-        distance_threshold: float | None = None,
-        memory_type: MemoryType | dict[str, Any] | None = None,
-        batch_size: int = 50,
-    ) -> AsyncIterator[MemoryRecord]:
-        """
-        Auto-paginating version of unified memory search.
-
-        Searches both working memory and long-term memory with automatic pagination.
-
-        Args:
-            text: Search query text
-            session_id: Optional session ID filter
-            namespace: Optional namespace filter
-            topics: Optional topics filter
-            entities: Optional entities filter
-            created_at: Optional creation date filter
-            last_accessed: Optional last accessed date filter
-            user_id: Optional user ID filter
-            distance_threshold: Optional distance threshold
-            memory_type: Optional memory type filter
-            batch_size: Number of results to fetch per API call
-
-        Yields:
-            Individual memory records from all result pages
-        """
-        offset = 0
-        while True:
-            results = await self.search_memories(
-                text=text,
-                session_id=session_id,
-                namespace=namespace,
-                topics=topics,
-                entities=entities,
-                created_at=created_at,
-                last_accessed=last_accessed,
-                user_id=user_id,
-                distance_threshold=distance_threshold,
-                memory_type=memory_type,
-                limit=batch_size,
-                offset=offset,
-            )
-
-            if not results.memories:
-                break
-
-            for memory in results.memories:
-                yield memory
-
-            # If we got fewer results than batch_size, we've reached the end
-            if len(results.memories) < batch_size:
-                break
-
-            offset += batch_size
-
     def validate_memory_record(self, memory: ClientMemoryRecord | MemoryRecord) -> None:
         """
         Validate memory record before sending to server.
@@ -2237,7 +2048,7 @@ class MemoryAPIClient:
                 converted_existing_messages.append(msg)
             else:
                 # Fallback for any other message type - convert to string content
-                converted_existing_messages.append(
+                converted_existing_messages.append(  # type: ignore
                     {"role": "user", "content": str(msg)}
                 )
 

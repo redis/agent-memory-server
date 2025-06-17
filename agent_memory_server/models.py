@@ -143,7 +143,7 @@ class ClientMemoryRecord(MemoryRecord):
     """A memory record with a client-provided ID"""
 
     id: str = Field(
-        default_factory=lambda: str(ulid.new()),
+        default_factory=lambda: str(ulid.ULID()),
         description="Client-provided ID for deduplication and overwrites",
     )
 

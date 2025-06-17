@@ -690,7 +690,7 @@ async def set_working_memory(
             # Handle both MemoryRecord objects and dict inputs
             if isinstance(memory, MemoryRecord):
                 # Already a MemoryRecord object, ensure it has an ID
-                memory_id = memory.id or str(ulid.new())
+                memory_id = memory.id or str(ulid.ULID())
                 processed_memory = memory.model_copy(
                     update={
                         "id": memory_id,
@@ -701,7 +701,7 @@ async def set_working_memory(
                 # Dictionary input, convert to MemoryRecord
                 memory_dict = dict(memory)
                 if not memory_dict.get("id"):
-                    memory_dict["id"] = str(ulid.new())
+                    memory_dict["id"] = str(ulid.ULID())
                 memory_dict["persisted_at"] = None
                 processed_memory = MemoryRecord(**memory_dict)
 
