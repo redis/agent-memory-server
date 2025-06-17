@@ -48,4 +48,3 @@ python travel_agent.py --memory-server-url http://localhost:8001
 - **Provider Agnostic**: Tool resolution works with OpenAI, Anthropic, and other LLM providers
 - **Error Handling**: Robust error handling for tool calls and network issues
 - **Logging**: Comprehensive logging shows which tools are available and being used
-
