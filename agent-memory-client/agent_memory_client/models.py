@@ -7,7 +7,7 @@ For full model definitions, see the main agent_memory_server package.
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 import ulid
 from pydantic import BaseModel, Field
@@ -48,7 +48,7 @@ class MemoryTypeEnum(str, Enum):
     MESSAGE = "message"
 
 
-class MemoryMessage(BaseModel):
+class MemoryMessage(TypedDict):
     """A message in the memory system"""
 
     role: str
@@ -134,7 +134,7 @@ class WorkingMemory(BaseModel):
     """Working memory for a session - contains both messages and structured memory records"""
 
     # Support both message-based memory (conversation) and structured memory records
-    messages: list[MemoryMessage] = Field(
+    messages: list[dict[str, Any]] = Field(
         default_factory=list,
         description="Conversation messages (role/content pairs)",
     )

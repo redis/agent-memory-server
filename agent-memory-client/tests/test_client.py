@@ -73,7 +73,7 @@ class TestMemoryLifecycleManagement:
         )
 
         with (
-            patch.object(enhanced_test_client, "get_session_memory") as mock_get,
+            patch.object(enhanced_test_client, "get_working_memory") as mock_get,
             patch.object(
                 enhanced_test_client, "create_long_term_memory"
             ) as mock_create,
@@ -118,7 +118,7 @@ class TestMemoryLifecycleManagement:
         )
 
         with (
-            patch.object(enhanced_test_client, "get_session_memory") as mock_get,
+            patch.object(enhanced_test_client, "get_working_memory") as mock_get,
             patch.object(
                 enhanced_test_client, "create_long_term_memory"
             ) as mock_create,
@@ -152,7 +152,7 @@ class TestMemoryLifecycleManagement:
             user_id=None,
         )
 
-        with patch.object(enhanced_test_client, "get_session_memory") as mock_get:
+        with patch.object(enhanced_test_client, "get_working_memory") as mock_get:
             mock_get.return_value = working_memory_response
 
             result = await enhanced_test_client.promote_working_memories_to_long_term(
@@ -436,8 +436,8 @@ class TestEnhancedConvenienceMethods:
         )
 
         with (
-            patch.object(enhanced_test_client, "get_session_memory") as mock_get,
-            patch.object(enhanced_test_client, "put_session_memory") as mock_put,
+            patch.object(enhanced_test_client, "get_working_memory") as mock_get,
+            patch.object(enhanced_test_client, "put_working_memory") as mock_put,
         ):
             mock_get.return_value = existing_memory
             mock_put.return_value = existing_memory
@@ -475,8 +475,8 @@ class TestEnhancedConvenienceMethods:
         )
 
         with (
-            patch.object(enhanced_test_client, "get_session_memory") as mock_get,
-            patch.object(enhanced_test_client, "put_session_memory") as mock_put,
+            patch.object(enhanced_test_client, "get_working_memory") as mock_get,
+            patch.object(enhanced_test_client, "put_working_memory") as mock_put,
         ):
             mock_get.return_value = existing_memory
             mock_put.return_value = existing_memory
@@ -511,8 +511,8 @@ class TestEnhancedConvenienceMethods:
         )
 
         with (
-            patch.object(enhanced_test_client, "get_session_memory") as mock_get,
-            patch.object(enhanced_test_client, "put_session_memory") as mock_put,
+            patch.object(enhanced_test_client, "get_working_memory") as mock_get,
+            patch.object(enhanced_test_client, "put_working_memory") as mock_put,
         ):
             mock_get.return_value = existing_memory
             mock_put.return_value = existing_memory
@@ -561,8 +561,8 @@ class TestEnhancedConvenienceMethods:
         ]
 
         with (
-            patch.object(enhanced_test_client, "get_session_memory") as mock_get,
-            patch.object(enhanced_test_client, "put_session_memory") as mock_put,
+            patch.object(enhanced_test_client, "get_working_memory") as mock_get,
+            patch.object(enhanced_test_client, "put_working_memory") as mock_put,
         ):
             mock_get.return_value = existing_memory
             mock_put.return_value = existing_memory
@@ -575,9 +575,9 @@ class TestEnhancedConvenienceMethods:
             # Check that messages were appended
             working_memory_arg = mock_put.call_args[0][1]
             assert len(working_memory_arg.messages) == 3
-            assert working_memory_arg.messages[0].content == "First message"
-            assert working_memory_arg.messages[1].content == "Second message"
-            assert working_memory_arg.messages[2].content == "Third message"
+            assert working_memory_arg.messages[0]["content"] == "First message"
+            assert working_memory_arg.messages[1]["content"] == "Second message"
+            assert working_memory_arg.messages[2]["content"] == "Third message"
 
     def test_deep_merge_dicts(self, enhanced_test_client):
         """Test the deep merge dictionary utility method."""

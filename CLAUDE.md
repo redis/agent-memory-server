@@ -16,6 +16,8 @@ uv run ruff check            # Run linting
 uv run ruff format           # Format code
 uv run pytest                # Run tests
 uv run pytest tests/         # Run specific test directory
+uv add <dependency>          # Add a dependency to pyproject.toml and update lock file
+uv remove <dependency>       # Remove a dependency from pyproject.toml and update lock file
 
 # Server commands
 uv run agent-memory api      # Start REST API server (default port 8000)

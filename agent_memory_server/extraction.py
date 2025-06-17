@@ -9,7 +9,7 @@ from redisvl.query.query import FilterQuery
 from tenacity.asyncio import AsyncRetrying
 from tenacity.stop import stop_after_attempt
 from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
-from ulid import ULID
+import ulid
 
 from agent_memory_server.config import settings
 from agent_memory_server.llms import (
@@ -333,7 +333,7 @@ async def extract_discrete_memories(
     if discrete_memories:
         long_term_memories = [
             MemoryRecord(
-                id_=str(ULID()),
+                id_=str(ulid.new()),
                 text=new_memory["text"],
                 memory_type=new_memory.get("type", "episodic"),
                 topics=new_memory.get("topics", []),
