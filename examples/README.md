@@ -17,7 +17,7 @@ A comprehensive travel assistant that demonstrates:
 The travel agent automatically discovers and uses all memory tools available from the client:
 
 1. **search_memory** - Search through previous conversations and stored information
-2. **get_working_memory** - Check current session state, stored memories, and data  
+2. **get_working_memory** - Check current session state, stored memories, and data
 3. **add_memory_to_working_memory** - Store important information as structured memories
 4. **update_working_memory_data** - Store/update session-specific data like trip plans
 
@@ -39,7 +39,7 @@ python travel_agent.py --memory-server-url http://localhost:8001
 
 ### Environment Variables
 - `OPENAI_API_KEY` - Required for OpenAI ChatGPT
-- `TAVILY_API_KEY` - Optional for web search functionality  
+- `TAVILY_API_KEY` - Optional for web search functionality
 - `MEMORY_SERVER_URL` - Memory server URL (default: http://localhost:8000)
 - `REDIS_URL` - Redis URL for caching (default: redis://localhost:6379)
 
