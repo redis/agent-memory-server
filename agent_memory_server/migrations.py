@@ -2,8 +2,8 @@
 Simplest possible migrations you could have.
 """
 
-from redis.asyncio import Redis
 import ulid
+from redis.asyncio import Redis
 
 from agent_memory_server.logging import get_logger
 from agent_memory_server.long_term_memory import generate_memory_hash

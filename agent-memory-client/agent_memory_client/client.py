@@ -40,7 +40,6 @@ from .models import (
     WorkingMemoryResponse,
 )
 
-
 # === Tool Call Type Definitions ===
 
 
@@ -820,7 +819,7 @@ class MemoryAPIClient:
                 result = await client.search_memory_tool(**args)
             ```
         """
-        from .filters import Topics, Entities, MemoryType
+        from .filters import Entities, MemoryType, Topics
 
         # Convert simple parameters to filter objects
         topics_filter = Topics(any=topics) if topics else None

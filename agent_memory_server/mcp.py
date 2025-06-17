@@ -2,8 +2,8 @@ import logging
 import os
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP as _FastMCPBase
 import ulid
+from mcp.server.fastmcp import FastMCP as _FastMCPBase
 
 from agent_memory_server.api import (
     create_long_term_memory as core_create_long_term_memory,

@@ -2,6 +2,7 @@ import json
 import os
 from typing import Any
 
+import ulid
 from bertopic import BERTopic
 from redis.asyncio.client import Redis
 from redisvl.query.filter import Tag
@@ -9,7 +10,6 @@ from redisvl.query.query import FilterQuery
 from tenacity.asyncio import AsyncRetrying
 from tenacity.stop import stop_after_attempt
 from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
-import ulid
 
 from agent_memory_server.config import settings
 from agent_memory_server.llms import (
