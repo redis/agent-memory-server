@@ -41,7 +41,8 @@ def get_search_index(
     distance_metric: str = settings.redisvl_distance_metric,
 ) -> AsyncSearchIndex:
     global _index
-    if _index is None:
+    # Check if we need to create a new index (no cached index or different Redis client)
+    if _index is None or _index._redis_client != redis:
         schema = {
             "index": {
                 "name": index_name,

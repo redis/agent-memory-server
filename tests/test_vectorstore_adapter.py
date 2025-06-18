@@ -27,7 +27,7 @@ class TestVectorStoreAdapter:
         # Create a sample memory
         memory = MemoryRecord(
             text="This is a test memory",
-            id_="test-123",
+            id="test-123",
             session_id="session-456",
             user_id="user-789",
             namespace="test",
@@ -42,6 +42,7 @@ class TestVectorStoreAdapter:
         # Verify conversion
         assert doc.page_content == "This is a test memory"
         assert doc.metadata["id_"] == "test-123"
+        assert doc.metadata["id"] == "test-123"
         assert doc.metadata["session_id"] == "session-456"
         assert doc.metadata["user_id"] == "user-789"
         assert doc.metadata["namespace"] == "test"
@@ -64,7 +65,7 @@ class TestVectorStoreAdapter:
         doc = Document(
             page_content="This is a test memory",
             metadata={
-                "id_": "test-123",
+                "id": "test-123",
                 "session_id": "session-456",
                 "user_id": "user-789",
                 "namespace": "test",
@@ -82,7 +83,7 @@ class TestVectorStoreAdapter:
 
         # Verify conversion
         assert memory_result.text == "This is a test memory"
-        assert memory_result.id_ == "test-123"
+        assert memory_result.id == "test-123"
         assert memory_result.session_id == "session-456"
         assert memory_result.user_id == "user-789"
         assert memory_result.namespace == "test"
@@ -106,12 +107,12 @@ class TestVectorStoreAdapter:
         memories = [
             MemoryRecord(
                 text="Memory 1",
-                id_="mem1",
+                id="mem1",
                 memory_type=MemoryTypeEnum.SEMANTIC,
             ),
             MemoryRecord(
                 text="Memory 2",
-                id_="mem2",
+                id="mem2",
                 memory_type=MemoryTypeEnum.SEMANTIC,
             ),
         ]
@@ -134,7 +135,7 @@ class TestVectorStoreAdapter:
         # Test with Redis backend (default) - this uses actual settings
         adapter = create_vectorstore_adapter()
 
-        # For Redis backend, we should get RedisVectorStoreAdapter
+        # For Redis backend, we should get RedisVectorStoreAdapter (not LangChainVectorStoreAdapter)
         assert isinstance(adapter, RedisVectorStoreAdapter)
 
         # Reset the global adapter
@@ -158,10 +159,6 @@ class TestVectorStoreAdapter:
 
             # Create the backend-specific adapter directly
             # (bypassing settings that default to redis)
-            from agent_memory_server.vectorstore_factory import (
-                LangChainVectorStoreAdapter,
-            )
-
             adapter = LangChainVectorStoreAdapter(mock_vectorstore, mock_embeddings)
 
             # For non-Redis backends, we should get LangChainVectorStoreAdapter
@@ -181,6 +178,7 @@ class TestVectorStoreAdapter:
         # Create a sample memory
         memory = MemoryRecord(
             text="This is a test memory",
+            id="test-hash-123",
             user_id="user-123",
             session_id="session-456",
             memory_type=MemoryTypeEnum.SEMANTIC,
@@ -197,6 +195,7 @@ class TestVectorStoreAdapter:
         # Verify different memories produce different hashes
         different_memory = MemoryRecord(
             text="This is a different memory",
+            id="test-hash-456",
             user_id="user-123",
             session_id="session-456",
             memory_type=MemoryTypeEnum.SEMANTIC,

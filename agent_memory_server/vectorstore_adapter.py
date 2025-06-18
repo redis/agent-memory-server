@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import Any, TypeVar
 
+import numpy as np
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
@@ -29,6 +30,10 @@ from agent_memory_server.models import (
     MemoryRecord,
     MemoryRecordResult,
     MemoryRecordResults,
+)
+from agent_memory_server.utils.redis import (
+    get_redis_conn,
+    get_search_index,
 )
 
 
@@ -136,34 +141,34 @@ class VectorStoreAdapter(ABC):
         Returns:
             LangChain Document with metadata
         """
-        # Convert datetime objects to ISO strings for metadata
-        created_at_str = memory.created_at.isoformat() if memory.created_at else None
-        last_accessed_str = (
+        # Use ISO strings for datetime fields (standard format for most backends)
+        created_at_val = memory.created_at.isoformat() if memory.created_at else None
+        last_accessed_val = (
             memory.last_accessed.isoformat() if memory.last_accessed else None
         )
-        updated_at_str = memory.updated_at.isoformat() if memory.updated_at else None
-        persisted_at_str = (
+        updated_at_val = memory.updated_at.isoformat() if memory.updated_at else None
+        persisted_at_val = (
             memory.persisted_at.isoformat() if memory.persisted_at else None
         )
-        event_date_str = memory.event_date.isoformat() if memory.event_date else None
+        event_date_val = memory.event_date.isoformat() if memory.event_date else None
 
         metadata = {
-            "id_": memory.id_,
+            "id_": memory.id,
             "session_id": memory.session_id,
             "user_id": memory.user_id,
             "namespace": memory.namespace,
-            "created_at": created_at_str,
-            "last_accessed": last_accessed_str,
-            "updated_at": updated_at_str,
+            "created_at": created_at_val,
+            "last_accessed": last_accessed_val,
+            "updated_at": updated_at_val,
             "topics": memory.topics,
             "entities": memory.entities,
             "memory_hash": memory.memory_hash,
             "discrete_memory_extracted": memory.discrete_memory_extracted,
             "memory_type": memory.memory_type.value,
             "id": memory.id,
-            "persisted_at": persisted_at_str,
+            "persisted_at": persisted_at_val,
             "extracted_from": memory.extracted_from,
-            "event_date": event_date_str,
+            "event_date": event_date_val,
         }
 
         # Remove None values to keep metadata clean
@@ -188,10 +193,16 @@ class VectorStoreAdapter(ABC):
         """
         metadata = doc.metadata
 
-        # Parse datetime strings back to datetime objects
-        def parse_datetime(dt_str: str | None) -> datetime | None:
-            if dt_str:
-                return datetime.fromisoformat(dt_str)
+        # Parse datetime values back to datetime objects (handle both timestamp and ISO string formats)
+        def parse_datetime(dt_val: str | float | None) -> datetime | None:
+            if dt_val is None:
+                return None
+            if isinstance(dt_val, int | float):
+                # Unix timestamp from Redis
+                return datetime.fromtimestamp(dt_val, tz=UTC)
+            if isinstance(dt_val, str):
+                # ISO string from other backends
+                return datetime.fromisoformat(dt_val)
             return None
 
         created_at = parse_datetime(metadata.get("created_at"))
@@ -210,7 +221,7 @@ class VectorStoreAdapter(ABC):
 
         return MemoryRecordResult(
             text=doc.page_content,
-            id_=metadata.get("id_"),
+            id=metadata.get("id") or metadata.get("id_") or "",
             session_id=metadata.get("session_id"),
             user_id=metadata.get("user_id"),
             namespace=metadata.get("namespace"),
@@ -222,7 +233,6 @@ class VectorStoreAdapter(ABC):
             memory_hash=metadata.get("memory_hash"),
             discrete_memory_extracted=metadata.get("discrete_memory_extracted", "f"),
             memory_type=metadata.get("memory_type", "message"),
-            id=metadata.get("id"),
             persisted_at=persisted_at,
             extracted_from=metadata.get("extracted_from"),
             event_date=event_date,
@@ -249,29 +259,160 @@ class VectorStoreAdapter(ABC):
         return hashlib.sha256(hash_content.encode()).hexdigest()
 
     def _convert_filters_to_backend_format(
-        self, filter_dict: dict[str, Any] | None
-    ) -> Any:
-        """Convert standard filter dictionary to backend-specific format.
+        self,
+        session_id: SessionId | None = None,
+        user_id: UserId | None = None,
+        namespace: Namespace | None = None,
+        topics: Topics | None = None,
+        entities: Entities | None = None,
+        memory_type: MemoryType | None = None,
+        created_at: CreatedAt | None = None,
+        last_accessed: LastAccessed | None = None,
+        event_date: EventDate | None = None,
+    ) -> dict[str, Any] | None:
+        """Convert filter objects to standard LangChain dictionary format.
 
-        For most LangChain VectorStores, filtering capabilities vary significantly.
-        This method provides a basic filter format that works with common backends.
-        Complex filtering is handled via post-processing.
+        Uses the PGVector/Pinecone style dictionary format with operators like $eq, $in, etc.
+        This works with most standard LangChain VectorStore implementations.
+
+        Backend-specific datetime handling:
+        - Pinecone: Uses Unix timestamps (numbers)
+        - Others: Use ISO strings
+
+        Args:
+            Filter objects from filters.py
+
+        Returns:
+            Dictionary filter in format: {"field": {"$eq": "value"}} or None
         """
-        if not filter_dict:
-            return None
+        filter_dict = {}
 
-        logger.debug(f"Converting filters for non-Redis backend: {filter_dict}")
+        # Determine datetime format based on backend type
+        def format_datetime(dt: datetime) -> str | float:
+            """Format datetime for the specific backend."""
+            vectorstore_type = str(type(self.vectorstore)).lower()
 
-        # Most LangChain VectorStores use simple key-value metadata filtering
-        # For complex filters (lists, ranges), we rely on post-processing
-        simple_filters = {}
+            # Pinecone requires Unix timestamps for datetime comparisons
+            if "pinecone" in vectorstore_type:
+                logger.info(f"Using Unix timestamp for Pinecone: {dt.timestamp()}")
+                return dt.timestamp()
+            # Redis might also need timestamps - let's test this
+            if "redis" in vectorstore_type:
+                logger.info(f"Testing Redis with ISO format: {dt.isoformat()}")
+                return dt.isoformat()  # Start with ISO, we'll see if this works
+            # Most other backends use ISO strings
+            logger.info(f"Using ISO format for {vectorstore_type}: {dt.isoformat()}")
+            return dt.isoformat()
 
-        for field, value in filter_dict.items():
-            if field in ["session_id", "user_id", "namespace", "memory_type"] and value:
-                simple_filters[field] = value
-            # Skip complex filters like topics/entities lists - handle in post-processing
+        # Simple equality filters
+        if session_id and session_id.eq:
+            filter_dict["session_id"] = {"$eq": session_id.eq}
+        elif session_id and session_id.ne:
+            filter_dict["session_id"] = {"$ne": session_id.ne}
+        elif session_id and session_id.any:
+            filter_dict["session_id"] = {"$in": session_id.any}
 
-        return simple_filters if simple_filters else None
+        if user_id and user_id.eq:
+            filter_dict["user_id"] = {"$eq": user_id.eq}
+        elif user_id and user_id.ne:
+            filter_dict["user_id"] = {"$ne": user_id.ne}
+        elif user_id and user_id.any:
+            filter_dict["user_id"] = {"$in": user_id.any}
+
+        if namespace and namespace.eq:
+            filter_dict["namespace"] = {"$eq": namespace.eq}
+        elif namespace and namespace.ne:
+            filter_dict["namespace"] = {"$ne": namespace.ne}
+        elif namespace and namespace.any:
+            filter_dict["namespace"] = {"$in": namespace.any}
+
+        if memory_type and memory_type.eq:
+            filter_dict["memory_type"] = {"$eq": memory_type.eq}
+        elif memory_type and memory_type.ne:
+            filter_dict["memory_type"] = {"$ne": memory_type.ne}
+        elif memory_type and memory_type.any:
+            filter_dict["memory_type"] = {"$in": memory_type.any}
+
+        # List filters (topics/entities) - use $in for "any" matches
+        if topics and topics.any:
+            filter_dict["topics"] = {"$in": topics.any}
+        elif topics and topics.eq:
+            filter_dict["topics"] = {"$eq": topics.eq}
+
+        if entities and entities.any:
+            filter_dict["entities"] = {"$in": entities.any}
+        elif entities and entities.eq:
+            filter_dict["entities"] = {"$eq": entities.eq}
+
+        # Datetime range filters
+        if created_at:
+            created_filter = {}
+            if created_at.eq:
+                created_filter["$eq"] = format_datetime(created_at.eq)
+            elif created_at.ne:
+                created_filter["$ne"] = format_datetime(created_at.ne)
+            elif created_at.gt:
+                created_filter["$gt"] = format_datetime(created_at.gt)
+            elif created_at.gte:
+                created_filter["$gte"] = format_datetime(created_at.gte)
+            elif created_at.lt:
+                created_filter["$lt"] = format_datetime(created_at.lt)
+            elif created_at.lte:
+                created_filter["$lte"] = format_datetime(created_at.lte)
+            elif created_at.between:
+                created_filter["$between"] = [
+                    format_datetime(dt) for dt in created_at.between
+                ]
+
+            if created_filter:
+                filter_dict["created_at"] = created_filter
+
+        if last_accessed:
+            last_accessed_filter = {}
+            if last_accessed.eq:
+                last_accessed_filter["$eq"] = format_datetime(last_accessed.eq)
+            elif last_accessed.ne:
+                last_accessed_filter["$ne"] = format_datetime(last_accessed.ne)
+            elif last_accessed.gt:
+                last_accessed_filter["$gt"] = format_datetime(last_accessed.gt)
+            elif last_accessed.gte:
+                last_accessed_filter["$gte"] = format_datetime(last_accessed.gte)
+            elif last_accessed.lt:
+                last_accessed_filter["$lt"] = format_datetime(last_accessed.lt)
+            elif last_accessed.lte:
+                last_accessed_filter["$lte"] = format_datetime(last_accessed.lte)
+            elif last_accessed.between:
+                last_accessed_filter["$between"] = [
+                    format_datetime(dt) for dt in last_accessed.between
+                ]
+
+            if last_accessed_filter:
+                filter_dict["last_accessed"] = last_accessed_filter
+
+        if event_date:
+            event_date_filter = {}
+            if event_date.eq:
+                event_date_filter["$eq"] = format_datetime(event_date.eq)
+            elif event_date.ne:
+                event_date_filter["$ne"] = format_datetime(event_date.ne)
+            elif event_date.gt:
+                event_date_filter["$gt"] = format_datetime(event_date.gt)
+            elif event_date.gte:
+                event_date_filter["$gte"] = format_datetime(event_date.gte)
+            elif event_date.lt:
+                event_date_filter["$lt"] = format_datetime(event_date.lt)
+            elif event_date.lte:
+                event_date_filter["$lte"] = format_datetime(event_date.lte)
+            elif event_date.between:
+                event_date_filter["$between"] = [
+                    format_datetime(dt) for dt in event_date.between
+                ]
+
+            if event_date_filter:
+                filter_dict["event_date"] = event_date_filter
+
+        logger.debug(f"Converted to LangChain filter format: {filter_dict}")
+        return filter_dict if filter_dict else None
 
 
 class LangChainVectorStoreAdapter(VectorStoreAdapter):
@@ -289,25 +430,36 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
             if not memory.memory_hash:
                 memory.memory_hash = self.generate_memory_hash(memory)
 
-            documents.append(self.memory_to_document(memory))
+            doc = self.memory_to_document(memory)
+            logger.info(
+                f"Converting memory to document: {memory.id} -> metadata: {doc.metadata}"
+            )
+            documents.append(doc)
 
         # Add documents to the vector store
         try:
-            # Most VectorStores support add_documents
+            # Extract IDs from memory records to prevent ULID generation
+            memory_ids = [memory.id for memory in memories]
+
+            # Standard LangChain VectorStore implementation
             if hasattr(self.vectorstore, "aadd_documents"):
-                ids = await self.vectorstore.aadd_documents(documents)
+                ids = await self.vectorstore.aadd_documents(documents, ids=memory_ids)
             elif hasattr(self.vectorstore, "add_documents"):
-                ids = self.vectorstore.add_documents(documents)
+                ids = self.vectorstore.add_documents(documents, ids=memory_ids)
             else:
-                # Fallback to add_texts if add_documents not available
+                # Fallback to add_texts
                 texts = [doc.page_content for doc in documents]
                 metadatas = [doc.metadata for doc in documents]
                 if hasattr(self.vectorstore, "aadd_texts"):
-                    ids = await self.vectorstore.aadd_texts(texts, metadatas=metadatas)
+                    ids = await self.vectorstore.aadd_texts(
+                        texts, metadatas=metadatas, ids=memory_ids
+                    )
                 else:
-                    ids = self.vectorstore.add_texts(texts, metadatas=metadatas)
+                    ids = self.vectorstore.add_texts(
+                        texts, metadatas=metadatas, ids=memory_ids
+                    )
 
-            return ids or []
+            return ids or memory_ids
         except Exception as e:
             logger.error(f"Error adding memories to vector store: {e}")
             raise
@@ -330,51 +482,29 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
     ) -> MemoryRecordResults:
         """Search memories in the vector store."""
         try:
-            # Build filter metadata based on provided filters
-            filter_dict = {}
+            # Convert filter objects to standard LangChain dictionary format
+            backend_filter = self._convert_filters_to_backend_format(
+                session_id=session_id,
+                user_id=user_id,
+                namespace=namespace,
+                topics=topics,
+                entities=entities,
+                memory_type=memory_type,
+                created_at=created_at,
+                last_accessed=last_accessed,
+                event_date=event_date,
+            )
 
-            if session_id and session_id.eq:
-                filter_dict["session_id"] = session_id.eq
-            if user_id and user_id.eq:
-                filter_dict["user_id"] = user_id.eq
-            if namespace and namespace.eq:
-                filter_dict["namespace"] = namespace.eq
-            if memory_type and memory_type.eq:
-                filter_dict["memory_type"] = memory_type.eq
-
-            # Handle topics and entities filters
-            if topics:
-                if topics.any:
-                    # For 'any' filters, we'll search without filter and post-process
-                    # since not all vectorstores support complex list filtering
-                    pass
-                elif topics.eq:
-                    filter_dict["topics"] = topics.eq
-
-            if entities:
-                if entities.any:
-                    # Similar to topics, handle in post-processing
-                    pass
-                elif entities.eq:
-                    filter_dict["entities"] = entities.eq
-
-            # For non-Redis backends, use simple metadata filtering where supported
-            search_kwargs = {
+            # Prepare search arguments
+            search_kwargs: dict[str, Any] = {
                 "k": limit + offset
             }  # Get more results for offset handling
 
-            # Apply basic filters that the backend supports
-            if filter_dict:
-                backend_filter = self._convert_filters_to_backend_format(filter_dict)
-                if backend_filter:
-                    search_kwargs["filter"] = backend_filter
-                    logger.debug(f"Applied backend filter: {backend_filter}")
-                else:
-                    logger.debug(
-                        "No backend filters applied - using post-processing only"
-                    )
+            if backend_filter:
+                search_kwargs["filter"] = backend_filter
+                logger.info(f"Applied LangChain filter: {backend_filter}")
             else:
-                logger.debug("No filters to apply")
+                logger.info("No filters to apply")
 
             if hasattr(self.vectorstore, "asimilarity_search_with_score"):
                 docs_with_scores = await self.vectorstore.asimilarity_search_with_score(
@@ -528,27 +658,30 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
         user_id: str | None = None,
         session_id: str | None = None,
     ) -> int:
-        """Count memories matching the given filters."""
+        """Count memories in the vector store using LangChain."""
         try:
-            # Build filter
-            filter_dict = {}
-            if namespace:
-                filter_dict["namespace"] = namespace
-            if user_id:
-                filter_dict["user_id"] = user_id
-            if session_id:
-                filter_dict["session_id"] = session_id
+            # Convert basic filters to our filter objects, then to backend format
+            from agent_memory_server.filters import Namespace, SessionId, UserId
+
+            namespace_filter = Namespace(eq=namespace) if namespace else None
+            user_id_filter = UserId(eq=user_id) if user_id else None
+            session_id_filter = SessionId(eq=session_id) if session_id else None
 
             # Most vector stores don't have a direct count method
             # We'll use a large similarity search and count results
             # This is not optimal but works as a fallback
-            search_kwargs = {"k": 10000}  # Large number to get all results
+            search_kwargs: dict[str, Any] = {
+                "k": 10000
+            }  # Large number to get all results
 
-            # Apply basic filters where supported by the backend
-            if filter_dict:
-                backend_filter = self._convert_filters_to_backend_format(filter_dict)
-                if backend_filter:
-                    search_kwargs["filter"] = backend_filter
+            # Apply filters using the proper method signature
+            backend_filter = self._convert_filters_to_backend_format(
+                namespace=namespace_filter,
+                user_id=user_id_filter,
+                session_id=session_id_filter,
+            )
+            if backend_filter:
+                search_kwargs["filter"] = backend_filter
 
             if hasattr(self.vectorstore, "asimilarity_search"):
                 docs = await self.vectorstore.asimilarity_search("", **search_kwargs)
@@ -559,7 +692,7 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
                 return 0
 
             # Apply post-processing filters
-            if filter_dict:
+            if namespace or user_id or session_id:
                 filtered_docs = []
                 for doc in docs:
                     metadata = doc.metadata
@@ -584,71 +717,170 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
 
 
 class RedisVectorStoreAdapter(VectorStoreAdapter):
-    """Custom Redis adapter that uses proper indexing for server-side filtering."""
+    """Redis adapter that uses LangChain's RedisVectorStore with Redis-specific optimizations."""
 
-    def __init__(self, embeddings: Embeddings, redis_client=None):
-        """Initialize Redis adapter with proper indexing.
+    def __init__(self, vectorstore: VectorStore, embeddings: Embeddings):
+        """Initialize Redis adapter.
 
         Args:
+            vectorstore: VectorStore instance (not used, only for interface compatibility)
             embeddings: Embeddings instance
-            redis_client: Optional Redis client (will create if None)
         """
-        # Don't call super().__init__ since we manage our own Redis connection
-        self.embeddings = embeddings
-        self.redis_client = redis_client
-        self._index = None
+        super().__init__(vectorstore, embeddings)
 
-    async def _get_index(self):
-        """Get the Redis search index with proper schema."""
-        if self._index is None:
-            from agent_memory_server.utils.redis import get_redis_conn, get_search_index
+        # Note: We don't use the vectorstore parameter since we use pure RedisVL
+        # The vectorstore is only kept for interface compatibility
 
-            if self.redis_client is None:
-                self.redis_client = await get_redis_conn()
+    def memory_to_document(self, memory: MemoryRecord) -> Document:
+        """Convert a MemoryRecord to a LangChain Document with Redis timestamp format.
 
-            self._index = get_search_index(self.redis_client)
+        Args:
+            memory: MemoryRecord to convert
 
-            # Ensure the index exists
-            from agent_memory_server.utils.redis import ensure_search_index_exists
+        Returns:
+            LangChain Document with metadata optimized for Redis
+        """
+        # For Redis backends, use Unix timestamps for NUMERIC fields
+        created_at_val = memory.created_at.timestamp() if memory.created_at else None
+        last_accessed_val = (
+            memory.last_accessed.timestamp() if memory.last_accessed else None
+        )
+        updated_at_val = memory.updated_at.timestamp() if memory.updated_at else None
+        persisted_at_val = (
+            memory.persisted_at.timestamp() if memory.persisted_at else None
+        )
+        event_date_val = memory.event_date.timestamp() if memory.event_date else None
 
-            await ensure_search_index_exists(self.redis_client)
+        metadata = {
+            "id_": memory.id,
+            "session_id": memory.session_id,
+            "user_id": memory.user_id,
+            "namespace": memory.namespace,
+            "created_at": created_at_val,
+            "last_accessed": last_accessed_val,
+            "updated_at": updated_at_val,
+            "topics": memory.topics,
+            "entities": memory.entities,
+            "memory_hash": memory.memory_hash,
+            "discrete_memory_extracted": memory.discrete_memory_extracted,
+            "memory_type": memory.memory_type.value,
+            "id": memory.id,
+            "persisted_at": persisted_at_val,
+            "extracted_from": memory.extracted_from,
+            "event_date": event_date_val,
+        }
 
-        return self._index
+        # Remove None values to keep metadata clean
+        metadata = {k: v for k, v in metadata.items() if v is not None}
+
+        return Document(
+            page_content=memory.text,
+            metadata=metadata,
+        )
 
     async def add_memories(self, memories: list[MemoryRecord]) -> list[str]:
-        """Add memory records using Redis with proper indexing."""
+        """Add memories using pure RedisVL to ensure proper data format."""
         if not memories:
             return []
 
         try:
-            # Ensure redis client is available
-            if self.redis_client is None:
-                from agent_memory_server.utils.redis import get_redis_conn
+            # Get Redis connection and search index
+            redis_client = await get_redis_conn()
+            index = get_search_index(redis_client)
 
-                self.redis_client = await get_redis_conn()
+            # Convert memories to RedisVL format
+            data = []
+            memory_ids = []
 
-            # Use the actual Redis implementation
-            from agent_memory_server.long_term_memory import index_long_term_memories
-
-            # Call the actual Redis implementation with proper indexing
-            await index_long_term_memories(
-                memories=memories,
-                redis_client=self.redis_client,
-                deduplicate=False,  # Deduplication handled separately if needed
-            )
-
-            # Return the memory IDs, ensuring all are strings and filtering out None values
-            result_ids = []
             for memory in memories:
-                memory_id = memory.id_ or memory.id
-                if memory_id is not None:
-                    result_ids.append(str(memory_id))
+                # Generate embeddings for the memory text
+                if hasattr(self.embeddings, "aembed_documents"):
+                    embeddings_result = await self.embeddings.aembed_documents(
+                        [memory.text]
+                    )
+                    vector = embeddings_result[0]
+                else:
+                    vector = await self.embeddings.aembed_query(memory.text)
 
-            return result_ids
+                # Set memory hash if not provided
+                if not memory.memory_hash:
+                    memory.memory_hash = self.generate_memory_hash(memory)
+
+                # Ensure timestamps are set - create datetime objects if they don't exist
+                now_timestamp = datetime.now(UTC)
+                if not memory.created_at:
+                    memory.created_at = now_timestamp
+                if not memory.last_accessed:
+                    memory.last_accessed = now_timestamp
+                if not memory.updated_at:
+                    memory.updated_at = now_timestamp
+
+                # Helper function to convert datetime to timestamp (returns None for None input)
+                def to_timestamp(dt_value):
+                    if dt_value is None:
+                        return None
+                    if isinstance(dt_value, datetime):
+                        return dt_value.timestamp()
+                    if isinstance(dt_value, int | float):
+                        return dt_value
+                    return None
+
+                # Create memory data dict for RedisVL
+                memory_data = {
+                    "text": memory.text,
+                    "id_": memory.id or "",
+                    "id": memory.id or "",  # Keep both for compatibility
+                    "session_id": memory.session_id or "",
+                    "user_id": memory.user_id or "",
+                    "namespace": memory.namespace or "",
+                    "topics": ",".join(memory.topics) if memory.topics else "",
+                    "entities": ",".join(memory.entities) if memory.entities else "",
+                    "memory_type": memory.memory_type.value
+                    if memory.memory_type
+                    else "message",
+                    "created_at": to_timestamp(memory.created_at),
+                    "last_accessed": to_timestamp(memory.last_accessed),
+                    "updated_at": to_timestamp(memory.updated_at),
+                    "memory_hash": memory.memory_hash,
+                    "extracted_from": ",".join(memory.extracted_from)
+                    if memory.extracted_from
+                    else "",
+                    "discrete_memory_extracted": memory.discrete_memory_extracted
+                    or "f",
+                    "vector": np.array(vector, dtype=np.float32).tobytes(),
+                }
+
+                # Add optional datetime fields only if they have values (avoid RedisSearch NUMERIC field errors)
+                if memory.persisted_at is not None:
+                    memory_data["persisted_at"] = to_timestamp(memory.persisted_at)
+                if memory.event_date is not None:
+                    memory_data["event_date"] = to_timestamp(memory.event_date)
+
+                # Use memory.id as the key, or generate a new one if not provided
+                memory_key = memory.id or f"memory:{memory.memory_hash}"
+                memory_ids.append(memory_key)
+
+                # RedisVL expects a dictionary with the key included, not a tuple
+                memory_data["key"] = memory_key
+                data.append(memory_data)
+
+            # Load data into RedisVL index with manual keys
+            # Remove the 'key' field we added earlier since we're using the keys parameter
+            for memory_data in data:
+                if "key" in memory_data:
+                    del memory_data["key"]
+
+            # Add the index prefix to keys to match the schema expectation
+            # RedisVL expects keys to have the prefix that matches the schema
+            prefixed_keys = [f"{index.schema.index.prefix}{key}" for key in memory_ids]
+
+            await index.load(data, keys=prefixed_keys)
+
+            return memory_ids
 
         except Exception as e:
-            logger.error(f"Error adding memories to Redis: {e}")
-            return []
+            logger.error(f"Error adding memories to Redis vectorstore: {e}")
+            raise
 
     async def search_memories(
         self,
@@ -666,278 +898,184 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         limit: int = 10,
         offset: int = 0,
     ) -> MemoryRecordResults:
-        """Search memories using Redis with proper server-side filtering."""
-        from datetime import datetime
-        from functools import reduce
-
-        from redisvl.query import VectorQuery, VectorRangeQuery
-        from redisvl.utils.vectorize import OpenAITextVectorizer
-
-        from agent_memory_server.models import MemoryRecordResult, MemoryRecordResults
-        from agent_memory_server.utils.redis import safe_get
-
+        """Search memories using pure RedisVL instead of LangChain Redis to avoid field conflicts."""
         try:
-            # Ensure redis client is available
-            if self.redis_client is None:
-                from agent_memory_server.utils.redis import get_redis_conn
+            from redisvl.query import VectorQuery
 
-                self.redis_client = await get_redis_conn()
-
-            # Get search index
-            index = await self._get_index()
-
-            # Create vector embedding for the query
-            vectorizer = OpenAITextVectorizer()
-            vector = await vectorizer.aembed(query)
-
-            # Build filters using the Redis filter syntax
+            # Build RedisVL FilterExpression using existing filter classes
             filters = []
+
+            # Add individual filters using the .to_filter() methods from filters.py
             if session_id:
                 filters.append(session_id.to_filter())
             if user_id:
                 filters.append(user_id.to_filter())
             if namespace:
                 filters.append(namespace.to_filter())
-            if created_at:
-                filters.append(created_at.to_filter())
-            if last_accessed:
-                filters.append(last_accessed.to_filter())
+            if memory_type:
+                filters.append(memory_type.to_filter())
             if topics:
                 filters.append(topics.to_filter())
             if entities:
                 filters.append(entities.to_filter())
-            if memory_type:
-                filters.append(memory_type.to_filter())
+            if created_at:
+                filters.append(created_at.to_filter())
+            if last_accessed:
+                filters.append(last_accessed.to_filter())
             if event_date:
                 filters.append(event_date.to_filter())
 
-            filter_expression = reduce(lambda x, y: x & y, filters) if filters else None
+            # Combine filters with AND logic
+            redis_filter = None
+            if filters:
+                if len(filters) == 1:
+                    redis_filter = filters[0]
+                else:
+                    from functools import reduce
 
-            # Create appropriate query based on distance threshold
-            if distance_threshold is not None:
-                q = VectorRangeQuery(
-                    vector=vector,
-                    vector_field_name="vector",
-                    distance_threshold=distance_threshold,
-                    num_results=limit,
-                    return_score=True,
-                    return_fields=[
-                        "text",
-                        "id_",
-                        "dist",
-                        "created_at",
-                        "last_accessed",
-                        "user_id",
-                        "session_id",
-                        "namespace",
-                        "topics",
-                        "entities",
-                        "memory_type",
-                        "memory_hash",
-                        "id",
-                        "persisted_at",
-                        "extracted_from",
-                        "event_date",
-                    ],
-                )
-            else:
-                q = VectorQuery(
-                    vector=vector,
-                    vector_field_name="vector",
-                    num_results=limit,
-                    return_score=True,
-                    return_fields=[
-                        "text",
-                        "id_",
-                        "dist",
-                        "created_at",
-                        "last_accessed",
-                        "user_id",
-                        "session_id",
-                        "namespace",
-                        "topics",
-                        "entities",
-                        "memory_type",
-                        "memory_hash",
-                        "id",
-                        "persisted_at",
-                        "extracted_from",
-                        "event_date",
-                    ],
-                )
+                    redis_filter = reduce(lambda x, y: x & y, filters)
 
-            if filter_expression:
-                q.set_filter(filter_expression)
+            # Get Redis connection and search index
+            redis_client = await get_redis_conn()
+            index = get_search_index(redis_client)
 
-            q.paging(offset=offset, num=limit)
+            # Generate query vector using embeddings
+            query_vector = await self.embeddings.aembed_query(query)
 
-            # Execute the search
-            search_result = await index.query(q)
+            # Create RedisVL vector query
+            vector_query = VectorQuery(
+                vector=query_vector,
+                vector_field_name="vector",
+                return_fields=[
+                    "id_",
+                    "text",
+                    "session_id",
+                    "user_id",
+                    "namespace",
+                    "topics",
+                    "entities",
+                    "memory_type",
+                    "created_at",
+                    "last_accessed",
+                    "updated_at",
+                    "persisted_at",
+                    "event_date",
+                    "memory_hash",
+                    "extracted_from",
+                    "discrete_memory_extracted",
+                    "id",
+                ],
+                num_results=limit + offset,
+            )
 
-            # Process results
-            results = []
-            memory_hashes = []
+            if redis_filter:
+                vector_query.set_filter(redis_filter)
 
-            for doc in search_result:
-                # Skip duplicate hashes
-                memory_hash = safe_get(doc, "memory_hash")
-                if memory_hash in memory_hashes:
+            # Execute the query
+            search_results = await index.query(vector_query)
+
+            # Convert results to MemoryRecordResult objects
+            memory_results = []
+            for i, result in enumerate(search_results):
+                # Apply offset
+                if i < offset:
                     continue
-                memory_hashes.append(memory_hash)
 
-                # Parse topics and entities from comma-separated strings
-                doc_topics = safe_get(doc, "topics", [])
-                if isinstance(doc_topics, str):
-                    doc_topics = doc_topics.split(",") if doc_topics else []
+                # Extract fields from RedisVL result
+                result_dict = result.__dict__ if hasattr(result, "__dict__") else result
 
-                doc_entities = safe_get(doc, "entities", [])
-                if isinstance(doc_entities, str):
-                    doc_entities = doc_entities.split(",") if doc_entities else []
+                # Calculate distance score
+                score = float(result_dict.get("vector_score", 0.0))
 
-                # Handle extracted_from field
-                doc_extracted_from = safe_get(doc, "extracted_from", [])
-                if isinstance(doc_extracted_from, str) and doc_extracted_from:
-                    doc_extracted_from = doc_extracted_from.split(",")
-                elif not doc_extracted_from:
-                    doc_extracted_from = []
+                # Apply distance threshold
+                if distance_threshold is not None and score > distance_threshold:
+                    continue
 
-                # Handle event_date field
-                doc_event_date = safe_get(doc, "event_date", 0)
-                parsed_event_date = None
-                if doc_event_date and int(doc_event_date) != 0:
-                    parsed_event_date = datetime.fromtimestamp(int(doc_event_date))
+                # Helper function to parse timestamp to datetime
+                def parse_timestamp_to_datetime(timestamp_val):
+                    if not timestamp_val:
+                        return datetime.now(UTC)
+                    if isinstance(timestamp_val, int | float):
+                        return datetime.fromtimestamp(timestamp_val, tz=UTC)
+                    return datetime.now(UTC)
 
-                # Convert to MemoryRecordResult
-                result = MemoryRecordResult(
-                    id_=safe_get(doc, "id_"),
-                    text=safe_get(doc, "text", ""),
-                    dist=float(safe_get(doc, "vector_distance", 0)),
-                    created_at=datetime.fromtimestamp(
-                        int(safe_get(doc, "created_at", 0))
+                # Extract memory data
+                memory_result = MemoryRecordResult(
+                    id=result_dict.get("id_", ""),
+                    text=result_dict.get("text", ""),
+                    dist=score,
+                    created_at=parse_timestamp_to_datetime(
+                        result_dict.get("created_at")
                     ),
-                    updated_at=datetime.fromtimestamp(
-                        int(safe_get(doc, "updated_at", 0))
+                    updated_at=parse_timestamp_to_datetime(
+                        result_dict.get("updated_at")
                     ),
-                    last_accessed=datetime.fromtimestamp(
-                        int(safe_get(doc, "last_accessed", 0))
+                    last_accessed=parse_timestamp_to_datetime(
+                        result_dict.get("last_accessed")
                     ),
-                    user_id=safe_get(doc, "user_id"),
-                    session_id=safe_get(doc, "session_id"),
-                    namespace=safe_get(doc, "namespace"),
-                    topics=doc_topics,
-                    entities=doc_entities,
-                    memory_hash=memory_hash,
-                    memory_type=safe_get(doc, "memory_type", "message"),
-                    id=safe_get(doc, "id"),
-                    persisted_at=datetime.fromtimestamp(
-                        int(safe_get(doc, "persisted_at", 0))
-                    )
-                    if safe_get(doc, "persisted_at", 0) != 0
-                    else None,
-                    extracted_from=doc_extracted_from,
-                    event_date=parsed_event_date,
-                )
-                results.append(result)
-
-            # Calculate total results
-            total_results = len(results)
-            try:
-                # Check if search_result has a total attribute and use it
-                total_attr = getattr(search_result, "total", None)
-                if total_attr is not None:
-                    total_results = int(total_attr)
-            except (AttributeError, TypeError):
-                # Fallback to list length if search_result is a list or doesn't have total
-                total_results = (
-                    len(search_result)
-                    if isinstance(search_result, list)
-                    else len(results)
+                    user_id=result_dict.get("user_id"),
+                    session_id=result_dict.get("session_id"),
+                    namespace=result_dict.get("namespace"),
+                    topics=self._parse_list_field(result_dict.get("topics")),
+                    entities=self._parse_list_field(result_dict.get("entities")),
+                    memory_hash=result_dict.get("memory_hash", ""),
+                    memory_type=result_dict.get("memory_type", "message"),
+                    persisted_at=result_dict.get("persisted_at"),
+                    extracted_from=self._parse_list_field(
+                        result_dict.get("extracted_from")
+                    ),
+                    event_date=result_dict.get("event_date"),
                 )
 
-            logger.info(f"Found {len(results)} results for query")
+                memory_results.append(memory_result)
+
+                # Stop if we have enough results
+                if len(memory_results) >= limit:
+                    break
+
+            next_offset = (
+                offset + limit if len(search_results) > offset + limit else None
+            )
+
             return MemoryRecordResults(
-                total=total_results,
-                memories=results,
-                next_offset=offset + limit if offset + limit < total_results else None,
+                memories=memory_results,
+                total=len(search_results),
+                next_offset=next_offset,
             )
 
         except Exception as e:
-            logger.error(f"Error searching memories in Redis: {e}")
-            # Return empty results on error
-            return MemoryRecordResults(total=0, memories=[], next_offset=None)
+            logger.error(f"Error searching memories in Redis vectorstore: {e}")
+            raise
+
+    def _parse_list_field(self, field_value):
+        """Parse a field that might be a list, comma-separated string, or None."""
+        if not field_value:
+            return []
+        if isinstance(field_value, list):
+            return field_value
+        if isinstance(field_value, str):
+            return field_value.split(",") if field_value else []
+        return []
 
     async def delete_memories(self, memory_ids: list[str]) -> int:
-        """Delete memories by their IDs using proper Redis key construction."""
+        """Delete memories by their IDs using LangChain's RedisVectorStore."""
         if not memory_ids:
             return 0
 
         try:
-            from agent_memory_server.utils.keys import Keys
+            if hasattr(self.vectorstore, "adelete"):
+                deleted = await self.vectorstore.adelete(memory_ids)
+            elif hasattr(self.vectorstore, "delete"):
+                deleted = self.vectorstore.delete(memory_ids)
+            else:
+                logger.warning("Redis vectorstore does not support delete operation")
+                return 0
 
-            if self.redis_client is None:
-                from agent_memory_server.utils.redis import get_redis_conn
-
-                self.redis_client = await get_redis_conn()
-
-            deleted_count = 0
-
-            # First, try to search for existing memories to get the proper keys and namespaces
-            for memory_id in memory_ids:
-                # Search for the memory to find its namespace
-                try:
-                    # Use a direct Redis FT.SEARCH to find the memory
-                    index_name = Keys.search_index_name()
-                    search_query = f"FT.SEARCH {index_name} (@id:{{{memory_id}}}) RETURN 3 id_ namespace"
-
-                    search_results = await self.redis_client.execute_command(
-                        search_query
-                    )
-
-                    if search_results and search_results[0] > 0:
-                        # Found the memory, get its key and namespace
-                        memory_key = search_results[1]
-                        if isinstance(memory_key, bytes):
-                            memory_key = memory_key.decode()
-
-                        # Delete using the exact key returned by search
-                        if await self.redis_client.delete(memory_key):
-                            deleted_count += 1
-                            logger.info(
-                                f"Deleted memory {memory_id} with key {memory_key}"
-                            )
-                        continue
-
-                except Exception as e:
-                    logger.warning(f"Could not search for memory {memory_id}: {e}")
-
-                # Fallback: try different possible key formats
-                possible_keys = [
-                    Keys.memory_key(memory_id, None),  # No namespace
-                    f"memory:{memory_id}",
-                    memory_id,  # Direct key
-                ]
-
-                # Also try with common namespaces if they exist
-                for namespace in [None, "default", ""]:
-                    if namespace:
-                        possible_keys.append(Keys.memory_key(memory_id, namespace))
-
-                for key in possible_keys:
-                    try:
-                        if await self.redis_client.delete(key):
-                            deleted_count += 1
-                            logger.info(
-                                f"Deleted memory {memory_id} with fallback key {key}"
-                            )
-                            break
-                    except Exception as e:
-                        logger.debug(f"Failed to delete key {key}: {e}")
-
-            return deleted_count
+            return len(memory_ids) if deleted else 0
 
         except Exception as e:
-            logger.error(f"Error deleting memories from Redis: {e}")
-            return 0
+            logger.error(f"Error deleting memories from Redis vectorstore: {e}")
+            raise
 
     async def count_memories(
         self,
@@ -945,19 +1083,71 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         user_id: str | None = None,
         session_id: str | None = None,
     ) -> int:
-        """Count memories using Redis with proper filtering."""
+        """Count memories using pure RedisVL instead of LangChain Redis to avoid field conflicts."""
         try:
-            # Use the original Redis count logic
-            from agent_memory_server.long_term_memory import count_long_term_memories
+            from redisvl.query import CountQuery
 
-            # Use the correct parameter types - pass strings directly
-            return await count_long_term_memories(
-                session_id=session_id,
-                user_id=user_id,
-                namespace=namespace,
-                redis_client=self.redis_client,
-            )
+            # Build RedisVL filter for counting using filter objects
+            filters = []
+
+            if namespace:
+                from agent_memory_server.filters import Namespace
+
+                namespace_filter = Namespace(eq=namespace).to_filter()
+                filters.append(namespace_filter)
+                logger.info(
+                    f"Added namespace filter: {namespace_filter} for value: {namespace}"
+                )
+            if user_id:
+                from agent_memory_server.filters import UserId
+
+                user_filter = UserId(eq=user_id).to_filter()
+                filters.append(user_filter)
+                logger.info(f"Added user_id filter: {user_filter} for value: {user_id}")
+            if session_id:
+                from agent_memory_server.filters import SessionId
+
+                session_filter = SessionId(eq=session_id).to_filter()
+                filters.append(session_filter)
+                logger.info(
+                    f"Added session_id filter: {session_filter} for value: {session_id}"
+                )
+
+            # Combine filters
+            redis_filter = None
+            if filters:
+                if len(filters) == 1:
+                    redis_filter = filters[0]
+                else:
+                    from functools import reduce
+
+                    redis_filter = reduce(lambda x, y: x & y, filters)
+                logger.info(f"Combined RedisVL filter: {redis_filter}")
+
+            # Get Redis connection and search index
+            redis_client = await get_redis_conn()
+            index = get_search_index(redis_client)
+
+            # Create RedisVL count query
+            count_query = CountQuery()
+            if redis_filter:
+                count_query.set_filter(redis_filter)
+
+            # Execute the count query
+            result = await index.query(count_query)
+            logger.info(f"CountQuery result: {result}, type: {type(result)}")
+
+            # Also try without filters to see if data is indexed at all
+            if redis_filter:
+                unfiltered_query = CountQuery()
+                unfiltered_result = await index.query(unfiltered_query)
+                logger.info(f"Unfiltered CountQuery result: {unfiltered_result}")
+
+            # CountQuery returns an integer directly
+            count = result if isinstance(result, int) else getattr(result, "total", 0)
+            logger.info(f"Final count: {count}")
+            return count
 
         except Exception as e:
-            logger.error(f"Error counting memories in Redis: {e}")
+            logger.error(f"Error counting memories in Redis vectorstore: {e}")
             return 0

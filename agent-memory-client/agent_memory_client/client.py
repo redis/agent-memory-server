@@ -12,8 +12,8 @@ from datetime import datetime
 from typing import Any, Literal
 
 import httpx
-import ulid
 from pydantic import BaseModel
+from ulid import ULID
 
 from .exceptions import MemoryClientError, MemoryServerError, MemoryValidationError
 from .filters import (
@@ -362,7 +362,7 @@ class MemoryAPIClient:
         # Auto-generate IDs for memories that don't have them
         for memory in final_memories:
             if not memory.id:
-                memory.id = str(ulid.new())
+                memory.id = str(ULID())
 
         # Create new working memory with the memories
         working_memory = WorkingMemory(

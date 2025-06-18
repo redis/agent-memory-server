@@ -5,11 +5,11 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
-import ulid
 from redis.asyncio import Redis
 from redis.commands.search.query import Query
 from redisvl.query import VectorRangeQuery
 from redisvl.utils.vectorize import OpenAITextVectorizer
+from ulid import ULID
 
 from agent_memory_server.config import settings
 from agent_memory_server.dependencies import get_background_tasks
@@ -244,7 +244,7 @@ async def merge_memories_with_llm(memories: list[dict], llm_client: Any = None) 
     # Create the merged memory
     merged_memory = {
         "text": merged_text.strip(),
-        "id_": str(ulid.new()),
+        "id_": str(ULID()),
         "user_id": user_id,
         "session_id": session_id,
         "namespace": namespace,
@@ -666,7 +666,7 @@ async def index_long_term_memories(
 
     # Schedule background tasks for topic/entity extraction
     for memory in processed_memories:
-        memory_id = memory.id or str(ulid.new())
+        memory_id = memory.id or str(ULID())
         await background_tasks.add_task(
             extract_memory_structure, memory_id, memory.text, memory.namespace
         )
@@ -946,7 +946,7 @@ async def count_long_term_memories(
         namespace: Optional namespace filter
         user_id: Optional user ID filter
         session_id: Optional session ID filter
-        redis_client: Optional Redis client (kept for compatibility)
+        redis_client: Optional Redis client (for compatibility - not used by adapter)
 
     Returns:
         Total count of memories matching filters
@@ -1230,7 +1230,7 @@ async def deduplicate_by_semantic_search(
 
             # Convert back to LongTermMemory
             merged_memory_obj = MemoryRecord(
-                id=memory.id or str(ulid.new()),
+                id=memory.id or str(ULID()),
                 text=merged_memory["text"],
                 user_id=merged_memory["user_id"],
                 session_id=merged_memory["session_id"],
@@ -1450,7 +1450,7 @@ async def extract_memories_from_messages(
 
                     # Create a new memory record from the extraction
                     extracted_memory = MemoryRecord(
-                        id=str(ulid.new()),  # Server-generated ID
+                        id=str(ULID()),  # Server-generated ID
                         text=memory_data["text"],
                         memory_type=memory_data.get("type", "semantic"),
                         topics=memory_data.get("topics", []),

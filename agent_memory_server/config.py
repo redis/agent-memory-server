@@ -98,8 +98,8 @@ class Settings(BaseSettings):
     # RedisVL Settings (kept for backwards compatibility)
     redisvl_distance_metric: str = "COSINE"
     redisvl_vector_dimensions: str = "1536"
-    redisvl_index_name: str = "memory"
-    redisvl_index_prefix: str = "memory"
+    redisvl_index_name: str = "memory_idx"
+    redisvl_index_prefix: str = "memory_idx"
 
     # Docket settings
     docket_name: str = "memory-server"

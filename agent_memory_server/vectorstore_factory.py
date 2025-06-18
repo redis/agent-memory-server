@@ -9,9 +9,27 @@ import logging
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
 
+
+# Monkey patch RedisVL ULID issue before importing anything else
+try:
+    import redisvl.utils.utils
+    from ulid import ULID
+
+    def patched_create_ulid() -> str:
+        """Patched ULID creation function that works with python-ulid."""
+        return str(ULID())  # Use ulid.new() instead of ULID()
+
+    # Replace the broken function with our working one
+    redisvl.utils.utils.create_ulid = patched_create_ulid
+    logging.info("Successfully patched RedisVL ULID function")
+except Exception as e:
+    logging.warning(f"Could not patch RedisVL ULID function: {e}")
+    # Continue anyway - might work if ULID issue is fixed elsewhere
+
 from agent_memory_server.config import settings
 from agent_memory_server.vectorstore_adapter import (
     LangChainVectorStoreAdapter,
+    RedisVectorStoreAdapter,
     VectorStoreAdapter,
 )
 
@@ -358,6 +376,62 @@ def create_vectorstore(backend: str, embeddings: Embeddings) -> VectorStore:
     raise ValueError(f"Unsupported backend: {backend}")
 
 
+def create_redis_vectorstore(embeddings: Embeddings) -> VectorStore:
+    """Create a Redis VectorStore instance using LangChain Redis.
+
+    Args:
+        embeddings: Embeddings instance to use
+
+    Returns:
+        A Redis VectorStore instance
+    """
+    try:
+        from langchain_redis import RedisVectorStore
+
+        # Define metadata schema to match our existing schema
+        metadata_schema = [
+            {"name": "session_id", "type": "tag"},
+            {"name": "user_id", "type": "tag"},
+            {"name": "namespace", "type": "tag"},
+            {"name": "memory_type", "type": "tag"},
+            {"name": "topics", "type": "tag"},
+            {"name": "entities", "type": "tag"},
+            {"name": "memory_hash", "type": "tag"},
+            {"name": "discrete_memory_extracted", "type": "tag"},
+            {"name": "created_at", "type": "numeric"},
+            {"name": "last_accessed", "type": "numeric"},
+            {"name": "updated_at", "type": "numeric"},
+            {"name": "persisted_at", "type": "numeric"},
+            {"name": "event_date", "type": "numeric"},
+            {"name": "extracted_from", "type": "tag"},
+            {"name": "id", "type": "tag"},
+        ]
+
+        # Try to connect to existing index first
+        try:
+            return RedisVectorStore.from_existing_index(
+                index_name=settings.redisvl_index_name,
+                embeddings=embeddings,
+                redis_url=settings.redis_url,
+            )
+        except Exception:
+            # If no existing index, create a new one with metadata schema
+            return RedisVectorStore(
+                embeddings=embeddings,
+                redis_url=settings.redis_url,
+                index_name=settings.redisvl_index_name,
+                metadata_schema=metadata_schema,
+            )
+    except ImportError:
+        logger.error(
+            "langchain-redis not installed. Install with: pip install langchain-redis"
+        )
+        raise
+    except Exception as e:
+        logger.error(f"Error creating Redis VectorStore: {e}")
+        raise
+
+
 def create_vectorstore_adapter() -> VectorStoreAdapter:
     """Create a VectorStore adapter based on configuration.
 
@@ -369,13 +443,28 @@ def create_vectorstore_adapter() -> VectorStoreAdapter:
 
     logger.info(f"Creating VectorStore adapter with backend: {backend}")
 
-    # For Redis, use our custom adapter with proper server-side filtering
+    # For Redis, use Redis-specific adapter without LangChain's RedisVectorStore
+    # since we use pure RedisVL for all operations
     if backend == "redis":
-        from agent_memory_server.vectorstore_adapter import RedisVectorStoreAdapter
+        # Create a dummy vectorstore for interface compatibility
+        # The RedisVectorStoreAdapter doesn't actually use this
+        from langchain_core.vectorstores import VectorStore
 
-        adapter = RedisVectorStoreAdapter(embeddings=embeddings)
+        class DummyVectorStore(VectorStore):
+            def add_texts(self, texts, metadatas=None, **kwargs):
+                return []
+
+            def similarity_search(self, query, k=4, **kwargs):
+                return []
+
+            @classmethod
+            def from_texts(cls, texts, embedding, metadatas=None, **kwargs):
+                return cls()
+
+        dummy_vectorstore = DummyVectorStore()
+        adapter = RedisVectorStoreAdapter(dummy_vectorstore, embeddings)
     else:
-        # For all other backends, use LangChain with post-processing filtering
+        # For all other backends, use generic LangChain adapter
         vectorstore = create_vectorstore(backend, embeddings)
         adapter = LangChainVectorStoreAdapter(vectorstore, embeddings)
 

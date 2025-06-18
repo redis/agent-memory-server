@@ -65,7 +65,7 @@ Working Memory (Session-scoped)  →  Long-term Memory (Persistent)
 ```python
 # Correct - Use RedisVL queries
 from redisvl.query import VectorQuery, FilterQuery
-query = VectorQuery(vector=embedding, vector_field_name="embedding", return_fields=["text"])
+query = VectorQuery(vector=embedding, vector_field_name="vector", return_fields=["text"])
 
 # Avoid - Direct redis client searches
 # redis.ft().search(...)  # Don't do this
