@@ -1,8 +1,8 @@
 import tiktoken
+import ulid
 from fastapi import APIRouter, Depends, HTTPException
 from mcp.server.fastmcp.prompts import base
 from mcp.types import TextContent
-from ulid import ULID
 
 from agent_memory_server import long_term_memory, working_memory
 from agent_memory_server.auth import UserInfo, get_current_user
@@ -14,6 +14,7 @@ from agent_memory_server.models import (
     AckResponse,
     CreateMemoryRecordRequest,
     GetSessionsQuery,
+    MemoryMessage,
     MemoryPromptRequest,
     MemoryPromptResponse,
     MemoryRecordResultsResponse,
@@ -34,67 +35,109 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-def _get_effective_window_size(
-    window_size: int,
-    context_window_max: int | None,
+def _get_effective_token_limit(
     model_name: ModelNameLiteral | None,
+    context_window_max: int | None,
 ) -> int:
+    """Calculate the effective token limit for working memory based on model context window."""
     # If context_window_max is explicitly provided, use that
     if context_window_max is not None:
-        effective_window_size = min(window_size, context_window_max)
+        return context_window_max
     # If model_name is provided, get its max_tokens from our config
-    elif model_name is not None:
+    if model_name is not None:
         model_config = get_model_config(model_name)
-        effective_window_size = min(window_size, model_config.max_tokens)
-    # Otherwise use the default window_size
-    else:
-        effective_window_size = window_size
-    return effective_window_size
+        return model_config.max_tokens
+    # Otherwise use a conservative default (GPT-3.5 context window)
+    return 16000  # Conservative default
+
+
+def _calculate_messages_token_count(messages: list[MemoryMessage]) -> int:
+    """Calculate total token count for a list of messages."""
+    encoding = tiktoken.get_encoding("cl100k_base")
+    total_tokens = 0
+
+    for msg in messages:
+        msg_str = f"{msg.role}: {msg.content}"
+        msg_tokens = len(encoding.encode(msg_str))
+        total_tokens += msg_tokens
+
+    return total_tokens
 
 
 async def _summarize_working_memory(
     memory: WorkingMemory,
-    window_size: int,
+    model_name: ModelNameLiteral | None = None,
+    context_window_max: int | None = None,
     model: str = settings.generation_model,
 ) -> WorkingMemory:
     """
-    Summarize working memory when it exceeds the window size.
+    Summarize working memory when it exceeds token limits.
 
     Args:
         memory: The working memory to potentially summarize
-        window_size: Maximum number of messages to keep
+        model_name: The client's LLM model name for context window determination
+        context_window_max: Direct specification of context window max tokens
         model: The model to use for summarization
 
     Returns:
         Updated working memory with summary and trimmed messages
     """
-    if len(memory.messages) <= window_size:
+    # Calculate current token usage
+    current_tokens = _calculate_messages_token_count(memory.messages)
+
+    # Get effective token limit for the client's model
+    max_tokens = _get_effective_token_limit(model_name, context_window_max)
+
+    # Reserve space for new messages, function calls, and response generation
+    # Use 70% of context window to leave room for new content
+    token_threshold = int(max_tokens * 0.7)
+
+    if current_tokens <= token_threshold:
         return memory
 
     # Get model client for summarization
     client = await get_model_client(model)
     model_config = get_model_config(model)
-    max_tokens = model_config.max_tokens
+    summarization_max_tokens = model_config.max_tokens
 
-    # Token allocation (same logic as original summarize_session)
-    if max_tokens < 10000:
-        summary_max_tokens = max(512, max_tokens // 8)  # 12.5%
-    elif max_tokens < 50000:
-        summary_max_tokens = max(1024, max_tokens // 10)  # 10%
+    # Token allocation for summarization (same logic as original summarize_session)
+    if summarization_max_tokens < 10000:
+        summary_max_tokens = max(512, summarization_max_tokens // 8)  # 12.5%
+    elif summarization_max_tokens < 50000:
+        summary_max_tokens = max(1024, summarization_max_tokens // 10)  # 10%
     else:
-        summary_max_tokens = max(2048, max_tokens // 20)  # 5%
+        summary_max_tokens = max(2048, summarization_max_tokens // 20)  # 5%
 
-    buffer_tokens = min(max(230, max_tokens // 100), 1000)
-    max_message_tokens = max_tokens - summary_max_tokens - buffer_tokens
+    buffer_tokens = min(max(230, summarization_max_tokens // 100), 1000)
+    max_message_tokens = summarization_max_tokens - summary_max_tokens - buffer_tokens
 
     encoding = tiktoken.get_encoding("cl100k_base")
     total_tokens = 0
     messages_to_summarize = []
 
-    # Calculate how many messages from the beginning we should summarize
-    # Keep the most recent messages within window_size
+    # We want to keep recent messages that fit in our target token budget
+    target_remaining_tokens = int(
+        max_tokens * 0.4
+    )  # Keep 40% of context for recent messages
+
+    # Work backwards from the end to find how many recent messages we can keep
+    recent_messages_tokens = 0
+    keep_count = 0
+
+    for i in range(len(memory.messages) - 1, -1, -1):
+        msg = memory.messages[i]
+        msg_str = f"{msg.role}: {msg.content}"
+        msg_tokens = len(encoding.encode(msg_str))
+
+        if recent_messages_tokens + msg_tokens <= target_remaining_tokens:
+            recent_messages_tokens += msg_tokens
+            keep_count += 1
+        else:
+            break
+
+    # Messages to summarize are the ones we're not keeping
     messages_to_check = (
-        memory.messages[:-window_size] if len(memory.messages) > window_size else []
+        memory.messages[:-keep_count] if keep_count > 0 else memory.messages[:-1]
     )
 
     for msg in messages_to_check:
@@ -125,12 +168,12 @@ async def _summarize_working_memory(
     )
 
     # Update working memory with new summary and trimmed messages
-    # Keep only the most recent messages within window_size
+    # Keep only the most recent messages that fit in our token budget
     updated_memory = memory.model_copy(deep=True)
     updated_memory.context = summary
-    updated_memory.messages = memory.messages[
-        -window_size:
-    ]  # Keep most recent messages
+    updated_memory.messages = (
+        memory.messages[-keep_count:] if keep_count > 0 else [memory.messages[-1]]
+    )
     updated_memory.tokens = memory.tokens + summary_tokens_used
 
     return updated_memory
@@ -166,10 +209,10 @@ async def list_sessions(
 
 
 @router.get("/v1/working-memory/{session_id}", response_model=WorkingMemoryResponse)
-async def get_session_memory(
+async def get_working_memory(
     session_id: str,
     namespace: str | None = None,
-    window_size: int = settings.window_size,
+    window_size: int = settings.window_size,  # Deprecated: kept for backward compatibility
     model_name: ModelNameLiteral | None = None,
     context_window_max: int | None = None,
     current_user: UserInfo = Depends(get_current_user),
@@ -178,11 +221,12 @@ async def get_session_memory(
     Get working memory for a session.
 
     This includes stored conversation messages, context, and structured memory records.
+    If the messages exceed the token limit, older messages will be truncated.
 
     Args:
         session_id: The session ID
         namespace: The namespace to use for the session
-        window_size: The number of messages to include in the response
+        window_size: DEPRECATED - The number of messages to include (kept for backward compatibility)
         model_name: The client's LLM model name (will determine context window size if provided)
         context_window_max: Direct specification of the context window max tokens (overrides model_name)
 
@@ -190,11 +234,6 @@ async def get_session_memory(
         Working memory containing messages, context, and structured memory records
     """
     redis = await get_redis_conn()
-    effective_window_size = _get_effective_window_size(
-        window_size=window_size,
-        context_window_max=context_window_max,
-        model_name=model_name,
-    )
 
     # Get unified working memory
     working_mem = await working_memory.get_working_memory(
@@ -212,33 +251,52 @@ async def get_session_memory(
             namespace=namespace,
         )
 
-    # Apply window size to messages if needed
-    if len(working_mem.messages) > effective_window_size:
-        working_mem.messages = working_mem.messages[-effective_window_size:]
+    # Apply token-based truncation if we have messages and model info
+    if working_mem.messages and (model_name or context_window_max):
+        token_limit = _get_effective_token_limit(model_name, context_window_max)
+        current_token_count = _calculate_messages_token_count(working_mem.messages)
+
+        # If we exceed the token limit, truncate from the beginning (keep recent messages)
+        if current_token_count > token_limit:
+            # Keep removing oldest messages until we're under the limit
+            truncated_messages = working_mem.messages[:]
+            while len(truncated_messages) > 1:  # Always keep at least 1 message
+                truncated_messages = truncated_messages[1:]  # Remove oldest
+                if _calculate_messages_token_count(truncated_messages) <= token_limit:
+                    break
+            working_mem.messages = truncated_messages
+
+    # Fallback to message-count truncation for backward compatibility
+    elif len(working_mem.messages) > window_size:
+        working_mem.messages = working_mem.messages[-window_size:]
 
     return working_mem
 
 
 @router.put("/v1/working-memory/{session_id}", response_model=WorkingMemoryResponse)
-async def put_session_memory(
+async def put_working_memory(
     session_id: str,
     memory: WorkingMemory,
+    model_name: ModelNameLiteral | None = None,
+    context_window_max: int | None = None,
     background_tasks=Depends(get_background_tasks),
     current_user: UserInfo = Depends(get_current_user),
 ):
     """
     Set working memory for a session. Replaces existing working memory.
 
-    If the message count exceeds the window size, messages will be summarized
+    If the token count exceeds the context window threshold, messages will be summarized
     immediately and the updated memory state returned to the client.
 
     Args:
         session_id: The session ID
         memory: Working memory to save
+        model_name: The client's LLM model name for context window determination
+        context_window_max: Direct specification of context window max tokens
         background_tasks: DocketBackgroundTasks instance (injected automatically)
 
     Returns:
-        Updated working memory (potentially with summary if messages were condensed)
+        Updated working memory (potentially with summary if tokens were condensed)
     """
     redis = await get_redis_conn()
 
@@ -253,10 +311,12 @@ async def put_session_memory(
                 detail="All memory records in working memory must have an ID",
             )
 
-    # Handle summarization if needed (before storing)
+    # Handle summarization if needed (before storing) - now token-based
     updated_memory = memory
-    if memory.messages and len(memory.messages) > settings.window_size:
-        updated_memory = await _summarize_working_memory(memory, settings.window_size)
+    if memory.messages:
+        updated_memory = await _summarize_working_memory(
+            memory, model_name=model_name, context_window_max=context_window_max
+        )
 
     await working_memory.set_working_memory(
         working_memory=updated_memory,
@@ -279,7 +339,7 @@ async def put_session_memory(
 
             memories = [
                 MemoryRecord(
-                    id=str(ULID()),
+                    id=str(ulid.ULID()),
                     session_id=session_id,
                     text=f"{msg.role}: {msg.content}",
                     namespace=updated_memory.namespace,
@@ -297,7 +357,7 @@ async def put_session_memory(
 
 
 @router.delete("/v1/working-memory/{session_id}", response_model=AckResponse)
-async def delete_session_memory(
+async def delete_working_memory(
     session_id: str,
     namespace: str | None = None,
     current_user: UserInfo = Depends(get_current_user),
@@ -482,11 +542,19 @@ async def memory_prompt(
     _messages = []
 
     if params.session:
-        effective_window_size = _get_effective_window_size(
-            window_size=params.session.window_size,
-            context_window_max=params.session.context_window_max,
-            model_name=params.session.model_name,
-        )
+        # Use token limit for memory prompt, fallback to message count for backward compatibility
+        if params.session.model_name or params.session.context_window_max:
+            token_limit = _get_effective_token_limit(
+                model_name=params.session.model_name,
+                context_window_max=params.session.context_window_max,
+            )
+            effective_window_size = (
+                token_limit  # We'll handle token-based truncation below
+            )
+        else:
+            effective_window_size = (
+                params.session.window_size
+            )  # Fallback to message count
         working_mem = await working_memory.get_working_memory(
             session_id=params.session.session_id,
             namespace=params.session.namespace,
@@ -504,12 +572,31 @@ async def memory_prompt(
                         ),
                     )
                 )
-            # Apply window size and ignore past system messages as the latest context may have changed
-            recent_messages = (
-                working_mem.messages[-effective_window_size:]
-                if len(working_mem.messages) > effective_window_size
-                else working_mem.messages
-            )
+            # Apply token-based or message-based truncation
+            if params.session.model_name or params.session.context_window_max:
+                # Token-based truncation
+                if (
+                    _calculate_messages_token_count(working_mem.messages)
+                    > effective_window_size
+                ):
+                    # Keep removing oldest messages until we're under the limit
+                    recent_messages = working_mem.messages[:]
+                    while len(recent_messages) > 1:  # Always keep at least 1 message
+                        recent_messages = recent_messages[1:]  # Remove oldest
+                        if (
+                            _calculate_messages_token_count(recent_messages)
+                            <= effective_window_size
+                        ):
+                            break
+                else:
+                    recent_messages = working_mem.messages
+            else:
+                # Message-based truncation (backward compatibility)
+                recent_messages = (
+                    working_mem.messages[-effective_window_size:]
+                    if len(working_mem.messages) > effective_window_size
+                    else working_mem.messages
+                )
             for msg in recent_messages:
                 if msg.role == "user":
                     msg_class = base.UserMessage

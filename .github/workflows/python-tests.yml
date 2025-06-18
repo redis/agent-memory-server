@@ -60,6 +60,10 @@ jobs:
         pip install uv
         uv sync --all-extras
 
+    - name: Install agent-memory-client
+      run: |
+        uv pip install -e ./agent-memory-client
+
     - name: Run tests
       run: |
         uv run pytest --run-api-tests

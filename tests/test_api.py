@@ -365,7 +365,7 @@ class TestMemoryPromptEndpoint:
     async def test_memory_prompt_with_session_id(self, mock_get_working_memory, client):
         """Test the memory_prompt endpoint with only session_id provided"""
         # Mock the session memory
-        mock_session_memory = WorkingMemoryResponse(
+        mock_working_memory = WorkingMemoryResponse(
             messages=[
                 MemoryMessage(role="user", content="Hello"),
                 MemoryMessage(role="assistant", content="Hi there"),
@@ -375,7 +375,7 @@ class TestMemoryPromptEndpoint:
             context="Previous conversation context",
             tokens=150,
         )
-        mock_get_working_memory.return_value = mock_session_memory
+        mock_get_working_memory.return_value = mock_working_memory
 
         # Call the endpoint
         query = "What's the weather like?"
@@ -464,7 +464,7 @@ class TestMemoryPromptEndpoint:
     ):
         """Test the memory_prompt endpoint with both session_id and long_term_search_payload"""
         # Mock session memory
-        mock_session_memory = WorkingMemoryResponse(
+        mock_working_memory = WorkingMemoryResponse(
             messages=[
                 MemoryMessage(role="user", content="How do you make pasta?"),
                 MemoryMessage(
@@ -477,7 +477,7 @@ class TestMemoryPromptEndpoint:
             context="Cooking conversation",
             tokens=200,
         )
-        mock_get_working_memory.return_value = mock_session_memory
+        mock_get_working_memory.return_value = mock_working_memory
 
         # Mock the long-term memory search
         mock_search.return_value = MemoryRecordResultsResponse(
@@ -592,7 +592,7 @@ class TestMemoryPromptEndpoint:
         mock_get_model_config.return_value = model_config
 
         # Mock the session memory
-        mock_session_memory = WorkingMemoryResponse(
+        mock_working_memory = WorkingMemoryResponse(
             messages=[
                 MemoryMessage(role="user", content="Hello"),
                 MemoryMessage(role="assistant", content="Hi there"),
@@ -602,7 +602,7 @@ class TestMemoryPromptEndpoint:
             context="Previous context",
             tokens=150,
         )
-        mock_get_working_memory.return_value = mock_session_memory
+        mock_get_working_memory.return_value = mock_working_memory
 
         # Call the endpoint with model_name
         query = "What's the weather like?"

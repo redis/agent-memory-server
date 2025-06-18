@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     use_docket: bool = True
 
     # OAuth2/JWT Authentication settings
-    disable_auth: bool = False
+    disable_auth: bool = True
     oauth2_issuer_url: str | None = None
     oauth2_audience: str | None = None
     oauth2_jwks_url: str | None = None
@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"  # Ignore extra fields in YAML/env
 
 
 # Load YAML config first, then let env vars override
