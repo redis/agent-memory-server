@@ -69,3 +69,39 @@ jobs:
         uv run pytest --run-api-tests
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_TOKEN }}
+
+    - name: Extract version from __init__.py
+      id: version
+      run: |
+        VERSION=$(grep '__version__ =' agent_memory_server/__init__.py | sed 's/__version__ = "\(.*\)"/\1/' || echo "latest")
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: |
+          andrewbrookins510/agent-memory-server:latest
+          andrewbrookins510/agent-memory-server:${{ steps.version.outputs.version }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
