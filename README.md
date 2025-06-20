@@ -84,6 +84,10 @@ Configure servers and workers using environment variables. Includes background t
 
 For complete configuration details, see [Configuration Guide](docs/configuration.md).
 
+## License
+
+Apache 2.0 License - see [LICENSE](LICENSE) file for details.
+
 ## Development
 
 For development setup, testing, and contributing guidelines, see [Development Guide](docs/development.md).

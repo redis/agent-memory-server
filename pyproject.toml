@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "A Memory Server for LLM Agents and Applications"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 authors = [{ name = "Andrew Brookins", email = "andrew.brookins@redis.com" }]
 dependencies = [
     "accelerate>=1.6.0",
