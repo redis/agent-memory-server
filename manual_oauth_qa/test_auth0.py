@@ -163,7 +163,7 @@ class Auth0Tester:
 
         # Step 2: Test health endpoint (should work without auth)
         logger.info("\n📋 Testing health endpoint (no auth required)")
-        health_result = self.test_endpoint("GET", "/health")
+        health_result = self.test_endpoint("GET", "/v1/health")
 
         # Step 3: Test authenticated endpoints
         logger.info("\n🔐 Testing authenticated endpoints")
@@ -274,7 +274,7 @@ def main():
 
     # Check if memory server is running
     try:
-        response = httpx.get(f"{MEMORY_SERVER_URL}/health", timeout=5.0)
+        response = httpx.get(f"{MEMORY_SERVER_URL}/v1/health", timeout=5.0)
         if response.status_code != 200:
             print(f"❌ Memory server not responding correctly at {MEMORY_SERVER_URL}")
             print("Please start the memory server first:")

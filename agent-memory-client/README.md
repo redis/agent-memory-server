@@ -1,6 +1,6 @@
 # Agent Memory Client
 
-A Python client library for the [Agent Memory Server](https://github.com/your-org/agent-memory-server) REST API, providing comprehensive memory management capabilities for AI agents and applications.
+A Python client library for the [Agent Memory Server](https://github.com/redis-developer/agent-memory-server) REST API, providing comprehensive memory management capabilities for AI agents and applications.
 
 ## Features
 
@@ -309,10 +309,10 @@ Apache 2.0 License - see [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
-Contributions are welcome! Please see the [main repository](https://github.com/your-org/agent-memory-server) for contribution guidelines.
+Contributions are welcome! Please see the [main repository](https://github.com/redis-developer/agent-memory-server) for contribution guidelines.
 
 ## Links
 
-- [Agent Memory Server](https://github.com/your-org/agent-memory-server) - The server this client connects to
+- [Agent Memory Server](https://github.com/redis-developer/agent-memory-server) - The server this client connects to
 - [Documentation](https://agent-memory-client.readthedocs.io) - Full API documentation
-- [Issues](https://github.com/your-org/agent-memory-client/issues) - Bug reports and feature requests
+- [Issues](https://github.com/redis-developer/agent-memory-client/issues) - Bug reports and feature requests

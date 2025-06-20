@@ -1,5 +1,13 @@
 # Development
 
+## Running the servers locally
+
+The easiest way to run the API server(s) is with Docker Compose:
+
+```
+$ docker-compose up
+```
+
 ## Running Tests
 
 ```bash
