@@ -26,6 +26,12 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 ENTRYPOINT []
 
+EXPOSE 8000
 
-# Run the API server
-CMD ["uv", "run", "agent-memory", "api"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Disable auth by default. Can be overridden with environment variable.
+ENV DISABLE_AUTH=true
+
+CMD ["agent-memory", "api", "--host", "0.0.0.0", "--port", "8000"]
