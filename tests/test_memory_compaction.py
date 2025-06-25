@@ -158,7 +158,20 @@ async def test_hash_deduplication_integration(
     # Add a small delay to ensure indexing is complete
     import asyncio
 
-    await asyncio.sleep(0.1)
+    # Poll until indexing is complete or timeout is reached
+    timeout = 5  # seconds
+    start_time = time.time()
+    while True:
+        remaining_before = await count_long_term_memories(
+            redis_client=async_redis_client,
+            namespace=test_namespace,
+            session_id=test_session,
+        )
+        if remaining_before == 2:
+            break
+        if time.time() - start_time > timeout:
+            raise TimeoutError("Indexing did not complete within the timeout period.")
+        await asyncio.sleep(0.01)  # Avoid busy-waiting
 
     # Debug: Check what keys exist in Redis
     keys = await async_redis_client.keys("*")
