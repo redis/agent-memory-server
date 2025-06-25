@@ -216,6 +216,7 @@ class WorkingMemoryRequest(BaseModel):
 
     session_id: str
     namespace: str | None = None
+    user_id: str | None = None
     window_size: int = settings.window_size
     model_name: ModelNameLiteral | None = None
     context_window_max: int | None = None
@@ -257,6 +258,7 @@ class GetSessionsQuery(BaseModel):
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
     namespace: str | None = None
+    user_id: str | None = None
 
 
 class HealthCheckResponse(BaseModel):

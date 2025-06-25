@@ -20,6 +20,28 @@ wheels = [
 ]
 
 [[package]]
+name = "agent-memory-client"
+source = { directory = "agent-memory-client" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "python-ulid" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.25.0" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.5.0" },
+    { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
+    { name = "pytest-httpx", marker = "extra == 'dev'", specifier = ">=0.21.0" },
+    { name = "python-ulid", specifier = ">=3.0.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
+]
+
+[[package]]
 name = "agent-memory-server"
 source = { editable = "." }
 dependencies = [
@@ -50,6 +72,11 @@ dependencies = [
     { name = "uvicorn" },
 ]
 
+[package.optional-dependencies]
+dev = [
+    { name = "agent-memory-client" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "freezegun" },
@@ -66,6 +93,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "accelerate", specifier = ">=1.6.0" },
+    { name = "agent-memory-client", marker = "extra == 'dev'", directory = "agent-memory-client" },
     { name = "anthropic", specifier = ">=0.15.0" },
     { name = "bertopic", specifier = ">=0.16.4,<0.17.0" },
     { name = "click", specifier = ">=8.1.0" },
