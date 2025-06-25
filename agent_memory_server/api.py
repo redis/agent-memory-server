@@ -381,13 +381,12 @@ async def search_long_term_memory(
     if not settings.long_term_memory:
         raise HTTPException(status_code=400, detail="Long-term memory is disabled")
 
-    redis = await get_redis_conn()
+    await get_redis_conn()
 
     # Extract filter objects from the payload
     filters = payload.get_filters()
 
     kwargs = {
-        "redis": redis,
         "distance_threshold": payload.distance_threshold,
         "limit": payload.limit,
         "offset": payload.offset,
@@ -397,7 +396,7 @@ async def search_long_term_memory(
     if payload.text:
         kwargs["text"] = payload.text
 
-    # Pass text, redis, and filter objects to the search function
+    # Pass text and filter objects to the search function (no redis needed for vectorstore adapter)
     return await long_term_memory.search_long_term_memories(**kwargs)
 
 

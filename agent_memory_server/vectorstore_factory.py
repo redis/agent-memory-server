@@ -1,13 +1,29 @@
 """VectorStore factory for creating backend instances.
 
-This module provides factory functions to create VectorStore and Embeddings
-instances based on configuration settings.
+This module provides a minimal, flexible factory approach where users can specify
+their own vectorstore initialization function using Python dotted notation.
+
+The factory function should have signature:
+    (embeddings: Embeddings) -> Union[VectorStore, VectorStoreAdapter]
+
+Examples:
+    VECTORSTORE_FACTORY="my_module.create_chroma_vectorstore"
+    VECTORSTORE_FACTORY="my_package.adapters.CustomAdapter.create"
+    VECTORSTORE_FACTORY="agent_memory_server.vectorstore_factory.create_redis_vectorstore"
+
+Benefits:
+- No database-specific code in this codebase
+- Users have complete flexibility to configure any vectorstore
+- Dynamic imports avoid loading unnecessary dependencies
+- Supports both VectorStore and VectorStoreAdapter return types
 """
 
+import importlib
 import logging
 
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
+from pydantic.types import SecretStr
 
 
 # Monkey patch RedisVL ULID issue before importing anything else
@@ -17,18 +33,18 @@ try:
 
     def patched_create_ulid() -> str:
         """Patched ULID creation function that works with python-ulid."""
-        return str(ULID())  # Use ulid.new() instead of ULID()
+        return str(ULID())
 
     # Replace the broken function with our working one
     redisvl.utils.utils.create_ulid = patched_create_ulid
     logging.info("Successfully patched RedisVL ULID function")
 except Exception as e:
     logging.warning(f"Could not patch RedisVL ULID function: {e}")
-    # Continue anyway - might work if ULID issue is fixed elsewhere
 
 from agent_memory_server.config import settings
 from agent_memory_server.vectorstore_adapter import (
     LangChainVectorStoreAdapter,
+    MemoryRedisVectorStore,
     RedisVectorStoreAdapter,
     VectorStoreAdapter,
 )
@@ -43,341 +59,124 @@ def create_embeddings() -> Embeddings:
     Returns:
         An Embeddings instance
     """
-    try:
-        from langchain_openai import OpenAIEmbeddings
+    embedding_config = settings.embedding_model_config
+    provider = embedding_config.get("provider", "openai")
 
-        return OpenAIEmbeddings(
-            model=settings.embedding_model,
-            api_key=settings.openai_api_key,
-        )
-    except ImportError:
-        logger.error(
-            "langchain-openai not installed. Install with: pip install langchain-openai"
-        )
-        raise
-    except Exception as e:
-        logger.error(f"Error creating embeddings: {e}")
-        raise
+    if provider == "openai":
+        try:
+            from langchain_openai import OpenAIEmbeddings
 
-
-def create_chroma_vectorstore(embeddings: Embeddings) -> VectorStore:
-    """Create a Chroma VectorStore instance.
-
-    Args:
-        embeddings: Embeddings instance to use
-
-    Returns:
-        A Chroma VectorStore instance
-    """
-    try:
-        from langchain_chroma import Chroma
-
-        if settings.chroma_persist_directory:
-            # Persistent storage
-            return Chroma(
-                collection_name=settings.chroma_collection_name,
-                embedding_function=embeddings,
-                persist_directory=settings.chroma_persist_directory,
+            if settings.openai_api_key is not None:
+                api_key = SecretStr(settings.openai_api_key)
+                return OpenAIEmbeddings(
+                    model=settings.embedding_model,
+                    api_key=api_key,
+                )
+            # Default: handle API key from environment
+            return OpenAIEmbeddings(
+                model=settings.embedding_model,
             )
-        # HTTP client
-        import chromadb
-
-        client = chromadb.HttpClient(
-            host=settings.chroma_host,
-            port=settings.chroma_port,
-        )
-
-        return Chroma(
-            collection_name=settings.chroma_collection_name,
-            embedding_function=embeddings,
-            client=client,
-        )
-    except ImportError:
-        logger.error("chromadb not installed. Install with: pip install chromadb")
-        raise
-    except Exception as e:
-        logger.error(f"Error creating Chroma VectorStore: {e}")
-        raise
-
-
-def create_pinecone_vectorstore(embeddings: Embeddings) -> VectorStore:
-    """Create a Pinecone VectorStore instance.
-
-    Args:
-        embeddings: Embeddings instance to use
-
-    Returns:
-        A Pinecone VectorStore instance
-    """
-    try:
-        from langchain_pinecone import PineconeVectorStore
-
-        return PineconeVectorStore(
-            index_name=settings.pinecone_index_name,
-            embedding=embeddings,
-            pinecone_api_key=settings.pinecone_api_key,
-        )
-    except ImportError:
-        logger.error(
-            "pinecone-client not installed. Install with: pip install pinecone-client"
-        )
-        raise
-    except Exception as e:
-        logger.error(f"Error creating Pinecone VectorStore: {e}")
-        raise
-
-
-def create_weaviate_vectorstore(embeddings: Embeddings) -> VectorStore:
-    """Create a Weaviate VectorStore instance.
-
-    Args:
-        embeddings: Embeddings instance to use
-
-    Returns:
-        A Weaviate VectorStore instance
-    """
-    try:
-        import weaviate
-        from langchain_weaviate import WeaviateVectorStore
-
-        # Create Weaviate client
-        if settings.weaviate_api_key:
-            auth_config = weaviate.auth.AuthApiKey(api_key=settings.weaviate_api_key)
-            client = weaviate.Client(
-                url=settings.weaviate_url, auth_client_secret=auth_config
+        except ImportError:
+            logger.error(
+                "langchain-openai not installed. Install with: pip install langchain-openai"
             )
-        else:
-            client = weaviate.Client(url=settings.weaviate_url)
+            raise
+        except Exception as e:
+            logger.error(f"Error creating OpenAI embeddings: {e}")
+            raise
 
-        return WeaviateVectorStore(
-            client=client,
-            index_name=settings.weaviate_class_name,
-            text_key="text",
-            embedding=embeddings,
+    elif provider == "anthropic":
+        # Note: Anthropic doesn't currently provide embedding models
+        # Fall back to OpenAI embeddings for now
+        logger.warning(
+            f"Anthropic embedding model '{settings.embedding_model}' specified, "
+            "but Anthropic doesn't provide embedding models. Falling back to OpenAI text-embedding-3-small."
         )
-    except ImportError:
-        logger.error(
-            "weaviate-client not installed. Install with: pip install weaviate-client"
-        )
-        raise
-    except Exception as e:
-        logger.error(f"Error creating Weaviate VectorStore: {e}")
-        raise
+        try:
+            from langchain_openai import OpenAIEmbeddings
 
-
-def create_qdrant_vectorstore(embeddings: Embeddings) -> VectorStore:
-    """Create a Qdrant VectorStore instance.
-
-    Args:
-        embeddings: Embeddings instance to use
-
-    Returns:
-        A Qdrant VectorStore instance
-    """
-    try:
-        from langchain_qdrant import QdrantVectorStore
-        from qdrant_client import QdrantClient
-
-        # Create Qdrant client
-        client = QdrantClient(
-            url=settings.qdrant_url,
-            api_key=settings.qdrant_api_key,
-        )
-
-        return QdrantVectorStore(
-            client=client,
-            collection_name=settings.qdrant_collection_name,
-            embeddings=embeddings,
-        )
-    except ImportError:
-        logger.error(
-            "qdrant-client not installed. Install with: pip install qdrant-client"
-        )
-        raise
-    except Exception as e:
-        logger.error(f"Error creating Qdrant VectorStore: {e}")
-        raise
-
-
-def create_milvus_vectorstore(embeddings: Embeddings) -> VectorStore:
-    """Create a Milvus VectorStore instance.
-
-    Args:
-        embeddings: Embeddings instance to use
-
-    Returns:
-        A Milvus VectorStore instance
-    """
-    try:
-        from langchain_milvus import Milvus
-
-        connection_args = {
-            "host": settings.milvus_host,
-            "port": settings.milvus_port,
-        }
-
-        if settings.milvus_user and settings.milvus_password:
-            connection_args.update(
-                {
-                    "user": settings.milvus_user,
-                    "password": settings.milvus_password,
-                }
+            if settings.openai_api_key is not None:
+                api_key = SecretStr(settings.openai_api_key)
+                return OpenAIEmbeddings(
+                    model="text-embedding-3-small",
+                    api_key=api_key,
+                )
+            return OpenAIEmbeddings(
+                model="text-embedding-3-small",
             )
-
-        return Milvus(
-            embedding_function=embeddings,
-            collection_name=settings.milvus_collection_name,
-            connection_args=connection_args,
-        )
-    except ImportError:
-        logger.error("pymilvus not installed. Install with: pip install pymilvus")
-        raise
-    except Exception as e:
-        logger.error(f"Error creating Milvus VectorStore: {e}")
-        raise
-
-
-def create_pgvector_vectorstore(embeddings: Embeddings) -> VectorStore:
-    """Create a PostgreSQL/PGVector VectorStore instance.
-
-    Args:
-        embeddings: Embeddings instance to use
-
-    Returns:
-        A PGVector VectorStore instance
-    """
-    try:
-        from langchain_postgres import PGVector
-
-        if not settings.postgres_url:
-            raise ValueError("postgres_url must be set for PGVector backend")
-
-        return PGVector(
-            embeddings=embeddings,
-            connection=settings.postgres_url,
-            collection_name=settings.postgres_table_name,
-        )
-    except ImportError:
-        logger.error(
-            "langchain-postgres not installed. Install with: pip install langchain-postgres psycopg2-binary"
-        )
-        raise
-    except Exception as e:
-        logger.error(f"Error creating PGVector VectorStore: {e}")
-        raise
-
-
-def create_lancedb_vectorstore(embeddings: Embeddings) -> VectorStore:
-    """Create a LanceDB VectorStore instance.
-
-    Args:
-        embeddings: Embeddings instance to use
-
-    Returns:
-        A LanceDB VectorStore instance
-    """
-    try:
-        import lancedb
-        from langchain_community.vectorstores import LanceDB
-
-        # Create LanceDB connection
-        db = lancedb.connect(settings.lancedb_uri)
-
-        return LanceDB(
-            connection=db,
-            table_name=settings.lancedb_table_name,
-            embedding=embeddings,
-        )
-    except ImportError:
-        logger.error("lancedb not installed. Install with: pip install lancedb")
-        raise
-    except Exception as e:
-        logger.error(f"Error creating LanceDB VectorStore: {e}")
-        raise
-
-
-def create_opensearch_vectorstore(embeddings: Embeddings) -> VectorStore:
-    """Create an OpenSearch VectorStore instance.
-
-    Args:
-        embeddings: Embeddings instance to use
-
-    Returns:
-        An OpenSearch VectorStore instance
-    """
-    try:
-        from langchain_community.vectorstores import OpenSearchVectorSearch
-
-        opensearch_kwargs = {
-            "opensearch_url": settings.opensearch_url,
-            "index_name": settings.opensearch_index_name,
-        }
-
-        if settings.opensearch_username and settings.opensearch_password:
-            opensearch_kwargs.update(
-                {
-                    "http_auth": (
-                        settings.opensearch_username,
-                        settings.opensearch_password,
-                    ),
-                }
+        except ImportError:
+            logger.error(
+                "langchain-openai not installed. Install with: pip install langchain-openai"
             )
-
-        return OpenSearchVectorSearch(
-            embedding_function=embeddings,
-            **opensearch_kwargs,
+            raise
+        except Exception as e:
+            logger.error(f"Error creating fallback OpenAI embeddings: {e}")
+            raise
+    else:
+        raise ValueError(
+            f"Unsupported embedding provider: {provider}. "
+            f"Supported providers: openai, anthropic (falls back to OpenAI)"
         )
-    except ImportError:
-        logger.error(
-            "opensearch-py not installed. Install with: pip install opensearch-py"
-        )
-        raise
-    except Exception as e:
-        logger.error(f"Error creating OpenSearch VectorStore: {e}")
-        raise
 
 
-def create_vectorstore(backend: str, embeddings: Embeddings) -> VectorStore:
-    """Create a VectorStore instance based on the backend type.
-
-    Note: Redis is handled separately in create_vectorstore_adapter()
-    and does not use this function.
+def _import_and_call_factory(
+    factory_path: str, embeddings: Embeddings
+) -> VectorStore | VectorStoreAdapter:
+    """Import and call a user-specified factory function.
 
     Args:
-        backend: Backend type (chroma, pinecone, weaviate, etc.) - Redis excluded
-        embeddings: Embeddings instance to use
+        factory_path: Python dotted path to factory function
+        embeddings: Embeddings instance to pass to factory
 
     Returns:
-        A VectorStore instance
+        VectorStore or VectorStoreAdapter instance
 
     Raises:
-        ValueError: If the backend type is not supported
+        ImportError: If the module or function cannot be imported
+        Exception: If the factory function fails
     """
-    backend = backend.lower()
+    try:
+        # Split the path into module and function parts
+        if "." not in factory_path:
+            raise ValueError(
+                f"Invalid factory path: {factory_path}. Must be in format 'module.function'"
+            )
 
-    if backend == "redis":
-        raise ValueError("Redis backend should use RedisVectorStoreAdapter directly")
-    if backend == "chroma":
-        return create_chroma_vectorstore(embeddings)
-    if backend == "pinecone":
-        return create_pinecone_vectorstore(embeddings)
-    if backend == "weaviate":
-        return create_weaviate_vectorstore(embeddings)
-    if backend == "qdrant":
-        return create_qdrant_vectorstore(embeddings)
-    if backend == "milvus":
-        return create_milvus_vectorstore(embeddings)
-    if backend == "pgvector" or backend == "postgres":
-        return create_pgvector_vectorstore(embeddings)
-    if backend == "lancedb":
-        return create_lancedb_vectorstore(embeddings)
-    if backend == "opensearch":
-        return create_opensearch_vectorstore(embeddings)
-    raise ValueError(f"Unsupported backend: {backend}")
+        module_path, function_name = factory_path.rsplit(".", 1)
+
+        # Import the module
+        module = importlib.import_module(module_path)
+
+        # Get the function
+        factory_function = getattr(module, function_name)
+
+        # Call the function with embeddings
+        result = factory_function(embeddings)
+
+        # Validate return type
+        if not isinstance(result, VectorStore | VectorStoreAdapter):
+            raise TypeError(
+                f"Factory function {factory_path} must return VectorStore or VectorStoreAdapter, "
+                f"got {type(result)}"
+            )
+
+        return result
+
+    except ImportError as e:
+        logger.error(f"Failed to import factory function {factory_path}: {e}")
+        raise
+    except AttributeError as e:
+        logger.error(f"Function {function_name} not found in module {module_path}: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Error calling factory function {factory_path}: {e}")
+        raise
 
 
 def create_redis_vectorstore(embeddings: Embeddings) -> VectorStore:
     """Create a Redis VectorStore instance using LangChain Redis.
+
+    This is the default factory function for Redis backends.
 
     Args:
         embeddings: Embeddings instance to use
@@ -386,8 +185,6 @@ def create_redis_vectorstore(embeddings: Embeddings) -> VectorStore:
         A Redis VectorStore instance
     """
     try:
-        from langchain_redis import RedisVectorStore
-
         # Define metadata schema to match our existing schema
         metadata_schema = [
             {"name": "session_id", "type": "tag"},
@@ -407,21 +204,13 @@ def create_redis_vectorstore(embeddings: Embeddings) -> VectorStore:
             {"name": "id", "type": "tag"},
         ]
 
-        # Try to connect to existing index first
-        try:
-            return RedisVectorStore.from_existing_index(
-                index_name=settings.redisvl_index_name,
-                embeddings=embeddings,
-                redis_url=settings.redis_url,
-            )
-        except Exception:
-            # If no existing index, create a new one with metadata schema
-            return RedisVectorStore(
-                embeddings=embeddings,
-                redis_url=settings.redis_url,
-                index_name=settings.redisvl_index_name,
-                metadata_schema=metadata_schema,
-            )
+        # Always use MemoryRedisVectorStore for consistency and to fix relevance score issues
+        return MemoryRedisVectorStore(
+            embeddings=embeddings,
+            redis_url=settings.redis_url,
+            index_name=settings.redisvl_index_name,
+            metadata_schema=metadata_schema,
+        )
     except ImportError:
         logger.error(
             "langchain-redis not installed. Install with: pip install langchain-redis"
@@ -433,43 +222,41 @@ def create_redis_vectorstore(embeddings: Embeddings) -> VectorStore:
 
 
 def create_vectorstore_adapter() -> VectorStoreAdapter:
-    """Create a VectorStore adapter based on configuration.
+    """Create a VectorStore adapter using the configured factory function.
 
     Returns:
         A VectorStoreAdapter instance configured for the selected backend
     """
-    backend = settings.long_term_memory_backend.lower()
     embeddings = create_embeddings()
+    factory_path = settings.vectorstore_factory
 
-    logger.info(f"Creating VectorStore adapter with backend: {backend}")
+    logger.info(f"Creating VectorStore using factory: {factory_path}")
 
-    # For Redis, use Redis-specific adapter without LangChain's RedisVectorStore
-    # since we use pure RedisVL for all operations
-    if backend == "redis":
-        # Create a dummy vectorstore for interface compatibility
-        # The RedisVectorStoreAdapter doesn't actually use this
-        from langchain_core.vectorstores import VectorStore
+    # Call user-specified factory function
+    result = _import_and_call_factory(factory_path, embeddings)
 
-        class DummyVectorStore(VectorStore):
-            def add_texts(self, texts, metadatas=None, **kwargs):
-                return []
+    # If the result is already a VectorStoreAdapter, use it directly
+    if isinstance(result, VectorStoreAdapter):
+        logger.info("Factory returned VectorStoreAdapter directly")
+        return result
 
-            def similarity_search(self, query, k=4, **kwargs):
-                return []
+    # If the result is a VectorStore, wrap it in appropriate adapter
+    if isinstance(result, VectorStore):
+        logger.info("Factory returned VectorStore, wrapping in adapter")
 
-            @classmethod
-            def from_texts(cls, texts, embedding, metadatas=None, **kwargs):
-                return cls()
+        # Special handling for Redis - use Redis-specific adapter
+        if factory_path.endswith("create_redis_vectorstore"):
+            # Use the actual Redis VectorStore returned by the factory
+            adapter = RedisVectorStoreAdapter(result, embeddings)
+        else:
+            # For all other backends, use generic LangChain adapter
+            adapter = LangChainVectorStoreAdapter(result, embeddings)
 
-        dummy_vectorstore = DummyVectorStore()
-        adapter = RedisVectorStoreAdapter(dummy_vectorstore, embeddings)
-    else:
-        # For all other backends, use generic LangChain adapter
-        vectorstore = create_vectorstore(backend, embeddings)
-        adapter = LangChainVectorStoreAdapter(vectorstore, embeddings)
+        logger.info("VectorStore adapter created successfully")
+        return adapter
 
-    logger.info("VectorStore adapter created successfully")
-    return adapter
+    # Should never reach here due to type validation in _import_and_call_factory
+    raise TypeError(f"Unexpected return type from factory: {type(result)}")
 
 
 # Global adapter instance

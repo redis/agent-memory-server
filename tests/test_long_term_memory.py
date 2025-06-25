@@ -18,7 +18,12 @@ from agent_memory_server.long_term_memory import (
     search_long_term_memories,
     search_memories,
 )
-from agent_memory_server.models import MemoryRecord, MemoryRecordResult, MemoryTypeEnum
+from agent_memory_server.models import (
+    MemoryRecord,
+    MemoryRecordResult,
+    MemoryRecordResults,
+    MemoryTypeEnum,
+)
 from agent_memory_server.utils.redis import ensure_search_index_exists
 
 
@@ -104,7 +109,6 @@ class TestLongTermMemory:
         ):
             results = await search_long_term_memories(
                 query,
-                mock_async_redis_client,
                 session_id=session_id,
             )
 
@@ -337,7 +341,7 @@ class TestLongTermMemory:
 
     @pytest.mark.asyncio
     async def test_deduplicate_by_hash(self, mock_async_redis_client):
-        """Test deduplication by hash"""
+        """Test deduplication by hash using vectorstore adapter"""
         memory = MemoryRecord(
             id="test-memory-1",
             text="Test memory",
@@ -346,33 +350,53 @@ class TestLongTermMemory:
         )
 
         # Test case 1: No duplicate found
-        # Mock Redis execute_command to return 0 results
-        mock_async_redis_client.execute_command = AsyncMock(return_value=[0])
-
-        result_memory, overwrite = await deduplicate_by_hash(
-            memory, redis_client=mock_async_redis_client
+        mock_adapter = AsyncMock()
+        mock_adapter.search_memories.return_value = MemoryRecordResults(
+            total=0, memories=[]
         )
+
+        with mock.patch(
+            "agent_memory_server.long_term_memory.get_vectorstore_adapter",
+            return_value=mock_adapter,
+        ):
+            result_memory, overwrite = await deduplicate_by_hash(
+                memory, redis_client=mock_async_redis_client
+            )
 
         assert result_memory == memory
         assert overwrite is False
 
         # Test case 2: Duplicate found
-        # Mock Redis execute_command to return 1 result (return bytes like real Redis)
-        mock_async_redis_client.execute_command = AsyncMock(
-            return_value=[1, b"memory:existing-key", b"existing-id-123"]
+        existing_memory = MemoryRecordResult(
+            id="existing-memory-id",
+            text="Test memory",
+            dist=0.0,
+            memory_type=MemoryTypeEnum.SEMANTIC,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            last_accessed=datetime.now(UTC),
+        )
+
+        mock_adapter.search_memories.return_value = MemoryRecordResults(
+            total=1, memories=[existing_memory]
         )
 
         # Mock the hset call that updates last_accessed
         mock_async_redis_client.hset = AsyncMock()
 
-        result_memory, overwrite = await deduplicate_by_hash(
-            memory, redis_client=mock_async_redis_client
-        )
+        with mock.patch(
+            "agent_memory_server.long_term_memory.get_vectorstore_adapter",
+            return_value=mock_adapter,
+        ):
+            result_memory, overwrite = await deduplicate_by_hash(
+                memory, redis_client=mock_async_redis_client
+            )
 
         # Should return None (duplicate found) and overwrite=True
         assert result_memory is None
         assert overwrite is True
-        # Verify the last_accessed timestamp was updated
+
+        # Verify that last_accessed was updated
         mock_async_redis_client.hset.assert_called_once()
 
     @pytest.mark.asyncio
@@ -727,7 +751,6 @@ class TestLongTermMemoryIntegration:
         # Search using the same connection (should be patched by conftest)
         results = await search_long_term_memories(
             "What is the capital of France?",
-            async_redis_client,
             session_id=SessionId(eq="123"),
             limit=1,
         )
@@ -761,7 +784,6 @@ class TestLongTermMemoryIntegration:
         # Search using the same connection (should be patched by conftest)
         results = await search_long_term_memories(
             "What is the capital of France?",
-            async_redis_client,
             session_id=SessionId(eq="123"),
             distance_threshold=0.3,
             limit=2,
@@ -779,7 +801,6 @@ class TestLongTermMemoryIntegration:
         # Test with a very strict threshold that should filter out results
         strict_results = await search_long_term_memories(
             "What is the capital of France?",
-            async_redis_client,
             session_id=SessionId(eq="123"),
             distance_threshold=0.05,  # Very strict threshold
             limit=2,

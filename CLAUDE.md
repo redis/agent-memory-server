@@ -39,6 +39,7 @@ docker-compose down          # Stop all services
 IMPORTANT: This project uses `pre-commit`. You should run `pre-commit`
 before committing:
 ```bash
+uv run pre-commit install  # Install the hooks first
 uv run pre-commit run --all-files
 ```
 

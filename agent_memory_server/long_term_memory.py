@@ -19,6 +19,7 @@ from agent_memory_server.filters import (
     Entities,
     EventDate,
     LastAccessed,
+    MemoryHash,
     MemoryType,
     Namespace,
     SessionId,
@@ -683,7 +684,6 @@ async def index_long_term_memories(
 
 async def search_long_term_memories(
     text: str,
-    redis: Redis | None = None,
     session_id: SessionId | None = None,
     user_id: UserId | None = None,
     namespace: Namespace | None = None,
@@ -694,6 +694,7 @@ async def search_long_term_memories(
     distance_threshold: float | None = None,
     memory_type: MemoryType | None = None,
     event_date: EventDate | None = None,
+    memory_hash: MemoryHash | None = None,
     limit: int = 10,
     offset: int = 0,
 ) -> MemoryRecordResults:
@@ -713,6 +714,7 @@ async def search_long_term_memories(
         distance_threshold: Optional similarity threshold
         memory_type: Optional memory type filter
         event_date: Optional event date filter
+        memory_hash: Optional memory hash filter
         limit: Maximum number of results
         offset: Offset for pagination
 
@@ -734,6 +736,7 @@ async def search_long_term_memories(
         entities=entities,
         memory_type=memory_type,
         event_date=event_date,
+        memory_hash=memory_hash,
         distance_threshold=distance_threshold,
         limit=limit,
         offset=offset,
@@ -793,7 +796,6 @@ async def search_memories(
         try:
             long_term_results = await search_long_term_memories(
                 text=text,
-                redis=redis,
                 session_id=session_id,
                 user_id=user_id,
                 namespace=namespace,
@@ -994,49 +996,62 @@ async def deduplicate_by_hash(
         }
     )
 
-    # Build filters for the search
-    filters = []
-    if namespace or memory.namespace:
-        ns = namespace or memory.namespace
-        filters.append(f"@namespace:{{{ns}}}")
-    if user_id or memory.user_id:
-        uid = user_id or memory.user_id
-        filters.append(f"@user_id:{{{uid}}}")
-    if session_id or memory.session_id:
-        sid = session_id or memory.session_id
-        filters.append(f"@session_id:{{{sid}}}")
+    # Use vectorstore adapter to search for memories with the same hash
+    try:
+        # Build filter objects
+        namespace_filter = None
+        if namespace or memory.namespace:
+            namespace_filter = Namespace(eq=namespace or memory.namespace)
 
-    filter_str = " ".join(filters) if filters else ""
+        user_id_filter = None
+        if user_id or memory.user_id:
+            user_id_filter = UserId(eq=user_id or memory.user_id)
 
-    # Search for existing memories with the same hash
-    index_name = Keys.search_index_name()
+        session_id_filter = None
+        if session_id or memory.session_id:
+            session_id_filter = SessionId(eq=session_id or memory.session_id)
 
-    # Use FT.SEARCH to find memories with this hash
-    # TODO: Use RedisVL
-    search_query = (
-        f"FT.SEARCH {index_name} "
-        f"(@memory_hash:{{{memory_hash}}}) {filter_str} "
-        "RETURN 1 id_ "
-        "SORTBY last_accessed DESC"  # Newest first
-    )
+        # Create memory hash filter
+        memory_hash_filter = MemoryHash(eq=memory_hash)
 
-    search_results = await redis_client.execute_command(search_query)
+        # Use vectorstore adapter to search for memories with the same hash
+        adapter = await get_vectorstore_adapter()
 
-    if search_results and search_results[0] > 0:
-        # Found existing memory with the same hash
-        logger.info(f"Found existing memory with hash {memory_hash}")
+        # Search for existing memories with the same hash
+        # Use a dummy query since we're filtering by hash, not doing semantic search
+        results = await adapter.search_memories(
+            query="",  # Empty query since we're filtering by hash
+            session_id=session_id_filter,
+            user_id=user_id_filter,
+            namespace=namespace_filter,
+            memory_hash=memory_hash_filter,
+            limit=1,  # We only need to know if one exists
+        )
 
-        # Update the last_accessed timestamp of the existing memory
-        if search_results[0] >= 1:
-            existing_key = search_results[1].decode()
-            await redis_client.hset(
-                existing_key,
-                "last_accessed",
-                str(int(datetime.now(UTC).timestamp())),
-            )  # type: ignore
+        if results.memories and len(results.memories) > 0:
+            # Found existing memory with the same hash
+            logger.info(f"Found existing memory with hash {memory_hash}")
 
-            # Don't save this memory, it's a duplicate
-            return None, True
+            # Update the last_accessed timestamp of the existing memory
+            existing_memory = results.memories[0]
+            if existing_memory.id:
+                # Use the memory key format to update last_accessed
+                existing_key = Keys.memory_key(
+                    existing_memory.id, existing_memory.namespace
+                )
+                await redis_client.hset(
+                    existing_key,
+                    "last_accessed",
+                    str(int(datetime.now(UTC).timestamp())),
+                )  # type: ignore
+
+                # Don't save this memory, it's a duplicate
+                return None, True
+
+    except Exception as e:
+        logger.error(f"Error searching for hash duplicates using vectorstore: {e}")
+        # If search fails, proceed with the original memory
+        pass
 
     # No duplicates found, return the original memory
     return memory, False

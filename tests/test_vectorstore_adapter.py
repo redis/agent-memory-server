@@ -8,6 +8,7 @@ from agent_memory_server.models import MemoryRecord, MemoryTypeEnum
 from agent_memory_server.vectorstore_adapter import (
     LangChainVectorStoreAdapter,
     RedisVectorStoreAdapter,
+    VectorStoreAdapter,
 )
 from agent_memory_server.vectorstore_factory import create_vectorstore_adapter
 
@@ -132,7 +133,7 @@ class TestVectorStoreAdapter:
 
         agent_memory_server.vectorstore_factory._adapter = None
 
-        # Test with Redis backend (default) - this uses actual settings
+        # Test with Redis backend (default factory) - this uses actual settings
         adapter = create_vectorstore_adapter()
 
         # For Redis backend, we should get RedisVectorStoreAdapter (not LangChainVectorStoreAdapter)
@@ -141,30 +142,90 @@ class TestVectorStoreAdapter:
         # Reset the global adapter
         agent_memory_server.vectorstore_factory._adapter = None
 
-        # Test with non-Redis backend using direct factory call
+        # Test with custom factory function that returns a VectorStore
         with (
             patch(
                 "agent_memory_server.vectorstore_factory.create_embeddings"
             ) as mock_create_embeddings,
             patch(
-                "agent_memory_server.vectorstore_factory.create_vectorstore"
-            ) as mock_create_vectorstore,
+                "agent_memory_server.vectorstore_factory._import_and_call_factory"
+            ) as mock_import_factory,
+            patch("agent_memory_server.vectorstore_factory.settings") as mock_settings,
         ):
-            # Mock the embeddings and vectorstore
+            # Mock the embeddings
             mock_embeddings = MagicMock()
-            mock_vectorstore = MagicMock()
-
             mock_create_embeddings.return_value = mock_embeddings
-            mock_create_vectorstore.return_value = mock_vectorstore
 
-            # Create the backend-specific adapter directly
-            # (bypassing settings that default to redis)
-            adapter = LangChainVectorStoreAdapter(mock_vectorstore, mock_embeddings)
+            # Mock settings to use a non-Redis factory path
+            mock_settings.vectorstore_factory = "my_module.create_custom_vectorstore"
+
+            # Create a proper mock VectorStore that actually inherits from VectorStore
+            from langchain_core.vectorstores import VectorStore
+
+            class MockVectorStore(VectorStore):
+                def add_texts(self, texts, metadatas=None, **kwargs):
+                    return []
+
+                def similarity_search(self, query, k=4, **kwargs):
+                    return []
+
+                @classmethod
+                def from_texts(cls, texts, embedding, metadatas=None, **kwargs):
+                    return cls()
+
+            mock_vectorstore = MockVectorStore()
+            mock_import_factory.return_value = mock_vectorstore
+
+            # Create adapter with mocked factory
+            adapter = create_vectorstore_adapter()
 
             # For non-Redis backends, we should get LangChainVectorStoreAdapter
             assert isinstance(adapter, LangChainVectorStoreAdapter)
             assert adapter.vectorstore == mock_vectorstore
             assert adapter.embeddings == mock_embeddings
+
+        # Test that factory function can also return VectorStoreAdapter directly
+        agent_memory_server.vectorstore_factory._adapter = None
+
+        with (
+            patch(
+                "agent_memory_server.vectorstore_factory.create_embeddings"
+            ) as mock_create_embeddings,
+            patch(
+                "agent_memory_server.vectorstore_factory._import_and_call_factory"
+            ) as mock_import_factory,
+        ):
+            # Mock the embeddings and custom adapter
+            mock_embeddings = MagicMock()
+
+            # Create a proper mock VectorStoreAdapter that actually inherits from VectorStoreAdapter
+            class MockVectorStoreAdapter(VectorStoreAdapter):
+                def __init__(self):
+                    pass  # Skip parent constructor for test
+
+                # Add minimal required methods for test
+                async def add_memories(self, memories):
+                    return []
+
+                async def search_memories(self, query, **kwargs):
+                    return []
+
+                async def count_memories(self, **kwargs):
+                    return 0
+
+                async def delete_memories(self, memory_ids):
+                    return 0
+
+            mock_custom_adapter = MockVectorStoreAdapter()
+
+            mock_create_embeddings.return_value = mock_embeddings
+            mock_import_factory.return_value = mock_custom_adapter
+
+            # Create adapter with mocked factory that returns adapter directly
+            adapter = create_vectorstore_adapter()
+
+            # Should get the custom adapter returned directly
+            assert adapter == mock_custom_adapter
 
     def test_memory_hash_generation(self):
         """Test memory hash generation."""

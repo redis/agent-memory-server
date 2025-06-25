@@ -238,3 +238,7 @@ class MemoryType(EnumFilter):
 
 class EventDate(DateTimeFilter):
     field: str = "event_date"
+
+
+class MemoryHash(TagFilter):
+    field: str = "memory_hash"
