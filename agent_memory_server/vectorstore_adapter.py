@@ -17,6 +17,7 @@ from langchain_redis.vectorstores import RedisVectorStore
 
 from agent_memory_server.filters import (
     CreatedAt,
+    DiscreteMemoryExtracted,
     Entities,
     EventDate,
     LastAccessed,
@@ -176,6 +177,7 @@ class VectorStoreAdapter(ABC):
         memory_type: MemoryType | None = None,
         event_date: EventDate | None = None,
         memory_hash: MemoryHash | None = None,
+        discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
         distance_threshold: float | None = None,
         limit: int = 10,
         offset: int = 0,
@@ -469,6 +471,7 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
         event_date: EventDate | None = None,
         memory_hash: MemoryHash | None = None,
         distance_threshold: float | None = None,
+        discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
         limit: int = 10,
         offset: int = 0,
     ) -> MemoryRecordResults:
@@ -709,6 +712,7 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         memory_type: MemoryType | None = None,
         event_date: EventDate | None = None,
         memory_hash: MemoryHash | None = None,
+        discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
         distance_threshold: float | None = None,
         limit: int = 10,
         offset: int = 0,
@@ -737,6 +741,8 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             filters.append(event_date.to_filter())
         if memory_hash:
             filters.append(memory_hash.to_filter())
+        if discrete_memory_extracted:
+            filters.append(discrete_memory_extracted.to_filter())
 
         # Combine filters with AND logic
         redis_filter = None
@@ -748,12 +754,23 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
 
                 redis_filter = reduce(lambda x, y: x & y, filters)
 
+        # Prepare search kwargs
+        search_kwargs = {
+            "query": query,
+            "filter": redis_filter,
+            "k": limit + offset,
+        }
+
+        # Use score_threshold if distance_threshold is provided
+        if distance_threshold is not None:
+            # Convert distance threshold to score threshold
+            # Distance 0 = perfect match, Score 1 = perfect match
+            score_threshold = 1.0 - distance_threshold
+            search_kwargs["score_threshold"] = score_threshold
+
         search_results = (
             await self.vectorstore.asimilarity_search_with_relevance_scores(
-                query,
-                filter=redis_filter,
-                k=limit + offset,
-                return_all=True,
+                **search_kwargs
             )
         )
 
@@ -765,9 +782,8 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             if i < offset:
                 continue
 
-            # Apply distance threshold
-            if distance_threshold is not None and score > distance_threshold:
-                continue
+            # Convert relevance score to distance for the result
+            distance = 1.0 - score
 
             # Helper function to parse timestamp to datetime
             def parse_timestamp_to_datetime(timestamp_val):
@@ -781,7 +797,7 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             memory_result = MemoryRecordResult(
                 id=doc.metadata.get("id_", ""),
                 text=doc.page_content,
-                dist=score,
+                dist=distance,
                 created_at=parse_timestamp_to_datetime(doc.metadata.get("created_at")),
                 updated_at=parse_timestamp_to_datetime(doc.metadata.get("updated_at")),
                 last_accessed=parse_timestamp_to_datetime(

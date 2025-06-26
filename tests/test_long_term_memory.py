@@ -24,7 +24,9 @@ from agent_memory_server.models import (
     MemoryRecordResults,
     MemoryTypeEnum,
 )
-from agent_memory_server.utils.redis import ensure_search_index_exists
+
+
+# from agent_memory_server.utils.redis import ensure_search_index_exists  # Not used currently
 
 
 class TestLongTermMemory:
@@ -731,7 +733,7 @@ class TestLongTermMemoryIntegration:
     @pytest.mark.asyncio
     async def test_search_messages(self, async_redis_client):
         """Test searching messages"""
-        await ensure_search_index_exists(async_redis_client)
+        # await ensure_search_index_exists(async_redis_client)  # Let LangChain handle index
 
         long_term_memories = [
             MemoryRecord(
@@ -764,7 +766,7 @@ class TestLongTermMemoryIntegration:
     @pytest.mark.asyncio
     async def test_search_messages_with_distance_threshold(self, async_redis_client):
         """Test searching messages with a distance threshold"""
-        await ensure_search_index_exists(async_redis_client)
+        # await ensure_search_index_exists(async_redis_client)  # Let LangChain handle index
 
         long_term_memories = [
             MemoryRecord(

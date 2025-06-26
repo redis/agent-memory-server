@@ -6,9 +6,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 from redis.asyncio import Redis
-from redis.commands.search.query import Query
-from redisvl.query import VectorRangeQuery
-from redisvl.utils.vectorize import OpenAITextVectorizer
 from ulid import ULID
 
 from agent_memory_server.config import settings
@@ -41,8 +38,6 @@ from agent_memory_server.utils.keys import Keys
 from agent_memory_server.utils.redis import (
     ensure_search_index_exists,
     get_redis_conn,
-    get_search_index,
-    safe_get,
 )
 from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
 
@@ -421,109 +416,76 @@ async def compact_long_term_memories(
                     f"Error checking index '{index_name}': {info_e} - attempting to proceed."
                 )
 
-        # Get all memories matching the filters, using the correct index name
-        index = get_search_index(redis_client, index_name=index_name)
-        query_str = filter_str if filter_str != "*" else "*"
-
-        # Create a query to get all memories
-        q = Query(query_str).paging(0, limit)
-        q.return_fields("id_", "text", "vector", "user_id", "session_id", "namespace")
-
-        # Execute the query to get memories
-        search_result = None
+        # Get all memories using the vector store adapter
         try:
-            search_result = await index.search(q)
+            # Convert filters to adapter format
+            namespace_filter = None
+            user_id_filter = None
+            session_id_filter = None
+
+            if namespace:
+                from agent_memory_server.filters import Namespace
+
+                namespace_filter = Namespace(eq=namespace)
+            if user_id:
+                from agent_memory_server.filters import UserId
+
+                user_id_filter = UserId(eq=user_id)
+            if session_id:
+                from agent_memory_server.filters import SessionId
+
+                session_id_filter = SessionId(eq=session_id)
+
+            # Use vectorstore adapter to get all memories
+            adapter = await get_vectorstore_adapter()
+            search_result = await adapter.search_memories(
+                query="",  # Empty query to get all matching filter criteria
+                namespace=namespace_filter,
+                user_id=user_id_filter,
+                session_id=session_id_filter,
+                limit=limit,
+            )
         except Exception as e:
             logger.error(f"Error searching for memories: {e}")
+            search_result = None
 
-        if search_result and search_result.total > 0:
+        if search_result and search_result.memories:
             logger.info(
                 f"Found {search_result.total} memories to check for semantic duplicates"
             )
 
-            # Process memories in batches to avoid overloading Redis
+            # Process memories in batches to avoid overloading
             batch_size = 50
-            processed_keys = set()  # Track which memories have been processed
+            processed_ids = set()  # Track which memories have been processed
 
-            for i in range(0, len(search_result.docs), batch_size):
-                batch = search_result.docs[i : i + batch_size]
+            memories_list = search_result.memories
+            for i in range(0, len(memories_list), batch_size):
+                batch = memories_list[i : i + batch_size]
 
-                for memory in batch:
-                    memory_key = safe_get(memory, "id")  # We get the Redis key as "id"
-                    memory_id = safe_get(memory, "id_")  # This is our own generated ID
+                for memory_result in batch:
+                    memory_id = memory_result.id
 
                     # Skip if already processed
-                    if memory_key in processed_keys:
+                    if memory_id in processed_ids:
                         continue
 
-                    # Get memory data with error handling
-                    memory_data = {}
-                    try:
-                        memory_data_raw = await redis_client.hgetall(memory_key)  # type: ignore
-                        if memory_data_raw:
-                            # Convert memory data from bytes to strings
-                            memory_data = {
-                                k.decode() if isinstance(k, bytes) else k: v
-                                if isinstance(v, bytes)
-                                and (k == b"vector" or k == "vector")
-                                else v.decode()
-                                if isinstance(v, bytes)
-                                else v
-                                for k, v in memory_data_raw.items()
-                            }
-                    except Exception as e:
-                        logger.error(f"Error retrieving memory {memory_key}: {e}")
-                        continue
-
-                    # Skip if memory not found
-                    if not memory_data:
-                        continue
-
-                    # Convert to LongTermMemory object for deduplication
-                    memory_type_value = str(memory_data.get("memory_type", "semantic"))
-                    if memory_type_value not in [
-                        "episodic",
-                        "semantic",
-                        "message",
-                    ]:
-                        memory_type_value = "semantic"
-
-                    discrete_memory_extracted_value = str(
-                        memory_data.get("discrete_memory_extracted", "t")
-                    )
-                    if discrete_memory_extracted_value not in ["t", "f"]:
-                        discrete_memory_extracted_value = "t"
-
+                    # Convert MemoryRecordResult to MemoryRecord for deduplication
                     memory_obj = MemoryRecord(
-                        id=memory_id,
-                        text=str(memory_data.get("text", "")),
-                        user_id=str(memory_data.get("user_id"))
-                        if memory_data.get("user_id")
-                        else None,
-                        session_id=str(memory_data.get("session_id"))
-                        if memory_data.get("session_id")
-                        else None,
-                        namespace=str(memory_data.get("namespace"))
-                        if memory_data.get("namespace")
-                        else None,
-                        created_at=datetime.fromtimestamp(
-                            int(memory_data.get("created_at", 0))
-                        ),
-                        last_accessed=datetime.fromtimestamp(
-                            int(memory_data.get("last_accessed", 0))
-                        ),
-                        topics=str(memory_data.get("topics", "")).split(",")
-                        if memory_data.get("topics")
-                        else [],
-                        entities=str(memory_data.get("entities", "")).split(",")
-                        if memory_data.get("entities")
-                        else [],
-                        memory_type=memory_type_value,  # type: ignore
-                        discrete_memory_extracted=discrete_memory_extracted_value,  # type: ignore
+                        id=memory_result.id,
+                        text=memory_result.text,
+                        user_id=memory_result.user_id,
+                        session_id=memory_result.session_id,
+                        namespace=memory_result.namespace,
+                        created_at=memory_result.created_at,
+                        last_accessed=memory_result.last_accessed,
+                        topics=memory_result.topics or [],
+                        entities=memory_result.entities or [],
+                        memory_type=memory_result.memory_type,  # type: ignore
+                        discrete_memory_extracted=memory_result.discrete_memory_extracted,  # type: ignore
                     )
 
                     # Add this memory to processed list
-                    processed_keys.add(memory_key)
+                    processed_ids.add(memory_id)
 
                     # Check for semantic duplicates
                     (
@@ -541,8 +503,8 @@ async def compact_long_term_memories(
 
                     if was_merged:
                         semantic_memories_merged += 1
-                        # We need to delete the original memory and save the merged one
-                        await redis_client.delete(memory_key)
+                        # Delete the original memory using the adapter
+                        await adapter.delete_memories([memory_id])
 
                         # Re-index the merged memory
                         if merged_memory:
@@ -1172,100 +1134,93 @@ async def deduplicate_by_semantic_search(
     if not llm_client:
         llm_client = await get_model_client(model_name="gpt-4o-mini")
 
-    # Get the vector for the memory
-    vectorizer = OpenAITextVectorizer()
-    vector = await vectorizer.aembed(memory.text, as_buffer=True)
+    # Use vector store adapter to find semantically similar memories
+    adapter = await get_vectorstore_adapter()
 
-    # Build filters
-    filter_expression = None
+    # Convert filters to adapter format
+    namespace_filter = None
+    user_id_filter = None
+    session_id_filter = None
+
+    # TODO: Refactor to avoid inline imports (fix circular imports)
     if namespace or memory.namespace:
-        ns = namespace or memory.namespace
-        filter_expression = Namespace(eq=ns).to_filter()
+        from agent_memory_server.filters import Namespace
+
+        namespace_filter = Namespace(eq=namespace or memory.namespace)
     if user_id or memory.user_id:
-        uid = user_id or memory.user_id
-        user_filter = UserId(eq=uid).to_filter()
-        filter_expression = (
-            user_filter
-            if filter_expression is None
-            else filter_expression & user_filter
-        )
+        from agent_memory_server.filters import UserId
+
+        user_id_filter = UserId(eq=user_id or memory.user_id)
     if session_id or memory.session_id:
-        sid = session_id or memory.session_id
-        session_filter = SessionId(eq=sid).to_filter()
-        filter_expression = (
-            session_filter
-            if filter_expression is None
-            else filter_expression & session_filter
-        )
+        from agent_memory_server.filters import SessionId
 
-    # Use vector search to find semantically similar memories
-    index = get_search_index(redis_client)
+        session_id_filter = SessionId(eq=session_id or memory.session_id)
 
-    vector_query = VectorRangeQuery(
-        vector=vector,
-        vector_field_name="vector",
+    # Use the vectorstore adapter for semantic search
+    search_result = await adapter.search_memories(
+        query=memory.text,  # Use memory text for semantic search
+        namespace=namespace_filter,
+        user_id=user_id_filter,
+        session_id=session_id_filter,
         distance_threshold=vector_distance_threshold,
-        num_results=5,
-        return_fields=[
-            "id_",
-            "text",
-            "user_id",
-            "session_id",
-            "namespace",
-            "id",
-            "created_at",
-            "last_accessed",
-            "topics",
-            "entities",
-            "memory_type",
-        ],
+        limit=5,
     )
 
-    if filter_expression:
-        vector_query.set_filter(filter_expression)
-
-    vector_search_result = await index.query(vector_query)
+    vector_search_result = search_result.memories if search_result else []
 
     if vector_search_result and len(vector_search_result) > 0:
         # Found semantically similar memories
-        similar_memory_keys = []
-        for similar_memory in vector_search_result:
-            similar_memory_keys.append(similar_memory["id"])
-            similar_memory["created_at"] = similar_memory.get(
-                "created_at", int(datetime.now(UTC).timestamp())
-            )
-            similar_memory["last_accessed"] = similar_memory.get(
-                "last_accessed", int(datetime.now(UTC).timestamp())
-            )
-            # Merge the memories
-            merged_memory = await merge_memories_with_llm(
-                [memory.model_dump()] + [similar_memory],
-                llm_client=llm_client,
-            )
+        similar_memory_ids = []
+        similar_memories_data = []
 
-            # Convert back to LongTermMemory
-            merged_memory_obj = MemoryRecord(
-                id=memory.id or str(ULID()),
-                text=merged_memory["text"],
-                user_id=merged_memory["user_id"],
-                session_id=merged_memory["session_id"],
-                namespace=merged_memory["namespace"],
-                created_at=merged_memory["created_at"],
-                last_accessed=merged_memory["last_accessed"],
-                topics=merged_memory.get("topics", []),
-                entities=merged_memory.get("entities", []),
-                memory_type=merged_memory.get("memory_type", "semantic"),
-                discrete_memory_extracted=merged_memory.get(
-                    "discrete_memory_extracted", "t"
-                ),
-            )
+        for similar_memory_result in vector_search_result:
+            similar_memory_ids.append(similar_memory_result.id)
 
-            # Delete the similar memories if requested
-            for key in similar_memory_keys:
-                await redis_client.delete(key)
+            # Convert MemoryRecordResult to dict format for merge_memories_with_llm
+            similar_memory_dict = {
+                "id_": similar_memory_result.id,
+                "text": similar_memory_result.text,
+                "user_id": similar_memory_result.user_id,
+                "session_id": similar_memory_result.session_id,
+                "namespace": similar_memory_result.namespace,
+                "created_at": int(similar_memory_result.created_at.timestamp()),
+                "last_accessed": int(similar_memory_result.last_accessed.timestamp()),
+                "topics": similar_memory_result.topics or [],
+                "entities": similar_memory_result.entities or [],
+                "memory_type": similar_memory_result.memory_type,
+                "discrete_memory_extracted": similar_memory_result.discrete_memory_extracted,
+            }
+            similar_memories_data.append(similar_memory_dict)
+
+        # Merge the memories
+        merged_memory = await merge_memories_with_llm(
+            [memory.model_dump()] + similar_memories_data,
+            llm_client=llm_client,
+        )
+
+        # Convert back to MemoryRecord
+        merged_memory_obj = MemoryRecord(
+            id=memory.id or str(ULID()),
+            text=merged_memory["text"],
+            user_id=merged_memory["user_id"],
+            session_id=merged_memory["session_id"],
+            namespace=merged_memory["namespace"],
+            created_at=merged_memory["created_at"],
+            last_accessed=merged_memory["last_accessed"],
+            topics=merged_memory.get("topics", []),
+            entities=merged_memory.get("entities", []),
+            memory_type=merged_memory.get("memory_type", "semantic"),
+            discrete_memory_extracted=merged_memory.get(
+                "discrete_memory_extracted", "t"
+            ),
+        )
+
+        # Delete the similar memories using the adapter
+        if similar_memory_ids:
+            await adapter.delete_memories(similar_memory_ids)
 
         logger.info(
-            f"Merged new memory with {len(similar_memory_keys)} semantic duplicates"
+            f"Merged new memory with {len(similar_memory_ids)} semantic duplicates"
         )
         return merged_memory_obj, True
 

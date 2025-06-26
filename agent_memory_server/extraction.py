@@ -5,13 +5,12 @@ from typing import Any
 import ulid
 from bertopic import BERTopic
 from redis.asyncio.client import Redis
-from redisvl.query.filter import Tag
-from redisvl.query.query import FilterQuery
 from tenacity.asyncio import AsyncRetrying
 from tenacity.stop import stop_after_attempt
 from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
 
 from agent_memory_server.config import settings
+from agent_memory_server.filters import DiscreteMemoryExtracted
 from agent_memory_server.llms import (
     AnthropicClientWrapper,
     OpenAIClientWrapper,
@@ -19,7 +18,8 @@ from agent_memory_server.llms import (
 )
 from agent_memory_server.logging import get_logger
 from agent_memory_server.models import MemoryRecord
-from agent_memory_server.utils.redis import get_redis_conn, get_search_index
+from agent_memory_server.utils.keys import Keys
+from agent_memory_server.utils.redis import get_redis_conn
 
 
 logger = get_logger(__name__)
@@ -269,25 +269,32 @@ async def extract_discrete_memories(
     """
     redis = await get_redis_conn()
     client = await get_model_client(settings.generation_model)
-    query = FilterQuery(
-        filter_expression=(Tag("discrete_memory_extracted") == "f")
-        & (Tag("memory_type") == "message")
-    )
+
+    # Use vectorstore adapter to find messages that need discrete memory extraction
+    from agent_memory_server.filters import MemoryType
+    from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
+
+    adapter = await get_vectorstore_adapter()
     offset = 0
 
     while True:
-        query.paging(num=25, offset=offset)
-        search_index = get_search_index(redis=redis)
-        messages = await search_index.query(query)
+        # Search for message-type memories that haven't been processed for discrete extraction
+        search_result = await adapter.search_memories(
+            query="",  # Empty query to get all messages
+            memory_type=MemoryType(eq="message"),
+            discrete_memory_extracted=DiscreteMemoryExtracted(ne="t"),
+            limit=25,
+            offset=offset,
+        )
+
         discrete_memories = []
 
-        for message in messages:
-            if not message or not message.get("text"):
+        for message in search_result.memories:
+            if not message or not message.text:
                 logger.info(f"Deleting memory with no text: {message}")
-                await redis.delete(message["id"])
+                await adapter.delete_memories([message.id])
                 continue
-            id_ = message.get("id_")
-            if not id_:
+            if not message.id:
                 logger.error(f"Skipping memory with no ID: {message}")
                 continue
 
@@ -296,7 +303,7 @@ async def extract_discrete_memories(
                     response = await client.create_chat_completion(
                         model=settings.generation_model,
                         prompt=DISCRETE_EXTRACTION_PROMPT.format(
-                            message=message["text"], top_k_topics=settings.top_k_topics
+                            message=message.text, top_k_topics=settings.top_k_topics
                         ),
                         response_format={"type": "json_object"},
                     )
@@ -317,13 +324,15 @@ async def extract_discrete_memories(
                         raise
                     discrete_memories.extend(new_message["memories"])
 
+            # Update the memory to mark it as processed
+            # For now, we need to use Redis directly as the adapter doesn't have an update method
             await redis.hset(
-                name=message["id"],
+                name=Keys.memory_key(message.id),  # Construct the key
                 key="discrete_memory_extracted",
                 value="t",
             )  # type: ignore
 
-        if len(messages) < 25:
+        if len(search_result.memories) < 25:
             break
         offset += 25
 
@@ -333,7 +342,7 @@ async def extract_discrete_memories(
     if discrete_memories:
         long_term_memories = [
             MemoryRecord(
-                id_=str(ulid.ULID()),
+                id=str(ulid.ULID()),
                 text=new_memory["text"],
                 memory_type=new_memory.get("type", "episodic"),
                 topics=new_memory.get("topics", []),

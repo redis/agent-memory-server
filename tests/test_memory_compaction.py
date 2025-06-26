@@ -92,8 +92,9 @@ def dummy_vectorizer(monkeypatch):
         async def aembed(self, text):
             return b"vec0"
 
+    # Mock the vectorizer in the location it's actually used now
     monkeypatch.setattr(
-        "agent_memory_server.long_term_memory.OpenAITextVectorizer",
+        "redisvl.utils.vectorize.OpenAITextVectorizer",
         lambda: DummyVectorizer(),
     )
 

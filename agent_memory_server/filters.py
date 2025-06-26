@@ -242,3 +242,7 @@ class EventDate(DateTimeFilter):
 
 class MemoryHash(TagFilter):
     field: str = "memory_hash"
+
+
+class DiscreteMemoryExtracted(TagFilter):
+    field: str = "discrete_memory_extracted"

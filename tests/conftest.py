@@ -24,7 +24,9 @@ from agent_memory_server.models import (
 # Import the module to access its global for resetting
 from agent_memory_server.utils import redis as redis_utils_module
 from agent_memory_server.utils.keys import Keys
-from agent_memory_server.utils.redis import ensure_search_index_exists
+
+
+# from agent_memory_server.utils.redis import ensure_search_index_exists  # Not used currently
 
 
 load_dotenv()
@@ -76,7 +78,8 @@ async def search_index(async_redis_client):
             if "unknown index name".lower() not in str(e).lower():
                 pass
 
-        await ensure_search_index_exists(async_redis_client)
+        # Skip ensure_search_index_exists for now - let LangChain handle it
+        # await ensure_search_index_exists(async_redis_client)
 
     except Exception:
         raise
