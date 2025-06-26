@@ -5,7 +5,6 @@ This module provides a standalone client for the REST API of the Agent Memory Se
 """
 
 import asyncio
-import contextlib
 import re
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
@@ -396,11 +395,10 @@ class MemoryAPIClient:
         # Get existing memory if preserving
         existing_memory = None
         if preserve_existing:
-            with contextlib.suppress(Exception):
-                existing_memory = await self.get_working_memory(
-                    session_id=session_id,
-                    namespace=namespace,
-                )
+            existing_memory = await self.get_working_memory(
+                session_id=session_id,
+                namespace=namespace,
+            )
 
         # Create new working memory with the data
         working_memory = WorkingMemory(
@@ -454,12 +452,10 @@ class MemoryAPIClient:
             ```
         """
         # Get existing memory
-        existing_memory = None
-        with contextlib.suppress(Exception):
-            existing_memory = await self.get_working_memory(
-                session_id=session_id,
-                namespace=namespace,
-            )
+        existing_memory = await self.get_working_memory(
+            session_id=session_id,
+            namespace=namespace,
+        )
 
         # Determine final memories list
         if replace or not existing_memory:
@@ -1987,6 +1983,7 @@ class MemoryAPIClient:
         data_updates: dict[str, Any],
         namespace: str | None = None,
         merge_strategy: Literal["replace", "merge", "deep_merge"] = "merge",
+        user_id: str | None = None,
     ) -> WorkingMemoryResponse:
         """
         Update specific data fields in working memory without replacing everything.
@@ -1996,16 +1993,15 @@ class MemoryAPIClient:
             data_updates: Dictionary of updates to apply
             namespace: Optional namespace
             merge_strategy: How to handle existing data
+            user_id: Optional user ID for the session
 
         Returns:
             WorkingMemoryResponse with updated memory
         """
         # Get existing memory
-        existing_memory = None
-        with contextlib.suppress(Exception):
-            existing_memory = await self.get_working_memory(
-                session_id=session_id, namespace=namespace
-            )
+        existing_memory = await self.get_working_memory(
+            session_id=session_id, namespace=namespace, user_id=user_id
+        )
 
         # Determine final data based on merge strategy
         if existing_memory and existing_memory.data:
@@ -2040,6 +2036,7 @@ class MemoryAPIClient:
         namespace: str | None = None,
         model_name: str | None = None,
         context_window_max: int | None = None,
+        user_id: str | None = None,
     ) -> WorkingMemoryResponse:
         """
         Append new messages to existing working memory.
@@ -2057,11 +2054,9 @@ class MemoryAPIClient:
             WorkingMemoryResponse with updated memory (potentially summarized if token limit exceeded)
         """
         # Get existing memory
-        existing_memory = None
-        with contextlib.suppress(Exception):
-            existing_memory = await self.get_working_memory(
-                session_id=session_id, namespace=namespace
-            )
+        existing_memory = await self.get_working_memory(
+            session_id=session_id, namespace=namespace, user_id=user_id
+        )
 
         # Validate new messages have required structure
         for msg in messages:
@@ -2104,6 +2099,7 @@ class MemoryAPIClient:
         model_name: str | None = None,
         context_window_max: int | None = None,
         long_term_search: dict[str, Any] | None = None,
+        user_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Hydrate a user query with memory context and return a prompt ready to send to an LLM.
@@ -2116,6 +2112,7 @@ class MemoryAPIClient:
             model_name: Optional model name to determine context window size
             context_window_max: Optional direct specification of context window tokens
             long_term_search: Optional search parameters for long-term memory
+            user_id: Optional user ID for the session
 
         Returns:
             Dict with messages hydrated with relevant memory context
@@ -2160,6 +2157,8 @@ class MemoryAPIClient:
             )
             if effective_context_window_max is not None:
                 session_params["context_window_max"] = str(effective_context_window_max)
+            if user_id is not None:
+                session_params["user_id"] = user_id
             payload["session"] = session_params
 
         # Add long-term search parameters if provided
