@@ -1,14 +1,12 @@
-version: "3.9"
 services:
   redis:
-    image: "${REDIS_IMAGE}"
+    image: "${REDIS_IMAGE:-redis/redis-stack-server:latest}"
     ports:
       - "6379"
     environment:
       - "REDIS_ARGS=--save '' --appendonly no"
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-    labels:
-      - "com.docker.compose.publishers=redis,6379,6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5

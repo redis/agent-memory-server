@@ -99,7 +99,7 @@ class Settings(BaseSettings):
     use_docket: bool = True
 
     # OAuth2/JWT Authentication settings
-    disable_auth: bool = False
+    disable_auth: bool = True
     oauth2_issuer_url: str | None = None
     oauth2_audience: str | None = None
     oauth2_jwks_url: str | None = None

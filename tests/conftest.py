@@ -221,8 +221,10 @@ def redis_container(request):
     os.environ["COMPOSE_PROJECT_NAME"] = f"redis_test_{worker_id}"
     os.environ.setdefault("REDIS_IMAGE", "redis/redis-stack-server:latest")
 
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+
     compose = DockerCompose(
-        context="tests",
+        context=current_dir,
         compose_file_name="docker-compose.yml",
         pull=True,
     )
@@ -240,7 +242,35 @@ def redis_url(redis_container):
     on container port 6379 (mapped to an ephemeral port on the host).
     """
     host, port = redis_container.get_service_host_and_port("redis", 6379)
-    return f"redis://{host}:{port}"
+
+    # On macOS, testcontainers sometimes returns 0.0.0.0 which doesn't work
+    # Replace with localhost if we get 0.0.0.0
+    if host == "0.0.0.0":
+        host = "localhost"
+
+    redis_url = f"redis://{host}:{port}"
+
+    # Verify the connection works before returning with retries
+    import time
+
+    import redis
+
+    max_retries = 10
+    retry_delay = 1
+
+    for attempt in range(max_retries):
+        try:
+            client = redis.Redis.from_url(redis_url)
+            client.ping()
+            break  # Connection successful
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise ConnectionError(
+                    f"Failed to connect to Redis at {redis_url} after {max_retries} attempts: {e}"
+                ) from e
+            time.sleep(retry_delay)
+
+    return redis_url
 
 
 @pytest.fixture()

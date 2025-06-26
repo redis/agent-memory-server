@@ -89,7 +89,7 @@ async def ensure_search_index_exists(
     index_name: str = settings.redisvl_index_name,
     vector_dimensions: str = settings.redisvl_vector_dimensions,
     distance_metric: str = settings.redisvl_distance_metric,
-    overwrite: bool = False,
+    overwrite: bool = True,
 ) -> None:
     """
     Ensure that the async search index exists, create it if it doesn't.

@@ -36,7 +36,7 @@ fi
 
 # Check Redis connection
 echo "🔍 Checking Redis connection..."
-if redis-cli ping > /dev/null 2>&1; then
+if redis-cli ping >/dev/null 2>&1; then
     echo "✅ Redis is running"
 else
     echo "❌ Redis is not running. Please start Redis:"
@@ -76,8 +76,8 @@ echo "✅ Auth0 configuration looks good"
 echo "🔍 Testing Auth0 token endpoint..."
 DOMAIN=$(echo $OAUTH2_ISSUER_URL | sed 's|https://||' | sed 's|/$||')
 TOKEN_RESPONSE=$(curl -s -X POST "https://$DOMAIN/oauth/token" \
-  -H "Content-Type: application/json" \
-  -d "{
+    -H "Content-Type: application/json" \
+    -d "{
     \"client_id\": \"$AUTH0_CLIENT_ID\",
     \"client_secret\": \"$AUTH0_CLIENT_SECRET\",
     \"audience\": \"$OAUTH2_AUDIENCE\",
@@ -95,7 +95,7 @@ fi
 # Check if memory server is running
 echo "🔍 Checking memory server..."
 PORT=${PORT:-8000}
-if curl -s "http://localhost:$PORT/health" > /dev/null 2>&1; then
+if curl -s "http://localhost:$PORT/v1/health" >/dev/null 2>&1; then
     echo "✅ Memory server is running on port $PORT"
 
     echo ""

@@ -2,14 +2,14 @@ import logging
 import os
 from typing import Any
 
+import ulid
 from mcp.server.fastmcp import FastMCP as _FastMCPBase
-from ulid import ULID
 
 from agent_memory_server.api import (
     create_long_term_memory as core_create_long_term_memory,
     get_session_memory as core_get_session_memory,
     memory_prompt as core_memory_prompt,
-    put_session_memory as core_put_session_memory,
+    put_working_memory as core_put_working_memory,
     search_long_term_memory as core_search_long_term_memory,
 )
 from agent_memory_server.config import settings
@@ -694,7 +694,7 @@ async def set_working_memory(
             # Handle both MemoryRecord objects and dict inputs
             if isinstance(memory, MemoryRecord):
                 # Already a MemoryRecord object, ensure it has an ID
-                memory_id = memory.id or str(ULID())
+                memory_id = memory.id or str(ulid.ULID())
                 processed_memory = memory.model_copy(
                     update={
                         "id": memory_id,
@@ -705,7 +705,7 @@ async def set_working_memory(
                 # Dictionary input, convert to MemoryRecord
                 memory_dict = dict(memory)
                 if not memory_dict.get("id"):
-                    memory_dict["id"] = str(ULID())
+                    memory_dict["id"] = str(ulid.ULID())
                 memory_dict["persisted_at"] = None
                 processed_memory = MemoryRecord(**memory_dict)
 
@@ -724,7 +724,7 @@ async def set_working_memory(
     )
 
     # Update working memory via the API - this handles summarization and background promotion
-    result = await core_put_session_memory(
+    result = await core_put_working_memory(
         session_id=session_id,
         memory=working_memory_obj,
         background_tasks=get_background_tasks(),

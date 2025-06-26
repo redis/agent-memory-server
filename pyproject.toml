@@ -14,7 +14,7 @@ dynamic = ["version"]
 description = "A Memory Server for LLM Agents and Applications"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 authors = [{ name = "Andrew Brookins", email = "andrew.brookins@redis.com" }]
 dependencies = [
     "accelerate>=1.6.0",
@@ -137,10 +137,12 @@ dev = [
     "pytest>=8.3.5",
     "pytest-asyncio>=0.23.0",
     "pytest-xdist>=3.5.0",
+    "pytest-cov>=4.0.0",
     "ruff>=0.3.0",
     "testcontainers>=3.7.0",
     "pre-commit>=3.6.0",
     "freezegun>=1.2.0",
+    "mypy>=1.16.1",
 ]
 
 [tool.ruff.lint.per-file-ignores]

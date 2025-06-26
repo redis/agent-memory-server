@@ -297,7 +297,7 @@ class TestMCP:
 
         async with client_session(mcp_app._mcp_server) as client:
             with patch(
-                "agent_memory_server.mcp.core_put_session_memory"
+                "agent_memory_server.mcp.core_put_working_memory"
             ) as mock_put_memory:
                 mock_put_memory.return_value = mock_response
 
@@ -360,7 +360,7 @@ class TestMCP:
 
         async with client_session(mcp_app._mcp_server) as client:
             with patch(
-                "agent_memory_server.mcp.core_put_session_memory"
+                "agent_memory_server.mcp.core_put_working_memory"
             ) as mock_put_memory:
                 mock_put_memory.return_value = mock_response
 
@@ -408,7 +408,7 @@ class TestMCP:
 
         async with client_session(mcp_app._mcp_server) as client:
             with patch(
-                "agent_memory_server.mcp.core_put_session_memory"
+                "agent_memory_server.mcp.core_put_working_memory"
             ) as mock_put_memory:
                 mock_put_memory.return_value = mock_response
 
@@ -430,7 +430,7 @@ class TestMCP:
 
                 # Verify ID was auto-generated
                 call_args = mock_put_memory.call_args
-                # core_put_session_memory is called with keyword args: session_id, memory, background_tasks
+                # core_put_working_memory is called with keyword args: session_id, memory, background_tasks
                 if call_args and call_args.kwargs.get("memory"):
                     working_memory = call_args.kwargs["memory"]
                     memory = working_memory.memories[0]

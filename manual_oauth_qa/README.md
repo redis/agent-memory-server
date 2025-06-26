@@ -243,7 +243,7 @@ print(f"Response: {response.json()}")
 
 ### Expected Behaviors
 
-- [ ] **Health endpoint works without auth**: `GET /health` returns 200
+- [ ] **Health endpoint works without auth**: `GET /v1/health` returns 200
 - [ ] **Authenticated endpoints require token**: Return 401 without `Authorization` header
 - [ ] **Invalid tokens rejected**: Return 401 with malformed or expired tokens
 - [ ] **Valid tokens accepted**: Return 200/201 with proper Auth0 JWT tokens

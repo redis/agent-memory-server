@@ -118,7 +118,7 @@ def check_memory_server():
         import httpx
 
         port = os.getenv("PORT", "8000")
-        response = httpx.get(f"http://localhost:{port}/health", timeout=5.0)
+        response = httpx.get(f"http://localhost:{port}/v1/health", timeout=5.0)
         if response.status_code == 200:
             print(f"✅ Memory server running on port {port}")
             return True

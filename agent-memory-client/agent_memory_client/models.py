@@ -5,9 +5,9 @@ This module contains essential data models needed by the client.
 For full model definitions, see the main agent_memory_server package.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 from ulid import ULID
@@ -48,7 +48,7 @@ class MemoryTypeEnum(str, Enum):
     MESSAGE = "message"
 
 
-class MemoryMessage(BaseModel):
+class MemoryMessage(TypedDict):
     """A message in the memory system"""
 
     role: str
@@ -73,16 +73,16 @@ class MemoryRecord(BaseModel):
         description="Optional namespace for the memory record",
     )
     last_accessed: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Datetime when the memory was last accessed",
     )
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Datetime when the memory was created",
     )
     updated_at: datetime = Field(
         description="Datetime when the memory was last updated",
-        default_factory=lambda: datetime.now(UTC),
+        default_factory=lambda: datetime.now(timezone.utc),
     )
     topics: list[str] | None = Field(
         default=None,
@@ -127,14 +127,14 @@ class ClientMemoryRecord(MemoryRecord):
     )
 
 
-JSONTypes = str | float | int | bool | list | dict
+JSONTypes = str | float | int | bool | list[Any] | dict[str, Any]
 
 
 class WorkingMemory(BaseModel):
     """Working memory for a session - contains both messages and structured memory records"""
 
     # Support both message-based memory (conversation) and structured memory records
-    messages: list[MemoryMessage] = Field(
+    messages: list[dict[str, Any]] = Field(
         default_factory=list,
         description="Conversation messages (role/content pairs)",
     )
@@ -176,7 +176,7 @@ class WorkingMemory(BaseModel):
         description="TTL for the working memory in seconds",
     )
     last_accessed: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Datetime when the working memory was last accessed",
     )
 

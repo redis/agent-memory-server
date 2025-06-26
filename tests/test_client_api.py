@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from agent_memory_client import MemoryAPIClient, MemoryClientConfig
-from agent_memory_client.filters import Namespace, SessionId, Topics
+from agent_memory_client.filters import Namespace, SessionId, Topics, UserId
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from mcp.server.fastmcp.prompts import base
@@ -115,9 +115,9 @@ async def test_session_lifecycle(memory_test_client: MemoryAPIClient):
         mock_set_memory.return_value = None
 
         # Step 1: Create new session memory
-        response = await memory_test_client.put_session_memory(session_id, memory)
-        assert response.messages[0].content == "Hello from the client!"
-        assert response.messages[1].content == "Hi there, I'm the memory server!"
+        response = await memory_test_client.put_working_memory(session_id, memory)
+        assert response.messages[0]["content"] == "Hello from the client!"
+        assert response.messages[1]["content"] == "Hi there, I'm the memory server!"
         assert response.context == "This is a test session created by the API client."
 
     # Next, mock GET response for retrieving session memory
@@ -130,10 +130,10 @@ async def test_session_lifecycle(memory_test_client: MemoryAPIClient):
         mock_get_memory.return_value = mock_response
 
         # Step 2: Retrieve the session memory
-        session = await memory_test_client.get_session_memory(session_id)
+        session = await memory_test_client.get_working_memory(session_id)
         assert len(session.messages) == 2
-        assert session.messages[0].content == "Hello from the client!"
-        assert session.messages[1].content == "Hi there, I'm the memory server!"
+        assert session.messages[0]["content"] == "Hello from the client!"
+        assert session.messages[1]["content"] == "Hi there, I'm the memory server!"
         assert session.context == "This is a test session created by the API client."
 
     # Mock list sessions
@@ -153,7 +153,7 @@ async def test_session_lifecycle(memory_test_client: MemoryAPIClient):
         mock_delete.return_value = None
 
         # Step 4: Delete the session
-        response = await memory_test_client.delete_session_memory(session_id)
+        response = await memory_test_client.delete_working_memory(session_id)
         assert response.status == "ok"
 
     # Verify it's gone by mocking a 404 response
@@ -163,7 +163,7 @@ async def test_session_lifecycle(memory_test_client: MemoryAPIClient):
         mock_get_memory.return_value = None
 
         # This should not raise an error anymore since the unified API returns empty working memory instead of 404
-        session = await memory_test_client.get_session_memory(session_id)
+        session = await memory_test_client.get_working_memory(session_id)
         assert len(session.messages) == 0  # Should return empty working memory
 
 
@@ -226,8 +226,8 @@ async def test_long_term_memory(memory_test_client: MemoryAPIClient):
         with patch("agent_memory_server.api.settings.long_term_memory", True):
             results = await memory_test_client.search_long_term_memory(
                 text="What color does the user prefer?",
-                user_id={"eq": "test-user"},
-                topics={"any": ["colors", "preferences"]},
+                user_id=UserId(eq="test-user"),
+                topics=Topics(any=["colors", "preferences"]),
             )
 
             assert results.total == 2

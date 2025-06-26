@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
+from agent_memory_server import __version__
 from agent_memory_server.api import router as memory_router
 from agent_memory_server.auth import verify_auth_config
 from agent_memory_server.config import settings
@@ -148,7 +149,11 @@ async def lifespan(app: FastAPI):
 
 
 # Create FastAPI app
-app = FastAPI(title="Redis Agent Memory Server", lifespan=lifespan)
+app = FastAPI(
+    title="Redis Agent Memory Server",
+    lifespan=lifespan,
+    version=__version__,
+)
 
 
 app.include_router(health_router)

@@ -1,6 +1,6 @@
 # Agent Memory Client
 
-A Python client library for the [Agent Memory Server](https://github.com/your-org/agent-memory-server) REST API, providing comprehensive memory management capabilities for AI agents and applications.
+A Python client library for the [Agent Memory Server](https://github.com/redis-developer/agent-memory-server) REST API, providing comprehensive memory management capabilities for AI agents and applications.
 
 ## Features
 
@@ -105,10 +105,10 @@ working_memory = WorkingMemory(
 )
 
 # Store working memory
-response = await client.put_session_memory("user-session-123", working_memory)
+response = await client.put_working_memory("user-session-123", working_memory)
 
 # Retrieve working memory
-memory = await client.get_session_memory("user-session-123")
+memory = await client.get_working_memory("user-session-123")
 
 # Convenience method for data storage
 await client.set_working_memory_data(
@@ -204,7 +204,7 @@ await client.update_working_memory_data(
     merge_strategy="deep_merge"  # "replace", "merge", or "deep_merge"
 )
 
-# Append messages efficiently
+# Append messages
 new_messages = [
     MemoryMessage(role="user", content="What's the weather?"),
     MemoryMessage(role="assistant", content="It's sunny today!")
@@ -225,7 +225,7 @@ from agent_memory_client.filters import (
 )
 from datetime import datetime, timezone
 
-# Complex search with multiple filters
+# Complex search with filters
 results = await client.search_long_term_memory(
     text="machine learning",
     session_id=SessionId(in_=["session-1", "session-2"]),
@@ -251,7 +251,7 @@ from agent_memory_client.exceptions import (
 )
 
 try:
-    memory = await client.get_session_memory("nonexistent-session")
+    memory = await client.get_working_memory("nonexistent-session")
 except MemoryNotFoundError:
     print("Session not found")
 except MemoryServerError as e:
@@ -286,11 +286,11 @@ pytest --cov=agent_memory_client
 ### Code Quality
 
 ```bash
-# Format code
-black agent_memory_client/
-
 # Lint code
 ruff check agent_memory_client/
+
+# Format code
+ruff format agent_memory_client/
 
 # Type checking
 mypy agent_memory_client/
@@ -305,14 +305,14 @@ mypy agent_memory_client/
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+Apache 2.0 License - see [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
-Contributions are welcome! Please see the [main repository](https://github.com/your-org/agent-memory-server) for contribution guidelines.
+Contributions are welcome! Please see the [main repository](https://github.com/redis-developer/agent-memory-server) for contribution guidelines.
 
 ## Links
 
-- [Agent Memory Server](https://github.com/your-org/agent-memory-server) - The server this client connects to
+- [Agent Memory Server](https://github.com/redis-developer/agent-memory-server) - The server this client connects to
 - [Documentation](https://agent-memory-client.readthedocs.io) - Full API documentation
-- [Issues](https://github.com/your-org/agent-memory-client/issues) - Bug reports and feature requests
+- [Issues](https://github.com/redis-developer/agent-memory-client/issues) - Bug reports and feature requests
