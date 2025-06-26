@@ -317,6 +317,7 @@ def use_test_redis_connection(redis_url: str):
             "agent_memory_server.long_term_memory.get_redis_conn", mock_get_redis_conn
         ),
         patch("agent_memory_server.extraction.get_redis_conn", mock_get_redis_conn),
+        patch.object(settings, "redis_url", redis_url),
     ):
         # Reset global state to force recreation with test Redis
         agent_memory_server.utils.redis._redis_pool = None
