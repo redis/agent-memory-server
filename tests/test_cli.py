@@ -229,11 +229,11 @@ class TestTaskWorker:
 
     @patch("docket.Worker.run")
     @patch("agent_memory_server.cli.settings")
-    def test_task_worker_success(self, mock_settings, mock_worker_run):
+    def test_task_worker_success(self, mock_settings, mock_worker_run, redis_url):
         """Test successful task worker start."""
         mock_settings.use_docket = True
         mock_settings.docket_name = "test-docket"
-        mock_settings.redis_url = "redis://localhost:6379/0"
+        mock_settings.redis_url = redis_url
 
         mock_worker_run.return_value = None
 
@@ -258,11 +258,13 @@ class TestTaskWorker:
 
     @patch("docket.Worker.run")
     @patch("agent_memory_server.cli.settings")
-    def test_task_worker_default_params(self, mock_settings, mock_worker_run):
+    def test_task_worker_default_params(
+        self, mock_settings, mock_worker_run, redis_url
+    ):
         """Test task worker with default parameters."""
         mock_settings.use_docket = True
         mock_settings.docket_name = "test-docket"
-        mock_settings.redis_url = "redis://localhost:6379/0"
+        mock_settings.redis_url = redis_url
 
         mock_worker_run.return_value = None
 

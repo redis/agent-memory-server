@@ -275,11 +275,11 @@ def redis_url(redis_container):
 
 
 @pytest.fixture()
-def async_redis_client(redis_url):
+def async_redis_client(use_test_redis_connection):
     """
-    An async Redis client that uses the dynamic `redis_url`.
+    An async Redis client that uses the same connection as other test fixtures.
     """
-    return AsyncRedis.from_url(redis_url)
+    return use_test_redis_connection
 
 
 @pytest.fixture()

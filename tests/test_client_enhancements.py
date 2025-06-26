@@ -533,8 +533,8 @@ class TestEnhancedConvenienceMethods:
         )
 
         new_messages = [
-            MemoryMessage(role="assistant", content="Second message"),
-            MemoryMessage(role="user", content="Third message"),
+            {"role": "assistant", "content": "Second message"},
+            {"role": "user", "content": "Third message"},
         ]
 
         with (

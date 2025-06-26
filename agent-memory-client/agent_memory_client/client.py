@@ -233,6 +233,9 @@ class MemoryAPIClient:
         """
         params = {}
 
+        if user_id is not None:
+            params["user_id"] = user_id
+
         if namespace is not None:
             params["namespace"] = namespace
         elif self.config.default_namespace is not None:
@@ -258,7 +261,12 @@ class MemoryAPIClient:
                 f"/v1/working-memory/{session_id}", params=params
             )
             response.raise_for_status()
-            return WorkingMemoryResponse(**response.json())
+
+            # Get the raw JSON response
+            response_data = response.json()
+
+            # Messages from JSON parsing are already in the correct dict format
+            return WorkingMemoryResponse(**response_data)
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
             raise
@@ -267,6 +275,7 @@ class MemoryAPIClient:
         self,
         session_id: str,
         memory: WorkingMemory,
+        user_id: str | None = None,
         model_name: str | None = None,
         context_window_max: int | None = None,
     ) -> WorkingMemoryResponse:
@@ -276,6 +285,7 @@ class MemoryAPIClient:
         Args:
             session_id: The session ID to store memory for
             memory: WorkingMemory object with messages and optional context
+            user_id: Optional user ID for the session (overrides user_id in memory object)
             model_name: Optional model name for context window management
             context_window_max: Optional direct specification of context window max tokens
 
@@ -288,6 +298,9 @@ class MemoryAPIClient:
 
         # Build query parameters for model-aware summarization
         params = {}
+
+        if user_id is not None:
+            params["user_id"] = user_id
 
         # Use provided model_name or fall back to config default
         effective_model_name = model_name or self.config.default_model_name
@@ -2023,9 +2036,8 @@ class MemoryAPIClient:
     async def append_messages_to_working_memory(
         self,
         session_id: str,
-        messages: list[Any],  # Using Any since MemoryMessage isn't imported
+        messages: list[dict[str, Any]],  # Expect proper message dicts
         namespace: str | None = None,
-        auto_summarize: bool = True,
         model_name: str | None = None,
         context_window_max: int | None = None,
     ) -> WorkingMemoryResponse:
@@ -2036,9 +2048,8 @@ class MemoryAPIClient:
 
         Args:
             session_id: Target session
-            messages: List of messages to append
+            messages: List of message dictionaries with 'role' and 'content' keys
             namespace: Optional namespace
-            auto_summarize: Whether to allow automatic summarization
             model_name: Optional model name for token-based summarization
             context_window_max: Optional direct specification of context window max tokens
 
@@ -2052,48 +2063,19 @@ class MemoryAPIClient:
                 session_id=session_id, namespace=namespace
             )
 
-        # Combine messages - convert MemoryMessage objects to dicts if needed
-        existing_messages = existing_memory.messages if existing_memory else []
-
-        # Convert existing messages to dict format if they're objects
-        converted_existing_messages = []
-        for msg in existing_messages:
-            if hasattr(msg, "model_dump") and callable(
-                getattr(msg, "model_dump", None)
-            ):
-                converted_existing_messages.append(msg.model_dump())  # type: ignore
-            elif (
-                hasattr(msg, "role")
-                and hasattr(msg, "content")
-                and not isinstance(msg, dict)
-            ):
-                converted_existing_messages.append(
-                    {"role": msg.role, "content": msg.content}  # type: ignore
-                )
-            elif isinstance(msg, dict):
-                # Message is already a dictionary, use as-is
-                converted_existing_messages.append(msg)
-            else:
-                # Fallback for any other message type - convert to string content
-                converted_existing_messages.append(
-                    {"role": "user", "content": str(msg)}
-                )
-
-        # Convert new messages to dict format if they're objects
-        new_messages = []
+        # Validate new messages have required structure
         for msg in messages:
-            if hasattr(msg, "model_dump"):
-                new_messages.append(msg.model_dump())
-            elif hasattr(msg, "role") and hasattr(msg, "content"):
-                new_messages.append({"role": msg.role, "content": msg.content})
-            elif isinstance(msg, dict):
-                # Message is already a dictionary, use as-is
-                new_messages.append(msg)
-            else:
-                # Fallback - assume it's already in the right format
-                new_messages.append(msg)
+            if not isinstance(msg, dict) or "role" not in msg or "content" not in msg:
+                raise ValueError(
+                    "All messages must be dictionaries with 'role' and 'content' keys"
+                )
 
-        final_messages = converted_existing_messages + new_messages
+        # Get existing messages (already in proper dict format from get_working_memory)
+        existing_messages = []
+        if existing_memory and existing_memory.messages:
+            existing_messages = existing_memory.messages
+
+        final_messages = existing_messages + messages
 
         # Create updated working memory
         working_memory = WorkingMemory(
