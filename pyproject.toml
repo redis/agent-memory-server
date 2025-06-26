@@ -132,6 +132,11 @@ quote-style = "double"
 # Use spaces for indentation
 indent-style = "space"
 
+[project.optional-dependencies]
+dev = [
+  "agent-memory-client"
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8.3.5",
@@ -147,29 +152,3 @@ dev = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-
-[project.optional-dependencies]
-# VectorStore backends
-chroma = ["chromadb>=0.4.0"]
-pinecone = []
-weaviate = ["weaviate-client>=4.9.0"]
-qdrant = ["qdrant-client>=1.12.0"]
-milvus = ["pymilvus>=2.5.0"]
-pgvector = ["psycopg2-binary>=2.9.0", "langchain-postgres>=0.0.1"]
-lancedb = ["lancedb>=0.15.0"]
-opensearch = ["opensearch-py>=2.7.0"]
-# Keep Redis as the default
-redis = ["langchain-redis>=0.1.0"]
-# Install all backends
-all = [
-    "chromadb>=0.4.0",
-    "pinecone-client>=5.0.0",
-    "weaviate-client>=4.9.0",
-    "qdrant-client>=1.12.0",
-    "pymilvus>=2.5.0",
-    "psycopg2-binary>=2.9.0",
-    "langchain-postgres>=0.0.1",
-    "lancedb>=0.15.0",
-    "opensearch-py>=2.7.0",
-    "langchain-redis>=0.1.0",
-]

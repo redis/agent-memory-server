@@ -42,9 +42,6 @@ from agent_memory_server.utils.redis import (
 from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
 
 
-DEFAULT_MEMORY_LIMIT = 1000
-MEMORY_INDEX = "memory_idx"
-
 # Prompt for extracting memories from messages in working memory context
 WORKING_MEMORY_EXTRACTION_PROMPT = """
 You are a memory extraction assistant. Your job is to analyze conversation
@@ -350,15 +347,27 @@ async def compact_long_term_memories(
                         # Find all memories with this hash
                         # Use FT.SEARCH to find the actual memories with this hash
                         # TODO: Use RedisVL index
-                        search_query = (
-                            f"FT.SEARCH {index_name} "
-                            f"(@memory_hash:{{{memory_hash}}}) {' '.join(filters)} "
-                            "RETURN 6 id_ text last_accessed created_at user_id session_id "
-                            "SORTBY last_accessed ASC"  # Oldest first
-                        )
+                        if filters:
+                            # Combine hash query with filters using boolean AND
+                            query_expr = f"(@memory_hash:{{{memory_hash}}}) ({' '.join(filters)})"
+                        else:
+                            query_expr = f"@memory_hash:{{{memory_hash}}}"
 
                         search_results = await redis_client.execute_command(
-                            search_query
+                            "FT.SEARCH",
+                            index_name,
+                            f"'{query_expr}'",
+                            "RETURN",
+                            "6",
+                            "id_",
+                            "text",
+                            "last_accessed",
+                            "created_at",
+                            "user_id",
+                            "session_id",
+                            "SORTBY",
+                            "last_accessed",
+                            "ASC",
                         )
 
                         if search_results and search_results[0] > 1:
@@ -1066,14 +1075,24 @@ async def deduplicate_by_id(
 
     # Use FT.SEARCH to find memories with this id
     # TODO: Use RedisVL
-    search_query = (
-        f"FT.SEARCH {index_name} "
-        f"(@id:{{{memory.id}}}) {filter_str} "
-        "RETURN 2 id_ persisted_at "
-        "SORTBY last_accessed DESC"  # Newest first
-    )
+    if filter_str:
+        # Combine the id query with filters - Redis FT.SEARCH uses implicit AND between terms
+        query_expr = f"@id:{{{memory.id}}} {filter_str}"
+    else:
+        query_expr = f"@id:{{{memory.id}}}"
 
-    search_results = await redis_client.execute_command(search_query)
+    search_results = await redis_client.execute_command(
+        "FT.SEARCH",
+        index_name,
+        f"'{query_expr}'",
+        "RETURN",
+        "2",
+        "id_",
+        "persisted_at",
+        "SORTBY",
+        "last_accessed",
+        "DESC",
+    )
 
     if search_results and search_results[0] > 0:
         # Found existing memory with the same id

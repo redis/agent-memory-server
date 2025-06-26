@@ -102,6 +102,7 @@ class TestMCP:
                     "query": "Test query",
                     "session_id": {"eq": session},
                     "namespace": {"eq": "test-namespace"},
+                    "user_id": {"eq": "test-user"},
                 },
             )
             assert isinstance(prompt, CallToolResult)

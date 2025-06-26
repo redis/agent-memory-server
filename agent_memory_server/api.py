@@ -188,7 +188,7 @@ async def list_sessions(
     Get a list of session IDs, with optional pagination.
 
     Args:
-        options: Query parameters (page, size, namespace)
+        options: Query parameters (limit, offset, namespace, user_id)
 
     Returns:
         List of session IDs
@@ -200,6 +200,7 @@ async def list_sessions(
         limit=options.limit,
         offset=options.offset,
         namespace=options.namespace,
+        user_id=options.user_id,
     )
 
     return SessionListResponse(
@@ -211,8 +212,8 @@ async def list_sessions(
 @router.get("/v1/working-memory/{session_id}", response_model=WorkingMemoryResponse)
 async def get_working_memory(
     session_id: str,
+    user_id: str | None = None,
     namespace: str | None = None,
-    window_size: int = settings.window_size,  # Deprecated: kept for backward compatibility
     model_name: ModelNameLiteral | None = None,
     context_window_max: int | None = None,
     current_user: UserInfo = Depends(get_current_user),
@@ -225,8 +226,8 @@ async def get_working_memory(
 
     Args:
         session_id: The session ID
+        user_id: The user ID to retrieve working memory for
         namespace: The namespace to use for the session
-        window_size: DEPRECATED - The number of messages to include (kept for backward compatibility)
         model_name: The client's LLM model name (will determine context window size if provided)
         context_window_max: Direct specification of the context window max tokens (overrides model_name)
 
@@ -240,6 +241,7 @@ async def get_working_memory(
         session_id=session_id,
         namespace=namespace,
         redis_client=redis,
+        user_id=user_id,
     )
 
     if not working_mem:
@@ -249,6 +251,7 @@ async def get_working_memory(
             memories=[],
             session_id=session_id,
             namespace=namespace,
+            user_id=user_id,
         )
 
     # Apply token-based truncation if we have messages and model info
@@ -266,10 +269,6 @@ async def get_working_memory(
                     break
             working_mem.messages = truncated_messages
 
-    # Fallback to message-count truncation for backward compatibility
-    elif len(working_mem.messages) > window_size:
-        working_mem.messages = working_mem.messages[-window_size:]
-
     return working_mem
 
 
@@ -277,6 +276,7 @@ async def get_working_memory(
 async def put_working_memory(
     session_id: str,
     memory: WorkingMemory,
+    user_id: str | None = None,
     model_name: ModelNameLiteral | None = None,
     context_window_max: int | None = None,
     background_tasks=Depends(get_background_tasks),
@@ -291,6 +291,7 @@ async def put_working_memory(
     Args:
         session_id: The session ID
         memory: Working memory to save
+        user_id: Optional user ID for the session (overrides user_id in memory object)
         model_name: The client's LLM model name for context window determination
         context_window_max: Direct specification of context window max tokens
         background_tasks: DocketBackgroundTasks instance (injected automatically)
@@ -302,6 +303,10 @@ async def put_working_memory(
 
     # Ensure session_id matches
     memory.session_id = session_id
+
+    # Override user_id if provided as query parameter
+    if user_id is not None:
+        memory.user_id = user_id
 
     # Validate that all structured memories have id (if any)
     for mem in memory.memories:
@@ -359,6 +364,7 @@ async def put_working_memory(
 @router.delete("/v1/working-memory/{session_id}", response_model=AckResponse)
 async def delete_working_memory(
     session_id: str,
+    user_id: str | None = None,
     namespace: str | None = None,
     current_user: UserInfo = Depends(get_current_user),
 ):
@@ -369,6 +375,7 @@ async def delete_working_memory(
 
     Args:
         session_id: The session ID
+        user_id: Optional user ID for the session
         namespace: Optional namespace for the session
 
     Returns:
@@ -379,6 +386,7 @@ async def delete_working_memory(
     # Delete unified working memory
     await working_memory.delete_working_memory(
         session_id=session_id,
+        user_id=user_id,
         namespace=namespace,
         redis_client=redis,
     )
@@ -557,6 +565,7 @@ async def memory_prompt(
         working_mem = await working_memory.get_working_memory(
             session_id=params.session.session_id,
             namespace=params.session.namespace,
+            user_id=params.session.user_id,
             redis_client=redis,
         )
 

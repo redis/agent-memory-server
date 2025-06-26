@@ -50,7 +50,6 @@ MODEL_CONFIGS = {
 class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
     long_term_memory: bool = True
-    window_size: int = 20
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     generation_model: str = "gpt-4o-mini"
@@ -108,6 +107,9 @@ class Settings(BaseSettings):
     # Auth0 Client Credentials (for testing and client applications)
     auth0_client_id: str | None = None
     auth0_client_secret: str | None = None
+
+    # Working memory settings
+    window_size: int = 20  # Default number of recent messages to return
 
     # Other Application settings
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
