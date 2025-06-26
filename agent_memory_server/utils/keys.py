@@ -56,13 +56,22 @@ class Keys:
         )
 
     @staticmethod
-    def working_memory_key(session_id: str, namespace: str | None = None) -> str:
+    def working_memory_key(
+        session_id: str, user_id: str | None = None, namespace: str | None = None
+    ) -> str:
         """Get the working memory key for a session."""
-        return (
-            f"working_memory:{namespace}:{session_id}"
-            if namespace
-            else f"working_memory:{session_id}"
-        )
+        # Build key components, filtering out None values
+        key_parts = ["working_memory"]
+
+        if namespace:
+            key_parts.append(namespace)
+
+        if user_id:
+            key_parts.append(user_id)
+
+        key_parts.append(session_id)
+
+        return ":".join(key_parts)
 
     @staticmethod
     def search_index_name() -> str:

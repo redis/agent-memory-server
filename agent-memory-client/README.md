@@ -206,8 +206,8 @@ await client.update_working_memory_data(
 
 # Append messages
 new_messages = [
-    MemoryMessage(role="user", content="What's the weather?"),
-    MemoryMessage(role="assistant", content="It's sunny today!")
+    {"role": "user", "content": "What's the weather?"},
+    {"role": "assistant", "content": "It's sunny today!"}
 ]
 
 await client.append_messages_to_working_memory(

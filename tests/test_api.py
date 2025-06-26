@@ -82,7 +82,7 @@ class TestMemoryEndpoints:
         session_id = session
 
         response = await client.get(
-            f"/v1/working-memory/{session_id}?namespace=test-namespace"
+            f"/v1/working-memory/{session_id}?namespace=test-namespace&user_id=test-user"
         )
 
         assert response.status_code == 200
@@ -288,7 +288,7 @@ class TestMemoryEndpoints:
         session_id = session
 
         response = await client.get(
-            f"/v1/working-memory/{session_id}?namespace=test-namespace"
+            f"/v1/working-memory/{session_id}?namespace=test-namespace&user_id=test-user"
         )
 
         assert response.status_code == 200
@@ -297,7 +297,7 @@ class TestMemoryEndpoints:
         assert len(data["messages"]) == 2
 
         response = await client.delete(
-            f"/v1/working-memory/{session_id}?namespace=test-namespace"
+            f"/v1/working-memory/{session_id}?namespace=test-namespace&user_id=test-user"
         )
 
         assert response.status_code == 200
@@ -307,7 +307,7 @@ class TestMemoryEndpoints:
         assert data["status"] == "ok"
 
         response = await client.get(
-            f"/v1/working-memory/{session_id}?namespace=test-namespace"
+            f"/v1/working-memory/{session_id}?namespace=test-namespace&user_id=test-user"
         )
         assert response.status_code == 200
 

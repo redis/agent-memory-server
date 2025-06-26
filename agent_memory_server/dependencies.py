@@ -27,10 +27,19 @@ class DocketBackgroundTasks(BackgroundTasks):
             logger.info("Scheduling task through Docket")
             # Get the Redis connection that's already configured (will use testcontainer in tests)
             redis_conn = await get_redis_conn()
-            # Use the connection's URL instead of settings.redis_url directly
-            redis_url = redis_conn.connection_pool.connection_kwargs.get(
-                "url", settings.redis_url
-            )
+
+            # Extract Redis URL from the connection pool
+            connection_kwargs = redis_conn.connection_pool.connection_kwargs
+            if "host" in connection_kwargs and "port" in connection_kwargs:
+                redis_url = (
+                    f"redis://{connection_kwargs['host']}:{connection_kwargs['port']}"
+                )
+                if "db" in connection_kwargs:
+                    redis_url += f"/{connection_kwargs['db']}"
+            else:
+                # Fallback to settings if we can't extract from connection
+                redis_url = settings.redis_url
+
             logger.info("redis_url: %s", redis_url)
             logger.info("docket_name: %s", settings.docket_name)
             async with Docket(

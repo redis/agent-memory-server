@@ -22,19 +22,25 @@ uv sync
 
 ## Running
 
-The easiest way to start the REST and MCP servers is to use Docker Compose. See the Docker Compose section below for more details.
+The easiest way to start the worker, REST API server, and MCP server is to use Docker Compose. See the Docker Compose section below for more details.
 
-But you can also run these servers via the CLI commands. Here's how you
+But you can also run these components via the CLI commands. Here's how you
 run the REST API server:
 
 ```bash
 uv run agent-memory api
 ```
 
-And the MCP server:
+Or the MCP server:
 
 ```bash
 uv run agent-memory mcp --mode <stdio|sse>
+```
+
+Both servers require a worker to be running, which you can start like this:
+
+```bash
+uv run agent-memory task-worker
 ```
 
 **NOTE:** With uv, prefix the command with `uv`, e.g.: `uv run agent-memory --mode sse`. If you installed from source, you'll probably need to add `--directory` to tell uv where to find the code: `uv run --directory <path/to/checkout> run agent-memory --mode stdio`.

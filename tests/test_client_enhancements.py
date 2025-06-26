@@ -4,20 +4,19 @@ from unittest.mock import patch
 
 import pytest
 from agent_memory_client import MemoryAPIClient, MemoryClientConfig
-from fastapi import FastAPI
-from httpx import ASGITransport, AsyncClient
-
-from agent_memory_server.api import router as memory_router
-from agent_memory_server.healthcheck import router as health_router
-from agent_memory_server.models import (
+from agent_memory_client.models import (
     AckResponse,
     ClientMemoryRecord,
-    MemoryMessage,
     MemoryRecordResult,
     MemoryRecordResults,
     MemoryTypeEnum,
     WorkingMemoryResponse,
 )
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+from agent_memory_server.api import router as memory_router
+from agent_memory_server.healthcheck import router as health_router
 
 
 @pytest.fixture
@@ -520,7 +519,7 @@ class TestEnhancedConvenienceMethods:
         session_id = "test-session"
 
         existing_messages = [
-            MemoryMessage(role="user", content="First message"),
+            {"role": "user", "content": "First message"},
         ]
 
         existing_memory = WorkingMemoryResponse(
@@ -533,8 +532,8 @@ class TestEnhancedConvenienceMethods:
         )
 
         new_messages = [
-            MemoryMessage(role="assistant", content="Second message"),
-            MemoryMessage(role="user", content="Third message"),
+            {"role": "assistant", "content": "Second message"},
+            {"role": "user", "content": "Third message"},
         ]
 
         with (

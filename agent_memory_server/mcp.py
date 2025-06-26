@@ -562,6 +562,7 @@ async def memory_prompt(
         session = WorkingMemoryRequest(
             session_id=_session_id,
             namespace=namespace.eq if namespace and namespace.eq else None,
+            user_id=user_id.eq if user_id and user_id.eq else None,
             window_size=window_size,
             model_name=model_name,
             context_window_max=context_window_max,

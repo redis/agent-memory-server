@@ -5,7 +5,6 @@ This module provides a standalone client for the REST API of the Agent Memory Se
 """
 
 import asyncio
-import contextlib
 import re
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
@@ -166,7 +165,11 @@ class MemoryAPIClient:
             raise
 
     async def list_sessions(
-        self, limit: int = 20, offset: int = 0, namespace: str | None = None
+        self,
+        limit: int = 20,
+        offset: int = 0,
+        namespace: str | None = None,
+        user_id: str | None = None,
     ) -> SessionListResponse:
         """
         List available sessions with optional pagination and namespace filtering.
@@ -175,6 +178,7 @@ class MemoryAPIClient:
             limit: Maximum number of sessions to return (default: 20)
             offset: Offset for pagination (default: 0)
             namespace: Optional namespace filter
+            user_id: Optional user ID filter
 
         Returns:
             SessionListResponse containing session IDs and total count
@@ -188,6 +192,9 @@ class MemoryAPIClient:
         elif self.config.default_namespace is not None:
             params["namespace"] = self.config.default_namespace
 
+        if user_id is not None:
+            params["user_id"] = user_id
+
         try:
             response = await self._client.get("/v1/working-memory/", params=params)
             response.raise_for_status()
@@ -199,6 +206,7 @@ class MemoryAPIClient:
     async def get_working_memory(
         self,
         session_id: str,
+        user_id: str | None = None,
         namespace: str | None = None,
         window_size: int | None = None,
         model_name: ModelNameLiteral | None = None,
@@ -209,6 +217,7 @@ class MemoryAPIClient:
 
         Args:
             session_id: The session ID to retrieve working memory for
+            user_id: The user ID to retrieve working memory for
             namespace: Optional namespace for the session
             window_size: Optional number of messages to include
             model_name: Optional model name to determine context window size
@@ -222,6 +231,9 @@ class MemoryAPIClient:
             MemoryServerError: For other server errors
         """
         params = {}
+
+        if user_id is not None:
+            params["user_id"] = user_id
 
         if namespace is not None:
             params["namespace"] = namespace
@@ -248,7 +260,12 @@ class MemoryAPIClient:
                 f"/v1/working-memory/{session_id}", params=params
             )
             response.raise_for_status()
-            return WorkingMemoryResponse(**response.json())
+
+            # Get the raw JSON response
+            response_data = response.json()
+
+            # Messages from JSON parsing are already in the correct dict format
+            return WorkingMemoryResponse(**response_data)
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
             raise
@@ -257,6 +274,7 @@ class MemoryAPIClient:
         self,
         session_id: str,
         memory: WorkingMemory,
+        user_id: str | None = None,
         model_name: str | None = None,
         context_window_max: int | None = None,
     ) -> WorkingMemoryResponse:
@@ -266,6 +284,7 @@ class MemoryAPIClient:
         Args:
             session_id: The session ID to store memory for
             memory: WorkingMemory object with messages and optional context
+            user_id: Optional user ID for the session (overrides user_id in memory object)
             model_name: Optional model name for context window management
             context_window_max: Optional direct specification of context window max tokens
 
@@ -278,6 +297,9 @@ class MemoryAPIClient:
 
         # Build query parameters for model-aware summarization
         params = {}
+
+        if user_id is not None:
+            params["user_id"] = user_id
 
         # Use provided model_name or fall back to config default
         effective_model_name = model_name or self.config.default_model_name
@@ -304,7 +326,7 @@ class MemoryAPIClient:
             raise
 
     async def delete_working_memory(
-        self, session_id: str, namespace: str | None = None
+        self, session_id: str, namespace: str | None = None, user_id: str | None = None
     ) -> AckResponse:
         """
         Delete working memory for a session.
@@ -312,6 +334,7 @@ class MemoryAPIClient:
         Args:
             session_id: The session ID to delete memory for
             namespace: Optional namespace for the session
+            user_id: Optional user ID for the session
 
         Returns:
             AckResponse indicating success
@@ -321,6 +344,9 @@ class MemoryAPIClient:
             params["namespace"] = namespace
         elif self.config.default_namespace is not None:
             params["namespace"] = self.config.default_namespace
+
+        if user_id is not None:
+            params["user_id"] = user_id
 
         try:
             response = await self._client.delete(
@@ -369,11 +395,10 @@ class MemoryAPIClient:
         # Get existing memory if preserving
         existing_memory = None
         if preserve_existing:
-            with contextlib.suppress(Exception):
-                existing_memory = await self.get_working_memory(
-                    session_id=session_id,
-                    namespace=namespace,
-                )
+            existing_memory = await self.get_working_memory(
+                session_id=session_id,
+                namespace=namespace,
+            )
 
         # Create new working memory with the data
         working_memory = WorkingMemory(
@@ -427,12 +452,10 @@ class MemoryAPIClient:
             ```
         """
         # Get existing memory
-        existing_memory = None
-        with contextlib.suppress(Exception):
-            existing_memory = await self.get_working_memory(
-                session_id=session_id,
-                namespace=namespace,
-            )
+        existing_memory = await self.get_working_memory(
+            session_id=session_id,
+            namespace=namespace,
+        )
 
         # Determine final memories list
         if replace or not existing_memory:
@@ -571,7 +594,7 @@ class MemoryAPIClient:
 
             print(f"Found {results.total} memories")
             for memory in results.memories:
-                print(f"- {memory.text[:100]}... (distance: {memory.distance})")
+                print(f"- {memory.text[:100]}... (distance: {memory.dist})")
             ```
         """
         # Convert dictionary filters to their proper filter objects if needed
@@ -651,11 +674,12 @@ class MemoryAPIClient:
         user_id: str | None = None,
     ) -> dict[str, Any]:
         """
-        Simplified memory search designed for LLM tool use.
+        Simplified long-term memory search designed for LLM tool use.
 
         This method provides a streamlined interface for LLMs to search
         long-term memory with common parameters and user-friendly output.
-        Perfect for exposing as a tool to LLM frameworks.
+        Perfect for exposing as a tool to LLM frameworks. Note: This only
+        searches long-term memory, not working memory.
 
         Args:
             query: The search query text
@@ -664,6 +688,7 @@ class MemoryAPIClient:
             memory_type: Optional memory type ("episodic", "semantic", "message")
             max_results: Maximum results to return (default: 5)
             min_relevance: Optional minimum relevance score (0.0-1.0)
+            user_id: Optional user ID to filter memories by
 
         Returns:
             Dict with 'memories' list and 'summary' for LLM consumption
@@ -729,8 +754,8 @@ class MemoryAPIClient:
                     "created_at": memory.created_at.isoformat()
                     if memory.created_at
                     else None,
-                    "relevance_score": 1.0 - memory.distance
-                    if hasattr(memory, "distance") and memory.distance is not None
+                    "relevance_score": 1.0 - memory.dist
+                    if hasattr(memory, "dist") and memory.dist is not None
                     else None,
                 }
             )
@@ -784,7 +809,7 @@ class MemoryAPIClient:
             "type": "function",
             "function": {
                 "name": "search_memory",
-                "description": "Search long-term memory for relevant information based on a query. Use this when you need to recall past conversations, user preferences, or previously stored information.",
+                "description": "Search long-term memory for relevant information based on a query. Use this when you need to recall past conversations, user preferences, or previously stored information. Note: This searches only long-term memory, not current working memory.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -819,6 +844,10 @@ class MemoryAPIClient:
                             "minimum": 0.0,
                             "maximum": 1.0,
                             "description": "Optional minimum relevance score (0.0-1.0, higher = more relevant)",
+                        },
+                        "user_id": {
+                            "type": "string",
+                            "description": "Optional user ID to filter memories by (e.g., 'user123')",
                         },
                     },
                     "required": ["query"],
@@ -864,6 +893,7 @@ class MemoryAPIClient:
             result = await self.get_working_memory(
                 session_id=session_id,
                 namespace=namespace or self.config.default_namespace,
+                user_id=user_id,
             )
 
             # Format for LLM consumption
@@ -1953,6 +1983,7 @@ class MemoryAPIClient:
         data_updates: dict[str, Any],
         namespace: str | None = None,
         merge_strategy: Literal["replace", "merge", "deep_merge"] = "merge",
+        user_id: str | None = None,
     ) -> WorkingMemoryResponse:
         """
         Update specific data fields in working memory without replacing everything.
@@ -1962,16 +1993,15 @@ class MemoryAPIClient:
             data_updates: Dictionary of updates to apply
             namespace: Optional namespace
             merge_strategy: How to handle existing data
+            user_id: Optional user ID for the session
 
         Returns:
             WorkingMemoryResponse with updated memory
         """
         # Get existing memory
-        existing_memory = None
-        with contextlib.suppress(Exception):
-            existing_memory = await self.get_working_memory(
-                session_id=session_id, namespace=namespace
-            )
+        existing_memory = await self.get_working_memory(
+            session_id=session_id, namespace=namespace, user_id=user_id
+        )
 
         # Determine final data based on merge strategy
         if existing_memory and existing_memory.data:
@@ -2002,11 +2032,11 @@ class MemoryAPIClient:
     async def append_messages_to_working_memory(
         self,
         session_id: str,
-        messages: list[Any],  # Using Any since MemoryMessage isn't imported
+        messages: list[dict[str, Any]],  # Expect proper message dicts
         namespace: str | None = None,
-        auto_summarize: bool = True,
         model_name: str | None = None,
         context_window_max: int | None = None,
+        user_id: str | None = None,
     ) -> WorkingMemoryResponse:
         """
         Append new messages to existing working memory.
@@ -2015,9 +2045,8 @@ class MemoryAPIClient:
 
         Args:
             session_id: Target session
-            messages: List of messages to append
+            messages: List of message dictionaries with 'role' and 'content' keys
             namespace: Optional namespace
-            auto_summarize: Whether to allow automatic summarization
             model_name: Optional model name for token-based summarization
             context_window_max: Optional direct specification of context window max tokens
 
@@ -2025,48 +2054,23 @@ class MemoryAPIClient:
             WorkingMemoryResponse with updated memory (potentially summarized if token limit exceeded)
         """
         # Get existing memory
-        existing_memory = None
-        with contextlib.suppress(Exception):
-            existing_memory = await self.get_working_memory(
-                session_id=session_id, namespace=namespace
-            )
+        existing_memory = await self.get_working_memory(
+            session_id=session_id, namespace=namespace, user_id=user_id
+        )
 
-        # Combine messages - convert MemoryMessage objects to dicts if needed
-        existing_messages = existing_memory.messages if existing_memory else []
-
-        # Convert existing messages to dict format if they're objects
-        converted_existing_messages = []
-        for msg in existing_messages:
-            if hasattr(msg, "model_dump"):
-                converted_existing_messages.append(msg.model_dump())
-            elif hasattr(msg, "role") and hasattr(msg, "content"):
-                converted_existing_messages.append(
-                    {"role": msg.role, "content": msg.content}
-                )
-            elif isinstance(msg, dict):
-                # Message is already a dictionary, use as-is
-                converted_existing_messages.append(msg)
-            else:
-                # Fallback for any other message type - convert to string content
-                converted_existing_messages.append(  # type: ignore
-                    {"role": "user", "content": str(msg)}
-                )
-
-        # Convert new messages to dict format if they're objects
-        new_messages = []
+        # Validate new messages have required structure
         for msg in messages:
-            if hasattr(msg, "model_dump"):
-                new_messages.append(msg.model_dump())
-            elif hasattr(msg, "role") and hasattr(msg, "content"):
-                new_messages.append({"role": msg.role, "content": msg.content})
-            elif isinstance(msg, dict):
-                # Message is already a dictionary, use as-is
-                new_messages.append(msg)
-            else:
-                # Fallback - assume it's already in the right format
-                new_messages.append(msg)
+            if not isinstance(msg, dict) or "role" not in msg or "content" not in msg:
+                raise ValueError(
+                    "All messages must be dictionaries with 'role' and 'content' keys"
+                )
 
-        final_messages = converted_existing_messages + new_messages
+        # Get existing messages (already in proper dict format from get_working_memory)
+        existing_messages = []
+        if existing_memory and existing_memory.messages:
+            existing_messages = existing_memory.messages
+
+        final_messages = existing_messages + messages
 
         # Create updated working memory
         working_memory = WorkingMemory(
@@ -2095,6 +2099,7 @@ class MemoryAPIClient:
         model_name: str | None = None,
         context_window_max: int | None = None,
         long_term_search: dict[str, Any] | None = None,
+        user_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Hydrate a user query with memory context and return a prompt ready to send to an LLM.
@@ -2107,6 +2112,7 @@ class MemoryAPIClient:
             model_name: Optional model name to determine context window size
             context_window_max: Optional direct specification of context window tokens
             long_term_search: Optional search parameters for long-term memory
+            user_id: Optional user ID for the session
 
         Returns:
             Dict with messages hydrated with relevant memory context
@@ -2151,6 +2157,8 @@ class MemoryAPIClient:
             )
             if effective_context_window_max is not None:
                 session_params["context_window_max"] = str(effective_context_window_max)
+            if user_id is not None:
+                session_params["user_id"] = user_id
             payload["session"] = session_params
 
         # Add long-term search parameters if provided

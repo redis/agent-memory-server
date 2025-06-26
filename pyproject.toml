@@ -122,6 +122,14 @@ quote-style = "double"
 # Use spaces for indentation
 indent-style = "space"
 
+[tool.uv.sources]
+agent-memory-client = { path = "agent-memory-client" }
+
+[project.optional-dependencies]
+dev = [
+  "agent-memory-client"
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8.3.5",
