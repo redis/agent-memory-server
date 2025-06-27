@@ -123,10 +123,12 @@ class LangChainFilterProcessor:
         last_accessed: LastAccessed | None = None,
         event_date: EventDate | None = None,
         memory_hash: MemoryHash | None = None,
+        discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
     ) -> dict[str, Any] | None:
         """Convert filter objects to backend format for LangChain vectorstores."""
         filter_dict: dict[str, Any] = {}
 
+        # TODO: Seems like we could take *args filters and decide what to do based on type.
         # Apply tag/string filters using the helper function
         self.process_tag_filter(session_id, "session_id", filter_dict)
         self.process_tag_filter(user_id, "user_id", filter_dict)
@@ -135,6 +137,9 @@ class LangChainFilterProcessor:
         self.process_tag_filter(topics, "topics", filter_dict)
         self.process_tag_filter(entities, "entities", filter_dict)
         self.process_tag_filter(memory_hash, "memory_hash", filter_dict)
+        self.process_tag_filter(
+            discrete_memory_extracted, "discrete_memory_extracted", filter_dict
+        )
 
         # Apply datetime filters using the helper function (uses instance method for backend-specific formatting)
         self.process_datetime_filter(created_at, "created_at", filter_dict)
@@ -374,6 +379,7 @@ class VectorStoreAdapter(ABC):
         last_accessed: LastAccessed | None = None,
         event_date: EventDate | None = None,
         memory_hash: MemoryHash | None = None,
+        discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
     ) -> dict[str, Any] | None:
         """Convert filter objects to standard LangChain dictionary format.
 
@@ -391,6 +397,7 @@ class VectorStoreAdapter(ABC):
             Dictionary filter in format: {"field": {"$eq": "value"}} or None
         """
         processor = LangChainFilterProcessor(self.vectorstore)
+        # TODO: Seems like we could take *args and pass them to the processor
         filter_dict = processor.convert_filters_to_backend_format(
             session_id=session_id,
             user_id=user_id,
@@ -489,6 +496,7 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
                 last_accessed=last_accessed,
                 event_date=event_date,
                 memory_hash=memory_hash,
+                discrete_memory_extracted=discrete_memory_extracted,
             )
 
             # Use LangChain's similarity search with filters
@@ -497,6 +505,8 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
                 search_kwargs["filter"] = filter_dict
 
             # Perform similarity search
+            logger.info(f"Searching for memories with filters: {search_kwargs}")
+
             docs_with_scores = (
                 await self.vectorstore.asimilarity_search_with_relevance_scores(
                     query, **search_kwargs

@@ -208,11 +208,19 @@ async def merge_memories_with_llm(memories: list[dict], llm_client: Any = None) 
             # Fallback if the structure is different
             merged_text = str(response.choices[0])
 
+    def float_or_datetime(m: dict, key: str) -> float:
+        val = m.get(key, time.time())
+        if val is None:
+            return time.time()
+        if isinstance(val, datetime):
+            return int(val.timestamp())
+        return float(val)
+
     # Use the earliest creation timestamp
-    created_at = min(int(m.get("created_at", int(time.time()))) for m in memories)
+    created_at = min(float_or_datetime(m, "created_at") for m in memories)
 
     # Use the most recent last_accessed timestamp
-    last_accessed = max(int(m.get("last_accessed", int(time.time()))) for m in memories)
+    last_accessed = max(float_or_datetime(m, "last_accessed") for m in memories)
 
     # Prefer non-empty namespace, user_id, session_id from memories
     namespace = next((m["namespace"] for m in memories if m.get("namespace")), None)
@@ -616,6 +624,7 @@ async def index_long_term_memories(
 
             # Add the memory to be indexed if not a pure duplicate
             if not was_deduplicated:
+                current_memory.discrete_memory_extracted = "t"
                 processed_memories.append(current_memory)
     else:
         processed_memories = memories

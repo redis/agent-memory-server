@@ -78,9 +78,7 @@ class Settings(BaseSettings):
 
     # Topic modeling
     topic_model_source: Literal["BERTopic", "LLM"] = "LLM"
-    topic_model: str = (
-        "MaartenGr/BERTopic_Wikipedia"  # Use an LLM model name here if using LLM
-    )
+    topic_model: str = "gpt-4o-mini"
     enable_topic_extraction: bool = True
     top_k_topics: int = 3
 
@@ -89,9 +87,11 @@ class Settings(BaseSettings):
     enable_ner: bool = True
 
     # RedisVL Settings
+    # TODO: Adapt to vector store settings
     redisvl_distance_metric: str = "COSINE"
     redisvl_vector_dimensions: str = "1536"
     redisvl_index_prefix: str = "memory_idx"
+    redisvl_indexing_algorithm: str = "HNSW"
 
     # Docket settings
     docket_name: str = "memory-server"

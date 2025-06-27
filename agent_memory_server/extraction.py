@@ -1,9 +1,8 @@
 import json
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import ulid
-from bertopic import BERTopic
 from redis.asyncio.client import Redis
 from tenacity.asyncio import AsyncRetrying
 from tenacity.stop import stop_after_attempt
@@ -22,24 +21,30 @@ from agent_memory_server.utils.keys import Keys
 from agent_memory_server.utils.redis import get_redis_conn
 
 
+if TYPE_CHECKING:
+    from bertopic import BERTopic
+
+
 logger = get_logger(__name__)
 
 # Set tokenizer parallelism environment variable
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # Global model instances
-_topic_model: BERTopic | None = None
+_topic_model: "BERTopic | None" = None
 _ner_model: Any | None = None
 _ner_tokenizer: Any | None = None
 
 
-def get_topic_model() -> BERTopic:
+def get_topic_model() -> "BERTopic":
     """
     Get or initialize the BERTopic model.
 
     Returns:
         The BERTopic model instance
     """
+    from bertopic import BERTopic
+
     global _topic_model
     if _topic_model is None:
         # TODO: Expose this as a config option
@@ -112,7 +117,7 @@ async def extract_topics_llm(
     """
     Extract topics from text using the LLM model.
     """
-    _client = client or await get_model_client(settings.generation_model)
+    _client = client or await get_model_client(settings.topic_model)
     _num_topics = num_topics if num_topics is not None else settings.top_k_topics
 
     prompt = f"""

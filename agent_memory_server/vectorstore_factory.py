@@ -23,6 +23,7 @@ import logging
 
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
+from langchain_redis.config import RedisConfig
 from pydantic.types import SecretStr
 
 
@@ -207,9 +208,15 @@ def create_redis_vectorstore(embeddings: Embeddings) -> VectorStore:
         # Always use MemoryRedisVectorStore for consistency and to fix relevance score issues
         return MemoryRedisVectorStore(
             embeddings=embeddings,
-            redis_url=settings.redis_url,
-            index_name=settings.redisvl_index_name,
-            metadata_schema=metadata_schema,
+            config=RedisConfig(
+                redis_url=settings.redis_url,
+                key_prefix=settings.redisvl_index_prefix,
+                indexing_algorithm=settings.redisvl_indexing_algorithm,
+                index_name=settings.redisvl_index_name,
+                metadata_schema=metadata_schema,
+                distance_metric=settings.redisvl_distance_metric,
+                embedding_dimensions=int(settings.redisvl_vector_dimensions),
+            ),
         )
     except ImportError:
         logger.error(
