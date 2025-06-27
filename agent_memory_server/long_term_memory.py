@@ -968,62 +968,55 @@ async def deduplicate_by_hash(
     )
 
     # Use vectorstore adapter to search for memories with the same hash
-    try:
-        # Build filter objects
-        namespace_filter = None
-        if namespace or memory.namespace:
-            namespace_filter = Namespace(eq=namespace or memory.namespace)
+    # Build filter objects
+    namespace_filter = None
+    if namespace or memory.namespace:
+        namespace_filter = Namespace(eq=namespace or memory.namespace)
 
-        user_id_filter = None
-        if user_id or memory.user_id:
-            user_id_filter = UserId(eq=user_id or memory.user_id)
+    user_id_filter = None
+    if user_id or memory.user_id:
+        user_id_filter = UserId(eq=user_id or memory.user_id)
 
-        session_id_filter = None
-        if session_id or memory.session_id:
-            session_id_filter = SessionId(eq=session_id or memory.session_id)
+    session_id_filter = None
+    if session_id or memory.session_id:
+        session_id_filter = SessionId(eq=session_id or memory.session_id)
 
-        # Create memory hash filter
-        memory_hash_filter = MemoryHash(eq=memory_hash)
+    # Create memory hash filter
+    memory_hash_filter = MemoryHash(eq=memory_hash)
 
-        # Use vectorstore adapter to search for memories with the same hash
-        adapter = await get_vectorstore_adapter()
+    # Use vectorstore adapter to search for memories with the same hash
+    adapter = await get_vectorstore_adapter()
 
-        # Search for existing memories with the same hash
-        # Use a dummy query since we're filtering by hash, not doing semantic search
-        results = await adapter.search_memories(
-            query="",  # Empty query since we're filtering by hash
-            session_id=session_id_filter,
-            user_id=user_id_filter,
-            namespace=namespace_filter,
-            memory_hash=memory_hash_filter,
-            limit=1,  # We only need to know if one exists
-        )
+    # Search for existing memories with the same hash
+    # Use a dummy query since we're filtering by hash, not doing semantic search
+    results = await adapter.search_memories(
+        query="",  # Empty query since we're filtering by hash
+        session_id=session_id_filter,
+        user_id=user_id_filter,
+        namespace=namespace_filter,
+        memory_hash=memory_hash_filter,
+        limit=1,  # We only need to know if one exists
+    )
 
-        if results.memories and len(results.memories) > 0:
-            # Found existing memory with the same hash
-            logger.info(f"Found existing memory with hash {memory_hash}")
+    if results.memories and len(results.memories) > 0:
+        # Found existing memory with the same hash
+        logger.info(f"Found existing memory with hash {memory_hash}")
 
-            # Update the last_accessed timestamp of the existing memory
-            existing_memory = results.memories[0]
-            if existing_memory.id:
-                # Use the memory key format to update last_accessed
-                existing_key = Keys.memory_key(
-                    existing_memory.id, existing_memory.namespace
-                )
-                await redis_client.hset(
-                    existing_key,
-                    "last_accessed",
-                    str(int(datetime.now(UTC).timestamp())),
-                )  # type: ignore
+        # Update the last_accessed timestamp of the existing memory
+        existing_memory = results.memories[0]
+        if existing_memory.id:
+            # Use the memory key format to update last_accessed
+            existing_key = Keys.memory_key(
+                existing_memory.id, existing_memory.namespace
+            )
+            await redis_client.hset(
+                existing_key,
+                "last_accessed",
+                str(int(datetime.now(UTC).timestamp())),
+            )  # type: ignore
 
-                # Don't save this memory, it's a duplicate
-                return None, True
-
-    except Exception as e:
-        logger.error(f"Error searching for hash duplicates using vectorstore: {e}")
-        # If search fails, proceed with the original memory
-        pass
-
+            # Don't save this memory, it's a duplicate
+            return None, True
     # No duplicates found, return the original memory
     return memory, False
 
