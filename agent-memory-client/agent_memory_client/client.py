@@ -459,9 +459,9 @@ class MemoryAPIClient:
 
         # Determine final memories list
         if replace or not existing_memory:
-            final_memories = memories
+            final_memories = list(memories)
         else:
-            final_memories = existing_memory.memories + memories
+            final_memories = existing_memory.memories + list(memories)
 
         # Auto-generate IDs for memories that don't have them
         for memory in final_memories:
@@ -745,8 +745,8 @@ class MemoryAPIClient:
         from .filters import Entities, MemoryType, Topics
 
         # Convert simple parameters to filter objects
-        topics_filter = Topics(any=topics) if topics else None
-        entities_filter = Entities(any=entities) if entities else None
+        topics_filter = Topics(any=list(topics)) if topics else None
+        entities_filter = Entities(any=list(entities)) if entities else None
         memory_type_filter = MemoryType(eq=memory_type) if memory_type else None
         user_id_filter = UserId(eq=user_id) if user_id else None
 
@@ -1005,8 +1005,8 @@ class MemoryAPIClient:
             memory = ClientMemoryRecord(
                 text=text,
                 memory_type=MemoryTypeEnum(memory_type),
-                topics=topics,
-                entities=entities,
+                topics=list(topics) if topics else None,
+                entities=list(entities) if entities else None,
                 namespace=namespace or self.config.default_namespace,
                 user_id=user_id,
             )
