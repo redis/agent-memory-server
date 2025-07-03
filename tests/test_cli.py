@@ -5,7 +5,6 @@ Tests for the CLI module.
 import sys
 from unittest.mock import AsyncMock, Mock, patch
 
-import pytest
 from click.testing import CliRunner
 
 from agent_memory_server.cli import (
@@ -190,12 +189,6 @@ class TestScheduleTask:
 
         assert result.exit_code == 1
         assert "Invalid argument format" in result.output
-
-    @pytest.mark.skip(reason="Complex async mocking - test isolation issues")
-    def test_schedule_task_success(self):
-        """Test successful task scheduling."""
-        # Skipped due to complex async interactions that interfere with other tests
-        pass
 
     def test_schedule_task_sync_error_handling(self):
         """Test error handling in sync part (before asyncio.run)."""

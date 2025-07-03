@@ -6,15 +6,15 @@ This module provides a standalone client for the REST API of the Agent Memory Se
 
 import asyncio
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 if TYPE_CHECKING:
     from typing_extensions import Self
 
 import httpx
-import ulid
 from pydantic import BaseModel
+from ulid import ULID
 
 from .exceptions import MemoryClientError, MemoryServerError, MemoryValidationError
 from .filters import (
@@ -416,7 +416,7 @@ class MemoryAPIClient:
     async def add_memories_to_working_memory(
         self,
         session_id: str,
-        memories: list[ClientMemoryRecord | MemoryRecord],
+        memories: Sequence[ClientMemoryRecord | MemoryRecord],
         namespace: str | None = None,
         replace: bool = False,
     ) -> WorkingMemoryResponse:
@@ -459,14 +459,14 @@ class MemoryAPIClient:
 
         # Determine final memories list
         if replace or not existing_memory:
-            final_memories = memories
+            final_memories = list(memories)
         else:
-            final_memories = existing_memory.memories + memories
+            final_memories = existing_memory.memories + list(memories)
 
         # Auto-generate IDs for memories that don't have them
         for memory in final_memories:
             if not memory.id:
-                memory.id = str(ulid.ULID())
+                memory.id = str(ULID())
 
         # Create new working memory with the memories
         working_memory = WorkingMemory(
@@ -482,7 +482,7 @@ class MemoryAPIClient:
         return await self.put_working_memory(session_id, working_memory)
 
     async def create_long_term_memory(
-        self, memories: list[ClientMemoryRecord | MemoryRecord]
+        self, memories: Sequence[ClientMemoryRecord | MemoryRecord]
     ) -> AckResponse:
         """
         Create long-term memories for later retrieval.
@@ -534,6 +534,29 @@ class MemoryAPIClient:
             response = await self._client.post(
                 "/v1/long-term-memory/",
                 json=payload,
+            )
+            response.raise_for_status()
+            return AckResponse(**response.json())
+        except httpx.HTTPStatusError as e:
+            self._handle_http_error(e.response)
+            raise
+
+    async def delete_long_term_memories(self, memory_ids: Sequence[str]) -> AckResponse:
+        """
+        Delete long-term memories.
+
+        Args:
+            memory_ids: List of memory IDs to delete
+
+        Returns:
+            AckResponse indicating success
+        """
+        params = {"memory_ids": list(memory_ids)}
+
+        try:
+            response = await self._client.delete(
+                "/v1/long-term-memory",
+                params=params,
             )
             response.raise_for_status()
             return AckResponse(**response.json())
@@ -666,8 +689,8 @@ class MemoryAPIClient:
     async def search_memory_tool(
         self,
         query: str,
-        topics: list[str] | None = None,
-        entities: list[str] | None = None,
+        topics: Sequence[str] | None = None,
+        entities: Sequence[str] | None = None,
         memory_type: str | None = None,
         max_results: int = 5,
         min_relevance: float | None = None,
@@ -722,8 +745,8 @@ class MemoryAPIClient:
         from .filters import Entities, MemoryType, Topics
 
         # Convert simple parameters to filter objects
-        topics_filter = Topics(any=topics) if topics else None
-        entities_filter = Entities(any=entities) if entities else None
+        topics_filter = Topics(any=list(topics)) if topics else None
+        entities_filter = Entities(any=list(entities)) if entities else None
         memory_type_filter = MemoryType(eq=memory_type) if memory_type else None
         user_id_filter = UserId(eq=user_id) if user_id else None
 
@@ -940,8 +963,8 @@ class MemoryAPIClient:
         session_id: str,
         text: str,
         memory_type: str,
-        topics: list[str] | None = None,
-        entities: list[str] | None = None,
+        topics: Sequence[str] | None = None,
+        entities: Sequence[str] | None = None,
         namespace: str | None = None,
         user_id: str | None = None,
     ) -> dict[str, Any]:
@@ -982,8 +1005,8 @@ class MemoryAPIClient:
             memory = ClientMemoryRecord(
                 text=text,
                 memory_type=MemoryTypeEnum(memory_type),
-                topics=topics,
-                entities=entities,
+                topics=list(topics) if topics else None,
+                entities=list(entities) if entities else None,
                 namespace=namespace or self.config.default_namespace,
                 user_id=user_id,
             )
@@ -1172,7 +1195,7 @@ class MemoryAPIClient:
         }
 
     @classmethod
-    def get_all_memory_tool_schemas(cls) -> list[dict[str, Any]]:
+    def get_all_memory_tool_schemas(cls) -> Sequence[dict[str, Any]]:
         """
         Get all memory-related tool schemas for easy LLM integration.
 
@@ -1200,7 +1223,7 @@ class MemoryAPIClient:
         ]
 
     @classmethod
-    def get_all_memory_tool_schemas_anthropic(cls) -> list[dict[str, Any]]:
+    def get_all_memory_tool_schemas_anthropic(cls) -> Sequence[dict[str, Any]]:
         """
         Get all memory-related tool schemas in Anthropic format.
 
@@ -1470,11 +1493,11 @@ class MemoryAPIClient:
 
     async def resolve_tool_calls(
         self,
-        tool_calls: list[dict[str, Any]],
+        tool_calls: Sequence[dict[str, Any]],
         session_id: str,
         namespace: str | None = None,
         user_id: str | None = None,
-    ) -> list[ToolCallResolutionResult]:
+    ) -> Sequence[ToolCallResolutionResult]:
         """
         Resolve multiple tool calls from any LLM provider format.
 
@@ -1713,11 +1736,11 @@ class MemoryAPIClient:
 
     async def resolve_function_calls(
         self,
-        function_calls: list[dict[str, Any]],
+        function_calls: Sequence[dict[str, Any]],
         session_id: str,
         namespace: str | None = None,
         user_id: str | None = None,
-    ) -> list[ToolCallResolutionResult]:
+    ) -> Sequence[ToolCallResolutionResult]:
         """
         Resolve multiple function calls in batch.
 
@@ -1765,7 +1788,7 @@ class MemoryAPIClient:
     async def promote_working_memories_to_long_term(
         self,
         session_id: str,
-        memory_ids: list[str] | None = None,
+        memory_ids: Sequence[str] | None = None,
         namespace: str | None = None,
     ) -> AckResponse:
         """
@@ -1805,10 +1828,10 @@ class MemoryAPIClient:
 
     async def bulk_create_long_term_memories(
         self,
-        memory_batches: list[list[ClientMemoryRecord | MemoryRecord]],
+        memory_batches: Sequence[Sequence[ClientMemoryRecord | MemoryRecord]],
         batch_size: int = 100,
         delay_between_batches: float = 0.1,
-    ) -> list[AckResponse]:
+    ) -> Sequence[AckResponse]:
         """
         Create multiple batches of memories with proper rate limiting.
 
@@ -2104,6 +2127,8 @@ class MemoryAPIClient:
         """
         Hydrate a user query with memory context and return a prompt ready to send to an LLM.
 
+        NOTE: `long_term_search` uses the same filter options as `search_long_term_memories`.
+
         Args:
             query: The input text to find relevant context for
             session_id: Optional session ID to include session messages
@@ -2163,9 +2188,17 @@ class MemoryAPIClient:
 
         # Add long-term search parameters if provided
         if long_term_search is not None:
+            if "namespace" not in long_term_search:
+                if namespace is not None:
+                    long_term_search["namespace"] = {"eq": namespace}
+                elif self.config.default_namespace is not None:
+                    long_term_search["namespace"] = {
+                        "eq": self.config.default_namespace
+                    }
             payload["long_term_search"] = long_term_search
 
         try:
+            print("Payload: ", payload)
             response = await self._client.post(
                 "/v1/memory/prompt",
                 json=payload,

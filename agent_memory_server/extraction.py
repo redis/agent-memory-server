@@ -1,17 +1,14 @@
 import json
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import ulid
-from bertopic import BERTopic
-from redis.asyncio.client import Redis
-from redisvl.query.filter import Tag
-from redisvl.query.query import FilterQuery
 from tenacity.asyncio import AsyncRetrying
 from tenacity.stop import stop_after_attempt
 from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
 
 from agent_memory_server.config import settings
+from agent_memory_server.filters import DiscreteMemoryExtracted
 from agent_memory_server.llms import (
     AnthropicClientWrapper,
     OpenAIClientWrapper,
@@ -19,7 +16,10 @@ from agent_memory_server.llms import (
 )
 from agent_memory_server.logging import get_logger
 from agent_memory_server.models import MemoryRecord
-from agent_memory_server.utils.redis import get_redis_conn, get_search_index
+
+
+if TYPE_CHECKING:
+    from bertopic import BERTopic
 
 
 logger = get_logger(__name__)
@@ -28,18 +28,20 @@ logger = get_logger(__name__)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # Global model instances
-_topic_model: BERTopic | None = None
+_topic_model: "BERTopic | None" = None
 _ner_model: Any | None = None
 _ner_tokenizer: Any | None = None
 
 
-def get_topic_model() -> BERTopic:
+def get_topic_model() -> "BERTopic":
     """
     Get or initialize the BERTopic model.
 
     Returns:
         The BERTopic model instance
     """
+    from bertopic import BERTopic
+
     global _topic_model
     if _topic_model is None:
         # TODO: Expose this as a config option
@@ -112,7 +114,7 @@ async def extract_topics_llm(
     """
     Extract topics from text using the LLM model.
     """
-    _client = client or await get_model_client(settings.generation_model)
+    _client = client or await get_model_client(settings.topic_model)
     _num_topics = num_topics if num_topics is not None else settings.top_k_topics
 
     prompt = f"""
@@ -261,86 +263,101 @@ DISCRETE_EXTRACTION_PROMPT = """
 
 
 async def extract_discrete_memories(
-    redis: Redis | None = None,
+    memories: list[MemoryRecord] | None = None,
     deduplicate: bool = True,
 ):
     """
     Extract episodic and semantic memories from text using an LLM.
     """
-    redis = await get_redis_conn()
     client = await get_model_client(settings.generation_model)
-    query = FilterQuery(
-        filter_expression=(Tag("discrete_memory_extracted") == "f")
-        & (Tag("memory_type") == "message")
-    )
-    offset = 0
 
-    while True:
-        query.paging(num=25, offset=offset)
-        search_index = get_search_index(redis=redis)
-        messages = await search_index.query(query)
-        discrete_memories = []
-
-        for message in messages:
-            if not message or not message.get("text"):
-                logger.info(f"Deleting memory with no text: {message}")
-                await redis.delete(message["id"])
-                continue
-            id_ = message.get("id_")
-            if not id_:
-                logger.error(f"Skipping memory with no ID: {message}")
-                continue
-
-            async for attempt in AsyncRetrying(stop=stop_after_attempt(3)):
-                with attempt:
-                    response = await client.create_chat_completion(
-                        model=settings.generation_model,
-                        prompt=DISCRETE_EXTRACTION_PROMPT.format(
-                            message=message["text"], top_k_topics=settings.top_k_topics
-                        ),
-                        response_format={"type": "json_object"},
-                    )
-                    try:
-                        new_message = json.loads(response.choices[0].message.content)
-                    except json.JSONDecodeError:
-                        logger.error(
-                            f"Error decoding JSON: {response.choices[0].message.content}"
-                        )
-                        raise
-                    try:
-                        assert isinstance(new_message, dict)
-                        assert isinstance(new_message["memories"], list)
-                    except AssertionError:
-                        logger.error(
-                            f"Invalid response format: {response.choices[0].message.content}"
-                        )
-                        raise
-                    discrete_memories.extend(new_message["memories"])
-
-            await redis.hset(
-                name=message["id"],
-                key="discrete_memory_extracted",
-                value="t",
-            )  # type: ignore
-
-        if len(messages) < 25:
-            break
-        offset += 25
-
-    # TODO: Added to avoid a circular import
+    # Use vectorstore adapter to find messages that need discrete memory extraction
+    # TODO: Sort out circular imports
+    from agent_memory_server.filters import MemoryType
     from agent_memory_server.long_term_memory import index_long_term_memories
+    from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
 
-    if discrete_memories:
+    adapter = await get_vectorstore_adapter()
+
+    if not memories:
+        # If no memories are provided, search for any messages in long-term memory
+        # that haven't been processed for discrete extraction
+
+        memories = []
+        offset = 0
+        while True:
+            search_result = await adapter.search_memories(
+                query="",  # Empty query to get all messages
+                memory_type=MemoryType(eq="message"),
+                discrete_memory_extracted=DiscreteMemoryExtracted(eq="f"),
+                limit=25,
+                offset=offset,
+            )
+
+            logger.info(
+                f"Found {len(search_result.memories)} memories to extract: {[m.id for m in search_result.memories]}"
+            )
+
+            memories += search_result.memories
+
+            if len(search_result.memories) < 25:
+                break
+
+            offset += 25
+
+    new_discrete_memories = []
+    updated_memories = []
+
+    for memory in memories:
+        if not memory or not memory.text:
+            logger.info(f"Deleting memory with no text: {memory}")
+            await adapter.delete_memories([memory.id])
+            continue
+
+        async for attempt in AsyncRetrying(stop=stop_after_attempt(3)):
+            with attempt:
+                response = await client.create_chat_completion(
+                    model=settings.generation_model,
+                    prompt=DISCRETE_EXTRACTION_PROMPT.format(
+                        message=memory.text, top_k_topics=settings.top_k_topics
+                    ),
+                    response_format={"type": "json_object"},
+                )
+                try:
+                    new_message = json.loads(response.choices[0].message.content)
+                except json.JSONDecodeError:
+                    logger.error(
+                        f"Error decoding JSON: {response.choices[0].message.content}"
+                    )
+                    raise
+                try:
+                    assert isinstance(new_message, dict)
+                    assert isinstance(new_message["memories"], list)
+                except AssertionError:
+                    logger.error(
+                        f"Invalid response format: {response.choices[0].message.content}"
+                    )
+                    raise
+                new_discrete_memories.extend(new_message["memories"])
+
+        # Update the memory to mark it as processed using the vectorstore adapter
+        updated_memory = memory.model_copy(update={"discrete_memory_extracted": "t"})
+        updated_memories.append(updated_memory)
+
+    if updated_memories:
+        await adapter.update_memories(updated_memories)
+
+    if new_discrete_memories:
         long_term_memories = [
             MemoryRecord(
-                id_=str(ulid.ULID()),
+                id=str(ulid.ULID()),
                 text=new_memory["text"],
                 memory_type=new_memory.get("type", "episodic"),
                 topics=new_memory.get("topics", []),
                 entities=new_memory.get("entities", []),
                 discrete_memory_extracted="t",
             )
-            for new_memory in discrete_memories
+            for new_memory in new_discrete_memories
         ]
 
         await index_long_term_memories(

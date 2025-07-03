@@ -1,8 +1,8 @@
 import tiktoken
-import ulid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from mcp.server.fastmcp.prompts import base
 from mcp.types import TextContent
+from ulid import ULID
 
 from agent_memory_server import long_term_memory, working_memory
 from agent_memory_server.auth import UserInfo, get_current_user
@@ -338,16 +338,17 @@ async def put_working_memory(
                 updated_memory.namespace,
             )
 
-        # Index message-based memories (existing logic)
+        # Index message-based memories
         if updated_memory.messages:
             from agent_memory_server.models import MemoryRecord
 
             memories = [
                 MemoryRecord(
-                    id=str(ulid.ULID()),
+                    id=str(ULID()),
                     session_id=session_id,
                     text=f"{msg.role}: {msg.content}",
                     namespace=updated_memory.namespace,
+                    user_id=updated_memory.user_id,
                     memory_type=MemoryTypeEnum.MESSAGE,
                 )
                 for msg in updated_memory.messages
@@ -449,24 +450,42 @@ async def search_long_term_memory(
     if not settings.long_term_memory:
         raise HTTPException(status_code=400, detail="Long-term memory is disabled")
 
-    redis = await get_redis_conn()
-
     # Extract filter objects from the payload
     filters = payload.get_filters()
 
+    print("Long-term search filters: ", filters)
+
     kwargs = {
-        "redis": redis,
         "distance_threshold": payload.distance_threshold,
         "limit": payload.limit,
         "offset": payload.offset,
         **filters,
     }
 
-    if payload.text:
-        kwargs["text"] = payload.text
+    print("Kwargs: ", kwargs)
 
-    # Pass text, redis, and filter objects to the search function
+    kwargs["text"] = payload.text or ""
+
+    # Pass text and filter objects to the search function (no redis needed for vectorstore adapter)
     return await long_term_memory.search_long_term_memories(**kwargs)
+
+
+@router.delete("/v1/long-term-memory", response_model=AckResponse)
+async def delete_long_term_memory(
+    memory_ids: list[str] = Query(default=[], alias="memory_ids"),
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """
+    Delete long-term memories by ID
+
+    Args:
+        memory_ids: List of memory IDs to delete (passed as query parameters)
+    """
+    if not settings.long_term_memory:
+        raise HTTPException(status_code=400, detail="Long-term memory is disabled")
+
+    count = await long_term_memory.delete_long_term_memories(ids=memory_ids)
+    return AckResponse(status=f"ok, deleted {count} memories")
 
 
 @router.post("/v1/memory/search", response_model=MemoryRecordResultsResponse)
@@ -549,6 +568,8 @@ async def memory_prompt(
     redis = await get_redis_conn()
     _messages = []
 
+    print("Received params: ", params)
+
     if params.session:
         # Use token limit for memory prompt, fallback to message count for backward compatibility
         if params.session.model_name or params.session.context_window_max:
@@ -619,8 +640,17 @@ async def memory_prompt(
 
     if params.long_term_search:
         # TODO: Exclude session messages if we already included them from session memory
+
+        # If no text is provided in long_term_search, use the user's query
+        if not params.long_term_search.text:
+            # Create a new SearchRequest with the query as text
+            search_payload = params.long_term_search.model_copy()
+            search_payload.text = params.query
+        else:
+            search_payload = params.long_term_search
+
         long_term_memories = await search_long_term_memory(
-            params.long_term_search,
+            search_payload,
         )
 
         if long_term_memories.total > 0:
@@ -632,6 +662,16 @@ async def memory_prompt(
                     content=TextContent(
                         type="text",
                         text=f"## Long term memories related to the user's query\n {long_term_memories_text}",
+                    ),
+                )
+            )
+        else:
+            # Always include a system message about long-term memories, even if empty
+            _messages.append(
+                SystemMessage(
+                    content=TextContent(
+                        type="text",
+                        text="## Long term memories related to the user's query\n No relevant long-term memories found.",
                     ),
                 )
             )
