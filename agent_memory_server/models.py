@@ -386,3 +386,9 @@ class LenientMemoryRecord(MemoryRecord):
     """A memory record that can be created without an ID"""
 
     id: str | None = Field(default_factory=lambda: str(ULID()))
+
+
+class DeleteMemoryRecordRequest(BaseModel):
+    """Payload for deleting memory records"""
+
+    ids: list[str]

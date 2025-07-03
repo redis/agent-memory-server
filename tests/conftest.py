@@ -64,6 +64,9 @@ async def search_index(async_redis_client):
     # Reset the cached index in redis_utils_module
     redis_utils_module._index = None
 
+    yield
+    return
+
     await async_redis_client.flushdb()
 
     try:
@@ -166,20 +169,14 @@ async def session(use_test_redis_connection, async_redis_client):
             for idx, vector in enumerate(embeddings):
                 memory = long_term_memories[idx]
                 id_ = memory.id if memory.id else str(ULID())
-                key = Keys.memory_key(id_, memory.namespace)
+                key = Keys.memory_key(id_)
 
                 # Generate memory hash for the memory
                 from agent_memory_server.long_term_memory import (
                     generate_memory_hash,
                 )
 
-                memory_hash = generate_memory_hash(
-                    {
-                        "text": memory.text,
-                        "user_id": memory.user_id or "",
-                        "session_id": memory.session_id or "",
-                    }
-                )
+                memory_hash = generate_memory_hash(memory)
 
                 await pipe.hset(  # type: ignore
                     key,
@@ -319,7 +316,6 @@ def use_test_redis_connection(redis_url: str):
         patch(
             "agent_memory_server.long_term_memory.get_redis_conn", mock_get_redis_conn
         ),
-        patch("agent_memory_server.extraction.get_redis_conn", mock_get_redis_conn),
         patch.object(settings, "redis_url", redis_url),
     ):
         # Reset global state to force recreation with test Redis
@@ -342,30 +338,46 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help="Run tests that require API keys",
     )
+    parser.addoption(
+        "--run-integration-tests",
+        action="store_true",
+        default=False,
+        help="Run integration tests (requires running memory server)",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
-        "markers", "requires_api_keys: mark test as requiring API keys"
+        "markers",
+        "requires_api_keys: mark test as requiring API keys",
+    )
+    config.addinivalue_line(
+        "markers",
+        "integration: mark test as an integration test (requires running memory server)",
     )
 
 
 def pytest_collection_modifyitems(
     config: pytest.Config, items: list[pytest.Item]
 ) -> None:
-    if config.getoption("--run-api-tests"):
-        return
-
-    # Otherwise skip all tests requiring an API key
-    skip_api = pytest.mark.skip(
-        reason="""
-        Skipping test because API keys are not provided.
-        "Use --run-api-tests to run these tests.
-        """
-    )
     for item in items:
-        if item.get_closest_marker("requires_api_keys"):
-            item.add_marker(skip_api)
+        if item.get_closest_marker("integration") and not config.getoption(
+            "--run-integration-tests"
+        ):
+            item.add_marker(
+                pytest.mark.skip(
+                    reason="Not running integration tests. Use --run-integration-tests to run these tests."
+                )
+            )
+
+        if item.get_closest_marker("requires_api_keys") and not config.getoption(
+            "--run-api-tests"
+        ):
+            item.add_marker(
+                pytest.mark.skip(
+                    reason="Not running tests that require API keys. Use --run-api-tests to run these tests."
+                )
+            )
 
 
 @pytest.fixture()

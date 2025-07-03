@@ -78,6 +78,8 @@ class Settings(BaseSettings):
 
     # Topic modeling
     topic_model_source: Literal["BERTopic", "LLM"] = "LLM"
+    # If using BERTopic, use a supported model, such as
+    # "MaartenGr/BERTopic_Wikipedia"
     topic_model: str = "gpt-4o-mini"
     enable_topic_extraction: bool = True
     top_k_topics: int = 3

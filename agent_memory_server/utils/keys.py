@@ -42,9 +42,9 @@ class Keys:
         return f"sessions:{namespace}" if namespace else "sessions"
 
     @staticmethod
-    def memory_key(id: str, namespace: str | None = None) -> str:
+    def memory_key(id: str) -> str:
         """Get the memory key for an ID."""
-        return f"memory:{namespace}:{id}" if namespace else f"memory:{id}"
+        return f"{settings.redisvl_index_prefix}:{id}"
 
     @staticmethod
     def metadata_key(session_id: str, namespace: str | None = None) -> str:

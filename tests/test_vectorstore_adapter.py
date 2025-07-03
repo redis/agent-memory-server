@@ -216,6 +216,9 @@ class TestVectorStoreAdapter:
                 async def delete_memories(self, memory_ids):
                     return 0
 
+                async def update_memories(self, memories: list[MemoryRecord]) -> int:
+                    return 0
+
             mock_custom_adapter = MockVectorStoreAdapter()
 
             mock_create_embeddings.return_value = mock_embeddings
@@ -281,3 +284,263 @@ class TestVectorStoreAdapter:
         # Test deleting empty list
         deleted = await adapter.delete_memories([])
         assert deleted == 0
+
+    @pytest.mark.asyncio
+    async def test_update_memories_functionality(self):
+        """Test the update_memories method works correctly."""
+        # Create a mock VectorStore with proper async mocking
+        mock_vectorstore = MagicMock()
+        mock_vectorstore.aadd_documents = AsyncMock(return_value=["doc1", "doc2"])
+        # Mock adelete method as async since LangChainVectorStoreAdapter checks for adelete first
+        mock_vectorstore.adelete = AsyncMock(return_value=True)
+        mock_embeddings = MagicMock()
+
+        # Create adapter
+        adapter = LangChainVectorStoreAdapter(mock_vectorstore, mock_embeddings)
+
+        # Create sample memories to update
+        memories = [
+            MemoryRecord(
+                text="Updated memory 1",
+                id="mem1",
+                memory_type=MemoryTypeEnum.SEMANTIC,
+                discrete_memory_extracted="t",  # Updated value
+            ),
+            MemoryRecord(
+                text="Updated memory 2",
+                id="mem2",
+                memory_type=MemoryTypeEnum.SEMANTIC,
+                discrete_memory_extracted="t",  # Updated value
+            ),
+        ]
+
+        # Update memories
+        count = await adapter.update_memories(memories)
+
+        # Verify that adelete was called once with all memory IDs
+        assert mock_vectorstore.adelete.call_count == 1
+        # Check that it was called with the correct IDs
+        mock_vectorstore.adelete.assert_called_with(["mem1", "mem2"])
+        # Verify that add was called
+        mock_vectorstore.aadd_documents.assert_called_once()
+        # Verify return count
+        assert count == 2
+
+    @pytest.mark.asyncio
+    async def test_update_memories_empty_list(self):
+        """Test update_memories with empty list."""
+        # Create a mock VectorStore
+        mock_vectorstore = MagicMock()
+        mock_embeddings = MagicMock()
+
+        # Create adapter
+        adapter = LangChainVectorStoreAdapter(mock_vectorstore, mock_embeddings)
+
+        # Update with empty list
+        count = await adapter.update_memories([])
+
+        # Should return 0 and not call any vectorstore methods
+        assert count == 0
+        # Don't check for method calls since they shouldn't be called with empty list
+
+    @pytest.mark.asyncio
+    async def test_redis_adapter_update_memories(self):
+        """Test RedisVectorStoreAdapter update_memories method."""
+        # Create a mock RedisVectorStore
+        mock_redis_vectorstore = MagicMock()
+        mock_redis_vectorstore.aadd_documents = AsyncMock(return_value=["key1", "key2"])
+        mock_embeddings = MagicMock()
+
+        # Create Redis adapter
+        adapter = RedisVectorStoreAdapter(mock_redis_vectorstore, mock_embeddings)
+
+        # Create sample memories to update
+        memories = [
+            MemoryRecord(
+                text="Updated Redis memory 1",
+                id="redis-mem1",
+                memory_type=MemoryTypeEnum.MESSAGE,
+                discrete_memory_extracted="t",  # Updated value
+            ),
+            MemoryRecord(
+                text="Updated Redis memory 2",
+                id="redis-mem2",
+                memory_type=MemoryTypeEnum.MESSAGE,
+                discrete_memory_extracted="t",  # Updated value
+            ),
+        ]
+
+        # Update memories
+        count = await adapter.update_memories(memories)
+
+        # For Redis adapter, update just calls add_memories
+        mock_redis_vectorstore.aadd_documents.assert_called_once()
+        assert count == 2
+
+    @pytest.mark.asyncio
+    async def test_search_with_discrete_memory_extracted_filter(self):
+        """Test searching with discrete_memory_extracted filter."""
+        from agent_memory_server.filters import DiscreteMemoryExtracted
+
+        # Create a mock VectorStore
+        mock_vectorstore = MagicMock()
+        mock_embeddings = MagicMock()
+
+        # Mock search results
+        mock_doc1 = MagicMock()
+        mock_doc1.page_content = "Processed memory"
+        mock_doc1.metadata = {
+            "id_": "mem1",
+            "discrete_memory_extracted": "t",
+            "memory_type": "semantic",
+            "created_at": 1609459200,
+            "last_accessed": 1609459200,
+            "updated_at": 1609459200,
+        }
+
+        # Mock the async search method that the adapter actually uses
+        mock_vectorstore.asimilarity_search_with_relevance_scores = AsyncMock(
+            return_value=[(mock_doc1, 0.8)]
+        )
+
+        # Create adapter
+        adapter = LangChainVectorStoreAdapter(mock_vectorstore, mock_embeddings)
+
+        # Search with discrete_memory_extracted filter
+        discrete_filter = DiscreteMemoryExtracted(eq="t")
+        results = await adapter.search_memories(
+            query="test query",
+            discrete_memory_extracted=discrete_filter,
+        )
+
+        # Verify search was called
+        mock_vectorstore.asimilarity_search_with_relevance_scores.assert_called_once()
+
+        # Verify results
+        assert len(results.memories) == 1
+        assert results.memories[0].discrete_memory_extracted == "t"
+
+    @pytest.mark.asyncio
+    async def test_update_then_search_integration(self):
+        """Integration test: update memories and verify they can be found with new values."""
+        # This test simulates the real scenario where memories are updated
+        # and then searched to verify the update worked
+
+        # Create a mock VectorStore that tracks state
+        class MockVectorStoreWithState:
+            def __init__(self):
+                self.documents = {}
+
+            async def aadd_documents(self, documents, ids=None):
+                if ids:
+                    for doc, doc_id in zip(documents, ids, strict=False):
+                        self.documents[doc_id] = doc
+                else:
+                    for i, doc in enumerate(documents):
+                        self.documents[f"doc_{i}"] = doc
+                return list(self.documents.keys())[-len(documents) :]
+
+            async def adelete(self, ids):
+                for doc_id in ids:
+                    self.documents.pop(doc_id, None)
+                return True
+
+            async def asimilarity_search_with_relevance_scores(
+                self, query, k=4, filter=None, **kwargs
+            ):
+                # Simple mock search that returns documents matching filter
+                results = []
+                for _key, doc in self.documents.items():
+                    # Check if document matches discrete_memory_extracted filter
+                    if filter and hasattr(filter, "get"):
+                        filter_value = filter.get("discrete_memory_extracted")
+                        if (
+                            filter_value
+                            and doc.metadata.get("discrete_memory_extracted")
+                            == filter_value
+                        ):
+                            results.append((doc, 0.9))
+                    elif not filter:
+                        results.append((doc, 0.9))
+                return results[:k]
+
+        mock_vectorstore = MockVectorStoreWithState()
+        mock_embeddings = MagicMock()
+
+        # Create adapter
+        adapter = LangChainVectorStoreAdapter(mock_vectorstore, mock_embeddings)
+
+        # First, add some memories with discrete_memory_extracted='f'
+        original_memories = [
+            MemoryRecord(
+                text="Unprocessed memory 1",
+                id="mem1",
+                memory_type=MemoryTypeEnum.MESSAGE,
+                discrete_memory_extracted="f",
+            ),
+            MemoryRecord(
+                text="Unprocessed memory 2",
+                id="mem2",
+                memory_type=MemoryTypeEnum.MESSAGE,
+                discrete_memory_extracted="f",
+            ),
+        ]
+
+        # Add original memories
+        await adapter.add_memories(original_memories)
+
+        # Verify we can find memories with discrete_memory_extracted='f'
+        from agent_memory_server.filters import DiscreteMemoryExtracted
+
+        # Mock the filter conversion for this test
+        with patch.object(
+            adapter, "_convert_filters_to_backend_format"
+        ) as mock_convert:
+            mock_convert.return_value = {"discrete_memory_extracted": "f"}
+
+            unprocessed_results = await adapter.search_memories(
+                query="",
+                discrete_memory_extracted=DiscreteMemoryExtracted(eq="f"),
+            )
+
+            assert len(unprocessed_results.memories) == 2
+
+        # Now update the memories to mark them as processed
+        updated_memories = []
+        for memory in original_memories:
+            updated_memory = memory.model_copy(
+                update={"discrete_memory_extracted": "t"}
+            )
+            updated_memories.append(updated_memory)
+
+        # Update the memories
+        update_count = await adapter.update_memories(updated_memories)
+        assert update_count == 2
+
+        # Verify we can now find memories with discrete_memory_extracted='t'
+        with patch.object(
+            adapter, "_convert_filters_to_backend_format"
+        ) as mock_convert:
+            mock_convert.return_value = {"discrete_memory_extracted": "t"}
+
+            processed_results = await adapter.search_memories(
+                query="",
+                discrete_memory_extracted=DiscreteMemoryExtracted(eq="t"),
+            )
+
+            assert len(processed_results.memories) == 2
+            for result in processed_results.memories:
+                assert result.discrete_memory_extracted == "t"
+
+        # Verify we can no longer find memories with discrete_memory_extracted='f'
+        with patch.object(
+            adapter, "_convert_filters_to_backend_format"
+        ) as mock_convert:
+            mock_convert.return_value = {"discrete_memory_extracted": "f"}
+
+            unprocessed_results_after = await adapter.search_memories(
+                query="",
+                discrete_memory_extracted=DiscreteMemoryExtracted(eq="f"),
+            )
+
+            assert len(unprocessed_results_after.memories) == 0

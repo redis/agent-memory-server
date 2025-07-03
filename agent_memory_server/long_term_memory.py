@@ -97,90 +97,93 @@ Extracted memories:
 logger = logging.getLogger(__name__)
 
 
-async def extract_memory_structure(_id: str, text: str, namespace: str | None):
+async def extract_memory_structure(memory: MemoryRecord):
     redis = await get_redis_conn()
 
     # Process messages for topic/entity extraction
-    topics, entities = await handle_extraction(text)
+    topics, entities = await handle_extraction(memory.text)
+
+    merged_topics = memory.topics + topics if memory.topics else topics
+    merged_entities = memory.entities + entities if memory.entities else entities
 
     # Convert lists to comma-separated strings for TAG fields
-    topics_joined = ",".join(topics) if topics else ""
-    entities_joined = ",".join(entities) if entities else ""
+    topics_joined = ",".join(merged_topics) if merged_topics else ""
+    entities_joined = ",".join(merged_entities) if merged_entities else ""
 
     await redis.hset(
-        Keys.memory_key(_id, namespace),
-        mapping={
-            "topics": topics_joined,
-            "entities": entities_joined,
-        },
+        Keys.memory_key(memory.id),
+        mapping={"topics": topics_joined, "entities": entities_joined},
     )  # type: ignore
 
 
-def generate_memory_hash(memory: dict) -> str:
+def generate_memory_hash(memory: MemoryRecord) -> str:
     """
     Generate a stable hash for a memory based on text, user_id, and session_id.
 
     Args:
-        memory: Dictionary containing memory data
+        memory: MemoryRecord object containing memory data
 
     Returns:
         A stable hash string
     """
     # Create a deterministic string representation of the key fields
-    text = memory.get("text", "")
-    user_id = memory.get("user_id", "") or ""
-    session_id = memory.get("session_id", "") or ""
-
-    # Combine the fields in a predictable order
-    hash_content = f"{text}|{user_id}|{session_id}"
-
-    # Create a stable hash
-    return hashlib.sha256(hash_content.encode()).hexdigest()
+    return hashlib.sha256(memory.model_dump_json().encode()).hexdigest()
 
 
-async def merge_memories_with_llm(memories: list[dict], llm_client: Any = None) -> dict:
+async def merge_memories_with_llm(
+    memories: list[MemoryRecord], llm_client: Any = None
+) -> MemoryRecord:
     """
     Use an LLM to merge similar or duplicate memories.
 
     Args:
-        memories: List of memory dictionaries to merge
+        memories: List of MemoryRecord objects to merge
         llm_client: Optional LLM client to use for merging
 
     Returns:
-        A merged memory dictionary
+        A merged memory
     """
     # If there's only one memory, just return it
     if len(memories) == 1:
         return memories[0]
 
-    # Create a unified set of topics and entities
+    user_ids = {memory.user_id for memory in memories if memory.user_id}
+
+    if len(user_ids) > 1:
+        raise ValueError("Cannot merge memories with different user IDs")
+
+        # Create a unified set of topics and entities
     all_topics = set()
     all_entities = set()
 
     for memory in memories:
-        if memory.get("topics"):
-            if isinstance(memory["topics"], str):
-                all_topics.update(memory["topics"].split(","))
-            else:
-                all_topics.update(memory["topics"])
+        if memory.topics:
+            all_topics.update(memory.topics)
 
-        if memory.get("entities"):
-            if isinstance(memory["entities"], str):
-                all_entities.update(memory["entities"].split(","))
-            else:
-                all_entities.update(memory["entities"])
+        if memory.entities:
+            all_entities.update(memory.entities)
 
     # Get the memory texts for LLM prompt
-    memory_texts = [m["text"] for m in memories]
+    memory_texts = [m.text for m in memories]
 
     # Construct the LLM prompt
-    instruction = "Merge these similar memories into a single, coherent memory:"
+    instruction = """
+    You are a memory merging assistant. Your job is to merge similar or
+    duplicate memories.
 
-    prompt = f"{instruction}\n\n"
-    for i, text in enumerate(memory_texts, 1):
-        prompt += f"Memory {i}: {text}\n\n"
+    You will be given a list of memories. You will need to merge them into a
+    single, coherent memory.
+    """
+    memory_list = "\n".join([f"{i}: {text}" for i, text in enumerate(memory_texts, 1)])
 
-    prompt += "\nMerged memory:"
+    prompt = f"""
+    {instruction}
+
+    The memories:
+    {memory_list}
+
+    The merged memory:
+    """
 
     model_name = "gpt-4o-mini"
 
@@ -208,58 +211,49 @@ async def merge_memories_with_llm(memories: list[dict], llm_client: Any = None) 
             # Fallback if the structure is different
             merged_text = str(response.choices[0])
 
-    def float_or_datetime(m: dict, key: str) -> float:
-        val = m.get(key, time.time())
+    def coerce_to_float(m: MemoryRecord, key: str) -> float:
+        try:
+            val = getattr(m, key)
+        except AttributeError:
+            val = time.time()
         if val is None:
             return time.time()
         if isinstance(val, datetime):
-            return int(val.timestamp())
+            return float(val.timestamp())
         return float(val)
 
-    # Use the earliest creation timestamp
-    created_at = min(float_or_datetime(m, "created_at") for m in memories)
+    # Use the oldest creation timestamp
+    created_at = min(coerce_to_float(m, "created_at") for m in memories)
 
     # Use the most recent last_accessed timestamp
-    last_accessed = max(float_or_datetime(m, "last_accessed") for m in memories)
+    last_accessed = max(coerce_to_float(m, "last_accessed") for m in memories)
 
     # Prefer non-empty namespace, user_id, session_id from memories
-    namespace = next((m["namespace"] for m in memories if m.get("namespace")), None)
-    user_id = next((m["user_id"] for m in memories if m.get("user_id")), None)
-    session_id = next((m["session_id"] for m in memories if m.get("session_id")), None)
+    namespace = next((m.namespace for m in memories if m.namespace), None)
+    user_id = next((m.user_id for m in memories if m.user_id), None)
+    session_id = next((m.session_id for m in memories if m.session_id), None)
 
     # Get the memory type from the first memory
-    memory_type = next(
-        (m["memory_type"] for m in memories if m.get("memory_type")), "semantic"
-    )
-
-    # Get the discrete_memory_extracted from the first memory
-    discrete_memory_extracted = next(
-        (
-            m["discrete_memory_extracted"]
-            for m in memories
-            if m.get("discrete_memory_extracted")
-        ),
-        "t",
-    )
+    memory_type = next((m.memory_type for m in memories if m.memory_type), "semantic")
 
     # Create the merged memory
-    merged_memory = {
-        "text": merged_text.strip(),
-        "id_": str(ULID()),
-        "user_id": user_id,
-        "session_id": session_id,
-        "namespace": namespace,
-        "created_at": created_at,
-        "last_accessed": last_accessed,
-        "updated_at": int(datetime.now(UTC).timestamp()),
-        "topics": list(all_topics) if all_topics else None,
-        "entities": list(all_entities) if all_entities else None,
-        "memory_type": memory_type,
-        "discrete_memory_extracted": discrete_memory_extracted,
-    }
+    merged_memory = MemoryRecord(
+        text=merged_text.strip(),
+        id=str(ULID()),
+        user_id=user_id,
+        session_id=session_id,
+        namespace=namespace,
+        created_at=datetime.fromtimestamp(created_at, UTC),
+        last_accessed=datetime.fromtimestamp(last_accessed, UTC),
+        updated_at=datetime.now(UTC),
+        topics=list(all_topics) if all_topics else None,
+        entities=list(all_entities) if all_entities else None,
+        memory_type=MemoryTypeEnum(memory_type),
+        discrete_memory_extracted="t",
+    )
 
     # Generate a new hash for the merged memory
-    merged_memory["memory_hash"] = generate_memory_hash(merged_memory)
+    merged_memory.memory_hash = generate_memory_hash(merged_memory)
 
     return merged_memory
 
@@ -586,16 +580,16 @@ async def index_long_term_memories(
             current_memory = memory
             was_deduplicated = False
 
-            # Check for id-based duplicates FIRST (Stage 2 requirement)
+            # Check for id-based duplicates
             if not was_deduplicated:
                 deduped_memory, was_overwrite = await deduplicate_by_id(
                     memory=current_memory,
                     redis_client=redis,
                 )
                 if was_overwrite:
-                    # This overwrote an existing memory with the same id
+                    # This overwrote an existing memory with the same ID
                     current_memory = deduped_memory or current_memory
-                    logger.info(f"Overwrote memory with id {memory.id}")
+                    logger.info(f"Overwrote memory with ID {memory.id}")
                 else:
                     current_memory = deduped_memory or current_memory
 
@@ -624,7 +618,6 @@ async def index_long_term_memories(
 
             # Add the memory to be indexed if not a pure duplicate
             if not was_deduplicated:
-                current_memory.discrete_memory_extracted = "t"
                 processed_memories.append(current_memory)
     else:
         processed_memories = memories
@@ -647,17 +640,20 @@ async def index_long_term_memories(
 
     # Schedule background tasks for topic/entity extraction
     for memory in processed_memories:
-        memory_id = memory.id or str(ULID())
-        await background_tasks.add_task(
-            extract_memory_structure, memory_id, memory.text, memory.namespace
-        )
+        await background_tasks.add_task(extract_memory_structure, memory)
 
     if settings.enable_discrete_memory_extraction:
+        needs_extraction = [
+            memory
+            for memory in processed_memories
+            if memory.discrete_memory_extracted == "f"
+        ]
         # Extract discrete memories from the indexed messages and persist
         # them as separate long-term memory records. This process also
         # runs deduplication if requested.
         await background_tasks.add_task(
             extract_discrete_memories,
+            memories=needs_extraction,
             deduplicate=deduplicate,
         )
 
@@ -954,6 +950,9 @@ async def deduplicate_by_hash(
     """
     Check if a memory has hash-based duplicates and handle accordingly.
 
+    Memories have a hash generated from their text and metadata. If we
+    see the exact-same memory again, we ignore it.
+
     Args:
         memory: The memory to check for duplicates
         redis_client: Optional Redis client
@@ -968,13 +967,7 @@ async def deduplicate_by_hash(
         redis_client = await get_redis_conn()
 
     # Generate hash for the memory
-    memory_hash = generate_memory_hash(
-        {
-            "text": memory.text,
-            "user_id": memory.user_id or "",
-            "session_id": memory.session_id or "",
-        }
-    )
+    memory_hash = generate_memory_hash(memory)
 
     # Use vectorstore adapter to search for memories with the same hash
     # Build filter objects
@@ -1015,13 +1008,10 @@ async def deduplicate_by_hash(
         existing_memory = results.memories[0]
         if existing_memory.id:
             # Use the memory key format to update last_accessed
-            existing_key = Keys.memory_key(
-                existing_memory.id, existing_memory.namespace
-            )
+            existing_key = Keys.memory_key(existing_memory.id)
             await redis_client.hset(
                 existing_key,
-                "last_accessed",
-                str(int(datetime.now(UTC).timestamp())),
+                mapping={"last_accessed": str(int(datetime.now(UTC).timestamp()))},
             )  # type: ignore
 
             # Don't save this memory, it's a duplicate
@@ -1038,11 +1028,13 @@ async def deduplicate_by_id(
     session_id: str | None = None,
 ) -> tuple[MemoryRecord | None, bool]:
     """
-    Check if a memory with the same id exists and handle accordingly.
-    This implements Stage 2 requirement: use id as the basis for deduplication and overwrites.
+    Check if a memory with the same ID exists and deduplicate if found.
+
+    When two memories have the same ID, the most recent memory replaces the
+    oldest memory. (They are not merged.)
 
     Args:
-        memory: The memory to check for id duplicates
+        memory: The memory to check for ID duplicates
         redis_client: Optional Redis client
         namespace: Optional namespace filter
         user_id: Optional user ID filter
@@ -1058,65 +1050,57 @@ async def deduplicate_by_id(
     if not memory.id:
         return memory, False
 
-    # Build filters for the search
-    filters = []
+    # Use vectorstore adapter to search for memories with the same id
+    # Build filter objects
+    namespace_filter = None
     if namespace or memory.namespace:
-        ns = namespace or memory.namespace
-        filters.append(f"@namespace:{{{ns}}}")
-    if user_id or memory.user_id:
-        uid = user_id or memory.user_id
-        filters.append(f"@user_id:{{{uid}}}")
-    if session_id or memory.session_id:
-        sid = session_id or memory.session_id
-        filters.append(f"@session_id:{{{sid}}}")
+        from agent_memory_server.filters import Namespace
 
-    filter_str = " ".join(filters) if filters else ""
+        namespace_filter = Namespace(eq=namespace or memory.namespace)
+
+    user_id_filter = None
+    if user_id or memory.user_id:
+        from agent_memory_server.filters import UserId
+
+        user_id_filter = UserId(eq=user_id or memory.user_id)
+
+    session_id_filter = None
+    if session_id or memory.session_id:
+        from agent_memory_server.filters import SessionId
+
+        session_id_filter = SessionId(eq=session_id or memory.session_id)
+
+    # Create id filter
+    from agent_memory_server.filters import Id
+
+    id_filter = Id(eq=memory.id)
+
+    # Use vectorstore adapter to search for memories with the same id
+    adapter = await get_vectorstore_adapter()
 
     # Search for existing memories with the same id
-    index_name = Keys.search_index_name()
-
-    # Use FT.SEARCH to find memories with this id
-    # TODO: Use RedisVL
-    if filter_str:
-        # Combine the id query with filters - Redis FT.SEARCH uses implicit AND between terms
-        query_expr = f"@id:{{{memory.id}}} {filter_str}"
-    else:
-        query_expr = f"@id:{{{memory.id}}}"
-
-    search_results = await redis_client.execute_command(
-        "FT.SEARCH",
-        index_name,
-        f"'{query_expr}'",
-        "RETURN",
-        "2",
-        "id_",
-        "persisted_at",
-        "SORTBY",
-        "last_accessed",
-        "DESC",
+    # Use a dummy query since we're filtering by id, not doing semantic search
+    results = await adapter.search_memories(
+        query="",  # Empty query since we're filtering by id
+        session_id=session_id_filter,
+        user_id=user_id_filter,
+        namespace=namespace_filter,
+        id=id_filter,
+        limit=1,  # We only need to know if one exists
     )
 
-    if search_results and search_results[0] > 0:
+    if results.memories and len(results.memories) > 0:
         # Found existing memory with the same id
+        existing_memory = results.memories[0]
         logger.info(f"Found existing memory with id {memory.id}, will overwrite")
 
-        # Get the existing memory key and persisted_at
-        existing_key = search_results[1]
-        if isinstance(existing_key, bytes):
-            existing_key = existing_key.decode()
-
-        existing_persisted_at = "0"
-        if len(search_results) > 2:
-            existing_persisted_at = search_results[2]
-            if isinstance(existing_persisted_at, bytes):
-                existing_persisted_at = existing_persisted_at.decode()
-
-        # Delete the existing memory
-        await redis_client.delete(existing_key)
-
         # If the existing memory was already persisted, preserve that timestamp
-        if existing_persisted_at != "0":
-            memory.persisted_at = datetime.fromtimestamp(int(existing_persisted_at))
+        if existing_memory.persisted_at:
+            memory.persisted_at = existing_memory.persisted_at
+
+        # Delete the existing memory using the adapter
+        if existing_memory.id:
+            await adapter.delete_memories([existing_memory.id])
 
         # Return the memory to be saved (overwriting the existing one)
         return memory, True
@@ -1136,6 +1120,9 @@ async def deduplicate_by_semantic_search(
 ) -> tuple[MemoryRecord | None, bool]:
     """
     Check if a memory has semantic duplicates and merge if found.
+
+    Unlike deduplicate_by_id, this function does not overwrite any existing
+    memories. Instead, all semantically similar duplicates are merged.
 
     Args:
         memory: The memory to check for semantic duplicates
@@ -1178,62 +1165,26 @@ async def deduplicate_by_semantic_search(
         session_id_filter = SessionId(eq=session_id or memory.session_id)
 
     # Use the vectorstore adapter for semantic search
+    # TODO: Paginate through results?
     search_result = await adapter.search_memories(
         query=memory.text,  # Use memory text for semantic search
         namespace=namespace_filter,
         user_id=user_id_filter,
         session_id=session_id_filter,
         distance_threshold=vector_distance_threshold,
-        limit=5,
+        limit=10,
     )
 
     vector_search_result = search_result.memories if search_result else []
 
     if vector_search_result and len(vector_search_result) > 0:
         # Found semantically similar memories
-        similar_memory_ids = []
-        similar_memories_data = []
-
-        for similar_memory_result in vector_search_result:
-            similar_memory_ids.append(similar_memory_result.id)
-
-            # Convert MemoryRecordResult to dict format for merge_memories_with_llm
-            similar_memory_dict = {
-                "id_": similar_memory_result.id,
-                "text": similar_memory_result.text,
-                "user_id": similar_memory_result.user_id,
-                "session_id": similar_memory_result.session_id,
-                "namespace": similar_memory_result.namespace,
-                "created_at": int(similar_memory_result.created_at.timestamp()),
-                "last_accessed": int(similar_memory_result.last_accessed.timestamp()),
-                "topics": similar_memory_result.topics or [],
-                "entities": similar_memory_result.entities or [],
-                "memory_type": similar_memory_result.memory_type,
-                "discrete_memory_extracted": similar_memory_result.discrete_memory_extracted,
-            }
-            similar_memories_data.append(similar_memory_dict)
+        similar_memory_ids = [memory.id for memory in vector_search_result]
 
         # Merge the memories
         merged_memory = await merge_memories_with_llm(
-            [memory.model_dump()] + similar_memories_data,
+            [memory] + vector_search_result,
             llm_client=llm_client,
-        )
-
-        # Convert back to MemoryRecord
-        merged_memory_obj = MemoryRecord(
-            id=memory.id or str(ULID()),
-            text=merged_memory["text"],
-            user_id=merged_memory["user_id"],
-            session_id=merged_memory["session_id"],
-            namespace=merged_memory["namespace"],
-            created_at=merged_memory["created_at"],
-            last_accessed=merged_memory["last_accessed"],
-            topics=merged_memory.get("topics", []),
-            entities=merged_memory.get("entities", []),
-            memory_type=merged_memory.get("memory_type", "semantic"),
-            discrete_memory_extracted=merged_memory.get(
-                "discrete_memory_extracted", "t"
-            ),
         )
 
         # Delete the similar memories using the adapter
@@ -1243,7 +1194,7 @@ async def deduplicate_by_semantic_search(
         logger.info(
             f"Merged new memory with {len(similar_memory_ids)} semantic duplicates"
         )
-        return merged_memory_obj, True
+        return merged_memory, True
 
     # No similar memories found or error occurred
     return memory, False
@@ -1468,3 +1419,13 @@ async def extract_memories_from_messages(
             continue
 
     return extracted_memories
+
+
+async def delete_long_term_memories(
+    ids: list[str],
+) -> int:
+    """
+    Delete long-term memories by ID.
+    """
+    adapter = await get_vectorstore_adapter()
+    return await adapter.delete_memories(ids)

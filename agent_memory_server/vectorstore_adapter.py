@@ -20,6 +20,7 @@ from agent_memory_server.filters import (
     DiscreteMemoryExtracted,
     Entities,
     EventDate,
+    Id,
     LastAccessed,
     MemoryHash,
     MemoryType,
@@ -123,6 +124,7 @@ class LangChainFilterProcessor:
         last_accessed: LastAccessed | None = None,
         event_date: EventDate | None = None,
         memory_hash: MemoryHash | None = None,
+        id: Id | None = None,
         discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
     ) -> dict[str, Any] | None:
         """Convert filter objects to backend format for LangChain vectorstores."""
@@ -137,6 +139,7 @@ class LangChainFilterProcessor:
         self.process_tag_filter(topics, "topics", filter_dict)
         self.process_tag_filter(entities, "entities", filter_dict)
         self.process_tag_filter(memory_hash, "memory_hash", filter_dict)
+        self.process_tag_filter(id, "id_", filter_dict)
         self.process_tag_filter(
             discrete_memory_extracted, "discrete_memory_extracted", filter_dict
         )
@@ -182,6 +185,7 @@ class VectorStoreAdapter(ABC):
         memory_type: MemoryType | None = None,
         event_date: EventDate | None = None,
         memory_hash: MemoryHash | None = None,
+        id: Id | None = None,
         discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
         distance_threshold: float | None = None,
         limit: int = 10,
@@ -219,6 +223,18 @@ class VectorStoreAdapter(ABC):
 
         Returns:
             Number of memories deleted
+        """
+        pass
+
+    @abstractmethod
+    async def update_memories(self, memories: list[MemoryRecord]) -> int:
+        """Update memory records in the vector store.
+
+        Args:
+            memories: List of MemoryRecord objects to update
+
+        Returns:
+            Number of memories updated
         """
         pass
 
@@ -379,6 +395,7 @@ class VectorStoreAdapter(ABC):
         last_accessed: LastAccessed | None = None,
         event_date: EventDate | None = None,
         memory_hash: MemoryHash | None = None,
+        id: Id | None = None,
         discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
     ) -> dict[str, Any] | None:
         """Convert filter objects to standard LangChain dictionary format.
@@ -409,6 +426,7 @@ class VectorStoreAdapter(ABC):
             last_accessed=last_accessed,
             event_date=event_date,
             memory_hash=memory_hash,
+            id=id,
         )
 
         logger.debug(f"Converted to LangChain filter format: {filter_dict}")
@@ -477,6 +495,7 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
         memory_type: MemoryType | None = None,
         event_date: EventDate | None = None,
         memory_hash: MemoryHash | None = None,
+        id: Id | None = None,
         distance_threshold: float | None = None,
         discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
         limit: int = 10,
@@ -496,6 +515,7 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
                 last_accessed=last_accessed,
                 event_date=event_date,
                 memory_hash=memory_hash,
+                id=id,
                 discrete_memory_extracted=discrete_memory_extracted,
             )
 
@@ -610,9 +630,25 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
             logger.error(f"Error counting memories in vector store: {e}")
             return 0
 
+    async def update_memories(self, memories: list[MemoryRecord]) -> int:
+        """Update memory records in the vector store."""
+        if not memories:
+            return 0
+
+        # This is less than ideal, but the VectorStore interface lacks an update method.
+        try:
+            await self.delete_memories([memory.id for memory in memories])
+            await self.add_memories(memories)
+            return len(memories)
+        except Exception as e:
+            logger.error(f"Error updating memories in vector store: {e}")
+            return 0
+
 
 class RedisVectorStoreAdapter(VectorStoreAdapter):
     """Redis adapter that uses LangChain's RedisVectorStore with Redis-specific optimizations."""
+
+    vectorstore: RedisVectorStore
 
     def __init__(self, vectorstore: VectorStore, embeddings: Embeddings):
         """Initialize Redis adapter.
@@ -644,7 +680,7 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         event_date_val = memory.event_date.timestamp() if memory.event_date else None
 
         metadata = {
-            "id_": memory.id,
+            "id_": memory.id,  # The client-generated ID
             "session_id": memory.session_id,
             "user_id": memory.user_id,
             "namespace": memory.namespace,
@@ -656,7 +692,6 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             "memory_hash": memory.memory_hash,
             "discrete_memory_extracted": memory.discrete_memory_extracted,
             "memory_type": memory.memory_type.value,
-            "id": memory.id,
             "persisted_at": persisted_at_val,
             "extracted_from": memory.extracted_from,
             "event_date": event_date_val,
@@ -665,7 +700,12 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         # Remove None values to keep metadata clean
         metadata = {k: v for k, v in metadata.items() if v is not None}
 
+        # NOTE: We don't get back Document.id from RedisVL (because RedisVectorStore
+        # doesn't return it). Instead, we get our client-generated ID back as the "id_"
+        # metadata field.However, LangChain docs say "id" here will become a required
+        # field in the future, so we're setting it now.
         return Document(
+            id=memory.id,
             page_content=memory.text,
             metadata=metadata,
         )
@@ -678,14 +718,10 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         try:
             # Convert memories to LangChain Documents
             documents = []
-            ids = []
 
             for memory in memories:
-                # Set memory hash if not provided
                 if not memory.memory_hash:
                     memory.memory_hash = self.generate_memory_hash(memory)
-
-                # Ensure timestamps are set
                 now_timestamp = datetime.now(UTC)
                 if not memory.created_at:
                     memory.created_at = now_timestamp
@@ -698,16 +734,31 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                 doc = self.memory_to_document(memory)
                 documents.append(doc)
 
-                # Use memory.id or generate one
-                memory_id = memory.id or f"memory:{memory.memory_hash}"
-                ids.append(memory_id)
-
-            # Use the LangChain RedisVectorStore to add documents
-            return await self.vectorstore.aadd_documents(documents, ids=ids)
+            # Use the LangChain RedisVectorStore to add documents.
+            #
+            # NOTE: We pass our client-generated IDs as "keys" as an
+            # optimization -- without a key, RedisVL will generate a ULID to use
+            # as part of the key. However, either way, RedisVL will later
+            # returns a prefixed Redis key instead of our precise ID value, e.g. if
+            # we give it "id", we'll get back "my-prefix:<id>". This means if we want
+            # to query on ID with Redis Query Engine or get back the ID without
+            # parsing that prefixed key, we need to send it as a metadata field.
+            # That is exactly what we do, also sending it as "id_" separately from
+            # this use for keys.
+            keys = [doc.metadata.get("id_", "") for doc in documents]
+            return await self.vectorstore.aadd_documents(documents, keys=keys)
 
         except Exception as e:
             logger.error(f"Error adding memories to Redis vectorstore: {e}")
             raise
+
+    async def update_memories(self, memories: list[MemoryRecord]) -> int:
+        """Update memory records in the vector store."""
+        if not memories:
+            return 0
+
+        added = await self.add_memories(memories)
+        return len(added)
 
     async def search_memories(
         self,
@@ -722,6 +773,7 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         memory_type: MemoryType | None = None,
         event_date: EventDate | None = None,
         memory_hash: MemoryHash | None = None,
+        id: Id | None = None,
         discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
         distance_threshold: float | None = None,
         limit: int = 10,
@@ -751,6 +803,8 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             filters.append(event_date.to_filter())
         if memory_hash:
             filters.append(memory_hash.to_filter())
+        if id:
+            filters.append(id.to_filter())
         if discrete_memory_extracted:
             filters.append(discrete_memory_extracted.to_filter())
 
@@ -778,11 +832,15 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             score_threshold = 1.0 - distance_threshold
             search_kwargs["score_threshold"] = score_threshold
 
+        print("Search kwargs: ", search_kwargs)
+
         search_results = (
             await self.vectorstore.asimilarity_search_with_relevance_scores(
                 **search_kwargs
             )
         )
+
+        print("Search results: ", search_results)
 
         # Convert results to MemoryRecordResult objects
         memory_results = []
@@ -805,7 +863,7 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
 
             # Extract memory data
             memory_result = MemoryRecordResult(
-                id=doc.metadata.get("id_", ""),
+                id=doc.metadata.get("id_", ""),  # Get our client-generated ID
                 text=doc.page_content,
                 dist=distance,
                 created_at=parse_timestamp_to_datetime(doc.metadata.get("created_at")),

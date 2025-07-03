@@ -3,7 +3,6 @@ import os
 from typing import TYPE_CHECKING, Any
 
 import ulid
-from redis.asyncio.client import Redis
 from tenacity.asyncio import AsyncRetrying
 from tenacity.stop import stop_after_attempt
 from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
@@ -17,8 +16,6 @@ from agent_memory_server.llms import (
 )
 from agent_memory_server.logging import get_logger
 from agent_memory_server.models import MemoryRecord
-from agent_memory_server.utils.keys import Keys
-from agent_memory_server.utils.redis import get_redis_conn
 
 
 if TYPE_CHECKING:
@@ -266,85 +263,91 @@ DISCRETE_EXTRACTION_PROMPT = """
 
 
 async def extract_discrete_memories(
-    redis: Redis | None = None,
+    memories: list[MemoryRecord] | None = None,
     deduplicate: bool = True,
 ):
     """
     Extract episodic and semantic memories from text using an LLM.
     """
-    redis = await get_redis_conn()
     client = await get_model_client(settings.generation_model)
 
     # Use vectorstore adapter to find messages that need discrete memory extraction
+    # TODO: Sort out circular imports
     from agent_memory_server.filters import MemoryType
+    from agent_memory_server.long_term_memory import index_long_term_memories
     from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
 
     adapter = await get_vectorstore_adapter()
-    offset = 0
 
-    while True:
-        # Search for message-type memories that haven't been processed for discrete extraction
-        search_result = await adapter.search_memories(
-            query="",  # Empty query to get all messages
-            memory_type=MemoryType(eq="message"),
-            discrete_memory_extracted=DiscreteMemoryExtracted(ne="t"),
-            limit=25,
-            offset=offset,
-        )
+    if not memories:
+        # If no memories are provided, search for any messages in long-term memory
+        # that haven't been processed for discrete extraction
 
-        discrete_memories = []
+        memories = []
+        offset = 0
+        while True:
+            search_result = await adapter.search_memories(
+                query="",  # Empty query to get all messages
+                memory_type=MemoryType(eq="message"),
+                discrete_memory_extracted=DiscreteMemoryExtracted(eq="f"),
+                limit=25,
+                offset=offset,
+            )
 
-        for message in search_result.memories:
-            if not message or not message.text:
-                logger.info(f"Deleting memory with no text: {message}")
-                await adapter.delete_memories([message.id])
-                continue
-            if not message.id:
-                logger.error(f"Skipping memory with no ID: {message}")
-                continue
+            logger.info(
+                f"Found {len(search_result.memories)} memories to extract: {[m.id for m in search_result.memories]}"
+            )
 
-            async for attempt in AsyncRetrying(stop=stop_after_attempt(3)):
-                with attempt:
-                    response = await client.create_chat_completion(
-                        model=settings.generation_model,
-                        prompt=DISCRETE_EXTRACTION_PROMPT.format(
-                            message=message.text, top_k_topics=settings.top_k_topics
-                        ),
-                        response_format={"type": "json_object"},
+            memories += search_result.memories
+
+            if len(search_result.memories) < 25:
+                break
+
+            offset += 25
+
+    new_discrete_memories = []
+    updated_memories = []
+
+    for memory in memories:
+        if not memory or not memory.text:
+            logger.info(f"Deleting memory with no text: {memory}")
+            await adapter.delete_memories([memory.id])
+            continue
+
+        async for attempt in AsyncRetrying(stop=stop_after_attempt(3)):
+            with attempt:
+                response = await client.create_chat_completion(
+                    model=settings.generation_model,
+                    prompt=DISCRETE_EXTRACTION_PROMPT.format(
+                        message=memory.text, top_k_topics=settings.top_k_topics
+                    ),
+                    response_format={"type": "json_object"},
+                )
+                try:
+                    new_message = json.loads(response.choices[0].message.content)
+                except json.JSONDecodeError:
+                    logger.error(
+                        f"Error decoding JSON: {response.choices[0].message.content}"
                     )
-                    try:
-                        new_message = json.loads(response.choices[0].message.content)
-                    except json.JSONDecodeError:
-                        logger.error(
-                            f"Error decoding JSON: {response.choices[0].message.content}"
-                        )
-                        raise
-                    try:
-                        assert isinstance(new_message, dict)
-                        assert isinstance(new_message["memories"], list)
-                    except AssertionError:
-                        logger.error(
-                            f"Invalid response format: {response.choices[0].message.content}"
-                        )
-                        raise
-                    discrete_memories.extend(new_message["memories"])
+                    raise
+                try:
+                    assert isinstance(new_message, dict)
+                    assert isinstance(new_message["memories"], list)
+                except AssertionError:
+                    logger.error(
+                        f"Invalid response format: {response.choices[0].message.content}"
+                    )
+                    raise
+                new_discrete_memories.extend(new_message["memories"])
 
-            # Update the memory to mark it as processed
-            # For now, we need to use Redis directly as the adapter doesn't have an update method
-            await redis.hset(
-                name=Keys.memory_key(message.id),  # Construct the key
-                key="discrete_memory_extracted",
-                value="t",
-            )  # type: ignore
+        # Update the memory to mark it as processed using the vectorstore adapter
+        updated_memory = memory.model_copy(update={"discrete_memory_extracted": "t"})
+        updated_memories.append(updated_memory)
 
-        if len(search_result.memories) < 25:
-            break
-        offset += 25
+    if updated_memories:
+        await adapter.update_memories(updated_memories)
 
-    # TODO: Added to avoid a circular import
-    from agent_memory_server.long_term_memory import index_long_term_memories
-
-    if discrete_memories:
+    if new_discrete_memories:
         long_term_memories = [
             MemoryRecord(
                 id=str(ulid.ULID()),
@@ -354,7 +357,7 @@ async def extract_discrete_memories(
                 entities=new_memory.get("entities", []),
                 discrete_memory_extracted="t",
             )
-            for new_memory in discrete_memories
+            for new_memory in new_discrete_memories
         ]
 
         await index_long_term_memories(

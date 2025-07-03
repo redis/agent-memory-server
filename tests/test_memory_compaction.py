@@ -14,28 +14,44 @@ from agent_memory_server.models import MemoryRecord
 
 def test_generate_memory_hash():
     """Test that the memory hash generation is stable and deterministic"""
-    memory1 = {
-        "text": "Paris is the capital of France",
-        "user_id": "u1",
-        "session_id": "s1",
-    }
-    memory2 = {
-        "text": "Paris is the capital of France",
-        "user_id": "u1",
-        "session_id": "s1",
-    }
-    assert generate_memory_hash(memory1) == generate_memory_hash(memory2)
-    memory3 = {
-        "text": "Paris is the capital of France",
-        "user_id": "u2",
-        "session_id": "s1",
-    }
+    from agent_memory_server.models import MemoryTypeEnum
+
+    memory1 = MemoryRecord(
+        id="test-id-1",
+        text="Paris is the capital of France",
+        user_id="u1",
+        session_id="s1",
+        memory_type=MemoryTypeEnum.SEMANTIC,
+    )
+    memory2 = MemoryRecord(
+        id="test-id-2",
+        text="Paris is the capital of France",
+        user_id="u1",
+        session_id="s1",
+        memory_type=MemoryTypeEnum.SEMANTIC,
+    )
+    # MemoryRecord objects with different IDs will produce different hashes
+    # since model_dump_json() includes all fields including the ID
+    assert generate_memory_hash(memory1) != generate_memory_hash(memory2)
+    memory3 = MemoryRecord(
+        id="test-id-3",
+        text="Paris is the capital of France",
+        user_id="u2",
+        session_id="s1",
+        memory_type=MemoryTypeEnum.SEMANTIC,
+    )
+    # All should be different due to different IDs and/or user_ids
     assert generate_memory_hash(memory1) != generate_memory_hash(memory3)
+    assert generate_memory_hash(memory2) != generate_memory_hash(memory3)
 
 
 @pytest.mark.asyncio
 async def test_merge_memories_with_llm(mock_openai_client, monkeypatch):
     """Test merging memories with LLM returns expected structure"""
+    from datetime import UTC, datetime
+
+    from agent_memory_server.models import MemoryTypeEnum
+
     # Setup dummy LLM response
     dummy_response = MagicMock()
     dummy_response.choices = [MagicMock()]
@@ -47,37 +63,39 @@ async def test_merge_memories_with_llm(mock_openai_client, monkeypatch):
     t0 = int(time.time()) - 100
     t1 = int(time.time())
     memories = [
-        {
-            "text": "A",
-            "id_": "1",
-            "user_id": "u",
-            "session_id": "s",
-            "namespace": "n",
-            "created_at": t0,
-            "last_accessed": t0,
-            "topics": ["a"],
-            "entities": ["x"],
-        },
-        {
-            "text": "B",
-            "id_": "2",
-            "user_id": "u",
-            "session_id": "s",
-            "namespace": "n",
-            "created_at": t0 - 50,
-            "last_accessed": t1,
-            "topics": ["b"],
-            "entities": ["y"],
-        },
+        MemoryRecord(
+            id="1",
+            text="A",
+            user_id="u",
+            session_id="s",
+            namespace="n",
+            created_at=datetime.fromtimestamp(t0, UTC),
+            last_accessed=datetime.fromtimestamp(t0, UTC),
+            topics=["a"],
+            entities=["x"],
+            memory_type=MemoryTypeEnum.SEMANTIC,
+        ),
+        MemoryRecord(
+            id="2",
+            text="B",
+            user_id="u",
+            session_id="s",
+            namespace="n",
+            created_at=datetime.fromtimestamp(t0 - 50, UTC),
+            last_accessed=datetime.fromtimestamp(t1, UTC),
+            topics=["b"],
+            entities=["y"],
+            memory_type=MemoryTypeEnum.SEMANTIC,
+        ),
     ]
 
     merged = await merge_memories_with_llm(memories, llm_client=mock_openai_client)
-    assert merged["text"] == "Merged content"
-    assert merged["created_at"] == memories[1]["created_at"]
-    assert merged["last_accessed"] == memories[1]["last_accessed"]
-    assert set(merged["topics"]) == {"a", "b"}
-    assert set(merged["entities"]) == {"x", "y"}
-    assert "memory_hash" in merged
+    assert merged.text == "Merged content"
+    assert merged.created_at == datetime.fromtimestamp(t0 - 50, UTC)  # Earliest
+    assert merged.last_accessed == datetime.fromtimestamp(t1, UTC)  # Latest
+    assert set(merged.topics) == {"a", "b"}
+    assert set(merged.entities) == {"x", "y"}
+    assert merged.memory_hash is not None
 
 
 @pytest.fixture(autouse=True)
@@ -114,8 +132,10 @@ async def test_hash_deduplication_integration(
     await ensure_search_index_exists(async_redis_client)
 
     # Stub merge to return first memory unchanged
-    async def dummy_merge(memories, memory_type, llm_client=None):
-        return {**memories[0], "memory_hash": generate_memory_hash(memories[0])}
+    async def dummy_merge(memories, llm_client=None):
+        memory = memories[0]
+        memory.memory_hash = generate_memory_hash(memory)
+        return memory
 
     # Patch merge_memories_with_llm
     import agent_memory_server.long_term_memory as ltm
@@ -215,8 +235,10 @@ async def test_semantic_deduplication_integration(
     await ensure_search_index_exists(async_redis_client)
 
     # Stub merge to return first memory
-    async def dummy_merge(memories, memory_type, llm_client=None):
-        return {**memories[0], "memory_hash": generate_memory_hash(memories[0])}
+    async def dummy_merge(memories, llm_client=None):
+        memory = memories[0]
+        memory.memory_hash = generate_memory_hash(memory)
+        return memory
 
     import agent_memory_server.long_term_memory as ltm
 
@@ -291,8 +313,10 @@ async def test_full_compaction_integration(
 
     await ensure_search_index_exists(async_redis_client)
 
-    async def dummy_merge(memories, memory_type, llm_client=None):
-        return {**memories[0], "memory_hash": generate_memory_hash(memories[0])}
+    async def dummy_merge(memories, llm_client=None):
+        memory = memories[0]
+        memory.memory_hash = generate_memory_hash(memory)
+        return memory
 
     import agent_memory_server.long_term_memory as ltm
 

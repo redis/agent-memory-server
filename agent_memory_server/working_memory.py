@@ -152,7 +152,7 @@ async def set_working_memory(
     # Validate that all memories have id (Stage 3 requirement)
     for memory in working_memory.memories:
         if not memory.id:
-            raise ValueError("All memory records in working memory must have an id")
+            raise ValueError("All memory records in working memory must have an ID")
 
     key = Keys.working_memory_key(
         session_id=working_memory.session_id,

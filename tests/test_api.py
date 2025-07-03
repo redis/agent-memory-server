@@ -690,6 +690,112 @@ class TestLongTermMemoryEndpoint:
         data = response.json()
         assert data["status"] == "ok"
 
+    @pytest.mark.asyncio
+    async def test_delete_long_term_memory_success(
+        self, client_with_mock_background_tasks, mock_background_tasks
+    ):
+        """Test successfully deleting long-term memories"""
+        client = client_with_mock_background_tasks
+
+        memory_ids = ["memory-1", "memory-2", "memory-3"]
+
+        mock_settings = Settings(long_term_memory=True)
+
+        # Mock the delete_long_term_memories function to return a count
+        with (
+            patch("agent_memory_server.api.settings", mock_settings),
+            patch(
+                "agent_memory_server.api.long_term_memory.delete_long_term_memories"
+            ) as mock_delete,
+        ):
+            mock_delete.return_value = 3  # 3 memories deleted
+
+            response = await client.delete(
+                "/v1/long-term-memory", params={"memory_ids": memory_ids}
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok, deleted 3 memories"
+
+        # Verify delete function was called with correct arguments
+        mock_delete.assert_called_once_with(ids=["memory-1", "memory-2", "memory-3"])
+
+    @pytest.mark.asyncio
+    async def test_delete_long_term_memory_empty_list(
+        self, client_with_mock_background_tasks, mock_background_tasks
+    ):
+        """Test deleting long-term memories with empty ID list"""
+        client = client_with_mock_background_tasks
+
+        memory_ids = []
+
+        mock_settings = Settings(long_term_memory=True)
+
+        # Mock the delete_long_term_memories function to return zero count
+        with (
+            patch("agent_memory_server.api.settings", mock_settings),
+            patch(
+                "agent_memory_server.api.long_term_memory.delete_long_term_memories"
+            ) as mock_delete,
+        ):
+            mock_delete.return_value = 0  # No memories deleted
+
+            response = await client.delete(
+                "/v1/long-term-memory", params={"memory_ids": memory_ids}
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok, deleted 0 memories"
+
+        # Verify delete function was called
+        mock_delete.assert_called_once_with(ids=[])
+
+    @pytest.mark.asyncio
+    async def test_delete_long_term_memory_disabled(self, client):
+        """Test deleting long-term memories when long-term memory is disabled"""
+        memory_ids = ["memory-1", "memory-2"]
+
+        mock_settings = Settings(long_term_memory=False)
+
+        with patch("agent_memory_server.api.settings", mock_settings):
+            response = await client.delete(
+                "/v1/long-term-memory", params={"memory_ids": memory_ids}
+            )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert data["detail"] == "Long-term memory is disabled"
+
+    @pytest.mark.asyncio
+    async def test_delete_long_term_memory_no_parameters(
+        self, client_with_mock_background_tasks, mock_background_tasks
+    ):
+        """Test deleting long-term memories with no parameters (defaults to empty list)"""
+        client = client_with_mock_background_tasks
+
+        mock_settings = Settings(long_term_memory=True)
+
+        # Mock the delete_long_term_memories function to return zero count for empty list
+        with (
+            patch("agent_memory_server.api.settings", mock_settings),
+            patch(
+                "agent_memory_server.api.long_term_memory.delete_long_term_memories"
+            ) as mock_delete,
+        ):
+            mock_delete.return_value = 0  # No memories to delete
+
+            response = await client.delete("/v1/long-term-memory")
+
+        # Should succeed with 0 deletions (empty list is valid)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok, deleted 0 memories"
+
+        # Verify delete function was called with empty list
+        mock_delete.assert_called_once_with(ids=[])
+
 
 @pytest.mark.requires_api_keys
 class TestUnifiedSearchEndpoint:
