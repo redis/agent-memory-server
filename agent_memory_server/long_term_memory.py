@@ -1326,6 +1326,7 @@ async def promote_working_memory_to_long_term(
 
     # Process unpersisted messages
     updated_messages = []
+    memory_records_to_index = []
     for msg in current_working_memory.messages:
         if msg.persisted_at is None:
             # Generate ID if not present (backward compatibility)
@@ -1352,12 +1353,8 @@ async def promote_working_memory_to_long_term(
             current_memory = deduped_memory or memory_record
             current_memory.persisted_at = datetime.now(UTC)
 
-            # Index in long-term storage
-            await index_long_term_memories(
-                [current_memory],
-                redis_client=redis,
-                deduplicate=False,  # Already deduplicated by ID
-            )
+            # Collect memory record for batch indexing
+            memory_records_to_index.append(current_memory)
 
             # Update message with persisted_at timestamp
             msg.persisted_at = current_memory.persisted_at
@@ -1369,6 +1366,14 @@ async def promote_working_memory_to_long_term(
                 logger.info(f"Promoted new message with id {msg.id}")
 
         updated_messages.append(msg)
+
+    # Batch index all new memory records for messages
+    if memory_records_to_index:
+        await index_long_term_memories(
+            memory_records_to_index,
+            redis_client=redis,
+            deduplicate=False,  # Already deduplicated by ID
+        )
 
     # Update working memory with the new persisted_at timestamps and extracted memories
     if promoted_count > 0 or extracted_memories:

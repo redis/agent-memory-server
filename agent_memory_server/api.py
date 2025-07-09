@@ -327,7 +327,9 @@ async def put_working_memory(
     )
 
     # Background tasks for long-term memory promotion and indexing (if enabled)
-    if settings.long_term_memory and updated_memory.memories:
+    if settings.long_term_memory and (
+        updated_memory.memories or updated_memory.messages
+    ):
         # Promote structured memories from working memory to long-term storage
         await background_tasks.add_task(
             long_term_memory.promote_working_memory_to_long_term,

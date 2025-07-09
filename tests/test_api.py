@@ -6,7 +6,6 @@ import pytest
 
 from agent_memory_server.config import Settings
 from agent_memory_server.long_term_memory import (
-    index_long_term_memories,
     promote_working_memory_to_long_term,
 )
 from agent_memory_server.models import (
@@ -153,7 +152,11 @@ class TestMemoryEndpoints:
             "/v1/working-memory/test-session?namespace=test-namespace"
         )
         assert updated_session.status_code == 200
-        assert updated_session.json()["messages"] == payload["messages"]
+        retrieved_messages = updated_session.json()["messages"]
+        assert len(retrieved_messages) == len(payload["messages"])
+        for i, msg in enumerate(retrieved_messages):
+            assert msg["role"] == payload["messages"][i]["role"]
+            assert msg["content"] == payload["messages"][i]["content"]
 
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
@@ -188,10 +191,10 @@ class TestMemoryEndpoints:
         # Check that background tasks were called
         assert mock_background_tasks.add_task.call_count == 1
 
-        # Check that the last call was for long-term memory indexing
+        # Check that the last call was for long-term memory promotion
         assert (
             mock_background_tasks.add_task.call_args_list[-1][0][0]
-            == index_long_term_memories
+            == promote_working_memory_to_long_term
         )
 
     @pytest.mark.requires_api_keys
