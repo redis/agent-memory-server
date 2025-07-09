@@ -659,7 +659,25 @@ async def set_working_memory(
     )
     ```
 
-    4. Replace entire working memory state:
+    4. Store conversation messages:
+    ```python
+    set_working_memory(
+        session_id="current_session",
+        messages=[
+            {
+                "role": "user",
+                "content": "What is the weather like?",
+                "id": "msg_001"  # Optional - auto-generated if not provided
+            },
+            {
+                "role": "assistant",
+                "content": "I'll check the weather for you."
+            }
+        ]
+    )
+    ```
+
+    5. Replace entire working memory state:
     ```python
     set_working_memory(
         session_id="current_session",
@@ -673,7 +691,7 @@ async def set_working_memory(
     Args:
         session_id: The session ID to set memory for (required)
         memories: List of structured memory records (semantic, episodic, message types)
-        messages: List of conversation messages (role/content pairs)
+        messages: List of conversation messages (role/content pairs with optional id/persisted_at)
         context: Optional summary/context text
         data: Optional dictionary for storing arbitrary JSON data
         namespace: Optional namespace for scoping
@@ -712,12 +730,35 @@ async def set_working_memory(
 
             processed_memories.append(processed_memory)
 
+    # Process messages to ensure proper format
+    processed_messages = []
+    if messages:
+        for message in messages:
+            # Handle both MemoryMessage objects and dict inputs
+            if isinstance(message, MemoryMessage):
+                # Already a MemoryMessage object, ensure persisted_at is None for new messages
+                processed_message = message.model_copy(
+                    update={
+                        "persisted_at": None,  # Mark as pending promotion
+                    }
+                )
+            else:
+                # Dictionary input, convert to MemoryMessage
+                message_dict = dict(message)
+                # Remove id=None to allow auto-generation
+                if message_dict.get("id") is None:
+                    message_dict.pop("id", None)
+                message_dict["persisted_at"] = None
+                processed_message = MemoryMessage(**message_dict)
+
+            processed_messages.append(processed_message)
+
     # Create the working memory object
     working_memory_obj = WorkingMemory(
         session_id=session_id,
         namespace=memory_namespace,
         memories=processed_memories,
-        messages=messages or [],
+        messages=processed_messages,
         context=context,
         data=data or {},
         user_id=user_id,

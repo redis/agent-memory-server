@@ -2,7 +2,6 @@ import tiktoken
 from fastapi import APIRouter, Depends, HTTPException, Query
 from mcp.server.fastmcp.prompts import base
 from mcp.types import TextContent
-from ulid import ULID
 
 from agent_memory_server import long_term_memory, working_memory
 from agent_memory_server.auth import UserInfo, get_current_user
@@ -18,7 +17,6 @@ from agent_memory_server.models import (
     MemoryPromptRequest,
     MemoryPromptResponse,
     MemoryRecordResultsResponse,
-    MemoryTypeEnum,
     ModelNameLiteral,
     SearchRequest,
     SessionListResponse,
@@ -329,35 +327,13 @@ async def put_working_memory(
     )
 
     # Background tasks for long-term memory promotion and indexing (if enabled)
-    if settings.long_term_memory:
+    if settings.long_term_memory and updated_memory.memories:
         # Promote structured memories from working memory to long-term storage
-        if updated_memory.memories:
-            await background_tasks.add_task(
-                long_term_memory.promote_working_memory_to_long_term,
-                session_id,
-                updated_memory.namespace,
-            )
-
-        # Index message-based memories
-        if updated_memory.messages:
-            from agent_memory_server.models import MemoryRecord
-
-            memories = [
-                MemoryRecord(
-                    id=str(ULID()),
-                    session_id=session_id,
-                    text=f"{msg.role}: {msg.content}",
-                    namespace=updated_memory.namespace,
-                    user_id=updated_memory.user_id,
-                    memory_type=MemoryTypeEnum.MESSAGE,
-                )
-                for msg in updated_memory.messages
-            ]
-
-            await background_tasks.add_task(
-                long_term_memory.index_long_term_memories,
-                memories,
-            )
+        await background_tasks.add_task(
+            long_term_memory.promote_working_memory_to_long_term,
+            session_id,
+            updated_memory.namespace,
+        )
 
     return updated_memory
 

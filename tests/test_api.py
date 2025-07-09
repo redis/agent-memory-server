@@ -89,10 +89,22 @@ class TestMemoryEndpoints:
 
         data = response.json()
         response = WorkingMemoryResponse(**data)
-        assert response.messages == [
-            MemoryMessage(role="user", content="Hello"),
-            MemoryMessage(role="assistant", content="Hi there"),
-        ]
+
+        # Check that we have 2 messages with correct roles and content
+        assert len(response.messages) == 2
+
+        # Check message content and roles (IDs are auto-generated so we can't compare directly)
+        message_contents = [msg.content for msg in response.messages]
+        message_roles = [msg.role for msg in response.messages]
+        assert "Hello" in message_contents
+        assert "Hi there" in message_contents
+        assert "user" in message_roles
+        assert "assistant" in message_roles
+
+        # Check that all messages have IDs (auto-generated)
+        for msg in response.messages:
+            assert msg.id is not None
+            assert len(msg.id) > 0
 
         roles = [msg["role"] for msg in data["messages"]]
         contents = [msg["content"] for msg in data["messages"]]

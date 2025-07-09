@@ -31,6 +31,7 @@ from .models import (
     AckResponse,
     ClientMemoryRecord,
     HealthCheckResponse,
+    MemoryMessage,
     MemoryRecord,
     MemoryRecordResults,
     MemoryTypeEnum,
@@ -2055,7 +2056,7 @@ class MemoryAPIClient:
     async def append_messages_to_working_memory(
         self,
         session_id: str,
-        messages: list[dict[str, Any]],  # Expect proper message dicts
+        messages: list[dict[str, Any] | MemoryMessage],
         namespace: str | None = None,
         model_name: str | None = None,
         context_window_max: int | None = None,
@@ -2068,7 +2069,7 @@ class MemoryAPIClient:
 
         Args:
             session_id: Target session
-            messages: List of message dictionaries with 'role' and 'content' keys
+            messages: List of message dictionaries or MemoryMessage objects
             namespace: Optional namespace
             model_name: Optional model name for token-based summarization
             context_window_max: Optional direct specification of context window max tokens
@@ -2081,19 +2082,36 @@ class MemoryAPIClient:
             session_id=session_id, namespace=namespace, user_id=user_id
         )
 
-        # Validate new messages have required structure
+        # Convert messages to MemoryMessage objects
+        converted_messages = []
         for msg in messages:
-            if not isinstance(msg, dict) or "role" not in msg or "content" not in msg:
+            if isinstance(msg, MemoryMessage):
+                converted_messages.append(msg)
+            elif isinstance(msg, dict):
+                if "role" not in msg or "content" not in msg:
+                    raise ValueError("All messages must have 'role' and 'content' keys")
+                # Build message kwargs, only including non-None values
+                message_kwargs = {
+                    "role": msg["role"],
+                    "content": msg["content"],
+                }
+                if msg.get("id") is not None:
+                    message_kwargs["id"] = msg["id"]
+                if msg.get("persisted_at") is not None:
+                    message_kwargs["persisted_at"] = msg["persisted_at"]
+
+                converted_messages.append(MemoryMessage(**message_kwargs))
+            else:
                 raise ValueError(
-                    "All messages must be dictionaries with 'role' and 'content' keys"
+                    "All messages must be dictionaries or MemoryMessage objects"
                 )
 
-        # Get existing messages (already in proper dict format from get_working_memory)
+        # Get existing messages
         existing_messages = []
         if existing_memory and existing_memory.messages:
             existing_messages = existing_memory.messages
 
-        final_messages = existing_messages + messages
+        final_messages = existing_messages + converted_messages
 
         # Create updated working memory
         working_memory = WorkingMemory(

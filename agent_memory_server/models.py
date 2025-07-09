@@ -67,6 +67,14 @@ class MemoryMessage(BaseModel):
 
     role: str
     content: str
+    id: str = Field(
+        default_factory=lambda: str(ULID()),
+        description="Unique identifier for the message (auto-generated if not provided)",
+    )
+    persisted_at: datetime | None = Field(
+        default=None,
+        description="Server-assigned timestamp when message was persisted to long-term storage",
+    )
 
 
 class SessionListResponse(BaseModel):

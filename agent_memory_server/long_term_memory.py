@@ -1247,12 +1247,19 @@ async def promote_working_memory_to_long_term(
         if memory.persisted_at is None
     ]
 
-    if not unpersisted_memories:
-        logger.debug(f"No unpersisted memories found in session {session_id}")
+    # Find unpersisted messages (similar to unpersisted memories)
+    unpersisted_messages = [
+        msg for msg in current_working_memory.messages if msg.persisted_at is None
+    ]
+
+    if not unpersisted_memories and not unpersisted_messages:
+        logger.debug(
+            f"No unpersisted memories or messages found in session {session_id}"
+        )
         return 0
 
     logger.info(
-        f"Promoting {len(unpersisted_memories)} memories from session {session_id}"
+        f"Promoting {len(unpersisted_memories)} memories and {len(unpersisted_messages)} messages from session {session_id}"
     )
 
     promoted_count = 0
@@ -1317,10 +1324,57 @@ async def promote_working_memory_to_long_term(
         )
         updated_memories.extend(extracted_memories)
 
+    # Process unpersisted messages
+    updated_messages = []
+    for msg in current_working_memory.messages:
+        if msg.persisted_at is None:
+            # Generate ID if not present (backward compatibility)
+            if not msg.id:
+                msg.id = str(ULID())
+
+            memory_record = MemoryRecord(
+                id=msg.id,
+                session_id=session_id,
+                text=f"{msg.role}: {msg.content}",
+                namespace=namespace,
+                user_id=current_working_memory.user_id,
+                memory_type=MemoryTypeEnum.MESSAGE,
+                persisted_at=None,
+            )
+
+            # Apply same deduplication logic as structured memories
+            deduped_memory, was_overwrite = await deduplicate_by_id(
+                memory=memory_record,
+                redis_client=redis,
+            )
+
+            # Set persisted_at timestamp
+            current_memory = deduped_memory or memory_record
+            current_memory.persisted_at = datetime.now(UTC)
+
+            # Index in long-term storage
+            await index_long_term_memories(
+                [current_memory],
+                redis_client=redis,
+                deduplicate=False,  # Already deduplicated by ID
+            )
+
+            # Update message with persisted_at timestamp
+            msg.persisted_at = current_memory.persisted_at
+            promoted_count += 1
+
+            if was_overwrite:
+                logger.info(f"Overwrote existing message with id {msg.id}")
+            else:
+                logger.info(f"Promoted new message with id {msg.id}")
+
+        updated_messages.append(msg)
+
     # Update working memory with the new persisted_at timestamps and extracted memories
     if promoted_count > 0 or extracted_memories:
         updated_working_memory = current_working_memory.model_copy()
         updated_working_memory.memories = updated_memories
+        updated_working_memory.messages = updated_messages
         updated_working_memory.updated_at = datetime.now(UTC)
 
         await working_memory.set_working_memory(
@@ -1329,7 +1383,7 @@ async def promote_working_memory_to_long_term(
         )
 
         logger.info(
-            f"Successfully promoted {promoted_count} memories to long-term storage"
+            f"Successfully promoted {promoted_count} memories and messages to long-term storage"
             + (
                 f" and extracted {len(extracted_memories)} new memories"
                 if extracted_memories
