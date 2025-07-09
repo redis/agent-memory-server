@@ -14,9 +14,7 @@ uv install --all-extras      # Install dependencies
 uv sync --all-extras         # Sync latest dependencies
 uv run ruff check            # Run linting
 uv run ruff format           # Format code
-uv run pytest                # Run tests
-uv run pytest tests/         # Run specific test directory
-uv run pytest --run-api-tests # Run all tests, including API tests
+uv run pytest --run-api-tests # Run all tests
 uv add <dependency>          # Add a dependency to pyproject.toml and update lock file
 uv remove <dependency>       # Remove a dependency from pyproject.toml and update lock file
 
