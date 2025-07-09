@@ -11,6 +11,7 @@ import sys
 import click
 import uvicorn
 
+from agent_memory_server import __version__
 from agent_memory_server.config import settings
 from agent_memory_server.logging import configure_logging, get_logger
 from agent_memory_server.migrations import (
@@ -24,7 +25,7 @@ from agent_memory_server.utils.redis import ensure_search_index_exists, get_redi
 configure_logging()
 logger = get_logger(__name__)
 
-VERSION = "0.2.0"
+VERSION = __version__
 
 
 @click.group()
