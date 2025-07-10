@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 Command-line interface for agent-memory-server.
 """
@@ -24,7 +23,6 @@ from agent_memory_server.migrations import (
 from agent_memory_server.utils.redis import ensure_search_index_exists, get_redis_conn
 
 
-# Don't configure logging at module level - let each command handle it
 logger = get_logger(__name__)
 
 VERSION = "0.2.0"

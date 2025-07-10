@@ -832,15 +832,11 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             score_threshold = 1.0 - distance_threshold
             search_kwargs["score_threshold"] = score_threshold
 
-        print("Search kwargs: ", search_kwargs)
-
         search_results = (
             await self.vectorstore.asimilarity_search_with_relevance_scores(
                 **search_kwargs
             )
         )
-
-        print("Search results: ", search_results)
 
         # Convert results to MemoryRecordResult objects
         memory_results = []

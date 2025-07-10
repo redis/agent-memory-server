@@ -308,12 +308,12 @@ async def put_working_memory(
     if user_id is not None:
         memory.user_id = user_id
 
-    # Validate that all structured memories have id (if any)
-    for mem in memory.memories:
-        if not mem.id:
+    # Validate that all long-term memories have id (if any)
+    for long_term_mem in memory.memories:
+        if not long_term_mem.id:
             raise HTTPException(
                 status_code=400,
-                detail="All memory records in working memory must have an ID",
+                detail="All long-term memory records in working memory must have an ID",
             )
 
     # Handle summarization if needed (before storing) - now token-based
@@ -453,16 +453,12 @@ async def search_long_term_memory(
     # Extract filter objects from the payload
     filters = payload.get_filters()
 
-    print("Long-term search filters: ", filters)
-
     kwargs = {
         "distance_threshold": payload.distance_threshold,
         "limit": payload.limit,
         "offset": payload.offset,
         **filters,
     }
-
-    print("Kwargs: ", kwargs)
 
     kwargs["text"] = payload.text or ""
 
@@ -567,8 +563,6 @@ async def memory_prompt(
 
     redis = await get_redis_conn()
     _messages = []
-
-    print("Received params: ", params)
 
     if params.session:
         # Use token limit for memory prompt, fallback to message count for backward compatibility
