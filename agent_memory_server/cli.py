@@ -5,14 +5,17 @@ Command-line interface for agent-memory-server.
 
 import datetime
 import importlib
-import logging
 import sys
 
 import click
 import uvicorn
 
 from agent_memory_server.config import settings
-from agent_memory_server.logging import configure_logging, get_logger
+from agent_memory_server.logging import (
+    configure_logging,
+    configure_mcp_logging,
+    get_logger,
+)
 from agent_memory_server.migrations import (
     migrate_add_discrete_memory_extracted_2,
     migrate_add_memory_hashes_1,
@@ -21,7 +24,7 @@ from agent_memory_server.migrations import (
 from agent_memory_server.utils.redis import ensure_search_index_exists, get_redis_conn
 
 
-configure_logging()
+# Don't configure logging at module level - let each command handle it
 logger = get_logger(__name__)
 
 VERSION = "0.2.0"
@@ -44,6 +47,8 @@ def rebuild_index():
     """Rebuild the search index."""
     import asyncio
 
+    configure_logging()
+
     async def setup_and_run():
         redis = await get_redis_conn()
         await ensure_search_index_exists(redis, overwrite=True)
@@ -56,6 +61,7 @@ def migrate_memories():
     """Migrate memories from the old format to the new format."""
     import asyncio
 
+    configure_logging()
     click.echo("Starting memory migrations...")
 
     async def run_migrations():
@@ -81,6 +87,7 @@ def api(port: int, host: str, reload: bool):
     """Run the REST API server."""
     from agent_memory_server.main import on_start_logger
 
+    configure_logging()
     on_start_logger(port)
     uvicorn.run(
         "agent_memory_server.main:app",
@@ -102,6 +109,12 @@ def mcp(port: int, mode: str):
     """Run the MCP server."""
     import asyncio
 
+    # Configure MCP-specific logging BEFORE any imports to avoid stdout contamination
+    if mode == "stdio":
+        configure_mcp_logging()
+    else:
+        configure_logging()
+
     # Update the port in settings FIRST
     settings.mcp_port = port
 
@@ -116,14 +129,7 @@ def mcp(port: int, mode: str):
             logger.info(f"Starting MCP server on port {port}\n")
             await mcp_app.run_sse_async()
         elif mode == "stdio":
-            # Try to force all logging to stderr because stdio-mode MCP servers
-            # use standard output for the protocol.
-            logging.basicConfig(
-                level=settings.log_level,
-                stream=sys.stderr,
-                force=True,  # remove any existing handlers
-                format="%(asctime)s %(name)s %(levelname)s %(message)s",
-            )
+            # Logging already configured above
             await mcp_app.run_stdio_async()
         else:
             raise ValueError(f"Invalid mode: {mode}")
@@ -152,6 +158,8 @@ def schedule_task(task_path: str, args: list[str]):
     import asyncio
 
     from docket import Docket
+
+    configure_logging()
 
     # Parse the arguments
     task_args = {}
@@ -217,6 +225,8 @@ def task_worker(concurrency: int, redelivery_timeout: int):
     import asyncio
 
     from docket import Worker
+
+    configure_logging()
 
     if not settings.use_docket:
         click.echo("Docket is disabled in settings. Cannot run worker.")
