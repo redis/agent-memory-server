@@ -21,8 +21,12 @@ from agent_memory_server.migrations import (
 from agent_memory_server.utils.redis import ensure_search_index_exists, get_redis_conn
 
 
-configure_logging()
-logger = get_logger(__name__)
+# Don't configure logging at module level - let each command handle it
+def _get_logger():
+    """Get logger instance after ensuring logging is configured."""
+    configure_logging()
+    return get_logger(__name__)
+
 
 VERSION = "0.2.0"
 
@@ -113,7 +117,7 @@ def mcp(port: int, mode: str):
 
         # Run the MCP server
         if mode == "sse":
-            logger.info(f"Starting MCP server on port {port}\n")
+            _get_logger().info(f"Starting MCP server on port {port}\n")
             await mcp_app.run_sse_async()
         elif mode == "stdio":
             # Try to force all logging to stderr because stdio-mode MCP servers
