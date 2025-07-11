@@ -54,11 +54,7 @@ This project is under active development and is **pre-release** software. Think 
 
 ### Roadmap
 
-- [x] Long-term memory deduplication and compaction
-- [x] Use a background task system instead of `BackgroundTask`
-- [x] Authentication/authorization hooks (OAuth2/JWT support)
-- [ ] Configurable strategy for moving working memory to long-term memory
-- [ ] Separate Redis connections for long-term and working memory
+- [] Easier RBAC customization: role definitions, more hooks
 
 ## REST API Endpoints
 
