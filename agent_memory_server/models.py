@@ -67,6 +67,18 @@ class MemoryMessage(BaseModel):
 
     role: str
     content: str
+    id: str = Field(
+        default_factory=lambda: str(ULID()),
+        description="Unique identifier for the message (auto-generated if not provided)",
+    )
+    persisted_at: datetime | None = Field(
+        default=None,
+        description="Server-assigned timestamp when message was persisted to long-term storage",
+    )
+    discrete_memory_extracted: Literal["t", "f"] = Field(
+        default="f",
+        description="Whether memory extraction has run for this message",
+    )
 
 
 class SessionListResponse(BaseModel):
@@ -143,7 +155,7 @@ class ClientMemoryRecord(MemoryRecord):
     """A memory record with a client-provided ID"""
 
     id: str = Field(
-        default=str(ULID()),
+        default_factory=lambda: str(ULID()),
         description="Client-provided ID for deduplication and overwrites",
     )
 
@@ -216,6 +228,7 @@ class WorkingMemoryRequest(BaseModel):
 
     session_id: str
     namespace: str | None = None
+    user_id: str | None = None
     window_size: int = settings.window_size
     model_name: ModelNameLiteral | None = None
     context_window_max: int | None = None
@@ -257,6 +270,7 @@ class GetSessionsQuery(BaseModel):
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
     namespace: str | None = None
+    user_id: str | None = None
 
 
 class HealthCheckResponse(BaseModel):
@@ -361,7 +375,7 @@ class SearchRequest(BaseModel):
 class MemoryPromptRequest(BaseModel):
     query: str
     session: WorkingMemoryRequest | None = None
-    long_term_search: SearchRequest | None = None
+    long_term_search: SearchRequest | bool | None = None
 
 
 class SystemMessage(base.Message):
@@ -378,3 +392,15 @@ class UserMessage(base.Message):
 
 class MemoryPromptResponse(BaseModel):
     messages: list[base.Message | SystemMessage]
+
+
+class LenientMemoryRecord(MemoryRecord):
+    """A memory record that can be created without an ID"""
+
+    id: str | None = Field(default_factory=lambda: str(ULID()))
+
+
+class DeleteMemoryRecordRequest(BaseModel):
+    """Payload for deleting memory records"""
+
+    ids: list[str]

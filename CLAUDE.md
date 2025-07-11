@@ -8,11 +8,15 @@ pip install uv
 
 ```bash
 # Development workflow
-uv install                    # Install dependencies
+uv venv                      # Create a virtualenv (once)
+source .venv/bin/activate    # Activate the virtualenv (start of terminal session)
+uv install --all-extras      # Install dependencies
+uv sync --all-extras         # Sync latest dependencies
 uv run ruff check            # Run linting
 uv run ruff format           # Format code
-uv run pytest               # Run tests
-uv run pytest tests/        # Run specific test directory
+uv run pytest --run-api-tests # Run all tests
+uv add <dependency>          # Add a dependency to pyproject.toml and update lock file
+uv remove <dependency>       # Remove a dependency from pyproject.toml and update lock file
 
 # Server commands
 uv run agent-memory api      # Start REST API server (default port 8000)
@@ -36,6 +40,7 @@ docker-compose down          # Stop all services
 IMPORTANT: This project uses `pre-commit`. You should run `pre-commit`
 before committing:
 ```bash
+uv run pre-commit install  # Install the hooks first
 uv run pre-commit run --all-files
 ```
 
@@ -62,7 +67,7 @@ Working Memory (Session-scoped)  →  Long-term Memory (Persistent)
 ```python
 # Correct - Use RedisVL queries
 from redisvl.query import VectorQuery, FilterQuery
-query = VectorQuery(vector=embedding, vector_field_name="embedding", return_fields=["text"])
+query = VectorQuery(vector=embedding, vector_field_name="vector", return_fields=["text"])
 
 # Avoid - Direct redis client searches
 # redis.ft().search(...)  # Don't do this

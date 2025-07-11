@@ -1,23 +1,23 @@
 import tiktoken
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from mcp.server.fastmcp.prompts import base
 from mcp.types import TextContent
-from ulid import ULID
 
 from agent_memory_server import long_term_memory, working_memory
 from agent_memory_server.auth import UserInfo, get_current_user
 from agent_memory_server.config import settings
 from agent_memory_server.dependencies import get_background_tasks
+from agent_memory_server.filters import SessionId, UserId
 from agent_memory_server.llms import get_model_client, get_model_config
 from agent_memory_server.logging import get_logger
 from agent_memory_server.models import (
     AckResponse,
     CreateMemoryRecordRequest,
     GetSessionsQuery,
+    MemoryMessage,
     MemoryPromptRequest,
     MemoryPromptResponse,
     MemoryRecordResultsResponse,
-    MemoryTypeEnum,
     ModelNameLiteral,
     SearchRequest,
     SessionListResponse,
@@ -34,67 +34,109 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-def _get_effective_window_size(
-    window_size: int,
-    context_window_max: int | None,
+def _get_effective_token_limit(
     model_name: ModelNameLiteral | None,
+    context_window_max: int | None,
 ) -> int:
+    """Calculate the effective token limit for working memory based on model context window."""
     # If context_window_max is explicitly provided, use that
     if context_window_max is not None:
-        effective_window_size = min(window_size, context_window_max)
+        return context_window_max
     # If model_name is provided, get its max_tokens from our config
-    elif model_name is not None:
+    if model_name is not None:
         model_config = get_model_config(model_name)
-        effective_window_size = min(window_size, model_config.max_tokens)
-    # Otherwise use the default window_size
-    else:
-        effective_window_size = window_size
-    return effective_window_size
+        return model_config.max_tokens
+    # Otherwise use a conservative default (GPT-3.5 context window)
+    return 16000  # Conservative default
+
+
+def _calculate_messages_token_count(messages: list[MemoryMessage]) -> int:
+    """Calculate total token count for a list of messages."""
+    encoding = tiktoken.get_encoding("cl100k_base")
+    total_tokens = 0
+
+    for msg in messages:
+        msg_str = f"{msg.role}: {msg.content}"
+        msg_tokens = len(encoding.encode(msg_str))
+        total_tokens += msg_tokens
+
+    return total_tokens
 
 
 async def _summarize_working_memory(
     memory: WorkingMemory,
-    window_size: int,
+    model_name: ModelNameLiteral | None = None,
+    context_window_max: int | None = None,
     model: str = settings.generation_model,
 ) -> WorkingMemory:
     """
-    Summarize working memory when it exceeds the window size.
+    Summarize working memory when it exceeds token limits.
 
     Args:
         memory: The working memory to potentially summarize
-        window_size: Maximum number of messages to keep
+        model_name: The client's LLM model name for context window determination
+        context_window_max: Direct specification of context window max tokens
         model: The model to use for summarization
 
     Returns:
         Updated working memory with summary and trimmed messages
     """
-    if len(memory.messages) <= window_size:
+    # Calculate current token usage
+    current_tokens = _calculate_messages_token_count(memory.messages)
+
+    # Get effective token limit for the client's model
+    max_tokens = _get_effective_token_limit(model_name, context_window_max)
+
+    # Reserve space for new messages, function calls, and response generation
+    # Use 70% of context window to leave room for new content
+    token_threshold = int(max_tokens * 0.7)
+
+    if current_tokens <= token_threshold:
         return memory
 
     # Get model client for summarization
     client = await get_model_client(model)
     model_config = get_model_config(model)
-    max_tokens = model_config.max_tokens
+    summarization_max_tokens = model_config.max_tokens
 
-    # Token allocation (same logic as original summarize_session)
-    if max_tokens < 10000:
-        summary_max_tokens = max(512, max_tokens // 8)  # 12.5%
-    elif max_tokens < 50000:
-        summary_max_tokens = max(1024, max_tokens // 10)  # 10%
+    # Token allocation for summarization (same logic as original summarize_session)
+    if summarization_max_tokens < 10000:
+        summary_max_tokens = max(512, summarization_max_tokens // 8)  # 12.5%
+    elif summarization_max_tokens < 50000:
+        summary_max_tokens = max(1024, summarization_max_tokens // 10)  # 10%
     else:
-        summary_max_tokens = max(2048, max_tokens // 20)  # 5%
+        summary_max_tokens = max(2048, summarization_max_tokens // 20)  # 5%
 
-    buffer_tokens = min(max(230, max_tokens // 100), 1000)
-    max_message_tokens = max_tokens - summary_max_tokens - buffer_tokens
+    buffer_tokens = min(max(230, summarization_max_tokens // 100), 1000)
+    max_message_tokens = summarization_max_tokens - summary_max_tokens - buffer_tokens
 
     encoding = tiktoken.get_encoding("cl100k_base")
     total_tokens = 0
     messages_to_summarize = []
 
-    # Calculate how many messages from the beginning we should summarize
-    # Keep the most recent messages within window_size
+    # We want to keep recent messages that fit in our target token budget
+    target_remaining_tokens = int(
+        max_tokens * 0.4
+    )  # Keep 40% of context for recent messages
+
+    # Work backwards from the end to find how many recent messages we can keep
+    recent_messages_tokens = 0
+    keep_count = 0
+
+    for i in range(len(memory.messages) - 1, -1, -1):
+        msg = memory.messages[i]
+        msg_str = f"{msg.role}: {msg.content}"
+        msg_tokens = len(encoding.encode(msg_str))
+
+        if recent_messages_tokens + msg_tokens <= target_remaining_tokens:
+            recent_messages_tokens += msg_tokens
+            keep_count += 1
+        else:
+            break
+
+    # Messages to summarize are the ones we're not keeping
     messages_to_check = (
-        memory.messages[:-window_size] if len(memory.messages) > window_size else []
+        memory.messages[:-keep_count] if keep_count > 0 else memory.messages[:-1]
     )
 
     for msg in messages_to_check:
@@ -125,12 +167,12 @@ async def _summarize_working_memory(
     )
 
     # Update working memory with new summary and trimmed messages
-    # Keep only the most recent messages within window_size
+    # Keep only the most recent messages that fit in our token budget
     updated_memory = memory.model_copy(deep=True)
     updated_memory.context = summary
-    updated_memory.messages = memory.messages[
-        -window_size:
-    ]  # Keep most recent messages
+    updated_memory.messages = (
+        memory.messages[-keep_count:] if keep_count > 0 else [memory.messages[-1]]
+    )
     updated_memory.tokens = memory.tokens + summary_tokens_used
 
     return updated_memory
@@ -145,7 +187,7 @@ async def list_sessions(
     Get a list of session IDs, with optional pagination.
 
     Args:
-        options: Query parameters (page, size, namespace)
+        options: Query parameters (limit, offset, namespace, user_id)
 
     Returns:
         List of session IDs
@@ -157,6 +199,7 @@ async def list_sessions(
         limit=options.limit,
         offset=options.offset,
         namespace=options.namespace,
+        user_id=options.user_id,
     )
 
     return SessionListResponse(
@@ -166,10 +209,10 @@ async def list_sessions(
 
 
 @router.get("/v1/working-memory/{session_id}", response_model=WorkingMemoryResponse)
-async def get_session_memory(
+async def get_working_memory(
     session_id: str,
+    user_id: str | None = None,
     namespace: str | None = None,
-    window_size: int = settings.window_size,
     model_name: ModelNameLiteral | None = None,
     context_window_max: int | None = None,
     current_user: UserInfo = Depends(get_current_user),
@@ -178,11 +221,12 @@ async def get_session_memory(
     Get working memory for a session.
 
     This includes stored conversation messages, context, and structured memory records.
+    If the messages exceed the token limit, older messages will be truncated.
 
     Args:
         session_id: The session ID
+        user_id: The user ID to retrieve working memory for
         namespace: The namespace to use for the session
-        window_size: The number of messages to include in the response
         model_name: The client's LLM model name (will determine context window size if provided)
         context_window_max: Direct specification of the context window max tokens (overrides model_name)
 
@@ -190,73 +234,102 @@ async def get_session_memory(
         Working memory containing messages, context, and structured memory records
     """
     redis = await get_redis_conn()
-    effective_window_size = _get_effective_window_size(
-        window_size=window_size,
-        context_window_max=context_window_max,
-        model_name=model_name,
-    )
 
-    # Get unified working memory
     working_mem = await working_memory.get_working_memory(
         session_id=session_id,
         namespace=namespace,
         redis_client=redis,
+        user_id=user_id,
     )
 
     if not working_mem:
-        # Return empty working memory if none exists
+        # Create empty working memory if none exists
         working_mem = WorkingMemory(
             messages=[],
             memories=[],
             session_id=session_id,
             namespace=namespace,
+            user_id=user_id,
         )
 
-    # Apply window size to messages if needed
-    if len(working_mem.messages) > effective_window_size:
-        working_mem.messages = working_mem.messages[-effective_window_size:]
+    # Apply token-based truncation if we have messages and model info
+    if working_mem.messages and (model_name or context_window_max):
+        token_limit = _get_effective_token_limit(model_name, context_window_max)
+        current_token_count = _calculate_messages_token_count(working_mem.messages)
+
+        # If we exceed the token limit, truncate from the beginning (keep recent messages)
+        if current_token_count > token_limit:
+            # Keep removing oldest messages until we're under the limit
+            truncated_messages = working_mem.messages[:]
+            while len(truncated_messages) > 1:  # Always keep at least 1 message
+                truncated_messages = truncated_messages[1:]  # Remove oldest
+                if _calculate_messages_token_count(truncated_messages) <= token_limit:
+                    break
+            working_mem.messages = truncated_messages
+
+    logger.debug(f"Working mem: {working_mem}")
 
     return working_mem
 
 
 @router.put("/v1/working-memory/{session_id}", response_model=WorkingMemoryResponse)
-async def put_session_memory(
+async def put_working_memory(
     session_id: str,
     memory: WorkingMemory,
+    user_id: str | None = None,
+    model_name: ModelNameLiteral | None = None,
+    context_window_max: int | None = None,
     background_tasks=Depends(get_background_tasks),
     current_user: UserInfo = Depends(get_current_user),
 ):
     """
     Set working memory for a session. Replaces existing working memory.
 
-    If the message count exceeds the window size, messages will be summarized
+    If the token count exceeds the context window threshold, messages will be summarized
     immediately and the updated memory state returned to the client.
 
     Args:
         session_id: The session ID
         memory: Working memory to save
+        user_id: Optional user ID for the session (overrides user_id in memory object)
+        model_name: The client's LLM model name for context window determination
+        context_window_max: Direct specification of context window max tokens
         background_tasks: DocketBackgroundTasks instance (injected automatically)
 
     Returns:
-        Updated working memory (potentially with summary if messages were condensed)
+        Updated working memory (potentially with summary if tokens were condensed)
     """
     redis = await get_redis_conn()
 
     # Ensure session_id matches
     memory.session_id = session_id
 
-    # Validate that all structured memories have id (if any)
-    for mem in memory.memories:
-        if not mem.id:
+    # Override user_id if provided as query parameter
+    if user_id is not None:
+        memory.user_id = user_id
+
+    # Validate that all long-term memories have id (if any)
+    for long_term_mem in memory.memories:
+        if not long_term_mem.id:
             raise HTTPException(
                 status_code=400,
-                detail="All memory records in working memory must have an ID",
+                detail="All long-term memory records in working memory must have an ID",
             )
 
-    # Handle summarization if needed (before storing)
+    # Validate that all messages have non-empty content
+    for msg in memory.messages:
+        if not msg.content or not msg.content.strip():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Message content cannot be empty (message ID: {msg.id})",
+            )
+
+    # Handle summarization if needed (before storing) - now token-based
     updated_memory = memory
-    if memory.messages and len(memory.messages) > settings.window_size:
-        updated_memory = await _summarize_working_memory(memory, settings.window_size)
+    if memory.messages:
+        updated_memory = await _summarize_working_memory(
+            memory, model_name=model_name, context_window_max=context_window_max
+        )
 
     await working_memory.set_working_memory(
         working_memory=updated_memory,
@@ -264,41 +337,24 @@ async def put_session_memory(
     )
 
     # Background tasks for long-term memory promotion and indexing (if enabled)
-    if settings.long_term_memory:
+    if settings.long_term_memory and (
+        updated_memory.memories or updated_memory.messages
+    ):
         # Promote structured memories from working memory to long-term storage
-        if updated_memory.memories:
-            await background_tasks.add_task(
-                long_term_memory.promote_working_memory_to_long_term,
-                session_id,
-                updated_memory.namespace,
-            )
-
-        # Index message-based memories (existing logic)
-        if updated_memory.messages:
-            from agent_memory_server.models import MemoryRecord
-
-            memories = [
-                MemoryRecord(
-                    id=str(ULID()),
-                    session_id=session_id,
-                    text=f"{msg.role}: {msg.content}",
-                    namespace=updated_memory.namespace,
-                    memory_type=MemoryTypeEnum.MESSAGE,
-                )
-                for msg in updated_memory.messages
-            ]
-
-            await background_tasks.add_task(
-                long_term_memory.index_long_term_memories,
-                memories,
-            )
+        await background_tasks.add_task(
+            long_term_memory.promote_working_memory_to_long_term,
+            session_id=session_id,
+            user_id=updated_memory.user_id,
+            namespace=updated_memory.namespace,
+        )
 
     return updated_memory
 
 
 @router.delete("/v1/working-memory/{session_id}", response_model=AckResponse)
-async def delete_session_memory(
+async def delete_working_memory(
     session_id: str,
+    user_id: str | None = None,
     namespace: str | None = None,
     current_user: UserInfo = Depends(get_current_user),
 ):
@@ -309,6 +365,7 @@ async def delete_session_memory(
 
     Args:
         session_id: The session ID
+        user_id: Optional user ID for the session
         namespace: Optional namespace for the session
 
     Returns:
@@ -319,6 +376,7 @@ async def delete_session_memory(
     # Delete unified working memory
     await working_memory.delete_working_memory(
         session_id=session_id,
+        user_id=user_id,
         namespace=namespace,
         redis_client=redis,
     )
@@ -381,71 +439,42 @@ async def search_long_term_memory(
     if not settings.long_term_memory:
         raise HTTPException(status_code=400, detail="Long-term memory is disabled")
 
-    redis = await get_redis_conn()
-
     # Extract filter objects from the payload
     filters = payload.get_filters()
 
+    logger.debug(f"Long-term search filters: {filters}")
+
     kwargs = {
-        "redis": redis,
         "distance_threshold": payload.distance_threshold,
         "limit": payload.limit,
         "offset": payload.offset,
         **filters,
     }
 
-    if payload.text:
-        kwargs["text"] = payload.text
+    kwargs["text"] = payload.text or ""
 
-    # Pass text, redis, and filter objects to the search function
+    logger.debug(f"Long-term search kwargs: {kwargs}")
+
+    # Pass text and filter objects to the search function (no redis needed for vectorstore adapter)
     return await long_term_memory.search_long_term_memories(**kwargs)
 
 
-@router.post("/v1/memory/search", response_model=MemoryRecordResultsResponse)
-async def search_memory(
-    payload: SearchRequest,
+@router.delete("/v1/long-term-memory", response_model=AckResponse)
+async def delete_long_term_memory(
+    memory_ids: list[str] = Query(default=[], alias="memory_ids"),
     current_user: UserInfo = Depends(get_current_user),
 ):
     """
-    Run a search across all memory types (working memory and long-term memory).
-
-    This endpoint searches both working memory (ephemeral, session-scoped) and
-    long-term memory (persistent, indexed) to provide comprehensive results.
-
-    For working memory:
-    - Uses simple text matching
-    - Searches across all sessions (unless session_id filter is provided)
-    - Returns memories that haven't been promoted to long-term storage
-
-    For long-term memory:
-    - Uses semantic vector search
-    - Includes promoted memories from working memory
-    - Supports advanced filtering by topics, entities, etc.
+    Delete long-term memories by ID
 
     Args:
-        payload: Search payload with filter objects for precise queries
-
-    Returns:
-        Search results from both memory types, sorted by relevance
+        memory_ids: List of memory IDs to delete (passed as query parameters)
     """
-    redis = await get_redis_conn()
+    if not settings.long_term_memory:
+        raise HTTPException(status_code=400, detail="Long-term memory is disabled")
 
-    # Extract filter objects from the payload
-    filters = payload.get_filters()
-
-    kwargs = {
-        "redis": redis,
-        "distance_threshold": payload.distance_threshold,
-        "limit": payload.limit,
-        "offset": payload.offset,
-        **filters,
-    }
-
-    if payload.text:
-        kwargs["text"] = payload.text
-
-    # Use the search function
-    return await long_term_memory.search_memories(**kwargs)
+    count = await long_term_memory.delete_long_term_memories(ids=memory_ids)
+    return AckResponse(status=f"ok, deleted {count} memories")
 
 
 @router.post("/v1/memory/prompt", response_model=MemoryPromptResponse)
@@ -481,17 +510,30 @@ async def memory_prompt(
     redis = await get_redis_conn()
     _messages = []
 
+    logger.debug(f"Memory prompt params: {params}")
+
     if params.session:
-        effective_window_size = _get_effective_window_size(
-            window_size=params.session.window_size,
-            context_window_max=params.session.context_window_max,
-            model_name=params.session.model_name,
-        )
+        # Use token limit for memory prompt, fallback to message count for backward compatibility
+        if params.session.model_name or params.session.context_window_max:
+            token_limit = _get_effective_token_limit(
+                model_name=params.session.model_name,
+                context_window_max=params.session.context_window_max,
+            )
+            effective_window_size = (
+                token_limit  # We'll handle token-based truncation below
+            )
+        else:
+            effective_window_size = (
+                params.session.window_size
+            )  # Fallback to message count
         working_mem = await working_memory.get_working_memory(
             session_id=params.session.session_id,
             namespace=params.session.namespace,
+            user_id=params.session.user_id,
             redis_client=redis,
         )
+
+        logger.debug(f"Found working memory: {working_mem}")
 
         if working_mem:
             if working_mem.context:
@@ -504,28 +546,72 @@ async def memory_prompt(
                         ),
                     )
                 )
-            # Apply window size and ignore past system messages as the latest context may have changed
-            recent_messages = (
-                working_mem.messages[-effective_window_size:]
-                if len(working_mem.messages) > effective_window_size
-                else working_mem.messages
-            )
-            for msg in recent_messages:
-                if msg.role == "user":
-                    msg_class = base.UserMessage
+            # Apply token-based truncation if model info is provided
+            if params.session.model_name or params.session.context_window_max:
+                # Token-based truncation
+                if (
+                    _calculate_messages_token_count(working_mem.messages)
+                    > effective_window_size
+                ):
+                    # Keep removing oldest messages until we're under the limit
+                    recent_messages = working_mem.messages[:]
+                    while len(recent_messages) > 1:  # Always keep at least 1 message
+                        recent_messages = recent_messages[1:]  # Remove oldest
+                        if (
+                            _calculate_messages_token_count(recent_messages)
+                            <= effective_window_size
+                        ):
+                            break
                 else:
-                    msg_class = base.AssistantMessage
-                _messages.append(
-                    msg_class(
-                        content=TextContent(type="text", text=msg.content),
+                    recent_messages = working_mem.messages
+
+                for msg in recent_messages:
+                    if msg.role == "user":
+                        msg_class = base.UserMessage
+                    else:
+                        msg_class = base.AssistantMessage
+                    _messages.append(
+                        msg_class(
+                            content=TextContent(type="text", text=msg.content),
+                        )
                     )
-                )
+            else:
+                # No token-based truncation - use all messages
+                for msg in working_mem.messages:
+                    if msg.role == "user":
+                        msg_class = base.UserMessage
+                    else:
+                        msg_class = base.AssistantMessage
+                    _messages.append(
+                        msg_class(
+                            content=TextContent(type="text", text=msg.content),
+                        )
+                    )
 
     if params.long_term_search:
-        # TODO: Exclude session messages if we already included them from session memory
-        long_term_memories = await search_long_term_memory(
-            params.long_term_search,
+        logger.debug(
+            f"[memory_prompt] Long-term search args: {params.long_term_search}"
         )
+        if isinstance(params.long_term_search, bool):
+            search_kwargs = {}
+            if params.session:
+                # Exclude memories from the current session because we already included them
+                search_kwargs["session_id"] = SessionId(ne=params.session.session_id)
+            if params.session and params.session.user_id:
+                search_kwargs["user_id"] = UserId(eq=params.session.user_id)
+            search_payload = SearchRequest(**search_kwargs, limit=20, offset=0)
+        else:
+            search_payload = params.long_term_search.model_copy()
+            # Merge session user_id into the search request if not already specified
+            if params.session and params.session.user_id and not search_payload.user_id:
+                search_payload.user_id = UserId(eq=params.session.user_id)
+
+        logger.debug(f"[memory_prompt] Search payload: {search_payload}")
+        long_term_memories = await search_long_term_memory(
+            search_payload,
+        )
+
+        logger.debug(f"[memory_prompt] Long-term memories: {long_term_memories}")
 
         if long_term_memories.total > 0:
             long_term_memories_text = "\n".join(
@@ -536,6 +622,16 @@ async def memory_prompt(
                     content=TextContent(
                         type="text",
                         text=f"## Long term memories related to the user's query\n {long_term_memories_text}",
+                    ),
+                )
+            )
+        else:
+            # Always include a system message about long-term memories, even if empty
+            _messages.append(
+                SystemMessage(
+                    content=TextContent(
+                        type="text",
+                        text="## Long term memories related to the user's query\n No relevant long-term memories found.",
                     ),
                 )
             )

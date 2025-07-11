@@ -2,21 +2,27 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.uv.workspace]
+members = ["agent-memory-client"]
+
+[tool.uv.sources]
+agent-memory-client = { workspace = true }
+
 [project]
 name = "agent-memory-server"
-version = "0.2.0"
+dynamic = ["version"]
 description = "A Memory Server for LLM Agents and Applications"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 authors = [{ name = "Andrew Brookins", email = "andrew.brookins@redis.com" }]
 dependencies = [
     "accelerate>=1.6.0",
+    "agent-memory-client",
     "anthropic>=0.15.0",
-    "bertopic<0.17.0,>=0.16.4",
     "fastapi>=0.115.11",
+    "langchain-core>=0.3.0",
     "mcp>=1.6.0",
-    "python-ulid>=3.0.0",
     "numba>=0.60.0",
     "numpy>=2.1.0",
     "openai>=1.3.7",
@@ -36,10 +42,22 @@ dependencies = [
     "httpx>=0.25.0",
     "PyYAML>=6.0",
     "cryptography>=3.4.8",
+    "langchain-openai>=0.3.18",
+    "langchain-redis>=0.2.1",
+    "python-ulid>=3.0.0",
 ]
 
 [project.scripts]
 agent-memory = "agent_memory_server.cli:cli"
+
+[project.urls]
+Homepage = "https://github.com/redis-developer/agent-memory-server"
+Repository = "https://github.com/redis-developer/agent-memory-server"
+Documentation = "https://github.com/redis-developer/agent-memory-server/tree/main/docs"
+Issues = "https://github.com/redis-developer/agent-memory-server/issues"
+
+[tool.hatch.version]
+path = "agent_memory_server/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agent_memory_server"]
@@ -113,15 +131,27 @@ quote-style = "double"
 # Use spaces for indentation
 indent-style = "space"
 
+[project.optional-dependencies]
+dev = [
+    "agent-memory-client",
+    "bertopic>=0.16.4,<0.17.0",
+]
+
 [dependency-groups]
+bertopic = [
+    "bertopic<0.17.0,>=0.16.4",
+]
 dev = [
     "pytest>=8.3.5",
     "pytest-asyncio>=0.23.0",
     "pytest-xdist>=3.5.0",
+    "pytest-cov>=4.0.0",
     "ruff>=0.3.0",
     "testcontainers>=3.7.0",
     "pre-commit>=3.6.0",
     "freezegun>=1.2.0",
+    "mypy>=1.16.1",
+    "ipdb>=0.13.13",
 ]
 
 [tool.ruff.lint.per-file-ignores]

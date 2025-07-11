@@ -356,9 +356,6 @@ LONG_TERM_MEMORY=true            # Enable long-term memory features
 # Long-term memory settings
 ENABLE_DISCRETE_MEMORY_EXTRACTION=true  # Extract memories from messages
 GENERATION_MODEL=gpt-4o-mini     # Model for summarization/extraction
-
-# Search settings
-DEFAULT_MEMORY_LIMIT=1000        # Default search result limit
 ```
 
 For complete configuration options, see the [Configuration Guide](configuration.md).

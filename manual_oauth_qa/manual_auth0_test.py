@@ -163,7 +163,7 @@ class Auth0Tester:
 
         # Step 2: Test health endpoint (should work without auth)
         logger.info("\n📋 Testing health endpoint (no auth required)")
-        health_result = self.test_endpoint("GET", "/health")
+        health_result = self.test_endpoint("GET", "/v1/health")
 
         # Step 3: Test authenticated endpoints
         logger.info("\n🔐 Testing authenticated endpoints")

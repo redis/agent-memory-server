@@ -5,7 +5,6 @@ Tests for the CLI module.
 import sys
 from unittest.mock import AsyncMock, Mock, patch
 
-import pytest
 from click.testing import CliRunner
 
 from agent_memory_server.cli import (
@@ -158,11 +157,11 @@ class TestMcpCommand:
         assert result.exit_code == 0
         mock_mcp_app.run_sse_async.assert_called_once()
 
-    @patch("agent_memory_server.cli.logging.basicConfig")
+    @patch("agent_memory_server.cli.configure_mcp_logging")
     @patch("agent_memory_server.cli.settings")
     @patch("agent_memory_server.mcp.mcp_app")
     def test_mcp_command_stdio_logging_config(
-        self, mock_mcp_app, mock_settings, mock_basic_config
+        self, mock_mcp_app, mock_settings, mock_configure_mcp_logging
     ):
         """Test that stdio mode configures logging to stderr."""
         mock_settings.mcp_port = 3001
@@ -175,7 +174,7 @@ class TestMcpCommand:
 
         assert result.exit_code == 0
         mock_mcp_app.run_stdio_async.assert_called_once()
-        mock_basic_config.assert_called_once()
+        mock_configure_mcp_logging.assert_called_once()
 
 
 class TestScheduleTask:
@@ -190,12 +189,6 @@ class TestScheduleTask:
 
         assert result.exit_code == 1
         assert "Invalid argument format" in result.output
-
-    @pytest.mark.skip(reason="Complex async mocking - test isolation issues")
-    def test_schedule_task_success(self):
-        """Test successful task scheduling."""
-        # Skipped due to complex async interactions that interfere with other tests
-        pass
 
     def test_schedule_task_sync_error_handling(self):
         """Test error handling in sync part (before asyncio.run)."""
@@ -229,11 +222,11 @@ class TestTaskWorker:
 
     @patch("docket.Worker.run")
     @patch("agent_memory_server.cli.settings")
-    def test_task_worker_success(self, mock_settings, mock_worker_run):
+    def test_task_worker_success(self, mock_settings, mock_worker_run, redis_url):
         """Test successful task worker start."""
         mock_settings.use_docket = True
         mock_settings.docket_name = "test-docket"
-        mock_settings.redis_url = "redis://localhost:6379/0"
+        mock_settings.redis_url = redis_url
 
         mock_worker_run.return_value = None
 
@@ -258,11 +251,13 @@ class TestTaskWorker:
 
     @patch("docket.Worker.run")
     @patch("agent_memory_server.cli.settings")
-    def test_task_worker_default_params(self, mock_settings, mock_worker_run):
+    def test_task_worker_default_params(
+        self, mock_settings, mock_worker_run, redis_url
+    ):
         """Test task worker with default parameters."""
         mock_settings.use_docket = True
         mock_settings.docket_name = "test-docket"
-        mock_settings.redis_url = "redis://localhost:6379/0"
+        mock_settings.redis_url = redis_url
 
         mock_worker_run.return_value = None
 

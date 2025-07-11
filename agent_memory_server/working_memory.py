@@ -27,12 +27,31 @@ async def list_sessions(
     limit: int = 10,
     offset: int = 0,
     namespace: str | None = None,
+    user_id: str | None = None,
 ) -> tuple[int, list[str]]:
-    """List sessions"""
+    """
+    List sessions
+
+    Args:
+        redis: Redis client
+        limit: Maximum number of sessions to return
+        offset: Offset for pagination
+        namespace: Optional namespace filter
+        user_id: Optional user ID filter (not yet implemented - sessions are stored in sorted sets)
+
+    Returns:
+        Tuple of (total_count, session_ids)
+
+    Note:
+        The user_id parameter is accepted for API compatibility but filtering by user_id
+        is not yet implemented. This would require changing how sessions are stored to
+        enable efficient user_id-based filtering.
+    """
     # Calculate start and end indices (0-indexed start, inclusive end)
     start = offset
     end = offset + limit - 1
 
+    # TODO: This should take a user_id
     sessions_key = Keys.sessions_key(namespace=namespace)
 
     async with redis.pipeline() as pipe:
@@ -47,9 +66,9 @@ async def list_sessions(
 
 async def get_working_memory(
     session_id: str,
+    user_id: str | None = None,
     namespace: str | None = None,
     redis_client: Redis | None = None,
-    effective_window_size: int | None = None,
 ) -> WorkingMemory | None:
     """
     Get working memory for a session.
@@ -65,11 +84,18 @@ async def get_working_memory(
     if not redis_client:
         redis_client = await get_redis_conn()
 
-    key = Keys.working_memory_key(session_id, namespace)
+    key = Keys.working_memory_key(
+        session_id=session_id,
+        user_id=user_id,
+        namespace=namespace,
+    )
 
     try:
         data = await redis_client.get(key)
         if not data:
+            logger.debug(
+                f"No working memory found for parameters: {session_id}, {user_id}, {namespace}"
+            )
             return None
 
         # Parse the JSON data
@@ -130,9 +156,13 @@ async def set_working_memory(
     # Validate that all memories have id (Stage 3 requirement)
     for memory in working_memory.memories:
         if not memory.id:
-            raise ValueError("All memory records in working memory must have an id")
+            raise ValueError("All memory records in working memory must have an ID")
 
-    key = Keys.working_memory_key(working_memory.session_id, working_memory.namespace)
+    key = Keys.working_memory_key(
+        session_id=working_memory.session_id,
+        user_id=working_memory.user_id,
+        namespace=working_memory.namespace,
+    )
 
     # Update the updated_at timestamp
     working_memory.updated_at = datetime.now(UTC)
@@ -179,6 +209,7 @@ async def set_working_memory(
 
 async def delete_working_memory(
     session_id: str,
+    user_id: str | None = None,
     namespace: str | None = None,
     redis_client: Redis | None = None,
 ) -> None:
@@ -187,13 +218,16 @@ async def delete_working_memory(
 
     Args:
         session_id: The session ID
+        user_id: Optional user ID for the session
         namespace: Optional namespace for the session
         redis_client: Optional Redis client
     """
     if not redis_client:
         redis_client = await get_redis_conn()
 
-    key = Keys.working_memory_key(session_id, namespace)
+    key = Keys.working_memory_key(
+        session_id=session_id, user_id=user_id, namespace=namespace
+    )
 
     try:
         await redis_client.delete(key)

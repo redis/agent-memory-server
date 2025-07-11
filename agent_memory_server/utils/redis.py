@@ -5,9 +5,10 @@ from typing import Any
 
 from redis.asyncio import Redis
 from redisvl.index import AsyncSearchIndex
-from redisvl.schema import IndexSchema
 
 from agent_memory_server.config import settings
+from agent_memory_server.vectorstore_adapter import RedisVectorStoreAdapter
+from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
 
 
 logger = logging.getLogger(__name__)
@@ -34,65 +35,17 @@ async def get_redis_conn(url: str = settings.redis_url, **kwargs) -> Redis:
     return _redis_pool
 
 
-def get_search_index(
-    redis: Redis,
-    index_name: str = settings.redisvl_index_name,
-    vector_dimensions: str = settings.redisvl_vector_dimensions,
-    distance_metric: str = settings.redisvl_distance_metric,
-) -> AsyncSearchIndex:
-    global _index
-    if _index is None:
-        schema = {
-            "index": {
-                "name": index_name,
-                "prefix": f"{index_name}:",
-                "key_separator": ":",
-                "storage_type": "hash",
-            },
-            "fields": [
-                {"name": "text", "type": "text"},
-                {"name": "memory_hash", "type": "tag"},
-                {"name": "id_", "type": "tag"},
-                {"name": "session_id", "type": "tag"},
-                {"name": "user_id", "type": "tag"},
-                {"name": "namespace", "type": "tag"},
-                {"name": "topics", "type": "tag"},
-                {"name": "entities", "type": "tag"},
-                {"name": "created_at", "type": "numeric"},
-                {"name": "last_accessed", "type": "numeric"},
-                {"name": "memory_type", "type": "tag"},
-                {"name": "discrete_memory_extracted", "type": "tag"},
-                {"name": "id", "type": "tag"},
-                {"name": "persisted_at", "type": "numeric"},
-                {"name": "extracted_from", "type": "tag"},
-                {"name": "event_date", "type": "numeric"},
-                {
-                    "name": "vector",
-                    "type": "vector",
-                    "attrs": {
-                        "algorithm": "HNSW",
-                        "dims": int(vector_dimensions),
-                        "distance_metric": distance_metric,
-                        "datatype": "float32",
-                    },
-                },
-            ],
-        }
-        index_schema = IndexSchema.from_dict(schema)
-        _index = AsyncSearchIndex(index_schema, redis_client=redis)
-    return _index
-
-
 async def ensure_search_index_exists(
     redis: Redis,
     index_name: str = settings.redisvl_index_name,
     vector_dimensions: str = settings.redisvl_vector_dimensions,
     distance_metric: str = settings.redisvl_distance_metric,
-    overwrite: bool = False,
+    overwrite: bool = True,
 ) -> None:
     """
     Ensure that the async search index exists, create it if it doesn't.
-    Uses RedisVL's AsyncSearchIndex.
+    This function is deprecated and only exists for compatibility.
+    The VectorStore adapter now handles index creation automatically.
 
     Args:
         redis: A Redis client instance
@@ -100,22 +53,19 @@ async def ensure_search_index_exists(
         distance_metric: Distance metric to use (default: COSINE)
         index_name: The name of the index
     """
-    index = get_search_index(redis, index_name, vector_dimensions, distance_metric)
-    if await index.exists():
-        logger.info("Async search index already exists")
-        if overwrite:
-            logger.info("Overwriting existing index")
-            await redis.execute_command("FT.DROPINDEX", index.name)
+    # If this is Redis, creating the adapter will create the index.
+    adapter = await get_vectorstore_adapter()
+
+    if overwrite:
+        if isinstance(adapter, RedisVectorStoreAdapter):
+            index = adapter.vectorstore.index
+            if index is not None:
+                index.create(overwrite=True)
         else:
-            return
-    else:
-        logger.info("Async search index doesn't exist, creating...")
-
-    await index.create()
-
-    logger.info(
-        f"Created async search index with {vector_dimensions} dimensions and {distance_metric} metric"
-    )
+            logger.warning(
+                "Overwriting the search index is only supported for RedisVectorStoreAdapter. "
+                "Consult your vector store's documentation to learn how to recreate the index."
+            )
 
 
 def safe_get(doc: Any, key: str, default: Any | None = None) -> Any:

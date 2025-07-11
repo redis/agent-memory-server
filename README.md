@@ -7,26 +7,39 @@ A Redis-powered memory server built for AI agents and applications. It manages b
 - **Working Memory**
 
   - Session-scoped storage for messages, structured memories, context, and metadata
-  - Automatically summarizes conversations when they exceed the window size
-  - Client model-aware token limit management (adapts to the context window of the client's LLM)
+  - Automatically summarizes conversations when they exceed a client-configured window size
   - Supports all major OpenAI and Anthropic models
-  - Automatic promotion of structured memories to long-term storage
+  - Automatic (background) promotion of structured memories to long-term storage
 
 - **Long-Term Memory**
 
   - Persistent storage for memories across sessions
+  - **Pluggable Vector Store Backends** - Support for multiple vector databases through LangChain VectorStore interface:
+    - **Redis** (default) - RedisStack with RediSearch
+    - **Chroma** - Open-source vector database
+    - **Pinecone** - Managed vector database service
+    - **Weaviate** - Open-source vector search engine
+    - **Qdrant** - Vector similarity search engine
+    - **Milvus** - Cloud-native vector database
+    - **PostgreSQL/PGVector** - PostgreSQL with vector extensions
+    - **LanceDB** - Embedded vector database
+    - **OpenSearch** - Open-source search and analytics suite
   - Semantic search to retrieve memories with advanced filtering system
-  - Filter by session, namespace, topics, entities, timestamps, and more
+  - Filter by session, user ID, namespace, topics, entities, timestamps, and more
   - Supports both exact match and semantic similarity search
   - Automatic topic modeling for stored memories with BERTopic or configured LLM
-  - Automatic Entity Recognition using BERT
+  - Automatic Entity Recognition using BERT or configured LLM
   - Memory deduplication and compaction
 
+- **Production-Grade Memory Isolation**
+  - OAuth2/JWT Bearer token authentication
+  - Supports RBAC permissions
+  - Top-level support for user ID and session ID isolation
+
 - **Other Features**
-  - Namespace support for session and working memory isolation
+  - Dedicated SDK offering direct access to API calls _and_ memory operations as tools to pass to your LLM
   - Both a REST interface and MCP server
-  - Background task processing for memory indexing and promotion
-  - Unified search across working memory and long-term memory
+  - Heavy operations run as background tasks
 
 For detailed information about memory types, their differences, and when to use each, see the [Memory Types Guide](docs/memory-types.md).
 
@@ -83,6 +96,12 @@ For complete setup instructions, see [Getting Started Guide](docs/getting-starte
 Configure servers and workers using environment variables. Includes background task management, memory compaction, and data migrations.
 
 For complete configuration details, see [Configuration Guide](docs/configuration.md).
+
+For vector store backend options and setup, see [Vector Store Backends](docs/vector-store-backends.md).
+
+## License
+
+Apache 2.0 License - see [LICENSE](LICENSE) file for details.
 
 ## Development
 
