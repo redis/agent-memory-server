@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import Any
 
 import ulid
@@ -42,9 +41,6 @@ from agent_memory_server.models import (
 
 
 logger = logging.getLogger(__name__)
-
-# Default namespace for STDIO mode
-DEFAULT_NAMESPACE = os.getenv("MCP_NAMESPACE")
 
 
 class FastMCP(_FastMCPBase):
@@ -165,7 +161,7 @@ mcp_app = FastMCP(
     "Redis Agent Memory Server",
     port=settings.mcp_port,
     instructions=INSTRUCTIONS,
-    default_namespace=DEFAULT_NAMESPACE,
+    default_namespace=settings.default_mcp_namespace,
 )
 
 
@@ -301,10 +297,11 @@ async def create_long_term_memories(
         An acknowledgement response indicating success
     """
     # Apply default namespace for STDIO if not provided in memory entries
-    if DEFAULT_NAMESPACE:
-        for mem in memories:
-            if mem.namespace is None:
-                mem.namespace = DEFAULT_NAMESPACE
+    for mem in memories:
+        if mem.namespace is None and settings.default_mcp_namespace:
+            mem.namespace = settings.default_mcp_namespace
+        if mem.user_id is None and settings.default_mcp_user_id:
+            mem.user_id = settings.default_mcp_user_id
 
     payload = CreateMemoryRecordRequest(
         memories=[MemoryRecord(**mem.model_dump()) for mem in memories]
@@ -418,6 +415,11 @@ async def search_long_term_memory(
     Returns:
         MemoryRecordResults containing matched memories sorted by relevance
     """
+    if user_id is None and settings.default_mcp_user_id:
+        user_id = UserId(eq=settings.default_mcp_user_id)
+    if namespace is None and settings.default_mcp_namespace:
+        namespace = Namespace(eq=settings.default_mcp_namespace)
+
     try:
         payload = SearchRequest(
             text=text,
@@ -545,7 +547,7 @@ async def memory_prompt(
 
     Args:
         - text: The user's query
-        - session_id: Add conversation history from a session
+        - session_id: Add conversation history from a working memory session
         - namespace: Filter session and long-term memory namespace
         - topics: Search for long-term memories matching topics
         - entities: Search for long-term memories matching entities
@@ -561,6 +563,9 @@ async def memory_prompt(
     """
     _session_id = session_id.eq if session_id and session_id.eq else None
     session = None
+
+    if user_id is None and settings.default_mcp_user_id:
+        user_id = UserId(eq=settings.default_mcp_user_id)
 
     if _session_id is not None:
         session = WorkingMemoryRequest(
@@ -602,8 +607,8 @@ async def set_working_memory(
     messages: list[MemoryMessage] | None = None,
     context: str | None = None,
     data: dict[str, Any] | None = None,
-    namespace: str | None = None,
-    user_id: str | None = None,
+    namespace: str | None = settings.default_mcp_namespace,
+    user_id: str | None = settings.default_mcp_user_id,
     ttl_seconds: int = 3600,
 ) -> WorkingMemoryResponse:
     """
@@ -659,7 +664,25 @@ async def set_working_memory(
     )
     ```
 
-    4. Replace entire working memory state:
+    4. Store conversation messages:
+    ```python
+    set_working_memory(
+        session_id="current_session",
+        messages=[
+            {
+                "role": "user",
+                "content": "What is the weather like?",
+                "id": "msg_001"  # Optional - auto-generated if not provided
+            },
+            {
+                "role": "assistant",
+                "content": "I'll check the weather for you."
+            }
+        ]
+    )
+    ```
+
+    5. Replace entire working memory state:
     ```python
     set_working_memory(
         session_id="current_session",
@@ -673,7 +696,7 @@ async def set_working_memory(
     Args:
         session_id: The session ID to set memory for (required)
         memories: List of structured memory records (semantic, episodic, message types)
-        messages: List of conversation messages (role/content pairs)
+        messages: List of conversation messages (role/content pairs with optional id/persisted_at)
         context: Optional summary/context text
         data: Optional dictionary for storing arbitrary JSON data
         namespace: Optional namespace for scoping
@@ -683,11 +706,6 @@ async def set_working_memory(
     Returns:
         Updated working memory response (may include summarization if window exceeded)
     """
-    # Apply default namespace if configured
-    memory_namespace = namespace
-    if not memory_namespace and DEFAULT_NAMESPACE:
-        memory_namespace = DEFAULT_NAMESPACE
-
     # Auto-generate IDs for memories that don't have them
     processed_memories = []
     if memories:
@@ -699,6 +717,7 @@ async def set_working_memory(
                 processed_memory = memory.model_copy(
                     update={
                         "id": memory_id,
+                        "user_id": user_id,
                         "persisted_at": None,  # Mark as pending promotion
                     }
                 )
@@ -712,12 +731,35 @@ async def set_working_memory(
 
             processed_memories.append(processed_memory)
 
+    # Process messages to ensure proper format
+    processed_messages = []
+    if messages:
+        for message in messages:
+            # Handle both MemoryMessage objects and dict inputs
+            if isinstance(message, MemoryMessage):
+                # Already a MemoryMessage object, ensure persisted_at is None for new messages
+                processed_message = message.model_copy(
+                    update={
+                        "persisted_at": None,  # Mark as pending promotion
+                    }
+                )
+            else:
+                # Dictionary input, convert to MemoryMessage
+                message_dict = dict(message)
+                # Remove id=None to allow auto-generation
+                if message_dict.get("id") is None:
+                    message_dict.pop("id", None)
+                message_dict["persisted_at"] = None
+                processed_message = MemoryMessage(**message_dict)
+
+            processed_messages.append(processed_message)
+
     # Create the working memory object
     working_memory_obj = WorkingMemory(
         session_id=session_id,
-        namespace=memory_namespace,
+        namespace=namespace,
         memories=processed_memories,
-        messages=messages or [],
+        messages=processed_messages,
         context=context,
         data=data or {},
         user_id=user_id,

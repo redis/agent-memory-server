@@ -551,9 +551,9 @@ class TestEnhancedConvenienceMethods:
             # Check that messages were appended
             working_memory_arg = mock_put.call_args[0][1]
             assert len(working_memory_arg.messages) == 3
-            assert working_memory_arg.messages[0]["content"] == "First message"
-            assert working_memory_arg.messages[1]["content"] == "Second message"
-            assert working_memory_arg.messages[2]["content"] == "Third message"
+            assert working_memory_arg.messages[0].content == "First message"
+            assert working_memory_arg.messages[1].content == "Second message"
+            assert working_memory_arg.messages[2].content == "Third message"
 
     def test_deep_merge_dicts(self, enhanced_test_client):
         """Test the deep merge dictionary utility method."""

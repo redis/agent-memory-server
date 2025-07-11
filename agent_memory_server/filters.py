@@ -245,7 +245,7 @@ class MemoryHash(TagFilter):
 
 
 class Id(TagFilter):
-    field: str = "id_"
+    field: str = "id"
 
 
 class DiscreteMemoryExtracted(TagFilter):

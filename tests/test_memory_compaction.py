@@ -30,9 +30,9 @@ def test_generate_memory_hash():
         session_id="s1",
         memory_type=MemoryTypeEnum.SEMANTIC,
     )
-    # MemoryRecord objects with different IDs will produce different hashes
-    # since model_dump_json() includes all fields including the ID
-    assert generate_memory_hash(memory1) != generate_memory_hash(memory2)
+    # MemoryRecord objects with different IDs but same content will produce the same hash
+    # since generate_memory_hash() only uses content fields for deduplication
+    assert generate_memory_hash(memory1) == generate_memory_hash(memory2)
     memory3 = MemoryRecord(
         id="test-id-3",
         text="Paris is the capital of France",

@@ -48,3 +48,42 @@ python travel_agent.py --memory-server-url http://localhost:8001
 - **Provider Agnostic**: Tool resolution works with OpenAI, Anthropic, and other LLM providers
 - **Error Handling**: Robust error handling for tool calls and network issues
 - **Logging**: Comprehensive logging shows which tools are available and being used
+
+## Memory Prompt Agent (`memory_prompt_agent.py`)
+
+A conversational assistant that demonstrates the memory prompt feature:
+
+### Core Features
+- **Memory Prompt Integration**: Uses `client.memory_prompt()` to automatically retrieve relevant memories
+- **Context-Aware Responses**: Combines system prompt with memory-enriched context
+- **Simplified Memory Management**: No manual history management - memories are automatically retrieved
+- **Personalized Interactions**: Provides contextual responses based on conversation history
+
+### How It Works
+1. **Store Messages**: All user and assistant messages are stored in working memory
+2. **Memory Prompt**: For each turn, `memory_prompt()` retrieves relevant context from both working memory and long-term memories
+3. **Enriched Context**: The memory prompt results are combined with the system prompt
+4. **LLM Generation**: The enriched context is sent to the LLM for response generation
+
+### Usage
+
+```bash
+# Basic usage
+python memory_prompt_agent.py
+
+# With custom session
+python memory_prompt_agent.py --session-id my_session --user-id jane_doe
+
+# With custom memory server
+python memory_prompt_agent.py --memory-server-url http://localhost:8001
+```
+
+### Environment Variables
+- `OPENAI_API_KEY` - Required for OpenAI ChatGPT
+- `MEMORY_SERVER_URL` - Memory server URL (default: http://localhost:8000)
+
+### Key Implementation Details
+- **Automatic Memory Retrieval**: Uses `memory_prompt()` to get relevant memories without manual management
+- **Context Enrichment**: Combines system prompt with formatted memory context
+- **Simplified Flow**: No function calling - just enriched prompts for more contextual responses
+- **Personalization**: Naturally incorporates user preferences and past conversations

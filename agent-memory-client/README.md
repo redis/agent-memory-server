@@ -301,7 +301,7 @@ mypy agent_memory_client/
 - Python 3.10+
 - httpx >= 0.25.0
 - pydantic >= 2.0.0
-- ulid-py >= 1.1.0
+- python-ulid >= 3.0.0
 
 ## License
 

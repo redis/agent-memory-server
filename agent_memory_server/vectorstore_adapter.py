@@ -3,7 +3,6 @@ This module provides an abstraction layer between the agent memory server
 and LangChain VectorStore implementations, allowing for pluggable backends.
 """
 
-import hashlib
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -47,7 +46,9 @@ class MemoryRedisVectorStore(RedisVectorStore):
         """Select the relevance score function based on the distance."""
 
         def relevance_score_fn(distance: float) -> float:
-            return max((2 - distance) / 2, 0)
+            # Ensure score is between 0 and 1
+            score = (2 - distance) / 2
+            return max(min(score, 1.0), 0.0)
 
         return relevance_score_fn
 
@@ -373,15 +374,10 @@ class VectorStoreAdapter(ABC):
         Returns:
             A stable hash string
         """
-        text = memory.text
-        user_id = memory.user_id or ""
-        session_id = memory.session_id or ""
+        # Use the same hash logic as long_term_memory.py for consistency
+        from agent_memory_server.long_term_memory import generate_memory_hash
 
-        # Combine the fields in a predictable order
-        hash_content = f"{text}|{user_id}|{session_id}"
-
-        # Create a stable hash
-        return hashlib.sha256(hash_content.encode()).hexdigest()
+        return generate_memory_hash(memory)
 
     def _convert_filters_to_backend_format(
         self,
@@ -832,16 +828,14 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             score_threshold = 1.0 - distance_threshold
             search_kwargs["score_threshold"] = score_threshold
 
-        print("Search kwargs: ", search_kwargs)
-
+        logger.debug(f"[search_memories] Search kwargs: {search_kwargs}")
         search_results = (
             await self.vectorstore.asimilarity_search_with_relevance_scores(
                 **search_kwargs
             )
         )
 
-        print("Search results: ", search_results)
-
+        logger.debug(f"[search_memories] Search results: {search_results}")
         # Convert results to MemoryRecordResult objects
         memory_results = []
         for i, (doc, score) in enumerate(search_results):
@@ -850,8 +844,11 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             if i < offset:
                 continue
 
+            # Clamp score to valid range [0, 1] to avoid floating-point precision issues
+            clamped_score = max(0.0, min(1.0, score))
+
             # Convert relevance score to distance for the result
-            distance = 1.0 - score
+            distance = 1.0 - clamped_score
 
             # Helper function to parse timestamp to datetime
             def parse_timestamp_to_datetime(timestamp_val):

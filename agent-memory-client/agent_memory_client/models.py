@@ -7,7 +7,7 @@ For full model definitions, see the main agent_memory_server package.
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from ulid import ULID
@@ -48,11 +48,23 @@ class MemoryTypeEnum(str, Enum):
     MESSAGE = "message"
 
 
-class MemoryMessage(TypedDict):
+class MemoryMessage(BaseModel):
     """A message in the memory system"""
 
     role: str
     content: str
+    id: str = Field(
+        default_factory=lambda: str(ULID()),
+        description="Unique identifier for the message (auto-generated)",
+    )
+    persisted_at: datetime | None = Field(
+        default=None,
+        description="Server-assigned timestamp when message was persisted to long-term storage",
+    )
+    discrete_memory_extracted: Literal["t", "f"] = Field(
+        default="f",
+        description="Whether memory extraction has run for this message",
+    )
 
 
 class MemoryRecord(BaseModel):
@@ -134,9 +146,9 @@ class WorkingMemory(BaseModel):
     """Working memory for a session - contains both messages and structured memory records"""
 
     # Support both message-based memory (conversation) and structured memory records
-    messages: list[dict[str, Any]] = Field(
+    messages: list[MemoryMessage] = Field(
         default_factory=list,
-        description="Conversation messages (role/content pairs)",
+        description="Conversation messages with tracking fields",
     )
     memories: list[MemoryRecord | ClientMemoryRecord] = Field(
         default_factory=list,

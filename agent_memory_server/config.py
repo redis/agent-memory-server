@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     # Used for extracting entities from text
     ner_model: str = "dbmdz/bert-large-cased-finetuned-conll03-english"
     enable_ner: bool = True
+    index_all_messages_in_long_term_memory: bool = False
 
     # RedisVL Settings
     # TODO: Adapt to vector store settings
@@ -121,6 +122,8 @@ class Settings(BaseSettings):
 
     # Other Application settings
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    default_mcp_user_id: str | None = None
+    default_mcp_namespace: str | None = None
 
     class Config:
         env_file = ".env"

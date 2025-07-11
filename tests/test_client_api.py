@@ -116,8 +116,8 @@ async def test_session_lifecycle(memory_test_client: MemoryAPIClient):
 
         # Step 1: Create new session memory
         response = await memory_test_client.put_working_memory(session_id, memory)
-        assert response.messages[0]["content"] == "Hello from the client!"
-        assert response.messages[1]["content"] == "Hi there, I'm the memory server!"
+        assert response.messages[0].content == "Hello from the client!"
+        assert response.messages[1].content == "Hi there, I'm the memory server!"
         assert response.context == "This is a test session created by the API client."
 
     # Next, mock GET response for retrieving session memory
@@ -132,8 +132,8 @@ async def test_session_lifecycle(memory_test_client: MemoryAPIClient):
         # Step 2: Retrieve the session memory
         session = await memory_test_client.get_working_memory(session_id)
         assert len(session.messages) == 2
-        assert session.messages[0]["content"] == "Hello from the client!"
-        assert session.messages[1]["content"] == "Hi there, I'm the memory server!"
+        assert session.messages[0].content == "Hello from the client!"
+        assert session.messages[1].content == "Hi there, I'm the memory server!"
         assert session.context == "This is a test session created by the API client."
 
     # Mock list sessions
