@@ -35,14 +35,14 @@ jobs:
       fail-fast: false
       matrix:
         python-version: [3.12]
-        redis-version: ['6.2.6-v9', '8.0.3', 'latest']
+        redis-version: ['redis-stack:6.2.6-v9', 'redis:8.0.3', 'redis:latest']
 
     steps:
     - uses: actions/checkout@v3
 
     - name: Set Redis image name
       run: |
-          echo "REDIS_IMAGE=redis:${{ matrix.redis-version }}" >> $GITHUB_ENV
+          echo "REDIS_IMAGE=${{ matrix.redis-version }}" >> $GITHUB_ENV
 
     - name: Set up Python
       uses: actions/setup-python@v4
