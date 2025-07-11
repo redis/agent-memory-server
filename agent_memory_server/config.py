@@ -115,6 +115,8 @@ class Settings(BaseSettings):
 
     # Other Application settings
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    default_mcp_user_id: str | None = None
+    default_mcp_namespace: str | None = None
 
     class Config:
         env_file = ".env"

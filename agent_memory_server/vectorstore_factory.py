@@ -38,9 +38,10 @@ try:
 
     # Replace the broken function with our working one
     redisvl.utils.utils.create_ulid = patched_create_ulid
-    logging.info("Successfully patched RedisVL ULID function")
-except Exception as e:
-    logging.warning(f"Could not patch RedisVL ULID function: {e}")
+    # Note: Successfully patched RedisVL ULID function
+except Exception:
+    # Note: Could not patch RedisVL ULID function
+    pass
 
 from agent_memory_server.config import settings
 from agent_memory_server.vectorstore_adapter import (
