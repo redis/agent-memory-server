@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import Any
 
 import ulid
@@ -42,9 +41,6 @@ from agent_memory_server.models import (
 
 
 logger = logging.getLogger(__name__)
-
-# Default namespace for STDIO mode
-DEFAULT_NAMESPACE = os.getenv("MCP_NAMESPACE")
 
 
 class FastMCP(_FastMCPBase):
@@ -165,7 +161,7 @@ mcp_app = FastMCP(
     "Redis Agent Memory Server",
     port=settings.mcp_port,
     instructions=INSTRUCTIONS,
-    default_namespace=DEFAULT_NAMESPACE,
+    default_namespace=settings.default_mcp_namespace,
 )
 
 
@@ -301,10 +297,11 @@ async def create_long_term_memories(
         An acknowledgement response indicating success
     """
     # Apply default namespace for STDIO if not provided in memory entries
-    if DEFAULT_NAMESPACE:
-        for mem in memories:
-            if mem.namespace is None:
-                mem.namespace = DEFAULT_NAMESPACE
+    for mem in memories:
+        if mem.namespace is None and settings.default_mcp_namespace:
+            mem.namespace = settings.default_mcp_namespace
+        if mem.user_id is None and settings.default_mcp_user_id:
+            mem.user_id = settings.default_mcp_user_id
 
     payload = CreateMemoryRecordRequest(
         memories=[MemoryRecord(**mem.model_dump()) for mem in memories]
@@ -418,6 +415,11 @@ async def search_long_term_memory(
     Returns:
         MemoryRecordResults containing matched memories sorted by relevance
     """
+    if user_id is None and settings.default_mcp_user_id:
+        user_id = UserId(eq=settings.default_mcp_user_id)
+    if namespace is None and settings.default_mcp_namespace:
+        namespace = Namespace(eq=settings.default_mcp_namespace)
+
     try:
         payload = SearchRequest(
             text=text,
@@ -545,7 +547,7 @@ async def memory_prompt(
 
     Args:
         - text: The user's query
-        - session_id: Add conversation history from a session
+        - session_id: Add conversation history from a working memory session
         - namespace: Filter session and long-term memory namespace
         - topics: Search for long-term memories matching topics
         - entities: Search for long-term memories matching entities
@@ -561,6 +563,9 @@ async def memory_prompt(
     """
     _session_id = session_id.eq if session_id and session_id.eq else None
     session = None
+
+    if user_id is None and settings.default_mcp_user_id:
+        user_id = UserId(eq=settings.default_mcp_user_id)
 
     if _session_id is not None:
         session = WorkingMemoryRequest(
@@ -602,8 +607,8 @@ async def set_working_memory(
     messages: list[MemoryMessage] | None = None,
     context: str | None = None,
     data: dict[str, Any] | None = None,
-    namespace: str | None = None,
-    user_id: str | None = None,
+    namespace: str | None = settings.default_mcp_namespace,
+    user_id: str | None = settings.default_mcp_user_id,
     ttl_seconds: int = 3600,
 ) -> WorkingMemoryResponse:
     """
@@ -701,11 +706,6 @@ async def set_working_memory(
     Returns:
         Updated working memory response (may include summarization if window exceeded)
     """
-    # Apply default namespace if configured
-    memory_namespace = namespace
-    if not memory_namespace and DEFAULT_NAMESPACE:
-        memory_namespace = DEFAULT_NAMESPACE
-
     # Auto-generate IDs for memories that don't have them
     processed_memories = []
     if memories:
@@ -717,6 +717,7 @@ async def set_working_memory(
                 processed_memory = memory.model_copy(
                     update={
                         "id": memory_id,
+                        "user_id": user_id,
                         "persisted_at": None,  # Mark as pending promotion
                     }
                 )
@@ -756,7 +757,7 @@ async def set_working_memory(
     # Create the working memory object
     working_memory_obj = WorkingMemory(
         session_id=session_id,
-        namespace=memory_namespace,
+        namespace=namespace,
         memories=processed_memories,
         messages=processed_messages,
         context=context,

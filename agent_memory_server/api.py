@@ -308,12 +308,12 @@ async def put_working_memory(
     if user_id is not None:
         memory.user_id = user_id
 
-    # Validate that all structured memories have id (if any)
-    for mem in memory.memories:
-        if not mem.id:
+    # Validate that all long-term memories have id (if any)
+    for long_term_mem in memory.memories:
+        if not long_term_mem.id:
             raise HTTPException(
                 status_code=400,
-                detail="All memory records in working memory must have an ID",
+                detail="All long-term memory records in working memory must have an ID",
             )
 
     # Validate that all messages have non-empty content

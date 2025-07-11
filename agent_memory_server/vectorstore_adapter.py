@@ -829,7 +829,6 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             search_kwargs["score_threshold"] = score_threshold
 
         logger.debug(f"[search_memories] Search kwargs: {search_kwargs}")
-
         search_results = (
             await self.vectorstore.asimilarity_search_with_relevance_scores(
                 **search_kwargs
@@ -837,7 +836,6 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         )
 
         logger.debug(f"[search_memories] Search results: {search_results}")
-
         # Convert results to MemoryRecordResult objects
         memory_results = []
         for i, (doc, score) in enumerate(search_results):

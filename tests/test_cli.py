@@ -157,11 +157,11 @@ class TestMcpCommand:
         assert result.exit_code == 0
         mock_mcp_app.run_sse_async.assert_called_once()
 
-    @patch("agent_memory_server.cli.logging.basicConfig")
+    @patch("agent_memory_server.cli.configure_mcp_logging")
     @patch("agent_memory_server.cli.settings")
     @patch("agent_memory_server.mcp.mcp_app")
     def test_mcp_command_stdio_logging_config(
-        self, mock_mcp_app, mock_settings, mock_basic_config
+        self, mock_mcp_app, mock_settings, mock_configure_mcp_logging
     ):
         """Test that stdio mode configures logging to stderr."""
         mock_settings.mcp_port = 3001
@@ -174,7 +174,7 @@ class TestMcpCommand:
 
         assert result.exit_code == 0
         mock_mcp_app.run_stdio_async.assert_called_once()
-        mock_basic_config.assert_called_once()
+        mock_configure_mcp_logging.assert_called_once()
 
 
 class TestScheduleTask:
