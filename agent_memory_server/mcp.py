@@ -137,7 +137,14 @@ class FastMCP(_FastMCPBase):
 
         redis = await get_redis_conn()
         await ensure_search_index_exists(redis)
-        return await super().run_sse_async()
+
+        # Run the SSE server using our custom implementation
+        import uvicorn
+
+        app = self.sse_app()
+        await uvicorn.Server(
+            uvicorn.Config(app, host="0.0.0.0", port=int(self.settings.port))
+        ).serve()
 
     async def run_stdio_async(self):
         """Ensure Redis search index exists before starting STDIO MCP server."""
