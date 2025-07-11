@@ -832,7 +832,7 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             score_threshold = 1.0 - distance_threshold
             search_kwargs["score_threshold"] = score_threshold
 
-        print("Search kwargs: ", search_kwargs)
+        logger.debug(f"[search_memories] Search kwargs: {search_kwargs}")
 
         search_results = (
             await self.vectorstore.asimilarity_search_with_relevance_scores(
@@ -840,7 +840,7 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             )
         )
 
-        print("Search results: ", search_results)
+        logger.debug(f"[search_memories] Search results: {search_results}")
 
         # Convert results to MemoryRecordResult objects
         memory_results = []
@@ -850,8 +850,11 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             if i < offset:
                 continue
 
+            # Clamp score to valid range [0, 1] to avoid floating-point precision issues
+            clamped_score = max(0.0, min(1.0, score))
+
             # Convert relevance score to distance for the result
-            distance = 1.0 - score
+            distance = 1.0 - clamped_score
 
             # Helper function to parse timestamp to datetime
             def parse_timestamp_to_datetime(timestamp_val):

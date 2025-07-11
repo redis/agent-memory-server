@@ -51,6 +51,7 @@ async def list_sessions(
     start = offset
     end = offset + limit - 1
 
+    # TODO: This should take a user_id
     sessions_key = Keys.sessions_key(namespace=namespace)
 
     async with redis.pipeline() as pipe:
@@ -92,6 +93,9 @@ async def get_working_memory(
     try:
         data = await redis_client.get(key)
         if not data:
+            logger.debug(
+                f"No working memory found for parameters: {session_id}, {user_id}, {namespace}"
+            )
             return None
 
         # Parse the JSON data

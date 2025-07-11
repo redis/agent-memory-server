@@ -2,9 +2,10 @@ import hashlib
 import json
 import logging
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from docket.dependencies import Perpetual
 from redis.asyncio import Redis
 from ulid import ULID
 
@@ -29,8 +30,8 @@ from agent_memory_server.llms import (
     get_model_client,
 )
 from agent_memory_server.models import (
+    MemoryMessage,
     MemoryRecord,
-    MemoryRecordResult,
     MemoryRecordResults,
     MemoryTypeEnum,
 )
@@ -268,6 +269,7 @@ async def compact_long_term_memories(
     vector_distance_threshold: float = 0.12,
     compact_hash_duplicates: bool = True,
     compact_semantic_duplicates: bool = True,
+    perpetual: Perpetual = Perpetual(every=timedelta(minutes=10), automatic=True),
 ) -> int:
     """
     Compact long-term memories by merging duplicates and semantically similar memories.
@@ -339,7 +341,8 @@ async def compact_long_term_memories(
 
                         for j in range(0, len(group_data), 2):
                             if group_data[j] == b"memory_hash":
-                                memory_hash = group_data[j + 1].decode()
+                                if group_data[j + 1] is not None:
+                                    memory_hash = group_data[j + 1].decode()
                             elif group_data[j] == b"count":
                                 count = int(group_data[j + 1])
 
@@ -381,7 +384,10 @@ async def compact_long_term_memories(
 
                             for j in range(1, len(search_results), 2):
                                 # Skip the last item (newest) which we'll keep
-                                if j < (int(num_duplicates) - 1) * 2 + 1:
+                                if (
+                                    j < (int(num_duplicates) - 1) * 2 + 1
+                                    and search_results[j] is not None
+                                ):
                                     key = search_results[j].decode()
                                     memories_to_delete.append(key)
 
@@ -719,196 +725,6 @@ async def search_long_term_memories(
     )
 
 
-async def search_memories(
-    text: str,
-    redis: Redis,
-    session_id: SessionId | None = None,
-    user_id: UserId | None = None,
-    namespace: Namespace | None = None,
-    created_at: CreatedAt | None = None,
-    last_accessed: LastAccessed | None = None,
-    topics: Topics | None = None,
-    entities: Entities | None = None,
-    distance_threshold: float | None = None,
-    memory_type: MemoryType | None = None,
-    event_date: EventDate | None = None,
-    limit: int = 10,
-    offset: int = 0,
-    include_working_memory: bool = True,
-    include_long_term_memory: bool = True,
-) -> MemoryRecordResults:
-    """
-    Search for memories across both working memory and long-term storage.
-
-    This provides a search interface that spans all memory types and locations.
-
-    Args:
-        text: Search query text
-        redis: Redis client
-        session_id: Filter by session ID
-        user_id: Filter by user ID
-        namespace: Filter by namespace
-        created_at: Filter by creation date
-        last_accessed: Filter by last access date
-        topics: Filter by topics
-        entities: Filter by entities
-        distance_threshold: Distance threshold for semantic search
-        memory_type: Filter by memory type
-        limit: Maximum number of results to return
-        offset: Offset for pagination
-        include_working_memory: Whether to include working memory in search
-        include_long_term_memory: Whether to include long-term memory in search
-
-    Returns:
-        Combined search results from both working and long-term memory
-    """
-    from agent_memory_server import working_memory
-
-    all_results = []
-    total_count = 0
-
-    # Search long-term memory if enabled
-    if include_long_term_memory and settings.long_term_memory:
-        try:
-            long_term_results = await search_long_term_memories(
-                text=text,
-                session_id=session_id,
-                user_id=user_id,
-                namespace=namespace,
-                created_at=created_at,
-                last_accessed=last_accessed,
-                topics=topics,
-                entities=entities,
-                distance_threshold=distance_threshold,
-                memory_type=memory_type,
-                event_date=event_date,
-                limit=limit,
-                offset=offset,
-            )
-            all_results.extend(long_term_results.memories)
-            total_count += long_term_results.total
-
-            logger.info(
-                f"Found {len(long_term_results.memories)} long-term memory results"
-            )
-        except Exception as e:
-            logger.error(f"Error searching long-term memory: {e}")
-
-    # Search working memory if enabled
-    if include_working_memory:
-        try:
-            # Get all working memory sessions if no specific session filter
-            if session_id and hasattr(session_id, "eq") and session_id.eq:
-                # Search specific session
-                session_ids_to_search = [session_id.eq]
-            else:
-                # Get all sessions for broader search
-                from agent_memory_server import working_memory
-
-                namespace_value = None
-                if namespace and hasattr(namespace, "eq"):
-                    namespace_value = namespace.eq
-
-                _, session_ids_to_search = await working_memory.list_sessions(
-                    redis=redis,
-                    limit=1000,  # Get a reasonable number of sessions
-                    offset=0,
-                    namespace=namespace_value,
-                )
-
-            # Search working memory in relevant sessions
-            working_memory_results = []
-            for session_id_str in session_ids_to_search:
-                try:
-                    working_mem = await working_memory.get_working_memory(
-                        session_id=session_id_str,
-                        namespace=namespace_value if namespace else None,
-                        redis_client=redis,
-                    )
-
-                    if working_mem and working_mem.memories:
-                        # Filter memories based on criteria
-                        filtered_memories = working_mem.memories
-
-                        # Apply memory_type filter
-                        if memory_type:
-                            if hasattr(memory_type, "eq") and memory_type.eq:
-                                filtered_memories = [
-                                    mem
-                                    for mem in filtered_memories
-                                    if mem.memory_type == memory_type.eq
-                                ]
-                            elif hasattr(memory_type, "any") and memory_type.any:
-                                filtered_memories = [
-                                    mem
-                                    for mem in filtered_memories
-                                    if mem.memory_type in memory_type.any
-                                ]
-
-                        # Apply user_id filter
-                        if user_id and hasattr(user_id, "eq") and user_id.eq:
-                            filtered_memories = [
-                                mem
-                                for mem in filtered_memories
-                                if mem.user_id == user_id.eq
-                            ]
-
-                        # Convert to MemoryRecordResult format and add to results
-                        for memory in filtered_memories:
-                            # Simple text matching for working memory (no vector search)
-                            if text.lower() in memory.text.lower():
-                                working_memory_results.append(
-                                    MemoryRecordResult(
-                                        id=memory.id or "",  # Use id instead of id_
-                                        text=memory.text,
-                                        dist=0.0,  # No vector distance for working memory
-                                        created_at=memory.created_at or 0,
-                                        updated_at=memory.updated_at or 0,
-                                        last_accessed=memory.last_accessed or 0,
-                                        user_id=memory.user_id,
-                                        session_id=session_id_str,
-                                        namespace=memory.namespace,
-                                        topics=memory.topics or [],
-                                        entities=memory.entities or [],
-                                        memory_hash="",  # Working memory doesn't have hash
-                                        memory_type=memory.memory_type,
-                                        persisted_at=memory.persisted_at,
-                                        event_date=memory.event_date,
-                                    )
-                                )
-
-                except Exception as e:
-                    logger.warning(
-                        f"Error searching working memory for session {session_id_str}: {e}"
-                    )
-                    continue
-
-            all_results.extend(working_memory_results)
-            total_count += len(working_memory_results)
-
-            logger.info(f"Found {len(working_memory_results)} working memory results")
-
-        except Exception as e:
-            logger.error(f"Error searching working memory: {e}")
-
-    # Sort combined results by relevance (distance for long-term, text match quality for working)
-    # For simplicity, put working memory results first (distance 0.0), then long-term by distance
-    all_results.sort(key=lambda x: (x.dist, x.created_at))
-
-    # Apply pagination to combined results
-    paginated_results = all_results[offset : offset + limit] if all_results else []
-
-    logger.info(
-        f"Memory search found {len(all_results)} total results, returning {len(paginated_results)}"
-    )
-
-    return MemoryRecordResults(
-        total=total_count,
-        memories=paginated_results,
-        next_offset=offset + limit if offset + limit < len(all_results) else None,
-    )
-
-
 async def count_long_term_memories(
     namespace: str | None = None,
     user_id: str | None = None,
@@ -1203,6 +1019,7 @@ async def deduplicate_by_semantic_search(
 async def promote_working_memory_to_long_term(
     session_id: str,
     namespace: str | None = None,
+    user_id: str | None = None,
     redis_client: Redis | None = None,
 ) -> int:
     """
@@ -1218,6 +1035,7 @@ async def promote_working_memory_to_long_term(
     Args:
         session_id: The session ID to promote memories from
         namespace: Optional namespace for the session
+        user_id: Optional user ID for the session
         redis_client: Optional Redis client to use
 
     Returns:
@@ -1233,12 +1051,15 @@ async def promote_working_memory_to_long_term(
     current_working_memory = await working_memory.get_working_memory(
         session_id=session_id,
         namespace=namespace,
+        user_id=user_id,
         redis_client=redis,
     )
 
     if not current_working_memory:
         logger.debug(f"No working memory found for session {session_id}")
         return 0
+
+    print("Current working memory: ", current_working_memory)
 
     # Find memories with no persisted_at (eligible for promotion)
     unpersisted_memories = [
@@ -1248,15 +1069,12 @@ async def promote_working_memory_to_long_term(
     ]
 
     # Find unpersisted messages (similar to unpersisted memories)
-    unpersisted_messages = [
-        msg for msg in current_working_memory.messages if msg.persisted_at is None
-    ]
-
-    if not unpersisted_memories and not unpersisted_messages:
-        logger.debug(
-            f"No unpersisted memories or messages found in session {session_id}"
-        )
-        return 0
+    if settings.index_all_messages_in_long_term_memory:
+        unpersisted_messages = [
+            msg for msg in current_working_memory.messages if msg.persisted_at is None
+        ]
+    else:
+        unpersisted_messages = []
 
     logger.info(
         f"Promoting {len(unpersisted_memories)} memories and {len(unpersisted_messages)} messages from session {session_id}"
@@ -1266,24 +1084,23 @@ async def promote_working_memory_to_long_term(
     updated_memories = []
     extracted_memories = []
 
-    # Stage 7: Extract memories from message records if enabled
-    if settings.enable_discrete_memory_extraction:
-        message_memories = [
-            memory
-            for memory in unpersisted_memories
-            if memory.memory_type == MemoryTypeEnum.MESSAGE
-            and memory.discrete_memory_extracted == "f"
-        ]
+    # Find messages that haven't been extracted yet for discrete memory extraction
+    unextracted_messages = [
+        message
+        for message in current_working_memory.messages
+        if message.discrete_memory_extracted == "f"
+    ]
 
-        if message_memories:
-            logger.info(
-                f"Extracting memories from {len(message_memories)} message records"
-            )
-            extracted_memories = await extract_memories_from_messages(message_memories)
-
-            # Mark message memories as extracted
-            for message_memory in message_memories:
-                message_memory.discrete_memory_extracted = "t"
+    if settings.enable_discrete_memory_extraction and unextracted_messages:
+        logger.info(f"Extracting memories from {len(unextracted_messages)} messages")
+        extracted_memories = await extract_memories_from_messages(
+            messages=unextracted_messages,
+            session_id=session_id,
+            user_id=user_id,
+            namespace=namespace,
+        )
+        for message in unextracted_messages:
+            message.discrete_memory_extracted = "t"
 
     for memory in current_working_memory.memories:
         if memory.persisted_at is None:
@@ -1324,59 +1141,72 @@ async def promote_working_memory_to_long_term(
         )
         updated_memories.extend(extracted_memories)
 
-    # Process unpersisted messages
-    updated_messages = []
-    memory_records_to_index = []
-    for msg in current_working_memory.messages:
-        if msg.persisted_at is None:
-            # Generate ID if not present (backward compatibility)
-            if not msg.id:
-                msg.id = str(ULID())
+    count_persisted_messages = 0
+    message_records_to_index = []
 
-            memory_record = MemoryRecord(
-                id=msg.id,
-                session_id=session_id,
-                text=f"{msg.role}: {msg.content}",
-                namespace=namespace,
-                user_id=current_working_memory.user_id,
-                memory_type=MemoryTypeEnum.MESSAGE,
-                persisted_at=None,
-            )
+    # Process unpersisted messages if configured to do so
+    if settings.index_all_messages_in_long_term_memory:
+        updated_messages = []
+        for msg in current_working_memory.messages:
+            if msg.persisted_at is None:
+                # Skip messages with empty or None content
+                if not msg.content or not msg.content.strip():
+                    logger.warning(f"Skipping message with empty content: {msg.id}")
+                    updated_messages.append(msg)
+                    continue
 
-            # Apply same deduplication logic as structured memories
-            deduped_memory, was_overwrite = await deduplicate_by_id(
-                memory=memory_record,
+                # Generate ID if not present (backward compatibility)
+                if not msg.id:
+                    msg.id = str(ULID())
+
+                memory_record = MemoryRecord(
+                    id=msg.id,
+                    session_id=session_id,
+                    text=f"{msg.role}: {msg.content}",
+                    namespace=namespace,
+                    user_id=current_working_memory.user_id,
+                    memory_type=MemoryTypeEnum.MESSAGE,
+                    persisted_at=None,
+                )
+
+                # Apply same deduplication logic as structured memories
+                deduped_memory, was_overwrite = await deduplicate_by_id(
+                    memory=memory_record,
+                    redis_client=redis,
+                )
+
+                # Set persisted_at timestamp
+                current_memory = deduped_memory or memory_record
+                current_memory.persisted_at = datetime.now(UTC)
+
+                # Collect memory record for batch indexing
+                message_records_to_index.append(current_memory)
+
+                # Update message with persisted_at timestamp
+                msg.persisted_at = current_memory.persisted_at
+                promoted_count += 1
+
+                if was_overwrite:
+                    logger.info(f"Overwrote existing message with id {msg.id}")
+                else:
+                    logger.info(f"Promoted new message with id {msg.id}")
+
+            updated_messages.append(msg)
+
+        # Batch index all new memory records for messages
+        if message_records_to_index:
+            count_persisted_messages = len(message_records_to_index)
+            await index_long_term_memories(
+                message_records_to_index,
                 redis_client=redis,
+                deduplicate=False,  # Already deduplicated by ID
             )
-
-            # Set persisted_at timestamp
-            current_memory = deduped_memory or memory_record
-            current_memory.persisted_at = datetime.now(UTC)
-
-            # Collect memory record for batch indexing
-            memory_records_to_index.append(current_memory)
-
-            # Update message with persisted_at timestamp
-            msg.persisted_at = current_memory.persisted_at
-            promoted_count += 1
-
-            if was_overwrite:
-                logger.info(f"Overwrote existing message with id {msg.id}")
-            else:
-                logger.info(f"Promoted new message with id {msg.id}")
-
-        updated_messages.append(msg)
-
-    # Batch index all new memory records for messages
-    if memory_records_to_index:
-        await index_long_term_memories(
-            memory_records_to_index,
-            redis_client=redis,
-            deduplicate=False,  # Already deduplicated by ID
-        )
+    else:
+        count_persisted_messages = 0
+        updated_messages = current_working_memory.messages
 
     # Update working memory with the new persisted_at timestamps and extracted memories
-    if promoted_count > 0 or extracted_memories:
+    if promoted_count > 0 or extracted_memories or count_persisted_messages > 0:
         updated_working_memory = current_working_memory.model_copy()
         updated_working_memory.memories = updated_memories
         updated_working_memory.messages = updated_messages
@@ -1388,7 +1218,7 @@ async def promote_working_memory_to_long_term(
         )
 
         logger.info(
-            f"Successfully promoted {promoted_count} memories and messages to long-term storage"
+            f"Successfully promoted {promoted_count} memories and {len(message_records_to_index)} messages to long-term storage"
             + (
                 f" and extracted {len(extracted_memories)} new memories"
                 if extracted_memories
@@ -1400,7 +1230,10 @@ async def promote_working_memory_to_long_term(
 
 
 async def extract_memories_from_messages(
-    message_records: list[MemoryRecord],
+    messages: list[MemoryMessage],
+    session_id: str | None = None,
+    user_id: str | None = None,
+    namespace: str | None = None,
     llm_client: OpenAIClientWrapper | AnthropicClientWrapper | None = None,
 ) -> list[MemoryRecord]:
     """
@@ -1413,23 +1246,18 @@ async def extract_memories_from_messages(
     Returns:
         List of extracted memory records with extracted_from field populated
     """
-    if not message_records:
+    if not messages:
         return []
 
     client = llm_client or await get_model_client(settings.generation_model)
     extracted_memories = []
 
-    for message_record in message_records:
-        if message_record.memory_type != MemoryTypeEnum.MESSAGE:
-            continue
-
+    for message in messages:
         try:
             # Use LLM to extract memories from the message
             response = await client.create_chat_completion(
                 model=settings.generation_model,
-                prompt=WORKING_MEMORY_EXTRACTION_PROMPT.format(
-                    message=message_record.text
-                ),
+                prompt=WORKING_MEMORY_EXTRACTION_PROMPT.format(message=message.content),
                 response_format={"type": "json_object"},
             )
 
@@ -1456,25 +1284,23 @@ async def extract_memories_from_messages(
                         memory_type=memory_data.get("type", "semantic"),
                         topics=memory_data.get("topics", []),
                         entities=memory_data.get("entities", []),
-                        extracted_from=[message_record.id] if message_record.id else [],
+                        extracted_from=[message.id] if message.id else [],
                         event_date=event_date,
-                        # Inherit context from the source message
-                        session_id=message_record.session_id,
-                        user_id=message_record.user_id,
-                        namespace=message_record.namespace,
+                        # Inherit context from the working memory
+                        session_id=session_id,
+                        user_id=user_id,
+                        namespace=namespace,
                         persisted_at=None,  # Will be set during promotion
                         discrete_memory_extracted="t",
                     )
                     extracted_memories.append(extracted_memory)
 
                 logger.info(
-                    f"Extracted {len(extraction_result['memories'])} memories from message {message_record.id}"
+                    f"Extracted {len(extraction_result['memories'])} memories from message {message.id}"
                 )
 
         except Exception as e:
-            logger.error(
-                f"Error extracting memories from message {message_record.id}: {e}"
-            )
+            logger.error(f"Error extracting memories from message {message.id}: {e}")
             continue
 
     return extracted_memories

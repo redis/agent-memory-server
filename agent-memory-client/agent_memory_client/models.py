@@ -61,6 +61,10 @@ class MemoryMessage(BaseModel):
         default=None,
         description="Server-assigned timestamp when message was persisted to long-term storage",
     )
+    discrete_memory_extracted: Literal["t", "f"] = Field(
+        default="f",
+        description="Whether memory extraction has run for this message",
+    )
 
 
 class MemoryRecord(BaseModel):

@@ -676,7 +676,7 @@ class MemoryAPIClient:
 
         try:
             response = await self._client.post(
-                "/v1/memory/search",
+                "/v1/long-term-memory/search",
                 json=payload,
             )
             response.raise_for_status()
@@ -2114,14 +2114,17 @@ class MemoryAPIClient:
         final_messages = existing_messages + converted_messages
 
         # Create updated working memory
-        working_memory = WorkingMemory(
-            session_id=session_id,
-            namespace=namespace or self.config.default_namespace,
-            messages=final_messages,
-            memories=existing_memory.memories if existing_memory else [],
-            data=existing_memory.data if existing_memory else {},
-            context=existing_memory.context if existing_memory else None,
-            user_id=existing_memory.user_id if existing_memory else None,
+        working_memory = (
+            existing_memory.model_copy(
+                update={"messages": final_messages},
+            )
+            if existing_memory
+            else WorkingMemory(
+                session_id=session_id,
+                namespace=namespace or self.config.default_namespace,
+                messages=final_messages,
+                user_id=user_id or None,
+            )
         )
 
         return await self.put_working_memory(
@@ -2216,7 +2219,6 @@ class MemoryAPIClient:
             payload["long_term_search"] = long_term_search
 
         try:
-            print("Payload: ", payload)
             response = await self._client.post(
                 "/v1/memory/prompt",
                 json=payload,

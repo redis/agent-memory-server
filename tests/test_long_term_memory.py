@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from agent_memory_server.filters import Namespace, SessionId
+from agent_memory_server.filters import SessionId
 from agent_memory_server.long_term_memory import (
     compact_long_term_memories,
     count_long_term_memories,
@@ -17,7 +17,6 @@ from agent_memory_server.long_term_memory import (
     merge_memories_with_llm,
     promote_working_memory_to_long_term,
     search_long_term_memories,
-    search_memories,
 )
 from agent_memory_server.models import (
     MemoryRecord,
@@ -126,90 +125,6 @@ class TestLongTermMemory:
         assert results.memories[0].text == "Hello, world!"
         assert results.memories[0].dist == 0.25
         assert results.memories[0].memory_type == "message"
-
-    @pytest.mark.asyncio
-    async def test_search_memories_unified_search(self, mock_async_redis_client):
-        """Test unified search across working memory and long-term memory"""
-
-        from agent_memory_server.models import (
-            MemoryRecordResults,
-            WorkingMemory,
-        )
-
-        # Mock search_long_term_memories to return some long-term results
-        mock_long_term_results = MemoryRecordResults(
-            total=1,
-            memories=[
-                MemoryRecordResult(
-                    id="long-term-1",
-                    text="Long-term: User likes coffee",
-                    dist=0.3,
-                    memory_type=MemoryTypeEnum.SEMANTIC,
-                    created_at=datetime.fromtimestamp(1000),
-                    updated_at=datetime.fromtimestamp(1000),
-                    last_accessed=datetime.fromtimestamp(1000),
-                )
-            ],
-        )
-
-        # Mock working memory with matching content
-        test_working_memory = WorkingMemory(
-            session_id="test-session",
-            namespace="test",
-            messages=[],
-            memories=[
-                MemoryRecord(
-                    id="working-1",
-                    text="Working memory: coffee preferences",
-                    memory_type=MemoryTypeEnum.SEMANTIC,
-                    persisted_at=None,
-                )
-            ],
-        )
-
-        # Mock the search and working memory functions
-        with (
-            patch(
-                "agent_memory_server.long_term_memory.search_long_term_memories"
-            ) as mock_search_lt,
-            patch(
-                "agent_memory_server.working_memory.get_working_memory"
-            ) as mock_get_wm,
-            patch(
-                "agent_memory_server.working_memory.list_sessions"
-            ) as mock_list_sessions,
-        ):
-            mock_search_lt.return_value = mock_long_term_results
-            mock_get_wm.return_value = test_working_memory
-            # Mock list_sessions to return a list of session IDs
-            mock_list_sessions.return_value = (1, ["test-session"])
-
-            # Test unified search WITHOUT providing session_id to avoid the namespace_value bug
-            results = await search_memories(
-                text="coffee",
-                redis=mock_async_redis_client,
-                namespace=Namespace(eq="test"),
-                limit=10,
-                include_working_memory=True,
-                include_long_term_memory=True,
-            )
-
-            # Verify both long-term and working memory were searched
-            mock_search_lt.assert_called_once()
-            mock_get_wm.assert_called_once()
-            mock_list_sessions.assert_called_once()
-
-            # Check results contain both types
-            assert len(results.memories) == 2
-            long_term_result = next(
-                r for r in results.memories if "Long-term" in r.text
-            )
-            working_result = next(
-                r for r in results.memories if "Working memory" in r.text
-            )
-
-            assert long_term_result.text == "Long-term: User likes coffee"
-            assert working_result.text == "Working memory: coffee preferences"
 
     @pytest.mark.asyncio
     async def test_deduplicate_by_id(self, mock_async_redis_client):
@@ -681,6 +596,7 @@ class TestLongTermMemory:
             mock_get.assert_called_once_with(
                 session_id="test-session",
                 namespace="test",
+                user_id=None,
                 redis_client=mock_async_redis_client,
             )
 

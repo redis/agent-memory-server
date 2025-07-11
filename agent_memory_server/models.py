@@ -75,6 +75,10 @@ class MemoryMessage(BaseModel):
         default=None,
         description="Server-assigned timestamp when message was persisted to long-term storage",
     )
+    discrete_memory_extracted: Literal["t", "f"] = Field(
+        default="f",
+        description="Whether memory extraction has run for this message",
+    )
 
 
 class SessionListResponse(BaseModel):
@@ -371,7 +375,7 @@ class SearchRequest(BaseModel):
 class MemoryPromptRequest(BaseModel):
     query: str
     session: WorkingMemoryRequest | None = None
-    long_term_search: SearchRequest | None = None
+    long_term_search: SearchRequest | bool | None = None
 
 
 class SystemMessage(base.Message):

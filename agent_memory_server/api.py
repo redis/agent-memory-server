@@ -7,6 +7,7 @@ from agent_memory_server import long_term_memory, working_memory
 from agent_memory_server.auth import UserInfo, get_current_user
 from agent_memory_server.config import settings
 from agent_memory_server.dependencies import get_background_tasks
+from agent_memory_server.filters import SessionId, UserId
 from agent_memory_server.llms import get_model_client, get_model_config
 from agent_memory_server.logging import get_logger
 from agent_memory_server.models import (
@@ -234,7 +235,6 @@ async def get_working_memory(
     """
     redis = await get_redis_conn()
 
-    # Get unified working memory
     working_mem = await working_memory.get_working_memory(
         session_id=session_id,
         namespace=namespace,
@@ -243,7 +243,7 @@ async def get_working_memory(
     )
 
     if not working_mem:
-        # Return empty working memory if none exists
+        # Create empty working memory if none exists
         working_mem = WorkingMemory(
             messages=[],
             memories=[],
@@ -266,6 +266,8 @@ async def get_working_memory(
                 if _calculate_messages_token_count(truncated_messages) <= token_limit:
                     break
             working_mem.messages = truncated_messages
+
+    logger.debug(f"Working mem: {working_mem}")
 
     return working_mem
 
@@ -314,6 +316,14 @@ async def put_working_memory(
                 detail="All memory records in working memory must have an ID",
             )
 
+    # Validate that all messages have non-empty content
+    for msg in memory.messages:
+        if not msg.content or not msg.content.strip():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Message content cannot be empty (message ID: {msg.id})",
+            )
+
     # Handle summarization if needed (before storing) - now token-based
     updated_memory = memory
     if memory.messages:
@@ -333,8 +343,9 @@ async def put_working_memory(
         # Promote structured memories from working memory to long-term storage
         await background_tasks.add_task(
             long_term_memory.promote_working_memory_to_long_term,
-            session_id,
-            updated_memory.namespace,
+            session_id=session_id,
+            user_id=updated_memory.user_id,
+            namespace=updated_memory.namespace,
         )
 
     return updated_memory
@@ -431,7 +442,7 @@ async def search_long_term_memory(
     # Extract filter objects from the payload
     filters = payload.get_filters()
 
-    print("Long-term search filters: ", filters)
+    logger.debug(f"Long-term search filters: {filters}")
 
     kwargs = {
         "distance_threshold": payload.distance_threshold,
@@ -440,9 +451,9 @@ async def search_long_term_memory(
         **filters,
     }
 
-    print("Kwargs: ", kwargs)
-
     kwargs["text"] = payload.text or ""
+
+    logger.debug(f"Long-term search kwargs: {kwargs}")
 
     # Pass text and filter objects to the search function (no redis needed for vectorstore adapter)
     return await long_term_memory.search_long_term_memories(**kwargs)
@@ -464,53 +475,6 @@ async def delete_long_term_memory(
 
     count = await long_term_memory.delete_long_term_memories(ids=memory_ids)
     return AckResponse(status=f"ok, deleted {count} memories")
-
-
-@router.post("/v1/memory/search", response_model=MemoryRecordResultsResponse)
-async def search_memory(
-    payload: SearchRequest,
-    current_user: UserInfo = Depends(get_current_user),
-):
-    """
-    Run a search across all memory types (working memory and long-term memory).
-
-    This endpoint searches both working memory (ephemeral, session-scoped) and
-    long-term memory (persistent, indexed) to provide comprehensive results.
-
-    For working memory:
-    - Uses simple text matching
-    - Searches across all sessions (unless session_id filter is provided)
-    - Returns memories that haven't been promoted to long-term storage
-
-    For long-term memory:
-    - Uses semantic vector search
-    - Includes promoted memories from working memory
-    - Supports advanced filtering by topics, entities, etc.
-
-    Args:
-        payload: Search payload with filter objects for precise queries
-
-    Returns:
-        Search results from both memory types, sorted by relevance
-    """
-    redis = await get_redis_conn()
-
-    # Extract filter objects from the payload
-    filters = payload.get_filters()
-
-    kwargs = {
-        "redis": redis,
-        "distance_threshold": payload.distance_threshold,
-        "limit": payload.limit,
-        "offset": payload.offset,
-        **filters,
-    }
-
-    if payload.text:
-        kwargs["text"] = payload.text
-
-    # Use the search function
-    return await long_term_memory.search_memories(**kwargs)
 
 
 @router.post("/v1/memory/prompt", response_model=MemoryPromptResponse)
@@ -546,7 +510,7 @@ async def memory_prompt(
     redis = await get_redis_conn()
     _messages = []
 
-    print("Received params: ", params)
+    logger.debug(f"Memory prompt params: {params}")
 
     if params.session:
         # Use token limit for memory prompt, fallback to message count for backward compatibility
@@ -569,6 +533,8 @@ async def memory_prompt(
             redis_client=redis,
         )
 
+        logger.debug(f"Found working memory: {working_mem}")
+
         if working_mem:
             if working_mem.context:
                 # TODO: Weird to use MCP types here?
@@ -580,7 +546,7 @@ async def memory_prompt(
                         ),
                     )
                 )
-            # Apply token-based or message-based truncation
+            # Apply token-based truncation if model info is provided
             if params.session.model_name or params.session.context_window_max:
                 # Token-based truncation
                 if (
@@ -598,38 +564,54 @@ async def memory_prompt(
                             break
                 else:
                     recent_messages = working_mem.messages
-            else:
-                # Message-based truncation (backward compatibility)
-                recent_messages = (
-                    working_mem.messages[-effective_window_size:]
-                    if len(working_mem.messages) > effective_window_size
-                    else working_mem.messages
-                )
-            for msg in recent_messages:
-                if msg.role == "user":
-                    msg_class = base.UserMessage
-                else:
-                    msg_class = base.AssistantMessage
-                _messages.append(
-                    msg_class(
-                        content=TextContent(type="text", text=msg.content),
+
+                for msg in recent_messages:
+                    if msg.role == "user":
+                        msg_class = base.UserMessage
+                    else:
+                        msg_class = base.AssistantMessage
+                    _messages.append(
+                        msg_class(
+                            content=TextContent(type="text", text=msg.content),
+                        )
                     )
-                )
+            else:
+                # No token-based truncation - use all messages
+                for msg in working_mem.messages:
+                    if msg.role == "user":
+                        msg_class = base.UserMessage
+                    else:
+                        msg_class = base.AssistantMessage
+                    _messages.append(
+                        msg_class(
+                            content=TextContent(type="text", text=msg.content),
+                        )
+                    )
 
     if params.long_term_search:
-        # TODO: Exclude session messages if we already included them from session memory
-
-        # If no text is provided in long_term_search, use the user's query
-        if not params.long_term_search.text:
-            # Create a new SearchRequest with the query as text
-            search_payload = params.long_term_search.model_copy()
-            search_payload.text = params.query
+        logger.debug(
+            f"[memory_prompt] Long-term search args: {params.long_term_search}"
+        )
+        if isinstance(params.long_term_search, bool):
+            search_kwargs = {}
+            if params.session:
+                # Exclude memories from the current session because we already included them
+                search_kwargs["session_id"] = SessionId(ne=params.session.session_id)
+            if params.session and params.session.user_id:
+                search_kwargs["user_id"] = UserId(eq=params.session.user_id)
+            search_payload = SearchRequest(**search_kwargs, limit=20, offset=0)
         else:
-            search_payload = params.long_term_search
+            search_payload = params.long_term_search.model_copy()
+            # Merge session user_id into the search request if not already specified
+            if params.session and params.session.user_id and not search_payload.user_id:
+                search_payload.user_id = UserId(eq=params.session.user_id)
 
+        logger.debug(f"[memory_prompt] Search payload: {search_payload}")
         long_term_memories = await search_long_term_memory(
             search_payload,
         )
+
+        logger.debug(f"[memory_prompt] Long-term memories: {long_term_memories}")
 
         if long_term_memories.total > 0:
             long_term_memories_text = "\n".join(
