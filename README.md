@@ -48,9 +48,9 @@ For manual Auth0 testing, see the [manual OAuth testing guide](manual_oauth_qa/R
 
 ## Project Status and Roadmap
 
-### Project Status: In Development, Pre-Release
+### Project Status: Experimental
 
-This project is under active development and is **pre-release** software. Think of it as an early beta!
+This project is under active development and is **experimental** software. We do not officially support it, nor are there long-term plans to maintain it.
 
 ### Roadmap
 
