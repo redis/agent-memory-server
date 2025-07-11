@@ -27,6 +27,8 @@ def mock_settings():
     """Mock settings for testing"""
     original_settings = {
         "disable_auth": settings.disable_auth,
+        "auth_mode": settings.auth_mode,
+        "token_auth_enabled": settings.token_auth_enabled,
         "oauth2_issuer_url": settings.oauth2_issuer_url,
         "oauth2_audience": settings.oauth2_audience,
         "oauth2_jwks_url": settings.oauth2_jwks_url,
@@ -695,6 +697,7 @@ class TestGetCurrentUser:
     async def test_get_current_user_missing_credentials(self, mock_settings):
         """Test get_current_user with missing credentials"""
         mock_settings.disable_auth = False
+        mock_settings.auth_mode = "oauth2"
 
         with pytest.raises(HTTPException) as exc_info:
             get_current_user(None)
@@ -707,6 +710,7 @@ class TestGetCurrentUser:
     async def test_get_current_user_empty_credentials(self, mock_settings):
         """Test get_current_user with empty credentials"""
         mock_settings.disable_auth = False
+        mock_settings.auth_mode = "oauth2"
 
         from fastapi.security import HTTPAuthorizationCredentials
 
@@ -722,6 +726,7 @@ class TestGetCurrentUser:
     async def test_get_current_user_valid_token(self, mock_settings, valid_token):
         """Test get_current_user with valid token"""
         mock_settings.disable_auth = False
+        mock_settings.auth_mode = "oauth2"
 
         from fastapi.security import HTTPAuthorizationCredentials
 
@@ -856,6 +861,7 @@ class TestAuthConfiguration:
     def test_verify_auth_config_missing_issuer(self, mock_settings):
         """Test auth config verification with missing issuer"""
         mock_settings.disable_auth = False
+        mock_settings.auth_mode = "oauth2"
         mock_settings.oauth2_issuer_url = None
 
         with pytest.raises(ValueError) as exc_info:

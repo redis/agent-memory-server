@@ -3,10 +3,10 @@
 Command-line interface for agent-memory-server.
 """
 
-import datetime
 import importlib
 import logging
 import sys
+from datetime import UTC, datetime, timedelta
 
 import click
 import uvicorn
@@ -227,10 +227,254 @@ def task_worker(concurrency: int, redelivery_timeout: int):
             docket_name=settings.docket_name,
             url=settings.redis_url,
             concurrency=concurrency,
-            redelivery_timeout=datetime.timedelta(seconds=redelivery_timeout),
+            redelivery_timeout=timedelta(seconds=redelivery_timeout),
             tasks=["agent_memory_server.docket_tasks:task_collection"],
         )
     )
+
+
+@cli.group()
+def token():
+    """Manage authentication tokens."""
+    pass
+
+
+@token.command()
+@click.option("--description", "-d", required=True, help="Token description")
+@click.option("--expires-days", "-e", type=int, help="Token expiration in days")
+def add(description: str, expires_days: int | None):
+    """Add a new authentication token."""
+    import asyncio
+
+    from agent_memory_server.auth import TokenInfo, generate_token, hash_token
+    from agent_memory_server.utils.keys import Keys
+
+    async def create_token():
+        redis = await get_redis_conn()
+
+        # Generate token
+        token = generate_token()
+        token_hash = hash_token(token)
+
+        # Calculate expiration
+        now = datetime.now(UTC)
+        expires_at = now + timedelta(days=expires_days) if expires_days else None
+
+        # Create token info
+        token_info = TokenInfo(
+            description=description,
+            created_at=now,
+            expires_at=expires_at,
+            token_hash=token_hash,
+        )
+
+        # Store in Redis
+        key = Keys.auth_token_key(token_hash)
+        await redis.set(key, token_info.model_dump_json())
+
+        # Set TTL if expiration is set
+        if expires_at:
+            ttl_seconds = int((expires_at - now).total_seconds())
+            await redis.expire(key, ttl_seconds)
+
+        # Add to tokens list (for listing purposes)
+        list_key = Keys.auth_tokens_list_key()
+        await redis.sadd(list_key, token_hash)
+
+        click.echo("Token created successfully!")
+        click.echo(f"Token: {token}")
+        click.echo(f"Description: {description}")
+        if expires_at:
+            click.echo(f"Expires: {expires_at.isoformat()}")
+        else:
+            click.echo("Expires: Never")
+        click.echo("\nWARNING: Save this token securely. It will not be shown again.")
+
+    asyncio.run(create_token())
+
+
+@token.command()
+def list():
+    """List all authentication tokens."""
+    import asyncio
+
+    from agent_memory_server.auth import TokenInfo
+    from agent_memory_server.utils.keys import Keys
+
+    async def list_tokens():
+        redis = await get_redis_conn()
+
+        # Get all token hashes
+        list_key = Keys.auth_tokens_list_key()
+        token_hashes = await redis.smembers(list_key)
+
+        if not token_hashes:
+            click.echo("No tokens found.")
+            return
+
+        click.echo("Authentication Tokens:")
+        click.echo("=" * 50)
+
+        for token_hash in token_hashes:
+            key = Keys.auth_token_key(token_hash)
+            token_data = await redis.get(key)
+
+            if not token_data:
+                # Token expired or deleted, remove from list
+                await redis.srem(list_key, token_hash)
+                continue
+
+            try:
+                token_info = TokenInfo.model_validate_json(token_data)
+
+                # Mask the token hash for display
+                masked_hash = token_hash[:8] + "..." + token_hash[-8:]
+
+                click.echo(f"Token: {masked_hash}")
+                click.echo(f"Description: {token_info.description}")
+                click.echo(f"Created: {token_info.created_at.isoformat()}")
+                if token_info.expires_at:
+                    click.echo(f"Expires: {token_info.expires_at.isoformat()}")
+                else:
+                    click.echo("Expires: Never")
+                click.echo("-" * 30)
+
+            except Exception as e:
+                click.echo(f"Error processing token {token_hash}: {e}")
+
+    asyncio.run(list_tokens())
+
+
+@token.command()
+@click.argument("token_hash")
+def show(token_hash: str):
+    """Show details for a specific token."""
+    import asyncio
+
+    from agent_memory_server.auth import TokenInfo
+    from agent_memory_server.utils.keys import Keys
+
+    async def show_token():
+        nonlocal token_hash
+        redis = await get_redis_conn()
+
+        # Try to find the token by partial hash
+        if len(token_hash) < 16:
+            # If partial hash provided, find the full hash
+            list_key = Keys.auth_tokens_list_key()
+            token_hashes = await redis.smembers(list_key)
+
+            matching_hashes = [h for h in token_hashes if h.startswith(token_hash)]
+
+            if not matching_hashes:
+                click.echo(f"No token found matching '{token_hash}'")
+                return
+            if len(matching_hashes) > 1:
+                click.echo(f"Multiple tokens match '{token_hash}':")
+                for h in matching_hashes:
+                    click.echo(f"  {h[:8]}...{h[-8:]}")
+                return
+            token_hash = matching_hashes[0]
+
+        key = Keys.auth_token_key(token_hash)
+        token_data = await redis.get(key)
+
+        if not token_data:
+            click.echo(f"Token not found: {token_hash}")
+            return
+
+        try:
+            token_info = TokenInfo.model_validate_json(token_data)
+
+            click.echo("Token Details:")
+            click.echo("=" * 30)
+            click.echo(f"Hash: {token_hash}")
+            click.echo(f"Description: {token_info.description}")
+            click.echo(f"Created: {token_info.created_at.isoformat()}")
+            if token_info.expires_at:
+                click.echo(f"Expires: {token_info.expires_at.isoformat()}")
+                # Check if expired
+                if datetime.now(UTC) > token_info.expires_at:
+                    click.echo("Status: EXPIRED")
+                else:
+                    click.echo("Status: Active")
+            else:
+                click.echo("Expires: Never")
+                click.echo("Status: Active")
+
+        except Exception as e:
+            click.echo(f"Error processing token: {e}")
+
+    asyncio.run(show_token())
+
+
+@token.command()
+@click.argument("token_hash")
+@click.option("--force", "-f", is_flag=True, help="Force removal without confirmation")
+def remove(token_hash: str, force: bool):
+    """Remove an authentication token."""
+    import asyncio
+
+    from agent_memory_server.auth import TokenInfo
+    from agent_memory_server.utils.keys import Keys
+
+    async def remove_token():
+        nonlocal token_hash
+        redis = await get_redis_conn()
+
+        # Try to find the token by partial hash
+        if len(token_hash) < 16:
+            # If partial hash provided, find the full hash
+            list_key = Keys.auth_tokens_list_key()
+            token_hashes = await redis.smembers(list_key)
+
+            matching_hashes = [h for h in token_hashes if h.startswith(token_hash)]
+
+            if not matching_hashes:
+                click.echo(f"No token found matching '{token_hash}'")
+                return
+            if len(matching_hashes) > 1:
+                click.echo(f"Multiple tokens match '{token_hash}':")
+                for h in matching_hashes:
+                    click.echo(f"  {h[:8]}...{h[-8:]}")
+                return
+            token_hash = matching_hashes[0]
+
+        key = Keys.auth_token_key(token_hash)
+        token_data = await redis.get(key)
+
+        if not token_data:
+            click.echo(f"Token not found: {token_hash}")
+            return
+
+        try:
+            token_info = TokenInfo.model_validate_json(token_data)
+
+            # Show token info before removal
+            click.echo("Token to remove:")
+            click.echo(f"  Description: {token_info.description}")
+            click.echo(f"  Created: {token_info.created_at.isoformat()}")
+
+            # Confirm removal
+            if not force and not click.confirm(
+                "Are you sure you want to remove this token?"
+            ):
+                click.echo("Token removal cancelled.")
+                return
+
+            # Remove from Redis
+            await redis.delete(key)
+
+            # Remove from tokens list
+            list_key = Keys.auth_tokens_list_key()
+            await redis.srem(list_key, token_hash)
+
+            click.echo("Token removed successfully.")
+
+        except Exception as e:
+            click.echo(f"Error processing token: {e}")
+
+    asyncio.run(remove_token())
 
 
 if __name__ == "__main__":

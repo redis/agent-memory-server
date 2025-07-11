@@ -77,3 +77,13 @@ class Keys:
     def search_index_name() -> str:
         """Return the name of the search index."""
         return settings.redisvl_index_name
+
+    @staticmethod
+    def auth_token_key(token_hash: str) -> str:
+        """Get the auth token key for a hashed token."""
+        return f"auth_token:{token_hash}"
+
+    @staticmethod
+    def auth_tokens_list_key() -> str:
+        """Get the key for the list of all auth tokens."""
+        return "auth_tokens:list"
