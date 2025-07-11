@@ -121,7 +121,7 @@ async def get_working_memory(
             tokens=working_memory_data.get("tokens", 0),
             session_id=session_id,
             namespace=namespace,
-            ttl_seconds=working_memory_data.get("ttl_seconds", 3600),
+            ttl_seconds=working_memory_data.get("ttl_seconds", None),
             data=working_memory_data.get("data") or {},
             last_accessed=datetime.fromtimestamp(
                 working_memory_data.get("last_accessed", int(time.time())), UTC
@@ -188,18 +188,23 @@ async def set_working_memory(
     }
 
     try:
-        # Store with TTL
-        await redis_client.setex(
-            key,
-            working_memory.ttl_seconds,
-            json.dumps(
-                data, default=json_datetime_handler
-            ),  # Add custom handler for any remaining datetime objects
-        )
+        if working_memory.ttl_seconds:
+            # Store with TTL
+            await redis_client.setex(
+                key,
+                working_memory.ttl_seconds,
+                json.dumps(
+                    data, default=json_datetime_handler
+                ),  # Add custom handler for any remaining datetime objects
+            )
+        else:
+            await redis_client.set(
+                key,
+                json.dumps(data, default=json_datetime_handler),
+            )
         logger.info(
             f"Set working memory for session {working_memory.session_id} with TTL {working_memory.ttl_seconds}s"
         )
-
     except Exception as e:
         logger.error(
             f"Error setting working memory for session {working_memory.session_id}: {e}"

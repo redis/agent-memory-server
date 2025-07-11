@@ -29,19 +29,19 @@ fi
 
 # Check if Redis is running
 echo "🔍 Checking Redis connection..."
-if redis-cli ping > /dev/null 2>&1; then
+if redis-cli ping >/dev/null 2>&1; then
     echo "✅ Redis is running"
 else
     echo "❌ Redis is not running. Starting Redis with Docker..."
-    if command -v docker > /dev/null 2>&1; then
-        docker run -d -p 6379:6379 --name redis-memory-test redis/redis-stack-server:latest
+    if command -v docker >/dev/null 2>&1; then
+        docker run -d -p 6379:6379 --name redis-memory-test redis:8.0.3
         echo "✅ Started Redis container"
         sleep 2
     else
         echo "❌ Docker not found. Please start Redis manually:"
         echo "   brew install redis && brew services start redis"
         echo "   OR"
-        echo "   docker run -d -p 6379:6379 redis/redis-stack-server:latest"
+        echo "   docker run -d -p 6379:6379 redis:8.0.3"
         exit 1
     fi
 fi
@@ -77,8 +77,8 @@ echo "🔍 Testing Auth0 token endpoint..."
 AUTH0_DOMAIN=$(echo $OAUTH2_ISSUER_URL | sed 's|https://||' | sed 's|/||')
 
 TOKEN_RESPONSE=$(curl -s -X POST "https://$AUTH0_DOMAIN/oauth/token" \
-  -H "Content-Type: application/json" \
-  -d "{
+    -H "Content-Type: application/json" \
+    -d "{
     \"client_id\": \"$AUTH0_CLIENT_ID\",
     \"client_secret\": \"$AUTH0_CLIENT_SECRET\",
     \"audience\": \"$OAUTH2_AUDIENCE\",

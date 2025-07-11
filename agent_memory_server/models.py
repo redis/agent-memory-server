@@ -201,8 +201,8 @@ class WorkingMemory(BaseModel):
     )
 
     # TTL and timestamps
-    ttl_seconds: int = Field(
-        default=3600,  # 1 hour default
+    ttl_seconds: int | None = Field(
+        default=None,  # Persistent by default
         description="TTL for the working memory in seconds",
     )
     last_accessed: datetime = Field(

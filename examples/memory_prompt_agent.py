@@ -34,8 +34,12 @@ from langchain_openai import ChatOpenAI
 
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
+
+# Reduce third-party logging
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)
 
 # Environment setup
 MEMORY_SERVER_URL = os.getenv("MEMORY_SERVER_URL", "http://localhost:8000")
@@ -96,7 +100,6 @@ class MemoryPromptAgent:
         """Clean up resources."""
         if self._memory_client:
             await self._memory_client.close()
-            logger.info("Memory client closed")
 
     async def _add_message_to_working_memory(
         self, session_id: str, user_id: str, role: str, content: str
@@ -144,8 +147,6 @@ class MemoryPromptAgent:
             if isinstance(content, dict) and "text" in content:
                 content = content["text"]
             messages.append({"role": msg["role"], "content": str(content)})
-
-        logger.info(f"Total messages for LLM: {len(messages)}")
 
         # Generate response
         response = self.llm.invoke(messages)
