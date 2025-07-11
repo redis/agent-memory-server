@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.0] - 2025-06-13
+## [0.9.0] - 2025-07-11
 
 *Changes from the initial release:*
 
@@ -14,21 +14,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Renamed from "short-term memory" to "working memory" to better reflect its purpose
   - Enhanced with automatic promotion system that moves structured memories to long-term storage in background
   - Added support for arbitrary JSON data storage alongside memory structures
-  - Improved automatic conversation summarization in working memory
+  - Improved automatic conversation summarization in working memory, based on token limits
 
 - **Long-term Memory Promotion**:
   - Implemented seamless flow from working memory to long-term memory via background task processing
   - Agent only has to think about working memory, long-term memory is managed automatically (but can be managed manually, too)
   - Use any LangChain `VectorStore` subclass for long-term storage, defaults to `RedisVectorStore`
-  - Structured memories automatically promoted with vector embeddings and metadata indexing
+  - Structured memories are automatically promoted with vector embeddings and metadata indexing
   - Deduplication and compaction systems for long-term memory management
-  - Background task worker system using Docket for reliable memory processing
+  - Background task worker system using for reliable, scalable memory processing
 
 ### Client SDK and Tooling
-  - Both working and long-term memory available as tools for LLM integration (LLM can choose to persist a long-term memory or search for long-term memories)
-  - Memory-enriched prompt generation via `/v1/memory/prompt` endpoint
-  - Unified search across both memory types with metadata filtering
-  - Support for namespace isolation and session management
+  - Working and long-term memory available as tools for LLM integration (LLM can choose to persist a long-term memory or search for long-term memories, etc.)
+  - Higher-level tools support sending in a user's input and getting back a context-enriched prompt, via `/v1/memory/prompt` endpoint
+  - Support for namespace isolation, user separation, and session management
 
 ### Search and Retrieval
   - Vector-based similarity search using OpenAI embeddings
@@ -39,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Enhanced Memory Classification:
   - Semantic memories for facts and preferences
   - Episodic memories for time-bound events with event dates (requires a timeframe)
-  - Message memories for conversation records
+  - Message memories for long-term conversation records (optional)
   - Automatic topic modeling and entity recognition either using BERTopic or a configured LLM
   - Rich metadata extraction and indexing
 
