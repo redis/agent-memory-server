@@ -21,6 +21,14 @@ def configure_logging():
     handler.setLevel(level)
     logging.basicConfig(level=level, handlers=[handler], format="%(message)s")
 
+    # Quiet down noisy third-party loggers
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("docket.worker").setLevel(logging.WARNING)
+    logging.getLogger("agent_memory_server.dependencies").setLevel(logging.WARNING)
+
+    # Set PyTorch to be less verbose about device selection
+    logging.getLogger("torch").setLevel(logging.WARNING)
+
     # Configure structlog with processors honoring the log level and structured output
     structlog.configure(
         processors=[

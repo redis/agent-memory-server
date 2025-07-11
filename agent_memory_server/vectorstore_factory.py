@@ -26,23 +26,7 @@ from langchain_core.vectorstores import VectorStore
 from langchain_redis.config import RedisConfig
 from pydantic.types import SecretStr
 
-
-# Monkey patch RedisVL ULID issue before importing anything else
-try:
-    import redisvl.utils.utils
-    from ulid import ULID
-
-    def patched_create_ulid() -> str:
-        """Patched ULID creation function that works with python-ulid."""
-        return str(ULID())
-
-    # Replace the broken function with our working one
-    redisvl.utils.utils.create_ulid = patched_create_ulid
-    # Note: Successfully patched RedisVL ULID function
-except Exception:
-    # Note: Could not patch RedisVL ULID function
-    pass
-
+# RedisVL uses the same python-ulid library as this project, so no patching needed
 from agent_memory_server.config import settings
 from agent_memory_server.vectorstore_adapter import (
     LangChainVectorStoreAdapter,

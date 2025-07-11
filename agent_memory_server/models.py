@@ -67,6 +67,18 @@ class MemoryMessage(BaseModel):
 
     role: str
     content: str
+    id: str = Field(
+        default_factory=lambda: str(ULID()),
+        description="Unique identifier for the message (auto-generated if not provided)",
+    )
+    persisted_at: datetime | None = Field(
+        default=None,
+        description="Server-assigned timestamp when message was persisted to long-term storage",
+    )
+    discrete_memory_extracted: Literal["t", "f"] = Field(
+        default="f",
+        description="Whether memory extraction has run for this message",
+    )
 
 
 class SessionListResponse(BaseModel):
@@ -363,7 +375,7 @@ class SearchRequest(BaseModel):
 class MemoryPromptRequest(BaseModel):
     query: str
     session: WorkingMemoryRequest | None = None
-    long_term_search: SearchRequest | None = None
+    long_term_search: SearchRequest | bool | None = None
 
 
 class SystemMessage(base.Message):

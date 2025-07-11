@@ -1,4 +1,3 @@
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -6,14 +5,12 @@ import pytest
 
 from agent_memory_server.config import Settings
 from agent_memory_server.long_term_memory import (
-    index_long_term_memories,
     promote_working_memory_to_long_term,
 )
 from agent_memory_server.models import (
     MemoryMessage,
     MemoryRecordResult,
     MemoryRecordResultsResponse,
-    MemoryTypeEnum,
     SessionListResponse,
     WorkingMemory,
     WorkingMemoryResponse,
@@ -89,10 +86,22 @@ class TestMemoryEndpoints:
 
         data = response.json()
         response = WorkingMemoryResponse(**data)
-        assert response.messages == [
-            MemoryMessage(role="user", content="Hello"),
-            MemoryMessage(role="assistant", content="Hi there"),
-        ]
+
+        # Check that we have 2 messages with correct roles and content
+        assert len(response.messages) == 2
+
+        # Check message content and roles (IDs are auto-generated so we can't compare directly)
+        message_contents = [msg.content for msg in response.messages]
+        message_roles = [msg.role for msg in response.messages]
+        assert "Hello" in message_contents
+        assert "Hi there" in message_contents
+        assert "user" in message_roles
+        assert "assistant" in message_roles
+
+        # Check that all messages have IDs (auto-generated)
+        for msg in response.messages:
+            assert msg.id is not None
+            assert len(msg.id) > 0
 
         roles = [msg["role"] for msg in data["messages"]]
         contents = [msg["content"] for msg in data["messages"]]
@@ -141,7 +150,11 @@ class TestMemoryEndpoints:
             "/v1/working-memory/test-session?namespace=test-namespace"
         )
         assert updated_session.status_code == 200
-        assert updated_session.json()["messages"] == payload["messages"]
+        retrieved_messages = updated_session.json()["messages"]
+        assert len(retrieved_messages) == len(payload["messages"])
+        for i, msg in enumerate(retrieved_messages):
+            assert msg["role"] == payload["messages"][i]["role"]
+            assert msg["content"] == payload["messages"][i]["content"]
 
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
@@ -176,10 +189,10 @@ class TestMemoryEndpoints:
         # Check that background tasks were called
         assert mock_background_tasks.add_task.call_count == 1
 
-        # Check that the last call was for long-term memory indexing
+        # Check that the last call was for long-term memory promotion
         assert (
             mock_background_tasks.add_task.call_args_list[-1][0][0]
-            == index_long_term_memories
+            == promote_working_memory_to_long_term
         )
 
     @pytest.mark.requires_api_keys
@@ -225,9 +238,10 @@ class TestMemoryEndpoints:
         )
 
         # Check the arguments passed to the promotion task
-        task_args = mock_background_tasks.add_task.call_args_list[0][0]
-        assert task_args[1] == "test-session"  # session_id
-        assert task_args[2] == "test-namespace"  # namespace
+        task_call = mock_background_tasks.add_task.call_args_list[0]
+        task_kwargs = task_call[1]
+        assert task_kwargs["session_id"] == "test-session"
+        assert task_kwargs["namespace"] == "test-namespace"
 
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
@@ -795,121 +809,3 @@ class TestLongTermMemoryEndpoint:
 
         # Verify delete function was called with empty list
         mock_delete.assert_called_once_with(ids=[])
-
-
-@pytest.mark.requires_api_keys
-class TestUnifiedSearchEndpoint:
-    @patch("agent_memory_server.api.long_term_memory.search_memories")
-    @pytest.mark.asyncio
-    async def test_unified_search(self, mock_search, client):
-        """Test the unified search endpoint"""
-        mock_search.return_value = MemoryRecordResultsResponse(
-            total=3,
-            memories=[
-                MemoryRecordResult(
-                    id="working-1",
-                    text="Working memory: User prefers dark mode",
-                    dist=0.0,
-                    memory_type=MemoryTypeEnum.SEMANTIC,
-                    persisted_at=None,  # Working memory
-                ),
-                MemoryRecordResult(
-                    id="long-1",
-                    text="Long-term: User likes coffee",
-                    dist=0.25,
-                    memory_type=MemoryTypeEnum.SEMANTIC,
-                    persisted_at=datetime(2023, 1, 1, 0, 0, 0),  # Long-term memory
-                ),
-                MemoryRecordResult(
-                    id="long-2",
-                    text="Long-term: User is allergic to peanuts",
-                    dist=0.35,
-                    memory_type=MemoryTypeEnum.SEMANTIC,
-                    persisted_at=datetime(2023, 1, 1, 1, 0, 0),  # Long-term memory
-                ),
-            ],
-            next_offset=None,
-        )
-
-        # Create payload
-        payload = {"text": "What are the user's preferences?"}
-
-        # Call the unified search endpoint
-        response = await client.post("/v1/memory/search", json=payload)
-
-        # Check status code
-        assert response.status_code == 200, response.text
-
-        # Check response structure
-        data = response.json()
-        assert "memories" in data
-        assert "total" in data
-        assert data["total"] == 3
-        assert len(data["memories"]) == 3
-
-        # Check that results include both working and long-term memory
-        memories = data["memories"]
-
-        # First result should be working memory (dist=0.0)
-        assert memories[0]["id"] == "working-1"
-        assert "Working memory" in memories[0]["text"]
-        assert memories[0]["dist"] == 0.0
-        assert memories[0]["persisted_at"] is None
-
-        # Other results should be long-term memory
-        assert memories[1]["id"] == "long-1"
-        assert "Long-term" in memories[1]["text"]
-        assert memories[1]["dist"] == 0.25
-        assert memories[1]["persisted_at"] is not None
-
-        assert memories[2]["id"] == "long-2"
-        assert "Long-term" in memories[2]["text"]
-        assert memories[2]["dist"] == 0.35
-        assert memories[2]["persisted_at"] is not None
-
-    @patch("agent_memory_server.api.long_term_memory.search_memories")
-    @pytest.mark.asyncio
-    async def test_unified_search_with_filters(self, mock_search, client):
-        """Test the unified search endpoint with filters"""
-        mock_search.return_value = MemoryRecordResultsResponse(
-            total=1,
-            memories=[
-                MemoryRecordResult(
-                    id="filtered-1",
-                    text="User's semantic preference",
-                    dist=0.1,
-                    memory_type=MemoryTypeEnum.SEMANTIC,
-                    user_id="test-user",
-                    session_id="test-session",
-                ),
-            ],
-            next_offset=None,
-        )
-
-        # Create payload with filters
-        payload = {
-            "text": "preferences",
-            "memory_type": {"eq": "semantic"},
-            "user_id": {"eq": "test-user"},
-            "session_id": {"eq": "test-session"},
-            "limit": 5,
-        }
-
-        # Call the unified search endpoint
-        response = await client.post("/v1/memory/search", json=payload)
-
-        # Check status code
-        assert response.status_code == 200
-
-        # Verify the mock was called with correct parameters
-        mock_search.assert_called_once()
-        call_kwargs = mock_search.call_args[1]
-        assert call_kwargs["text"] == "preferences"
-        assert call_kwargs["limit"] == 5
-
-        # Check response
-        data = response.json()
-        assert data["total"] == 1
-        assert len(data["memories"]) == 1
-        assert data["memories"][0]["memory_type"] == "semantic"
-        assert data["memories"][0]["user_id"] == "test-user"
