@@ -1013,6 +1013,9 @@ async def deduplicate_by_semantic_search(
 
     vector_search_result = search_result.memories if search_result else []
 
+    # Filter out the memory itself from the search results (avoid self-duplication)
+    vector_search_result = [m for m in vector_search_result if m.id != memory.id]
+
     if vector_search_result and len(vector_search_result) > 0:
         # Found semantically similar memories
         similar_memory_ids = [memory.id for memory in vector_search_result]
@@ -1078,8 +1081,6 @@ async def promote_working_memory_to_long_term(
     if not current_working_memory:
         logger.debug(f"No working memory found for session {session_id}")
         return 0
-
-    print("Current working memory: ", current_working_memory)
 
     # Find memories with no persisted_at (eligible for promotion)
     unpersisted_memories = [

@@ -28,7 +28,6 @@ import asyncio
 import json
 import logging
 import os
-import textwrap
 
 from agent_memory_client import (
     MemoryAPIClient,
@@ -37,15 +36,25 @@ from agent_memory_client import (
 from agent_memory_client.models import (
     WorkingMemory,
 )
-from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.callbacks.manager import CallbackManagerForToolRun
 from langchain_openai import ChatOpenAI
 from redis import Redis
 
 
+try:
+    from langchain_community.tools.tavily_search import TavilySearchResults
+except ImportError as e:
+    raise ImportError("Please install langchain-community for this demo.") from e
+
+
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
+
+# Reduce third-party logging
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)
+
 
 # Environment setup
 MEMORY_SERVER_URL = os.getenv("MEMORY_SERVER_URL", "http://localhost:8000")
@@ -56,35 +65,35 @@ MAX_WEB_SEARCH_RESULTS = 3
 
 SYSTEM_PROMPT = {
     "role": "system",
-    "content": textwrap.dedent("""
-                You are a helpful travel assistant. You can help with travel-related questions.
-                You have access to conversation history and memory management tools to provide
-                personalized responses.
+    "content": """
+    You are a helpful travel assistant. You can help with travel-related questions.
+    You have access to conversation history and memory management tools to provide
+    personalized responses.
 
-                Available tools:
+    Available tools:
 
-                1. **web_search** (if available): Search for current travel information, weather,
-                   events, or other up-to-date data when specifically needed.
+    1. **web_search** (if available): Search for current travel information, weather,
+       events, or other up-to-date data when specifically needed.
 
-                2. **Memory Management Tools** (always available):
-                   - **search_memory**: Look up previous conversations and stored information
-                   - **get_working_memory**: Check current session context
-                   - **add_memory_to_working_memory**: Store important preferences or information
-                   - **update_working_memory_data**: Save session-specific data
+    2. **Memory Management Tools** (always available):
+       - **search_memory**: Look up previous conversations and stored information
+       - **get_working_memory**: Check current session context
+       - **add_memory_to_working_memory**: Store important preferences or information
+       - **update_working_memory_data**: Save session-specific data
 
-                **Guidelines**:
-                - Answer the user's actual question first and directly
-                - When someone shares information (like "I like X"), simply acknowledge it naturally - don't immediately give advice or suggestions unless they ask
-                - Search memory or web when it would be helpful for the current conversation
-                - Don't assume the user is actively planning a trip unless they explicitly say so
-                - Be conversational and natural - respond to what the user actually says
-                - When sharing memories, simply state what you remember rather than turning it into advice
-                - Only offer suggestions, recommendations, or tips if the user explicitly asks for them
-                - Store preferences and important details, but don't be overly eager about it
-                - If someone shares a preference, respond like a friend would - acknowledge it, maybe ask a follow-up question, but don't launch into advice
+    **Guidelines**:
+    - Answer the user's actual question first and directly
+    - When someone shares information (like "I like X"), simply acknowledge it naturally - don't immediately give advice or suggestions unless they ask
+    - Search memory or web when it would be helpful for the current conversation
+    - Don't assume the user is actively planning a trip unless they explicitly say so
+    - Be conversational and natural - respond to what the user actually says
+    - When sharing memories, simply state what you remember rather than turning it into advice
+    - Only offer suggestions, recommendations, or tips if the user explicitly asks for them
+    - Store preferences and important details, but don't be overly eager about it
+    - If someone shares a preference, respond like a friend would - acknowledge it, maybe ask a follow-up question, but don't launch into advice
 
-                Be helpful, friendly, and responsive. Mirror their conversational style - if they're just chatting, chat back. If they ask for help, then help.
-                """),
+    Be helpful, friendly, and responsive. Mirror their conversational style - if they're just chatting, chat back. If they ask for help, then help.
+    """,
 }
 
 
@@ -151,12 +160,12 @@ class TravelAgent:
         # Define the web search tool function
         web_search_function = {
             "name": "web_search",
-            "description": textwrap.dedent("""
+            "description": """
               Search the web for current information about travel destinations,
               requirements, weather, events, or any other travel-related
               queries. Use this when you need up-to-date information that may
               not be in your training data.
-            """),
+            """,
             "parameters": {
                 "type": "object",
                 "properties": {

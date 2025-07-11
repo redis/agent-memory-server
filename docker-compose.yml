@@ -34,7 +34,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - REDIS_URL=redis://redis:6379
-      - PORT=9000
+      - PORT=9050
       # Add your API keys here or use a .env file
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
@@ -46,19 +46,41 @@ services:
       - ENABLE_TOPIC_EXTRACTION=True
       - ENABLE_NER=True
     ports:
-      - "9000:9000"
+      - "9050:9000"
     depends_on:
       - redis
     command: ["uv", "run", "agent-memory", "mcp", "--mode", "sse"]
 
+  task-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_URL=redis://redis:6379
+      # Add your API keys here or use a .env file
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Optional configurations with defaults
+      - LONG_TERM_MEMORY=True
+      - WINDOW_SIZE=20
+      - GENERATION_MODEL=gpt-4o-mini
+      - EMBEDDING_MODEL=text-embedding-3-small
+      - ENABLE_TOPIC_EXTRACTION=True
+      - ENABLE_NER=True
+    depends_on:
+      - redis
+    command: ["uv", "run", "agent-memory", "task-worker"]
+    volumes:
+      - ./agent_memory_server:/app/agent_memory_server
+    restart: unless-stopped
+
   redis:
-    image: redis/redis-stack:latest
+    image: redis:8
     ports:
-      - "16379:6379" # Redis port
-      - "18001:8001" # RedisInsight port
+      - "16380:6379" # Redis port
     volumes:
       - redis_data:/data
-    command: redis-stack-server --save 60 1 --loglevel warning
+    command: redis-server --save "" --loglevel warning --appendonly no --stop-writes-on-bgsave-error no
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 30s

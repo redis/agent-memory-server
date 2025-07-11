@@ -79,7 +79,7 @@ ANTHROPIC_API_KEY=your-actual-anthropic-key
 docker-compose up redis
 
 # Or using Docker directly
-docker run -d -p 6379:6379 redis/redis-stack-server:latest
+docker run -d -p 6379:6379 redis:8.0.3
 ```
 
 #### 3.2 Start Memory Server
