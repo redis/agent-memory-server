@@ -7,24 +7,15 @@ A Redis-powered memory server built for AI agents and applications. It manages b
 - **Working Memory**
 
   - Session-scoped storage for messages, structured memories, context, and metadata
-  - Automatically summarizes conversations when they exceed a client-configured window size
+  - Automatically summarizes conversations when they exceed a client-configured (or server-managed) window size
   - Supports all major OpenAI and Anthropic models
   - Automatic (background) promotion of structured memories to long-term storage
 
 - **Long-Term Memory**
 
   - Persistent storage for memories across sessions
-  - **Pluggable Vector Store Backends** - Support for multiple vector databases through LangChain VectorStore interface:
-    - **Redis** (default) - RedisStack with RediSearch
-    - **Chroma** - Open-source vector database
-    - **Pinecone** - Managed vector database service
-    - **Weaviate** - Open-source vector search engine
-    - **Qdrant** - Vector similarity search engine
-    - **Milvus** - Cloud-native vector database
-    - **PostgreSQL/PGVector** - PostgreSQL with vector extensions
-    - **LanceDB** - Embedded vector database
-    - **OpenSearch** - Open-source search and analytics suite
-  - Semantic search to retrieve memories with advanced filtering system
+  - Pluggable Vector Store Backends - Support for any LangChain VectorStore (defaults to Redis)
+  - Semantic search to retrieve memories with advanced filtering
   - Filter by session, user ID, namespace, topics, entities, timestamps, and more
   - Supports both exact match and semantic similarity search
   - Automatic topic modeling for stored memories with BERTopic or configured LLM
