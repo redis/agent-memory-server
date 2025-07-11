@@ -3,7 +3,6 @@ This module provides an abstraction layer between the agent memory server
 and LangChain VectorStore implementations, allowing for pluggable backends.
 """
 
-import hashlib
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -47,7 +46,9 @@ class MemoryRedisVectorStore(RedisVectorStore):
         """Select the relevance score function based on the distance."""
 
         def relevance_score_fn(distance: float) -> float:
-            return max((2 - distance) / 2, 0)
+            # Ensure score is between 0 and 1
+            score = (2 - distance) / 2
+            return max(min(score, 1.0), 0.0)
 
         return relevance_score_fn
 
@@ -373,15 +374,10 @@ class VectorStoreAdapter(ABC):
         Returns:
             A stable hash string
         """
-        text = memory.text
-        user_id = memory.user_id or ""
-        session_id = memory.session_id or ""
+        # Use the same hash logic as long_term_memory.py for consistency
+        from agent_memory_server.long_term_memory import generate_memory_hash
 
-        # Combine the fields in a predictable order
-        hash_content = f"{text}|{user_id}|{session_id}"
-
-        # Create a stable hash
-        return hashlib.sha256(hash_content.encode()).hexdigest()
+        return generate_memory_hash(memory)
 
     def _convert_filters_to_backend_format(
         self,

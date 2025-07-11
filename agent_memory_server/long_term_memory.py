@@ -127,8 +127,17 @@ def generate_memory_hash(memory: MemoryRecord) -> str:
     Returns:
         A stable hash string
     """
-    # Create a deterministic string representation of the key fields
-    return hashlib.sha256(memory.model_dump_json().encode()).hexdigest()
+    # Create a deterministic string representation of the key content fields only
+    # This ensures merged memories with same content have the same hash
+    content_fields = {
+        "text": memory.text,
+        "user_id": memory.user_id,
+        "session_id": memory.session_id,
+        "namespace": memory.namespace,
+        "memory_type": memory.memory_type,
+    }
+    content_json = json.dumps(content_fields, sort_keys=True)
+    return hashlib.sha256(content_json.encode()).hexdigest()
 
 
 async def merge_memories_with_llm(
@@ -382,14 +391,23 @@ async def compact_long_term_memories(
                             # and delete the rest
                             memories_to_delete = []
 
-                            for j in range(1, len(search_results), 2):
+                            # Each memory result has: key + 6 field-value pairs = 13 elements
+                            # Keys are at positions: 1, 14, 27, ... (1 + n * 13)
+                            elements_per_memory = 1 + 6 * 2  # key + 6 field-value pairs
+                            for n in range(num_duplicates):
+                                key_index = 1 + n * elements_per_memory
                                 # Skip the last item (newest) which we'll keep
-                                if (
-                                    j < (int(num_duplicates) - 1) * 2 + 1
-                                    and search_results[j] is not None
+                                if n < num_duplicates - 1 and key_index < len(
+                                    search_results
                                 ):
-                                    key = search_results[j].decode()
-                                    memories_to_delete.append(key)
+                                    key = search_results[key_index]
+                                    if key is not None:
+                                        key_str = (
+                                            key.decode()
+                                            if isinstance(key, bytes)
+                                            else key
+                                        )
+                                        memories_to_delete.append(key_str)
 
                             # Delete older duplicates
                             if memories_to_delete:
@@ -501,7 +519,7 @@ async def compact_long_term_memories(
                         discrete_memory_extracted=memory_result.discrete_memory_extracted,  # type: ignore
                     )
 
-                    # Add this memory to processed list
+                    # Add this memory to processed list BEFORE processing to prevent cycles
                     processed_ids.add(memory_id)
 
                     # Check for semantic duplicates
@@ -530,6 +548,8 @@ async def compact_long_term_memories(
                                 redis_client=redis_client,
                                 deduplicate=False,  # Already deduplicated
                             )
+                            # Mark the merged memory as processed to prevent cycles
+                            processed_ids.add(merged_memory.id)
         logger.info(
             f"Completed semantic deduplication. Merged {semantic_memories_merged} memories."
         )

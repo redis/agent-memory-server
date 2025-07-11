@@ -216,16 +216,16 @@ class TestLongTermMemory:
             memory_type=MemoryTypeEnum.SEMANTIC,
         )
 
-        # MemoryRecord objects with different IDs will produce different hashes
-        # since model_dump_json() includes all fields including the ID
+        # MemoryRecord objects with same content produce same hash (content-based hashing)
+        # IDs and timestamps don't affect the hash
         hash1 = generate_memory_hash(memory1)
         hash2 = generate_memory_hash(memory2)
         hash3 = generate_memory_hash(memory3)
 
-        # All hashes should be different because IDs are different
-        assert hash1 != hash2  # Different IDs
-        assert hash1 != hash3  # Different text and IDs
-        assert hash2 != hash3  # Different text and IDs
+        # Same content should produce same hash
+        assert hash1 == hash2  # Same content, different IDs
+        assert hash1 != hash3  # Different text
+        assert hash2 != hash3  # Different text
 
         # Test with missing user_id field
         memory4 = MemoryRecord(
