@@ -116,6 +116,114 @@ Runs data migrations. Migrations are reentrant.
 agent-memory migrate_memories
 ```
 
+### `token` Commands
+
+Manages authentication tokens for token-based authentication. The token command group provides subcommands for creating, listing, viewing, and removing API tokens.
+
+#### `token add`
+
+Creates a new authentication token.
+
+```bash
+agent-memory token add --description "DESCRIPTION" [--expires-days DAYS]
+```
+
+**Options:**
+
+- `--description TEXT` / `-d TEXT`: **Required**. Description for the token (e.g., "API access for service X")
+- `--expires-days INTEGER` / `-e INTEGER`: **Optional**. Number of days until token expires. If not specified, token never expires.
+
+**Examples:**
+
+```bash
+# Create a token that expires in 30 days
+agent-memory token add --description "API access token" --expires-days 30
+
+# Create a permanent token (no expiration)
+agent-memory token add --description "Service account token"
+```
+
+**Security Note:** The generated token is displayed only once. Store it securely as it cannot be retrieved again.
+
+#### `token list`
+
+Lists all authentication tokens, showing masked token hashes, descriptions, and expiration dates.
+
+```bash
+agent-memory token list
+```
+
+**Example Output:**
+```
+Authentication Tokens:
+==================================================
+Token: abc12345...xyz67890
+Description: API access token
+Created: 2025-07-10T18:30:00.000000+00:00
+Expires: 2025-08-09T18:30:00.000000+00:00
+------------------------------
+Token: def09876...uvw54321
+Description: Service account token
+Created: 2025-07-10T19:00:00.000000+00:00
+Expires: Never
+------------------------------
+```
+
+#### `token show`
+
+Shows detailed information about a specific token. Supports partial hash matching for convenience.
+
+```bash
+agent-memory token show TOKEN_HASH
+```
+
+**Arguments:**
+
+- `TOKEN_HASH`: The token hash (or partial hash) to display. Can be the full hash or just the first few characters.
+
+**Examples:**
+
+```bash
+# Show token details using full hash
+agent-memory token show abc12345def67890xyz
+
+# Show token details using partial hash (must be unique)
+agent-memory token show abc123
+```
+
+#### `token remove`
+
+Removes an authentication token. By default, asks for confirmation before removal.
+
+```bash
+agent-memory token remove TOKEN_HASH [--force]
+```
+
+**Arguments:**
+
+- `TOKEN_HASH`: The token hash (or partial hash) to remove. Can be the full hash or just the first few characters.
+
+**Options:**
+
+- `--force` / `-f`: Remove the token without asking for confirmation.
+
+**Examples:**
+
+```bash
+# Remove token with confirmation prompt
+agent-memory token remove abc123
+
+# Remove token without confirmation
+agent-memory token remove abc123 --force
+```
+
+**Security Features:**
+
+- All tokens are hashed using bcrypt before storage
+- Tokens automatically expire based on Redis TTL if expiration is set
+- Server never stores plaintext tokens
+- Partial hash matching for CLI convenience
+
 ## Getting Help
 
 To see help for any command, you can use `--help`:

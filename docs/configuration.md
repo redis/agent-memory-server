@@ -48,3 +48,63 @@ these to make sure your schema is up to date, like so:
 ```bash
 uv run agent-memory migrate-memories
 ```
+
+## Authentication Configuration
+
+The Redis Memory Server supports multiple authentication modes configured via environment variables:
+
+### Authentication Mode Settings
+
+```bash
+# Primary authentication mode setting
+AUTH_MODE=disabled  # Options: disabled, token, oauth2 (default: disabled)
+
+# Legacy setting (for backward compatibility)
+DISABLE_AUTH=true   # Set to true to bypass all authentication
+
+# Alternative token auth setting
+TOKEN_AUTH_ENABLED=true  # Alternative way to enable token authentication
+```
+
+### OAuth2/JWT Settings
+
+Required when `AUTH_MODE=oauth2`:
+
+```bash
+OAUTH2_ISSUER_URL=https://your-auth-provider.com
+OAUTH2_AUDIENCE=your-api-audience
+OAUTH2_JWKS_URL=https://your-auth-provider.com/.well-known/jwks.json  # Optional
+OAUTH2_ALGORITHMS=["RS256"]  # Supported algorithms (default: ["RS256"])
+```
+
+### Token Authentication
+
+When using `AUTH_MODE=token`:
+
+- Tokens are managed via CLI commands (`agent-memory token`)
+- No additional environment variables required
+- Tokens are stored securely in Redis with bcrypt hashing
+- Optional expiration dates supported
+
+### Examples
+
+**Development (No Authentication):**
+```bash
+export AUTH_MODE=disabled
+# OR
+export DISABLE_AUTH=true
+```
+
+**Production with Token Authentication:**
+```bash
+export AUTH_MODE=token
+```
+
+**Production with OAuth2:**
+```bash
+export AUTH_MODE=oauth2
+export OAUTH2_ISSUER_URL=https://your-domain.auth0.com/
+export OAUTH2_AUDIENCE=https://your-api.com
+```
+
+For detailed authentication setup and usage, see the [Authentication Documentation](authentication.md).

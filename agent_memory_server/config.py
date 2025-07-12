@@ -100,12 +100,18 @@ class Settings(BaseSettings):
     docket_name: str = "memory-server"
     use_docket: bool = True
 
-    # OAuth2/JWT Authentication settings
+    # Authentication settings
     disable_auth: bool = True
+    auth_mode: Literal["disabled", "token", "oauth2"] = "disabled"
+
+    # OAuth2/JWT Authentication settings
     oauth2_issuer_url: str | None = None
     oauth2_audience: str | None = None
     oauth2_jwks_url: str | None = None
     oauth2_algorithms: list[str] = ["RS256"]
+
+    # Token Authentication settings
+    token_auth_enabled: bool = False
 
     # Auth0 Client Credentials (for testing and client applications)
     auth0_client_id: str | None = None
