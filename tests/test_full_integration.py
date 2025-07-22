@@ -773,9 +773,9 @@ class TestMemoryPromptHydration:
             )
             for msg in messages
         )
-        assert (
-            relevant_context_found
-        ), f"No relevant memory context found in messages: {messages}"
+        assert relevant_context_found, (
+            f"No relevant memory context found in messages: {messages}"
+        )
 
         # Cleanup
         await client.delete_long_term_memories([m.id for m in test_memories])
@@ -1079,9 +1079,9 @@ class TestComprehensiveIntegration:
             )
             print(f"No topic filter search results: {no_topic_search}")
 
-        assert (
-            len(search_results["memories"]) > 0
-        ), f"No memories found in search results: {search_results}"
+        assert len(search_results["memories"]) > 0, (
+            f"No memories found in search results: {search_results}"
+        )
 
         # 6. Test tool integration with a realistic scenario
         tool_call = {
@@ -1126,9 +1126,9 @@ class TestComprehensiveIntegration:
             m for m in long_term_memories.memories if m.id.startswith(memory_id_prefix)
         ]
 
-        assert (
-            len(our_memories) == 0
-        ), f"Expected 0 of our memories but found {len(our_memories)}: {our_memories}"
+        assert len(our_memories) == 0, (
+            f"Expected 0 of our memories but found {len(our_memories)}: {our_memories}"
+        )
 
 
 @pytest.mark.integration

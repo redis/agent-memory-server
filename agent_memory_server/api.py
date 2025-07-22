@@ -63,6 +63,41 @@ def _calculate_messages_token_count(messages: list[MemoryMessage]) -> int:
     return total_tokens
 
 
+def _calculate_context_usage_percentage(
+    messages: list[MemoryMessage],
+    model_name: ModelNameLiteral | None,
+    context_window_max: int | None,
+) -> float | None:
+    """
+    Calculate the percentage of context window used before auto-summarization triggers.
+
+    Args:
+        messages: List of messages to calculate token count for
+        model_name: The client's LLM model name for context window determination
+        context_window_max: Direct specification of context window max tokens
+
+    Returns:
+        Percentage (0-100) of context used, or None if no model info provided
+    """
+    if not messages or (not model_name and not context_window_max):
+        return None
+
+    # Calculate current token usage
+    current_tokens = _calculate_messages_token_count(messages)
+
+    # Get effective token limit for the client's model
+    max_tokens = _get_effective_token_limit(model_name, context_window_max)
+
+    # Use the same threshold as _summarize_working_memory (70% of context window)
+    token_threshold = int(max_tokens * 0.7)
+
+    # Calculate percentage of threshold used
+    percentage = (current_tokens / token_threshold) * 100.0
+
+    # Cap at 100% for display purposes
+    return min(percentage, 100.0)
+
+
 async def _summarize_working_memory(
     memory: WorkingMemory,
     model_name: ModelNameLiteral | None = None,
@@ -269,7 +304,18 @@ async def get_working_memory(
 
     logger.debug(f"Working mem: {working_mem}")
 
-    return working_mem
+    # Calculate context usage percentage
+    context_usage_percentage = _calculate_context_usage_percentage(
+        messages=working_mem.messages,
+        model_name=model_name,
+        context_window_max=context_window_max,
+    )
+
+    # Return WorkingMemoryResponse with percentage
+    return WorkingMemoryResponse(
+        **working_mem.model_dump(),
+        context_usage_percentage=context_usage_percentage,
+    )
 
 
 @router.put("/v1/working-memory/{session_id}", response_model=WorkingMemoryResponse)
@@ -348,7 +394,18 @@ async def put_working_memory(
             namespace=updated_memory.namespace,
         )
 
-    return updated_memory
+    # Calculate context usage percentage based on the final state (after potential summarization)
+    context_usage_percentage = _calculate_context_usage_percentage(
+        messages=updated_memory.messages,
+        model_name=model_name,
+        context_window_max=context_window_max,
+    )
+
+    # Return WorkingMemoryResponse with percentage
+    return WorkingMemoryResponse(
+        **updated_memory.model_dump(),
+        context_usage_percentage=context_usage_percentage,
+    )
 
 
 @router.delete("/v1/working-memory/{session_id}", response_model=AckResponse)

@@ -222,6 +222,11 @@ class WorkingMemory(BaseModel):
 class WorkingMemoryResponse(WorkingMemory):
     """Response containing working memory"""
 
+    context_usage_percentage: float | None = Field(
+        default=None,
+        description="Percentage of context window used before auto-summarization triggers (0-100)",
+    )
+
 
 class WorkingMemoryRequest(BaseModel):
     """Request parameters for working memory operations"""
