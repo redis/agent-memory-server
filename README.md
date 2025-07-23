@@ -14,7 +14,7 @@ A Redis-powered memory server built for AI agents and applications. It manages b
 - **Long-Term Memory**
 
   - Persistent storage for memories across sessions
-  - Pluggable Vector Store Backends - Support for any LangChain VectorStore (defaults to Redis)
+  - Pluggable vector store backends - support for any LangChain VectorStore (defaults to Redis)
   - Semantic search to retrieve memories with advanced filtering
   - Filter by session, user ID, namespace, topics, entities, timestamps, and more
   - Supports both exact match and semantic similarity search
