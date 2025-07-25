@@ -653,3 +653,113 @@ class TestErrorHandling:
 
         # Should not raise
         enhanced_test_client.validate_memory_record(memory)
+
+
+class TestContextUsagePercentage:
+    """Tests for context usage percentage functionality."""
+
+    @pytest.mark.asyncio
+    async def test_working_memory_response_with_context_percentage(
+        self, enhanced_test_client
+    ):
+        """Test that WorkingMemoryResponse properly handles context_usage_percentage field."""
+        session_id = "test-session"
+
+        # Test with context percentage set
+        working_memory_response = WorkingMemoryResponse(
+            session_id=session_id,
+            messages=[],
+            memories=[],
+            data={},
+            context=None,
+            user_id=None,
+            context_usage_percentage=45.5,
+        )
+
+        assert working_memory_response.context_usage_percentage == 45.5
+        assert working_memory_response.session_id == session_id
+
+        # Test with None context percentage (default)
+        working_memory_response_none = WorkingMemoryResponse(
+            session_id=session_id,
+            messages=[],
+            memories=[],
+            data={},
+            context=None,
+            user_id=None,
+        )
+
+        assert working_memory_response_none.context_usage_percentage is None
+
+    @pytest.mark.asyncio
+    async def test_context_percentage_serialization(self, enhanced_test_client):
+        """Test that context_usage_percentage is properly serialized."""
+        session_id = "test-session"
+
+        # Create response with context percentage
+        working_memory_response = WorkingMemoryResponse(
+            session_id=session_id,
+            messages=[],
+            memories=[],
+            data={},
+            context=None,
+            user_id=None,
+            context_usage_percentage=75.0,
+        )
+
+        # Test model_dump includes the field
+        dumped = working_memory_response.model_dump()
+        assert "context_usage_percentage" in dumped
+        assert dumped["context_usage_percentage"] == 75.0
+
+        # Test JSON serialization
+        json_data = working_memory_response.model_dump_json()
+        assert "context_usage_percentage" in json_data
+        assert "75.0" in json_data
+
+    @pytest.mark.asyncio
+    async def test_context_percentage_validation(self, enhanced_test_client):
+        """Test that context_usage_percentage accepts valid values."""
+        session_id = "test-session"
+
+        # Test valid percentages
+        valid_percentages = [0.0, 25.5, 50.0, 99.9, 100.0, None]
+
+        for percentage in valid_percentages:
+            working_memory_response = WorkingMemoryResponse(
+                session_id=session_id,
+                messages=[],
+                memories=[],
+                data={},
+                context=None,
+                user_id=None,
+                context_usage_percentage=percentage,
+            )
+            assert working_memory_response.context_usage_percentage == percentage
+
+    def test_working_memory_response_from_dict_with_context_percentage(self):
+        """Test that WorkingMemoryResponse can be created from dict with context_usage_percentage."""
+        session_id = "test-session"
+
+        # Test creating WorkingMemoryResponse from dict (simulating API response parsing)
+        response_dict = {
+            "session_id": session_id,
+            "messages": [],
+            "memories": [],
+            "data": {},
+            "context": None,
+            "user_id": None,
+            "context_usage_percentage": 33.3,
+            "tokens": 0,
+            "namespace": None,
+            "ttl_seconds": None,
+            "last_accessed": "2024-01-01T00:00:00Z",
+        }
+
+        # This simulates what happens when the API client parses the JSON response
+        result = WorkingMemoryResponse(**response_dict)
+
+        # Verify the context_usage_percentage is included
+        assert isinstance(result, WorkingMemoryResponse)
+        assert result.context_usage_percentage == 33.3
+        assert result.session_id == session_id

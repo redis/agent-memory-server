@@ -215,7 +215,10 @@ class SessionListResponse(BaseModel):
 class WorkingMemoryResponse(WorkingMemory):
     """Response from working memory operations"""
 
-    pass
+    context_usage_percentage: float | None = Field(
+        default=None,
+        description="Percentage of context window used before auto-summarization triggers (0-100)",
+    )
 
 
 class MemoryRecordResult(MemoryRecord):
