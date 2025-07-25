@@ -63,13 +63,13 @@ def _calculate_messages_token_count(messages: list[MemoryMessage]) -> int:
     return total_tokens
 
 
-def _calculate_context_usage_percentage(
+def _calculate_context_usage_percentages(
     messages: list[MemoryMessage],
     model_name: ModelNameLiteral | None,
     context_window_max: int | None,
-) -> float | None:
+) -> tuple[float | None, float | None]:
     """
-    Calculate the percentage of context window used before auto-summarization triggers.
+    Calculate context usage percentages for total usage and until summarization triggers.
 
     Args:
         messages: List of messages to calculate token count for
@@ -77,10 +77,13 @@ def _calculate_context_usage_percentage(
         context_window_max: Direct specification of context window max tokens
 
     Returns:
-        Percentage (0-100) of context used, or None if no model info provided
+        Tuple of (total_percentage, until_summarization_percentage)
+        - total_percentage: Percentage (0-100) of total context window used
+        - until_summarization_percentage: Percentage (0-100) until summarization triggers
+        Both values are None if no model info provided
     """
     if not messages or (not model_name and not context_window_max):
-        return None
+        return None, None
 
     # Calculate current token usage
     current_tokens = _calculate_messages_token_count(messages)
@@ -88,14 +91,15 @@ def _calculate_context_usage_percentage(
     # Get effective token limit for the client's model
     max_tokens = _get_effective_token_limit(model_name, context_window_max)
 
-    # Use the same threshold as _summarize_working_memory (reserves space for new content)
+    # Calculate percentage of total context window used
+    total_percentage = (current_tokens / max_tokens) * 100.0
+
+    # Calculate percentage until summarization threshold
     token_threshold = int(max_tokens * settings.summarization_threshold)
+    until_summarization_percentage = (current_tokens / token_threshold) * 100.0
 
-    # Calculate percentage of threshold used
-    percentage = (current_tokens / token_threshold) * 100.0
-
-    # Cap at 100% for display purposes
-    return min(percentage, 100.0)
+    # Cap both at 100% for display purposes
+    return min(total_percentage, 100.0), min(until_summarization_percentage, 100.0)
 
 
 async def _summarize_working_memory(
@@ -304,16 +308,21 @@ async def get_working_memory(
 
     logger.debug(f"Working mem: {working_mem}")
 
-    # Calculate context usage percentage
-    context_usage_percentage = _calculate_context_usage_percentage(
-        messages=working_mem.messages,
-        model_name=model_name,
-        context_window_max=context_window_max,
+    # Calculate context usage percentages
+    total_percentage, until_summarization_percentage = (
+        _calculate_context_usage_percentages(
+            messages=working_mem.messages,
+            model_name=model_name,
+            context_window_max=context_window_max,
+        )
     )
 
-    # Return WorkingMemoryResponse with percentage
+    # Return WorkingMemoryResponse with both percentage values
     working_mem_data = working_mem.model_dump()
-    working_mem_data["context_usage_percentage"] = context_usage_percentage
+    working_mem_data["context_percentage_total_used"] = total_percentage
+    working_mem_data["context_percentage_until_summarization"] = (
+        until_summarization_percentage
+    )
     return WorkingMemoryResponse(**working_mem_data)
 
 
@@ -393,16 +402,21 @@ async def put_working_memory(
             namespace=updated_memory.namespace,
         )
 
-    # Calculate context usage percentage based on the final state (after potential summarization)
-    context_usage_percentage = _calculate_context_usage_percentage(
-        messages=updated_memory.messages,
-        model_name=model_name,
-        context_window_max=context_window_max,
+    # Calculate context usage percentages based on the final state (after potential summarization)
+    total_percentage, until_summarization_percentage = (
+        _calculate_context_usage_percentages(
+            messages=updated_memory.messages,
+            model_name=model_name,
+            context_window_max=context_window_max,
+        )
     )
 
-    # Return WorkingMemoryResponse with percentage
+    # Return WorkingMemoryResponse with both percentage values
     updated_memory_data = updated_memory.model_dump()
-    updated_memory_data["context_usage_percentage"] = context_usage_percentage
+    updated_memory_data["context_percentage_total_used"] = total_percentage
+    updated_memory_data["context_percentage_until_summarization"] = (
+        until_summarization_percentage
+    )
     return WorkingMemoryResponse(**updated_memory_data)
 
 
