@@ -312,10 +312,9 @@ async def get_working_memory(
     )
 
     # Return WorkingMemoryResponse with percentage
-    return WorkingMemoryResponse(
-        **working_mem.model_dump(),
-        context_usage_percentage=context_usage_percentage,
-    )
+    working_mem_data = working_mem.model_dump()
+    working_mem_data["context_usage_percentage"] = context_usage_percentage
+    return WorkingMemoryResponse(**working_mem_data)
 
 
 @router.put("/v1/working-memory/{session_id}", response_model=WorkingMemoryResponse)
@@ -402,10 +401,9 @@ async def put_working_memory(
     )
 
     # Return WorkingMemoryResponse with percentage
-    return WorkingMemoryResponse(
-        **updated_memory.model_dump(),
-        context_usage_percentage=context_usage_percentage,
-    )
+    updated_memory_data = updated_memory.model_dump()
+    updated_memory_data["context_usage_percentage"] = context_usage_percentage
+    return WorkingMemoryResponse(**updated_memory_data)
 
 
 @router.delete("/v1/working-memory/{session_id}", response_model=AckResponse)
