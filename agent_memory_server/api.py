@@ -88,8 +88,8 @@ def _calculate_context_usage_percentage(
     # Get effective token limit for the client's model
     max_tokens = _get_effective_token_limit(model_name, context_window_max)
 
-    # Use the same threshold as _summarize_working_memory (70% of context window)
-    token_threshold = int(max_tokens * 0.7)
+    # Use the same threshold as _summarize_working_memory (reserves space for new content)
+    token_threshold = int(max_tokens * settings.summarization_threshold)
 
     # Calculate percentage of threshold used
     percentage = (current_tokens / token_threshold) * 100.0
@@ -123,8 +123,8 @@ async def _summarize_working_memory(
     max_tokens = _get_effective_token_limit(model_name, context_window_max)
 
     # Reserve space for new messages, function calls, and response generation
-    # Use 70% of context window to leave room for new content
-    token_threshold = int(max_tokens * 0.7)
+    # Use configurable threshold to leave room for new content
+    token_threshold = int(max_tokens * settings.summarization_threshold)
 
     if current_tokens <= token_threshold:
         return memory
