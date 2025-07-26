@@ -226,7 +226,7 @@ class TestGetCurrentUser:
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
         assert "Missing bearer token" in exc_info.value.detail
 
-    @patch("agent_memory_server.auth.verify_token")
+    @patch("agent_memory_server.auth.verify_token", new_callable=AsyncMock)
     @pytest.mark.asyncio
     async def test_get_current_user_token_auth(self, mock_verify_token, mock_settings):
         """Test get_current_user with token authentication."""
