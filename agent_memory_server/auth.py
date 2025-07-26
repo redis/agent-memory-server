@@ -346,7 +346,7 @@ async def verify_token(token: str) -> UserInfo:
         ) from e
 
 
-def get_current_user(
+async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(oauth2_scheme),
 ) -> UserInfo:
     if settings.disable_auth or settings.auth_mode == "disabled":
@@ -371,9 +371,7 @@ def get_current_user(
 
     # Determine authentication mode
     if settings.auth_mode == "token" or settings.token_auth_enabled:
-        import asyncio
-
-        return asyncio.run(verify_token(credentials.credentials))
+        return await verify_token(credentials.credentials)
     if settings.auth_mode == "oauth2":
         return verify_jwt(credentials.credentials)
     # Default to OAuth2 for backward compatibility
@@ -381,7 +379,7 @@ def get_current_user(
 
 
 def require_scope(required_scope: str):
-    def scope_dependency(user: UserInfo = Depends(get_current_user)) -> UserInfo:
+    async def scope_dependency(user: UserInfo = Depends(get_current_user)) -> UserInfo:
         if settings.disable_auth:
             return user
 
@@ -397,7 +395,7 @@ def require_scope(required_scope: str):
 
 
 def require_role(required_role: str):
-    def role_dependency(user: UserInfo = Depends(get_current_user)) -> UserInfo:
+    async def role_dependency(user: UserInfo = Depends(get_current_user)) -> UserInfo:
         if settings.disable_auth:
             return user
 

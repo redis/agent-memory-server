@@ -685,7 +685,7 @@ class TestGetCurrentUser:
         """Test get_current_user when authentication is disabled"""
         mock_settings.disable_auth = True
 
-        result = get_current_user(None)
+        result = await get_current_user(None)
 
         assert isinstance(result, UserInfo)
         assert result.sub == "local-dev-user"
@@ -700,7 +700,7 @@ class TestGetCurrentUser:
         mock_settings.auth_mode = "oauth2"
 
         with pytest.raises(HTTPException) as exc_info:
-            get_current_user(None)
+            await get_current_user(None)
 
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
         assert "Missing authorization header" in str(exc_info.value.detail)
@@ -717,7 +717,7 @@ class TestGetCurrentUser:
         empty_creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="")
 
         with pytest.raises(HTTPException) as exc_info:
-            get_current_user(empty_creds)
+            await get_current_user(empty_creds)
 
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
         assert "Missing bearer token" in str(exc_info.value.detail)
@@ -736,7 +736,7 @@ class TestGetCurrentUser:
             expected_user = UserInfo(sub="test-user", email="test@example.com")
             mock_verify.return_value = expected_user
 
-            result = get_current_user(creds)
+            result = await get_current_user(creds)
 
             assert result == expected_user
             mock_verify.assert_called_once_with(valid_token)
@@ -753,7 +753,7 @@ class TestRoleAndScopeRequirements:
         user = UserInfo(sub="test-user", scope="read write admin")
         scope_dependency = require_scope("read")
 
-        result = scope_dependency(user)
+        result = await scope_dependency(user)
         assert result == user
 
     @pytest.mark.asyncio
@@ -765,7 +765,7 @@ class TestRoleAndScopeRequirements:
         scope_dependency = require_scope("admin")
 
         with pytest.raises(HTTPException) as exc_info:
-            scope_dependency(user)
+            await scope_dependency(user)
 
         assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
         assert "Insufficient permissions" in str(exc_info.value.detail)
@@ -780,7 +780,7 @@ class TestRoleAndScopeRequirements:
         scope_dependency = require_scope("read")
 
         with pytest.raises(HTTPException) as exc_info:
-            scope_dependency(user)
+            await scope_dependency(user)
 
         assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
 
@@ -792,7 +792,7 @@ class TestRoleAndScopeRequirements:
         user = UserInfo(sub="test-user", scope=None)
         scope_dependency = require_scope("admin")
 
-        result = scope_dependency(user)
+        result = await scope_dependency(user)
         assert result == user
 
     @pytest.mark.asyncio
@@ -803,7 +803,7 @@ class TestRoleAndScopeRequirements:
         user = UserInfo(sub="test-user", roles=["user", "admin"])
         role_dependency = require_role("admin")
 
-        result = role_dependency(user)
+        result = await role_dependency(user)
         assert result == user
 
     @pytest.mark.asyncio
@@ -815,7 +815,7 @@ class TestRoleAndScopeRequirements:
         role_dependency = require_role("admin")
 
         with pytest.raises(HTTPException) as exc_info:
-            role_dependency(user)
+            await role_dependency(user)
 
         assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
         assert "Insufficient permissions" in str(exc_info.value.detail)
@@ -830,7 +830,7 @@ class TestRoleAndScopeRequirements:
         role_dependency = require_role("admin")
 
         with pytest.raises(HTTPException) as exc_info:
-            role_dependency(user)
+            await role_dependency(user)
 
         assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
 
@@ -842,7 +842,7 @@ class TestRoleAndScopeRequirements:
         user = UserInfo(sub="test-user", roles=None)
         role_dependency = require_role("admin")
 
-        result = role_dependency(user)
+        result = await role_dependency(user)
         assert result == user
 
 

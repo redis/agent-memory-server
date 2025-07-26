@@ -189,28 +189,31 @@ class TestTokenVerification:
 class TestGetCurrentUser:
     """Test get_current_user with token authentication."""
 
-    def test_get_current_user_disabled_auth(self, mock_settings):
+    @pytest.mark.asyncio
+    async def test_get_current_user_disabled_auth(self, mock_settings):
         """Test get_current_user with disabled authentication."""
         mock_settings.disable_auth = True
         mock_settings.auth_mode = "disabled"
 
-        user_info = get_current_user(None)
+        user_info = await get_current_user(None)
 
         assert user_info.sub == "local-dev-user"
         assert user_info.aud == "local-dev"
 
-    def test_get_current_user_missing_credentials(self, mock_settings):
+    @pytest.mark.asyncio
+    async def test_get_current_user_missing_credentials(self, mock_settings):
         """Test get_current_user with missing credentials."""
         mock_settings.disable_auth = False
         mock_settings.auth_mode = "token"
 
         with pytest.raises(HTTPException) as exc_info:
-            get_current_user(None)
+            await get_current_user(None)
 
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
         assert "Missing authorization header" in exc_info.value.detail
 
-    def test_get_current_user_missing_token(self, mock_settings):
+    @pytest.mark.asyncio
+    async def test_get_current_user_missing_token(self, mock_settings):
         """Test get_current_user with missing token."""
         mock_settings.disable_auth = False
         mock_settings.auth_mode = "token"
@@ -218,13 +221,14 @@ class TestGetCurrentUser:
         credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="")
 
         with pytest.raises(HTTPException) as exc_info:
-            get_current_user(credentials)
+            await get_current_user(credentials)
 
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
         assert "Missing bearer token" in exc_info.value.detail
 
-    @patch("agent_memory_server.auth.verify_token")
-    def test_get_current_user_token_auth(self, mock_verify_token, mock_settings):
+    @patch("agent_memory_server.auth.verify_token", new_callable=AsyncMock)
+    @pytest.mark.asyncio
+    async def test_get_current_user_token_auth(self, mock_verify_token, mock_settings):
         """Test get_current_user with token authentication."""
         mock_settings.disable_auth = False
         mock_settings.auth_mode = "token"
@@ -232,16 +236,15 @@ class TestGetCurrentUser:
         # Mock verify_token to return a user
         mock_user = Mock()
         mock_user.sub = "token-user"
+        mock_verify_token.return_value = mock_user
 
-        # Mock asyncio.run to return the user directly
-        with patch("asyncio.run", return_value=mock_user):
-            credentials = HTTPAuthorizationCredentials(
-                scheme="Bearer", credentials="test_token"
-            )
+        credentials = HTTPAuthorizationCredentials(
+            scheme="Bearer", credentials="test_token"
+        )
 
-            user_info = get_current_user(credentials)
+        user_info = await get_current_user(credentials)
 
-            assert user_info.sub == "token-user"
+        assert user_info.sub == "token-user"
 
 
 class TestAuthConfig:
