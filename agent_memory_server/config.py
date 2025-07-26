@@ -119,6 +119,9 @@ class Settings(BaseSettings):
 
     # Working memory settings
     window_size: int = 20  # Default number of recent messages to return
+    summarization_threshold: float = (
+        0.7  # Fraction of context window that triggers summarization
+    )
 
     # Other Application settings
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"

@@ -63,6 +63,45 @@ def _calculate_messages_token_count(messages: list[MemoryMessage]) -> int:
     return total_tokens
 
 
+def _calculate_context_usage_percentages(
+    messages: list[MemoryMessage],
+    model_name: ModelNameLiteral | None,
+    context_window_max: int | None,
+) -> tuple[float | None, float | None]:
+    """
+    Calculate context usage percentages for total usage and until summarization triggers.
+
+    Args:
+        messages: List of messages to calculate token count for
+        model_name: The client's LLM model name for context window determination
+        context_window_max: Direct specification of context window max tokens
+
+    Returns:
+        Tuple of (total_percentage, until_summarization_percentage)
+        - total_percentage: Percentage (0-100) of total context window used
+        - until_summarization_percentage: Percentage (0-100) until summarization triggers
+        Both values are None if no model info provided
+    """
+    if not messages or (not model_name and not context_window_max):
+        return None, None
+
+    # Calculate current token usage
+    current_tokens = _calculate_messages_token_count(messages)
+
+    # Get effective token limit for the client's model
+    max_tokens = _get_effective_token_limit(model_name, context_window_max)
+
+    # Calculate percentage of total context window used
+    total_percentage = (current_tokens / max_tokens) * 100.0
+
+    # Calculate percentage until summarization threshold
+    token_threshold = int(max_tokens * settings.summarization_threshold)
+    until_summarization_percentage = (current_tokens / token_threshold) * 100.0
+
+    # Cap both at 100% for display purposes
+    return min(total_percentage, 100.0), min(until_summarization_percentage, 100.0)
+
+
 async def _summarize_working_memory(
     memory: WorkingMemory,
     model_name: ModelNameLiteral | None = None,
@@ -88,8 +127,8 @@ async def _summarize_working_memory(
     max_tokens = _get_effective_token_limit(model_name, context_window_max)
 
     # Reserve space for new messages, function calls, and response generation
-    # Use 70% of context window to leave room for new content
-    token_threshold = int(max_tokens * 0.7)
+    # Use configurable threshold to leave room for new content
+    token_threshold = int(max_tokens * settings.summarization_threshold)
 
     if current_tokens <= token_threshold:
         return memory
@@ -269,7 +308,22 @@ async def get_working_memory(
 
     logger.debug(f"Working mem: {working_mem}")
 
-    return working_mem
+    # Calculate context usage percentages
+    total_percentage, until_summarization_percentage = (
+        _calculate_context_usage_percentages(
+            messages=working_mem.messages,
+            model_name=model_name,
+            context_window_max=context_window_max,
+        )
+    )
+
+    # Return WorkingMemoryResponse with both percentage values
+    working_mem_data = working_mem.model_dump()
+    working_mem_data["context_percentage_total_used"] = total_percentage
+    working_mem_data["context_percentage_until_summarization"] = (
+        until_summarization_percentage
+    )
+    return WorkingMemoryResponse(**working_mem_data)
 
 
 @router.put("/v1/working-memory/{session_id}", response_model=WorkingMemoryResponse)
@@ -348,7 +402,22 @@ async def put_working_memory(
             namespace=updated_memory.namespace,
         )
 
-    return updated_memory
+    # Calculate context usage percentages based on the final state (after potential summarization)
+    total_percentage, until_summarization_percentage = (
+        _calculate_context_usage_percentages(
+            messages=updated_memory.messages,
+            model_name=model_name,
+            context_window_max=context_window_max,
+        )
+    )
+
+    # Return WorkingMemoryResponse with both percentage values
+    updated_memory_data = updated_memory.model_dump()
+    updated_memory_data["context_percentage_total_used"] = total_percentage
+    updated_memory_data["context_percentage_until_summarization"] = (
+        until_summarization_percentage
+    )
+    return WorkingMemoryResponse(**updated_memory_data)
 
 
 @router.delete("/v1/working-memory/{session_id}", response_model=AckResponse)

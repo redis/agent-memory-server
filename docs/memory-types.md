@@ -202,11 +202,8 @@ Long-term memory supports three types of memories:
 # Create long-term memories
 POST /v1/long-term-memory/
 
-# Search long-term memories only
+# Search long-term memories
 POST /v1/long-term-memory/search
-
-# Search across all memory types
-POST /v1/memory/search
 ```
 
 ### Search Capabilities

@@ -653,3 +653,130 @@ class TestErrorHandling:
 
         # Should not raise
         enhanced_test_client.validate_memory_record(memory)
+
+
+class TestContextUsagePercentage:
+    """Tests for context usage percentage functionality."""
+
+    @pytest.mark.asyncio
+    async def test_working_memory_response_with_context_percentages(
+        self, enhanced_test_client
+    ):
+        """Test that WorkingMemoryResponse properly handles both context percentage fields."""
+        session_id = "test-session"
+
+        # Test with both context percentages set
+        working_memory_response = WorkingMemoryResponse(
+            session_id=session_id,
+            messages=[],
+            memories=[],
+            data={},
+            context=None,
+            user_id=None,
+            context_percentage_total_used=45.5,
+            context_percentage_until_summarization=65.0,
+        )
+
+        assert working_memory_response.context_percentage_total_used == 45.5
+        assert working_memory_response.context_percentage_until_summarization == 65.0
+        assert working_memory_response.session_id == session_id
+
+        # Test with None context percentages (default)
+        working_memory_response_none = WorkingMemoryResponse(
+            session_id=session_id,
+            messages=[],
+            memories=[],
+            data={},
+            context=None,
+            user_id=None,
+        )
+
+        assert working_memory_response_none.context_percentage_total_used is None
+        assert (
+            working_memory_response_none.context_percentage_until_summarization is None
+        )
+
+    @pytest.mark.asyncio
+    async def test_context_percentages_serialization(self, enhanced_test_client):
+        """Test that both context percentage fields are properly serialized."""
+        session_id = "test-session"
+
+        # Create response with both context percentages
+        working_memory_response = WorkingMemoryResponse(
+            session_id=session_id,
+            messages=[],
+            memories=[],
+            data={},
+            context=None,
+            user_id=None,
+            context_percentage_total_used=75.0,
+            context_percentage_until_summarization=85.5,
+        )
+
+        # Test model_dump includes both fields
+        dumped = working_memory_response.model_dump()
+        assert "context_percentage_total_used" in dumped
+        assert "context_percentage_until_summarization" in dumped
+        assert dumped["context_percentage_total_used"] == 75.0
+        assert dumped["context_percentage_until_summarization"] == 85.5
+
+        # Test JSON serialization
+        json_data = working_memory_response.model_dump_json()
+        assert "context_percentage_total_used" in json_data
+        assert "context_percentage_until_summarization" in json_data
+        assert "75.0" in json_data
+        assert "85.5" in json_data
+
+    @pytest.mark.asyncio
+    async def test_context_percentages_validation(self, enhanced_test_client):
+        """Test that both context percentage fields accept valid values."""
+        session_id = "test-session"
+
+        # Test valid percentages
+        valid_percentages = [0.0, 25.5, 50.0, 99.9, 100.0, None]
+
+        for percentage in valid_percentages:
+            working_memory_response = WorkingMemoryResponse(
+                session_id=session_id,
+                messages=[],
+                memories=[],
+                data={},
+                context=None,
+                user_id=None,
+                context_percentage_total_used=percentage,
+                context_percentage_until_summarization=percentage,
+            )
+            assert working_memory_response.context_percentage_total_used == percentage
+            assert (
+                working_memory_response.context_percentage_until_summarization
+                == percentage
+            )
+
+    def test_working_memory_response_from_dict_with_context_percentages(self):
+        """Test that WorkingMemoryResponse can be created from dict with both context percentage fields."""
+        session_id = "test-session"
+
+        # Test creating WorkingMemoryResponse from dict (simulating API response parsing)
+        response_dict = {
+            "session_id": session_id,
+            "messages": [],
+            "memories": [],
+            "data": {},
+            "context": None,
+            "user_id": None,
+            "context_percentage_total_used": 33.3,
+            "context_percentage_until_summarization": 47.5,
+            "tokens": 0,
+            "namespace": None,
+            "ttl_seconds": None,
+            "last_accessed": "2024-01-01T00:00:00Z",
+        }
+
+        # This simulates what happens when the API client parses the JSON response
+        result = WorkingMemoryResponse(**response_dict)
+
+        # Verify both context percentage fields are included
+        assert isinstance(result, WorkingMemoryResponse)
+        assert result.context_percentage_total_used == 33.3
+        assert result.context_percentage_until_summarization == 47.5
+        assert result.session_id == session_id
