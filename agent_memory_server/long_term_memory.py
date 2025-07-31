@@ -324,21 +324,37 @@ async def compact_long_term_memories(
             index_name = Keys.search_index_name()
 
             # Create aggregation query to group by memory_hash and find duplicates
-            agg_query = (
-                f"FT.AGGREGATE {index_name} {filter_str} "
-                "GROUPBY 1 @memory_hash "
-                "REDUCE COUNT 0 AS count "
-                'FILTER "@count>1" '  # Only groups with more than 1 memory
-                "SORTBY 2 @count DESC "
-                f"LIMIT 0 {limit}"
-            )
+            agg_query = [
+                "FT.AGGREGATE",
+                index_name,
+                filter_str,
+                "GROUPBY",
+                "1",
+                "@memory_hash",
+                "REDUCE",
+                "COUNT",
+                "0",
+                "AS",
+                "count",
+                "FILTER",
+                "@count>1",  # Only groups with more than 1 memory
+                "SORTBY",
+                "2",
+                "@count",
+                "DESC",
+                "LIMIT",
+                "0",
+                str(limit),
+            ]
 
             # Execute aggregation to find duplicate groups
-            duplicate_groups = await redis_client.execute_command(agg_query)
+            duplicate_groups = await redis_client.execute_command(*agg_query)
 
             if duplicate_groups and duplicate_groups[0] > 0:
                 num_groups = duplicate_groups[0]
-                logger.info(f"Found {num_groups} groups of hash-based duplicates")
+                logger.info(
+                    f"Found {num_groups} groups with hash-based duplicates to process"
+                )
 
                 # Process each group of duplicates
                 for i in range(1, len(duplicate_groups), 2):
@@ -423,9 +439,11 @@ async def compact_long_term_memories(
                                 )
                     except Exception as e:
                         logger.error(f"Error processing duplicate group: {e}")
+            else:
+                logger.info("No hash-based duplicates found")
 
             logger.info(
-                f"Completed hash-based deduplication. Merged {memories_merged} memories."
+                f"Completed hash-based deduplication. Removed {memories_merged} duplicate memories."
             )
         except Exception as e:
             logger.error(f"Error during hash-based duplicate compaction: {e}")

@@ -88,19 +88,22 @@ class TestSummarizeSession:
         """Test summarize_session with mocked summarization"""
         session_id = "test-session"
         model = "gpt-3.5-turbo"
-        window_size = 4
+        max_context_tokens = 1000
 
         pipeline_mock = MagicMock()  # pipeline is not a coroutine
         pipeline_mock.__aenter__ = AsyncMock(return_value=pipeline_mock)
         pipeline_mock.watch = AsyncMock()
         mock_async_redis_client.pipeline = MagicMock(return_value=pipeline_mock)
 
-        # This needs to match the window size
+        # Create messages that exceed the token limit
+        long_content = (
+            "This is a very long message that will exceed our token limit " * 20
+        )
         messages_raw = [
-            json.dumps({"role": "user", "content": "Message 1"}),
-            json.dumps({"role": "assistant", "content": "Message 2"}),
-            json.dumps({"role": "user", "content": "Message 3"}),
-            json.dumps({"role": "assistant", "content": "Message 4"}),
+            json.dumps({"role": "user", "content": long_content}),
+            json.dumps({"role": "assistant", "content": long_content}),
+            json.dumps({"role": "user", "content": long_content}),
+            json.dumps({"role": "assistant", "content": "Short recent message"}),
         ]
 
         pipeline_mock.lrange = AsyncMock(return_value=messages_raw)
@@ -113,7 +116,7 @@ class TestSummarizeSession:
         pipeline_mock.hmset = MagicMock(return_value=True)
         pipeline_mock.ltrim = MagicMock(return_value=True)
         pipeline_mock.execute = AsyncMock(return_value=True)
-        pipeline_mock.llen = AsyncMock(return_value=window_size)
+        pipeline_mock.llen = AsyncMock(return_value=4)
 
         mock_summarization.return_value = ("New summary", 300)
 
@@ -131,13 +134,13 @@ class TestSummarizeSession:
             await summarize_session(
                 session_id,
                 model,
-                window_size,
+                max_context_tokens,
             )
 
         assert pipeline_mock.lrange.call_count == 1
         assert pipeline_mock.lrange.call_args[0][0] == Keys.messages_key(session_id)
         assert pipeline_mock.lrange.call_args[0][1] == 0
-        assert pipeline_mock.lrange.call_args[0][2] == window_size - 1
+        assert pipeline_mock.lrange.call_args[0][2] == -1  # Get all messages
 
         assert pipeline_mock.hgetall.call_count == 1
         assert pipeline_mock.hgetall.call_args[0][0] == Keys.metadata_key(session_id)
@@ -151,8 +154,9 @@ class TestSummarizeSession:
 
         assert pipeline_mock.ltrim.call_count == 1
         assert pipeline_mock.ltrim.call_args[0][0] == Keys.messages_key(session_id)
-        assert pipeline_mock.ltrim.call_args[0][1] == 0
-        assert pipeline_mock.ltrim.call_args[0][2] == window_size - 1
+        # New token-based approach keeps recent messages
+        assert pipeline_mock.ltrim.call_args[0][1] == -1  # Keep last message
+        assert pipeline_mock.ltrim.call_args[0][2] == -1
 
         assert pipeline_mock.execute.call_count == 1
 
@@ -160,12 +164,8 @@ class TestSummarizeSession:
         assert mock_summarization.call_args[0][0] == model
         assert mock_summarization.call_args[0][1] == mock_openai_client
         assert mock_summarization.call_args[0][2] == "Previous summary"
-        assert mock_summarization.call_args[0][3] == [
-            "user: Message 1",
-            "assistant: Message 2",
-            "user: Message 3",
-            "assistant: Message 4",
-        ]
+        # Verify that some messages were passed for summarization
+        assert len(mock_summarization.call_args[0][3]) > 0
 
     @pytest.mark.asyncio
     @patch("agent_memory_server.summarization._incremental_summary")
@@ -175,18 +175,24 @@ class TestSummarizeSession:
         """Test summarize_session when no messages need summarization"""
         session_id = "test-session"
         model = "gpt-3.5-turbo"
-        window_size = 12
+        max_context_tokens = 10000  # High limit so no summarization needed
 
         pipeline_mock = MagicMock()  # pipeline is not a coroutine
         pipeline_mock.__aenter__ = AsyncMock(return_value=pipeline_mock)
         pipeline_mock.watch = AsyncMock()
         mock_async_redis_client.pipeline = MagicMock(return_value=pipeline_mock)
 
-        pipeline_mock.llen = AsyncMock(return_value=0)
-        pipeline_mock.lrange = AsyncMock(return_value=[])
+        # Set up short messages that won't exceed token limit
+        short_messages = [
+            json.dumps({"role": "user", "content": "Short message 1"}),
+            json.dumps({"role": "assistant", "content": "Short response 1"}),
+        ]
+
+        pipeline_mock.llen = AsyncMock(return_value=2)
+        pipeline_mock.lrange = AsyncMock(return_value=short_messages)
         pipeline_mock.hgetall = AsyncMock(return_value={})
         pipeline_mock.hmset = AsyncMock(return_value=True)
-        pipeline_mock.lpop = AsyncMock(return_value=True)
+        pipeline_mock.ltrim = AsyncMock(return_value=True)
         pipeline_mock.execute = AsyncMock(return_value=True)
 
         with patch(
@@ -196,12 +202,15 @@ class TestSummarizeSession:
             await summarize_session(
                 session_id,
                 model,
-                window_size,
+                max_context_tokens,
             )
 
+        # Should not summarize because messages are under token limit
         assert mock_summarization.call_count == 0
-        assert pipeline_mock.lrange.call_count == 0
-        assert pipeline_mock.hgetall.call_count == 0
+        # But should still check messages and metadata
+        assert pipeline_mock.lrange.call_count == 1
+        assert pipeline_mock.hgetall.call_count == 1
+        # Should not update anything since no summarization needed
         assert pipeline_mock.hmset.call_count == 0
-        assert pipeline_mock.lpop.call_count == 0
+        assert pipeline_mock.ltrim.call_count == 0
         assert pipeline_mock.execute.call_count == 0

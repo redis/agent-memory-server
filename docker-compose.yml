@@ -13,7 +13,6 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       # Optional configurations with defaults
       - LONG_TERM_MEMORY=True
-      - WINDOW_SIZE=20
       - GENERATION_MODEL=gpt-4o-mini
       - EMBEDDING_MODEL=text-embedding-3-small
       - ENABLE_TOPIC_EXTRACTION=True
@@ -38,13 +37,6 @@ services:
       # Add your API keys here or use a .env file
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      # Optional configurations with defaults
-      - LONG_TERM_MEMORY=True
-      - WINDOW_SIZE=20
-      - GENERATION_MODEL=gpt-4o-mini
-      - EMBEDDING_MODEL=text-embedding-3-small
-      - ENABLE_TOPIC_EXTRACTION=True
-      - ENABLE_NER=True
     ports:
       - "9050:9000"
     depends_on:
@@ -61,12 +53,6 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       # Optional configurations with defaults
-      - LONG_TERM_MEMORY=True
-      - WINDOW_SIZE=20
-      - GENERATION_MODEL=gpt-4o-mini
-      - EMBEDDING_MODEL=text-embedding-3-small
-      - ENABLE_TOPIC_EXTRACTION=True
-      - ENABLE_NER=True
     depends_on:
       - redis
     command: ["uv", "run", "agent-memory", "task-worker"]
@@ -80,7 +66,7 @@ services:
       - "16380:6379" # Redis port
     volumes:
       - redis_data:/data
-    command: redis-server --save "" --loglevel warning --appendonly no --stop-writes-on-bgsave-error no
+    command: redis-server --save "30 1" --loglevel warning --appendonly no --stop-writes-on-bgsave-error no
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 30s

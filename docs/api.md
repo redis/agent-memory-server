@@ -24,13 +24,12 @@ The following endpoints are available:
   _Query Parameters:_
 
   - `namespace` (string, optional): The namespace to use for the session
-  - `window_size` (int, optional): Number of messages to include in the response (default from config)
   - `model_name` (string, optional): The client's LLM model name to determine appropriate context window size
   - `context_window_max` (int, optional): Direct specification of max context window tokens (overrides model_name)
 
 - **PUT /v1/working-memory/{session_id}**
   Sets working memory for a session, replacing any existing memory.
-  Automatically summarizes conversations that exceed the window size.
+  Automatically summarizes conversations that exceed the token limit.
   _Request Body Example:_
 
   ```json
@@ -103,7 +102,8 @@ The following endpoints are available:
     "session": {
       "session_id": "session-123",
       "namespace": "default",
-      "window_size": 10
+      "model_name": "gpt-4o",
+      "context_window_max": 4000
     },
     "long_term_search": {
       "text": "AI discussion",

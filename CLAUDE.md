@@ -188,7 +188,6 @@ EMBEDDING_MODEL=text-embedding-3-small
 
 # Memory Configuration
 LONG_TERM_MEMORY=true
-WINDOW_SIZE=20
 ENABLE_TOPIC_EXTRACTION=true
 ENABLE_NER=true
 ```

@@ -467,7 +467,6 @@ async def memory_prompt(
     query: str,
     session_id: SessionId | None = None,
     namespace: Namespace | None = None,
-    window_size: int = settings.window_size,
     model_name: ModelNameLiteral | None = None,
     context_window_max: int | None = None,
     topics: Topics | None = None,
@@ -579,7 +578,6 @@ async def memory_prompt(
             session_id=_session_id,
             namespace=namespace.eq if namespace and namespace.eq else None,
             user_id=user_id.eq if user_id and user_id.eq else None,
-            window_size=window_size,
             model_name=model_name,
             context_window_max=context_window_max,
         )
