@@ -180,7 +180,7 @@ class Auth0Tester:
                     "session": {
                         "session_id": "test-session-auth0",
                         "namespace": "test-auth0",
-                        "window_size": 10,
+                        "model_name": "gpt-4o-mini",
                     },
                 },
             ),

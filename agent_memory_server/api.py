@@ -588,12 +588,10 @@ async def memory_prompt(
                 model_name=params.session.model_name,
                 context_window_max=params.session.context_window_max,
             )
-            effective_window_size = (
-                token_limit  # We'll handle token-based truncation below
-            )
+            effective_token_limit = token_limit
         else:
             # No model info provided - use all messages without truncation
-            effective_window_size = None
+            effective_token_limit = None
         working_mem = await working_memory.get_working_memory(
             session_id=params.session.session_id,
             namespace=params.session.namespace,
@@ -615,11 +613,11 @@ async def memory_prompt(
                     )
                 )
             # Apply token-based truncation if model info is provided
-            if effective_window_size is not None:
+            if effective_token_limit is not None:
                 # Token-based truncation
                 if (
                     _calculate_messages_token_count(working_mem.messages)
-                    > effective_window_size
+                    > effective_token_limit
                 ):
                     # Keep removing oldest messages until we're under the limit
                     recent_messages = working_mem.messages[:]
@@ -627,7 +625,7 @@ async def memory_prompt(
                         recent_messages = recent_messages[1:]  # Remove oldest
                         if (
                             _calculate_messages_token_count(recent_messages)
-                            <= effective_window_size
+                            <= effective_token_limit
                         ):
                             break
                 else:

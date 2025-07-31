@@ -123,7 +123,7 @@ class MemoryPromptAgent:
             session_id=session_id,
             query=user_input,
             # Optional parameters to control memory retrieval
-            window_size=30,  # Controls working memory messages
+            model_name="gpt-4o-mini",  # Controls token-based truncation
             long_term_search={"limit": 30},  # Controls long-term memory limit
             user_id=user_id,
         )

@@ -1,5 +1,9 @@
 # CLAUDE.md - Redis Agent Memory Server Project Context
 
+## Redis Version
+This project uses Redis 8, which is the redis:8 docker image.
+Do not use Redis Stack or other earlier versions of Redis.
+
 ## Frequently Used Commands
 Get started in a new environment by installing `uv`:
 ```bash
