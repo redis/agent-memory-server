@@ -653,7 +653,6 @@ class TestMemoryPromptHydration:
         prompt_result = await client.memory_prompt(
             query="What programming language should I use?",
             session_id=unique_session_id,
-            window_size=4,
         )
 
         assert "messages" in prompt_result

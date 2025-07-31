@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     long_term_memory: bool = True
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
-    generation_model: str = "gpt-4o-mini"
+    generation_model: str = "gpt-4o"
     embedding_model: str = "text-embedding-3-small"
     port: int = 8000
     mcp_port: int = 9000
@@ -118,7 +118,6 @@ class Settings(BaseSettings):
     auth0_client_secret: str | None = None
 
     # Working memory settings
-    window_size: int = 20  # Default number of recent messages to return
     summarization_threshold: float = (
         0.7  # Fraction of context window that triggers summarization
     )

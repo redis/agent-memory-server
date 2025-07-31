@@ -582,19 +582,16 @@ async def memory_prompt(
     logger.debug(f"Memory prompt params: {params}")
 
     if params.session:
-        # Use token limit for memory prompt, fallback to message count for backward compatibility
+        # Use token limit for memory prompt - model info is required now
         if params.session.model_name or params.session.context_window_max:
             token_limit = _get_effective_token_limit(
                 model_name=params.session.model_name,
                 context_window_max=params.session.context_window_max,
             )
-            effective_window_size = (
-                token_limit  # We'll handle token-based truncation below
-            )
+            effective_token_limit = token_limit
         else:
-            effective_window_size = (
-                params.session.window_size
-            )  # Fallback to message count
+            # No model info provided - use all messages without truncation
+            effective_token_limit = None
         working_mem = await working_memory.get_working_memory(
             session_id=params.session.session_id,
             namespace=params.session.namespace,
@@ -616,11 +613,11 @@ async def memory_prompt(
                     )
                 )
             # Apply token-based truncation if model info is provided
-            if params.session.model_name or params.session.context_window_max:
+            if effective_token_limit is not None:
                 # Token-based truncation
                 if (
                     _calculate_messages_token_count(working_mem.messages)
-                    > effective_window_size
+                    > effective_token_limit
                 ):
                     # Keep removing oldest messages until we're under the limit
                     recent_messages = working_mem.messages[:]
@@ -628,34 +625,30 @@ async def memory_prompt(
                         recent_messages = recent_messages[1:]  # Remove oldest
                         if (
                             _calculate_messages_token_count(recent_messages)
-                            <= effective_window_size
+                            <= effective_token_limit
                         ):
                             break
                 else:
                     recent_messages = working_mem.messages
-
-                for msg in recent_messages:
-                    if msg.role == "user":
-                        msg_class = base.UserMessage
-                    else:
-                        msg_class = base.AssistantMessage
-                    _messages.append(
-                        msg_class(
-                            content=TextContent(type="text", text=msg.content),
-                        )
-                    )
             else:
-                # No token-based truncation - use all messages
-                for msg in working_mem.messages:
-                    if msg.role == "user":
-                        msg_class = base.UserMessage
-                    else:
-                        msg_class = base.AssistantMessage
-                    _messages.append(
-                        msg_class(
-                            content=TextContent(type="text", text=msg.content),
-                        )
+                # No token limit provided - use all messages
+                recent_messages = working_mem.messages
+
+            for msg in recent_messages:
+                if msg.role == "user":
+                    msg_class = base.UserMessage
+                elif msg.role == "assistant":
+                    msg_class = base.AssistantMessage
+                else:
+                    # For tool messages or other roles, treat as assistant for MCP compatibility
+                    # since MCP base only supports UserMessage and AssistantMessage
+                    msg_class = base.AssistantMessage
+
+                _messages.append(
+                    msg_class(
+                        content=TextContent(type="text", text=msg.content),
                     )
+                )
 
     if params.long_term_search:
         logger.debug(

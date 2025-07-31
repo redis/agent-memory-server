@@ -260,7 +260,7 @@ class TestMemoryEndpoints:
             "namespace": "test-namespace",
             "session_id": "test-session",
         }
-        mock_settings = Settings(window_size=1, long_term_memory=False)
+        mock_settings = Settings(long_term_memory=False)
 
         with (
             patch("agent_memory_server.api.settings", mock_settings),
@@ -288,7 +288,7 @@ class TestMemoryEndpoints:
         # Should return the summarized working memory
         assert "messages" in data
         assert "context" in data
-        # Should have been summarized (only 1 message kept due to window_size=1)
+        # Should have been summarized (token-based summarization in _summarize_working_memory)
         assert len(data["messages"]) == 1
         assert data["messages"][0]["content"] == "Hi there"
         assert "Summary:" in data["context"]
@@ -400,7 +400,6 @@ class TestMemoryPromptEndpoint:
                 "session": {
                     "session_id": "test-session",
                     "namespace": "test-namespace",
-                    "window_size": 10,
                     "model_name": "gpt-4o",
                     "context_window_max": 1000,
                 },

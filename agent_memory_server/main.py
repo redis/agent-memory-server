@@ -135,7 +135,6 @@ async def lifespan(app: FastAPI):
 
     logger.info(
         "Redis Agent Memory Server initialized",
-        window_size=settings.window_size,
         generation_model=settings.generation_model,
         embedding_model=settings.embedding_model,
         long_term_memory=settings.long_term_memory,

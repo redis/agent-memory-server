@@ -255,7 +255,7 @@ class TravelAgent:
         result = await client.get_working_memory(
             session_id=session_id,
             namespace=self._get_namespace(user_id),
-            window_size=15,
+            model_name="gpt-4o-mini",  # Controls token-based truncation
         )
         return WorkingMemory(**result.model_dump())
 

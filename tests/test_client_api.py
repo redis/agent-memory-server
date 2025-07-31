@@ -303,7 +303,6 @@ async def test_memory_prompt(memory_test_client: MemoryAPIClient):
             query=query,
             session_id=session_id,
             namespace="test-namespace",
-            window_size=5,
             model_name="gpt-4o",
             context_window_max=4000,
         )

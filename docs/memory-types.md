@@ -86,7 +86,7 @@ Working memory contains:
 
 ```http
 # Get working memory for a session
-GET /v1/working-memory/{session_id}?namespace=demo&window_size=50
+GET /v1/working-memory/{session_id}?namespace=demo&model_name=gpt-4o
 
 # Set working memory (replaces existing)
 PUT /v1/working-memory/{session_id}
@@ -300,7 +300,8 @@ response = await memory_prompt({
     "query": "Help me plan dinner",
     "session": {
         "session_id": "current_chat",
-        "window_size": 20
+        "model_name": "gpt-4o",
+        "context_window_max": 4000
     },
     "long_term_search": {
         "text": "food preferences dietary restrictions",

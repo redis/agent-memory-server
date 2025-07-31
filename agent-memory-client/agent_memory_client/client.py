@@ -209,7 +209,6 @@ class MemoryAPIClient:
         session_id: str,
         user_id: str | None = None,
         namespace: str | None = None,
-        window_size: int | None = None,
         model_name: ModelNameLiteral | None = None,
         context_window_max: int | None = None,
     ) -> WorkingMemoryResponse:
@@ -220,7 +219,6 @@ class MemoryAPIClient:
             session_id: The session ID to retrieve working memory for
             user_id: The user ID to retrieve working memory for
             namespace: Optional namespace for the session
-            window_size: Optional number of messages to include
             model_name: Optional model name to determine context window size
             context_window_max: Optional direct specification of context window tokens
 
@@ -240,9 +238,6 @@ class MemoryAPIClient:
             params["namespace"] = namespace
         elif self.config.default_namespace is not None:
             params["namespace"] = self.config.default_namespace
-
-        if window_size is not None:
-            params["window_size"] = str(window_size)
 
         # Use provided model_name or fall back to config default
         effective_model_name = model_name or self.config.default_model_name
@@ -2139,7 +2134,6 @@ class MemoryAPIClient:
         query: str,
         session_id: str | None = None,
         namespace: str | None = None,
-        window_size: int | None = None,
         model_name: str | None = None,
         context_window_max: int | None = None,
         long_term_search: dict[str, Any] | None = None,
@@ -2154,7 +2148,6 @@ class MemoryAPIClient:
             query: The input text to find relevant context for
             session_id: Optional session ID to include session messages
             namespace: Optional namespace for the session
-            window_size: Optional number of messages to include
             model_name: Optional model name to determine context window size
             context_window_max: Optional direct specification of context window tokens
             long_term_search: Optional search parameters for long-term memory
@@ -2169,7 +2162,6 @@ class MemoryAPIClient:
             prompt = await client.memory_prompt(
                 query="What are my UI preferences?",
                 session_id="current_session",
-                window_size=10,
                 long_term_search={
                     "topics": {"any": ["preferences", "ui"]},
                     "limit": 5
@@ -2190,8 +2182,6 @@ class MemoryAPIClient:
                 session_params["namespace"] = namespace
             elif self.config.default_namespace is not None:
                 session_params["namespace"] = self.config.default_namespace
-            if window_size is not None:
-                session_params["window_size"] = str(window_size)
             # Use provided model_name or fall back to config default
             effective_model_name = model_name or self.config.default_model_name
             if effective_model_name is not None:

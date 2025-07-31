@@ -7,7 +7,6 @@ from mcp.server.fastmcp.prompts import base
 from pydantic import BaseModel, Field
 from ulid import ULID
 
-from agent_memory_server.config import settings
 from agent_memory_server.filters import (
     CreatedAt,
     Entities,
@@ -238,7 +237,6 @@ class WorkingMemoryRequest(BaseModel):
     session_id: str
     namespace: str | None = None
     user_id: str | None = None
-    window_size: int = settings.window_size
     model_name: ModelNameLiteral | None = None
     context_window_max: int | None = None
 
