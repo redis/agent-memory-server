@@ -637,8 +637,13 @@ async def memory_prompt(
             for msg in recent_messages:
                 if msg.role == "user":
                     msg_class = base.UserMessage
-                else:
+                elif msg.role == "assistant":
                     msg_class = base.AssistantMessage
+                else:
+                    # For tool messages or other roles, treat as assistant for MCP compatibility
+                    # since MCP base only supports UserMessage and AssistantMessage
+                    msg_class = base.AssistantMessage
+
                 _messages.append(
                     msg_class(
                         content=TextContent(type="text", text=msg.content),
