@@ -410,7 +410,7 @@ async def get_model_client(
                 api_key=settings.openai_api_key,
                 base_url=settings.openai_api_base,
             )
-        if model_config.provider == ModelProvider.ANTHROPIC:
+        elif model_config.provider == ModelProvider.ANTHROPIC:
             model = AnthropicClientWrapper(
                 api_key=settings.anthropic_api_key,
                 base_url=settings.anthropic_api_base,
