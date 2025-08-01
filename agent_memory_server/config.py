@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     long_term_memory: bool = True
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
+    openai_api_base: str | None = None
+    anthropic_api_base: str | None = None
     generation_model: str = "gpt-4o"
     embedding_model: str = "text-embedding-3-small"
     port: int = 8000

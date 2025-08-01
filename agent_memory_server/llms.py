@@ -9,6 +9,8 @@ import numpy as np
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
+from agent_memory_server.config import settings
+
 
 logger = logging.getLogger(__name__)
 
@@ -203,14 +205,21 @@ class ChatResponse:
 class AnthropicClientWrapper:
     """Wrapper for Anthropic client"""
 
-    def __init__(self, api_key: str | None = None):
+    def __init__(self, api_key: str | None = None, base_url: str | None = None):
         """Initialize the Anthropic client"""
         anthropic_api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        anthropic_api_base = base_url or os.environ.get("ANTHROPIC_API_BASE")
 
         if not anthropic_api_key:
             raise ValueError("Anthropic API key is required")
 
-        self.client = anthropic.AsyncAnthropic(api_key=anthropic_api_key)
+        if anthropic_api_base:
+            self.client = anthropic.AsyncAnthropic(
+                api_key=anthropic_api_key,
+                base_url=anthropic_api_base,
+            )
+        else:
+            self.client = anthropic.AsyncAnthropic(api_key=anthropic_api_key)
 
     async def create_chat_completion(
         self,
@@ -397,9 +406,15 @@ async def get_model_client(
         model_config = get_model_config(model_name)
 
         if model_config.provider == ModelProvider.OPENAI:
-            model = OpenAIClientWrapper(api_key=os.environ.get("OPENAI_API_KEY"))
+            model = OpenAIClientWrapper(
+                api_key=settings.openai_api_key,
+                base_url=settings.openai_api_base,
+            )
         if model_config.provider == ModelProvider.ANTHROPIC:
-            model = AnthropicClientWrapper(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+            model = AnthropicClientWrapper(
+                api_key=settings.anthropic_api_key,
+                base_url=settings.anthropic_api_base,
+            )
 
         if model:
             _model_clients[model_name] = model
