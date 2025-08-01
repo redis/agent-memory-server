@@ -360,14 +360,23 @@ async def search_long_term_memory(
     search_long_term_memory(text="user's favorite color")
     ```
 
-    2. Search with simple session filter:
+    2. Get ALL memories for a user (e.g., "what do you remember about me?"):
+    ```python
+    search_long_term_memory(
+        text="",  # Empty string returns all memories for the user
+        user_id={"eq": "user_123"},
+        limit=50  # Adjust based on how many memories you want
+    )
+    ```
+
+    3. Search with simple session filter:
     ```python
     search_long_term_memory(text="user's favorite color", session_id={
         "eq": "session_12345"
     })
     ```
 
-    3. Search with complex filters:
+    4. Search with complex filters:
     ```python
     search_long_term_memory(
         text="user preferences",
@@ -381,7 +390,7 @@ async def search_long_term_memory(
     )
     ```
 
-    4. Search with datetime range filters:
+    5. Search with datetime range filters:
     ```python
     search_long_term_memory(
         text="recent conversations",
@@ -395,7 +404,7 @@ async def search_long_term_memory(
     )
     ```
 
-    5. Search with between datetime filter:
+    6. Search with between datetime filter:
     ```python
     search_long_term_memory(
         text="holiday discussions",
@@ -406,7 +415,7 @@ async def search_long_term_memory(
     ```
 
     Args:
-        text: The semantic search query text (required)
+        text: The semantic search query text (required). Use empty string "" to get all memories for a user.
         session_id: Filter by session ID
         namespace: Filter by namespace
         topics: Filter by topics
@@ -482,20 +491,14 @@ async def memory_prompt(
     """
     Hydrate a user query with relevant session history and long-term memories.
 
-    CRITICAL: Use this tool for EVERY question that might benefit from memory context,
-    especially when you don't have sufficient information to answer confidently.
-
     This tool enriches the user's query by retrieving:
     1. Context from the current conversation session
     2. Relevant long-term memories related to the query
 
-    ALWAYS use this tool when:
-    - The user references past conversations
-    - The question is about user preferences or personal information
-    - You need additional context to provide a complete answer
-    - The question seems to assume information you don't have in current context
+    The tool returns both the relevant memories AND the user's query in a format ready for
+    generating comprehensive responses.
 
-    The function uses the text field from the payload as the user's query,
+    The function uses the query field from the payload as the user's query,
     and any filters to retrieve relevant memories.
 
     DATETIME INPUT FORMAT:
@@ -512,12 +515,20 @@ async def memory_prompt(
     COMMON USAGE PATTERNS:
     ```python
     1. Hydrate a user prompt with long-term memory search:
-    hydrate_memory_prompt(text="What was my favorite color?")
+    memory_prompt(query="What was my favorite color?")
     ```
 
-    2. Hydrate a user prompt with long-term memory search and session filter:
-    hydrate_memory_prompt(
-        text="What is my favorite color?",
+    2. Answer "what do you remember about me?" type questions:
+    memory_prompt(
+        query="What do you remember about me?",
+        user_id={"eq": "user_123"},
+        limit=50
+    )
+    ```
+
+    3. Hydrate a user prompt with long-term memory search and session filter:
+    memory_prompt(
+        query="What is my favorite color?",
         session_id={
             "eq": "session_12345"
         },
@@ -526,9 +537,9 @@ async def memory_prompt(
         }
     )
 
-    3. Hydrate a user prompt with long-term memory search and complex filters:
-    hydrate_memory_prompt(
-        text="What was my favorite color?",
+    4. Hydrate a user prompt with long-term memory search and complex filters:
+    memory_prompt(
+        query="What was my favorite color?",
         topics={
             "any": ["preferences", "settings"]
         },
@@ -538,9 +549,9 @@ async def memory_prompt(
         limit=5
     )
 
-    4. Search with datetime range filters:
-    hydrate_memory_prompt(
-        text="What did we discuss recently?",
+    5. Search with datetime range filters:
+    memory_prompt(
+        query="What did we discuss recently?",
         created_at={
             "gte": "2024-01-01T00:00:00Z",
             "lt": "2024-02-01T00:00:00Z"
@@ -552,7 +563,7 @@ async def memory_prompt(
     ```
 
     Args:
-        - text: The user's query
+        - query: The user's query
         - session_id: Add conversation history from a working memory session
         - namespace: Filter session and long-term memory namespace
         - topics: Search for long-term memories matching topics
