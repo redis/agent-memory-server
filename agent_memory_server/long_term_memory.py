@@ -1204,7 +1204,6 @@ async def promote_working_memory_to_long_term(
                     text=f"{msg.role}: {msg.content}",
                     namespace=namespace,
                     user_id=current_working_memory.user_id,
-                    memory_type=MemoryTypeEnum.MESSAGE,
                     persisted_at=None,
                 )
 

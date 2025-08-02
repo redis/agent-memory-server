@@ -310,9 +310,7 @@ async def create_long_term_memories(
         if mem.user_id is None and settings.default_mcp_user_id:
             mem.user_id = settings.default_mcp_user_id
 
-    payload = CreateMemoryRecordRequest(
-        memories=[MemoryRecord(**mem.model_dump()) for mem in memories]
-    )
+    payload = CreateMemoryRecordRequest(memories=memories)
     return await core_create_long_term_memory(
         payload, background_tasks=get_background_tasks()
     )
