@@ -1,9 +1,11 @@
 """Tests for the VectorStore adapter functionality."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from agent_memory_server.filters import Namespace
 from agent_memory_server.models import MemoryRecord, MemoryTypeEnum
 from agent_memory_server.vectorstore_adapter import (
     LangChainVectorStoreAdapter,
@@ -544,3 +546,70 @@ class TestVectorStoreAdapter:
             )
 
             assert len(unprocessed_results_after.memories) == 0
+
+    def test_redis_adapter_preserves_discrete_memory_extracted_flag(self):
+        """Regression test: Ensure Redis adapter preserves discrete_memory_extracted='t' during search.
+
+        This test catches the bug where MCP-created memories with discrete_memory_extracted='t'
+        were being returned as 'f' because the Redis vector store adapter wasn't populating
+        the field during document-to-memory conversion.
+        """
+        from datetime import UTC, datetime
+        from unittest.mock import MagicMock
+
+        # Create mock vectorstore and embeddings
+        mock_vectorstore = MagicMock()
+        mock_embeddings = MagicMock()
+
+        # Create Redis adapter
+        adapter = RedisVectorStoreAdapter(mock_vectorstore, mock_embeddings)
+
+        # Mock document that simulates what Redis returns for an MCP-created memory
+        mock_doc = MagicMock()
+        mock_doc.page_content = "User likes green tea"
+        mock_doc.metadata = {
+            "id_": "memory_001",
+            "session_id": None,
+            "user_id": None,
+            "namespace": "user_preferences",
+            "created_at": datetime.now(UTC).timestamp(),
+            "updated_at": datetime.now(UTC).timestamp(),
+            "last_accessed": datetime.now(UTC).timestamp(),
+            "topics": "preferences,beverages",
+            "entities": "",
+            "memory_hash": "abc123",
+            "discrete_memory_extracted": "t",  # This should be preserved!
+            "memory_type": "semantic",
+            "persisted_at": None,
+            "extracted_from": "",
+            "event_date": None,
+        }
+
+        # Mock the search to return our test document
+        mock_vectorstore.asimilarity_search_with_relevance_scores = AsyncMock(
+            return_value=[(mock_doc, 0.9)]
+        )
+
+        # Perform search
+        result = asyncio.run(
+            adapter.search_memories(
+                query="green tea",
+                namespace=Namespace(field="namespace", eq="user_preferences"),
+                limit=10,
+            )
+        )
+
+        # Verify we got the memory back
+        assert len(result.memories) == 1
+        memory = result.memories[0]
+
+        # REGRESSION TEST: This should be 't', not 'f'
+        assert memory.discrete_memory_extracted == "t", (
+            f"Regression: Expected discrete_memory_extracted='t', got '{memory.discrete_memory_extracted}'. "
+            f"This indicates the Redis adapter is not preserving the flag during search."
+        )
+
+        # Also verify other expected properties
+        assert memory.memory_type.value == "semantic"
+        assert memory.namespace == "user_preferences"
+        assert memory.text == "User likes green tea"
