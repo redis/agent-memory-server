@@ -30,6 +30,7 @@ from agent_memory_server.llms import (
     get_model_client,
 )
 from agent_memory_server.models import (
+    ExtractedMemoryRecord,
     MemoryMessage,
     MemoryRecord,
     MemoryRecordResults,
@@ -593,7 +594,7 @@ async def compact_long_term_memories(
 
 
 async def index_long_term_memories(
-    memories: list[MemoryRecord],
+    memories: list[MemoryRecord | ExtractedMemoryRecord],
     redis_client: Redis | None = None,
     deduplicate: bool = False,
     vector_distance_threshold: float = 0.12,
@@ -1204,7 +1205,6 @@ async def promote_working_memory_to_long_term(
                     text=f"{msg.role}: {msg.content}",
                     namespace=namespace,
                     user_id=current_working_memory.user_id,
-                    memory_type=MemoryTypeEnum.MESSAGE,
                     persisted_at=None,
                 )
 

@@ -128,11 +128,14 @@ def mcp(port: int, mode: str):
             logger.info(f"Starting MCP server on port {port}\n")
             await mcp_app.run_sse_async()
         elif mode == "stdio":
-            # Logging already configured above
+            # Don't run a task worker in stdio mode.
+            # TODO: Make configurable with a CLI flag?
+            settings.use_docket = False
             await mcp_app.run_stdio_async()
         else:
             raise ValueError(f"Invalid mode: {mode}")
 
+    # TODO: Do we really need to update the port again?
     # Update the port in settings
     settings.mcp_port = port
 

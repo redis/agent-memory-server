@@ -437,3 +437,34 @@ class TestMCP:
                     memory = working_memory.memories[0]
                     assert memory.id is not None
                     assert len(memory.id) > 0  # ULID generates non-empty strings
+
+    @pytest.mark.asyncio
+    async def test_mcp_lenient_memory_record_defaults(self, session, mcp_test_setup):
+        """Test that LenientMemoryRecord used by MCP has correct defaults for discrete_memory_extracted."""
+        from agent_memory_server.models import (
+            ExtractedMemoryRecord,
+            LenientMemoryRecord,
+        )
+
+        # Test 1: LenientMemoryRecord should default to discrete_memory_extracted='t'
+        lenient_memory = LenientMemoryRecord(
+            text="User likes green tea",
+            memory_type="semantic",
+            namespace="user_preferences",
+        )
+
+        assert (
+            lenient_memory.discrete_memory_extracted == "t"
+        ), f"LenientMemoryRecord should default to 't', got '{lenient_memory.discrete_memory_extracted}'"
+        assert lenient_memory.memory_type.value == "semantic"
+        assert lenient_memory.id is not None
+
+        # Test 2: ExtractedMemoryRecord should also default to discrete_memory_extracted='t'
+        extracted_memory = ExtractedMemoryRecord(
+            id="test_001", text="User prefers coffee", memory_type="semantic"
+        )
+
+        assert (
+            extracted_memory.discrete_memory_extracted == "t"
+        ), f"ExtractedMemoryRecord should default to 't', got '{extracted_memory.discrete_memory_extracted}'"
+        assert extracted_memory.memory_type.value == "semantic"

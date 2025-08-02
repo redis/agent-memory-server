@@ -110,7 +110,7 @@ class MemoryRecord(BaseModel):
     )
     discrete_memory_extracted: Literal["t", "f"] = Field(
         default="f",
-        description="Whether memory extraction has run for this memory (only messages)",
+        description="Whether memory extraction has run for this memory",
     )
     memory_type: MemoryTypeEnum = Field(
         default=MemoryTypeEnum.MESSAGE,
@@ -127,6 +127,19 @@ class MemoryRecord(BaseModel):
     event_date: datetime | None = Field(
         default=None,
         description="Date/time when the event described in this memory occurred (primarily for episodic memories)",
+    )
+
+
+class ExtractedMemoryRecord(MemoryRecord):
+    """A memory record that has already been extracted (e.g., explicit memories from API/MCP)"""
+
+    discrete_memory_extracted: Literal["t", "f"] = Field(
+        default="t",
+        description="Whether memory extraction has run for this memory",
+    )
+    memory_type: MemoryTypeEnum = Field(
+        default=MemoryTypeEnum.SEMANTIC,
+        description="Type of memory",
     )
 
 

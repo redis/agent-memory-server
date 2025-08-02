@@ -874,6 +874,9 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                 topics=self._parse_list_field(doc.metadata.get("topics")),
                 entities=self._parse_list_field(doc.metadata.get("entities")),
                 memory_hash=doc.metadata.get("memory_hash", ""),
+                discrete_memory_extracted=doc.metadata.get(
+                    "discrete_memory_extracted", "f"
+                ),
                 memory_type=doc.metadata.get("memory_type", "message"),
                 persisted_at=doc.metadata.get("persisted_at"),
                 extracted_from=self._parse_list_field(
