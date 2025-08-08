@@ -570,6 +570,44 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
                 memory_result = self.document_to_memory(doc, score)
                 memory_results.append(memory_result)
 
+            # If recency requested but backend does not support DB-level, rerank here as a fallback
+            if server_side_recency and memory_results:
+                try:
+                    from datetime import UTC as _UTC, datetime as _dt
+
+                    from agent_memory_server.long_term_memory import rerank_with_recency
+
+                    now = _dt.now(_UTC)
+                    params = {
+                        "w_sem": float(recency_params.get("w_sem", 0.8))
+                        if recency_params
+                        else 0.8,
+                        "w_recency": float(recency_params.get("w_recency", 0.2))
+                        if recency_params
+                        else 0.2,
+                        "wf": float(recency_params.get("wf", 0.6))
+                        if recency_params
+                        else 0.6,
+                        "wa": float(recency_params.get("wa", 0.4))
+                        if recency_params
+                        else 0.4,
+                        "half_life_last_access_days": float(
+                            recency_params.get("half_life_last_access_days", 7.0)
+                        )
+                        if recency_params
+                        else 7.0,
+                        "half_life_created_days": float(
+                            recency_params.get("half_life_created_days", 30.0)
+                        )
+                        if recency_params
+                        else 30.0,
+                    }
+                    memory_results = rerank_with_recency(
+                        memory_results, now=now, params=params
+                    )
+                except Exception:
+                    pass
+
             # Calculate next offset
             next_offset = offset + limit if len(docs_with_scores) > limit else None
 
@@ -844,7 +882,167 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
 
                 redis_filter = reduce(lambda x, y: x & y, filters)
 
-        # Prepare search kwargs
+        # If server-side recency is requested, attempt RedisVL query first (DB-level path)
+        if server_side_recency:
+            try:
+                from redisvl.query import VectorQuery
+
+                index = getattr(self.vectorstore, "_index", None)
+                if index is not None:
+                    # Embed the query text to vector
+                    embedding_vector = self.embeddings.embed_query(query)
+
+                    # Score threshold maps from distance threshold if provided
+                    score_threshold = (
+                        1.0 - float(distance_threshold)
+                        if distance_threshold is not None
+                        else None
+                    )
+
+                    # Collect fields we need back from Redis
+                    return_fields = [
+                        "id_",
+                        "session_id",
+                        "user_id",
+                        "namespace",
+                        "created_at",
+                        "last_accessed",
+                        "updated_at",
+                        "pinned",
+                        "access_count",
+                        "topics",
+                        "entities",
+                        "memory_hash",
+                        "discrete_memory_extracted",
+                        "memory_type",
+                        "persisted_at",
+                        "extracted_from",
+                        "event_date",
+                        "text",
+                    ]
+
+                    vq = VectorQuery(
+                        vector=embedding_vector,
+                        vector_field_name="vector",
+                        return_fields=return_fields,
+                        filter_expression=redis_filter,
+                        k=limit + offset,
+                        score_threshold=score_threshold,
+                    )
+
+                    # Execute via AsyncSearchIndex if available
+                    if hasattr(index, "asearch"):
+                        raw = await index.asearch(vq)
+                    else:
+                        raw = index.search(vq)  # type: ignore
+
+                    # raw.docs is a list of documents with .fields; handle both dict and attrs
+                    docs = getattr(raw, "docs", raw) or []
+
+                    memory_results: list[MemoryRecordResult] = []
+                    for i, doc in enumerate(docs):
+                        if i < offset:
+                            continue
+                        fields = (
+                            getattr(doc, "fields", None)
+                            or getattr(doc, "__dict__", {})
+                            or doc
+                        )
+                        # Build a Document-like structure
+                        metadata = {
+                            k: fields.get(k)
+                            for k in [
+                                "id_",
+                                "session_id",
+                                "user_id",
+                                "namespace",
+                                "created_at",
+                                "last_accessed",
+                                "updated_at",
+                                "pinned",
+                                "access_count",
+                                "topics",
+                                "entities",
+                                "memory_hash",
+                                "discrete_memory_extracted",
+                                "memory_type",
+                                "persisted_at",
+                                "extracted_from",
+                                "event_date",
+                            ]
+                            if k in fields
+                        }
+                        text_val = fields.get("text", "")
+                        score = fields.get("__vector_score", None)
+                        if score is None:
+                            # Fallback: assume perfect relevance if score missing
+                            score = 1.0
+                        # Convert to Document and then to MemoryRecordResult using helper
+                        doc_obj = Document(page_content=text_val, metadata=metadata)
+                        memory_results.append(
+                            self.document_to_memory(doc_obj, float(score))
+                        )
+                        if len(memory_results) >= limit:
+                            break
+
+                    # Adapter-level recency rerank for consistency
+                    if memory_results:
+                        try:
+                            from datetime import UTC as _UTC, datetime as _dt
+
+                            from agent_memory_server.long_term_memory import (
+                                rerank_with_recency,
+                            )
+
+                            now = _dt.now(_UTC)
+                            params = {
+                                "w_sem": float(recency_params.get("w_sem", 0.8))
+                                if recency_params
+                                else 0.8,
+                                "w_recency": float(recency_params.get("w_recency", 0.2))
+                                if recency_params
+                                else 0.2,
+                                "wf": float(recency_params.get("wf", 0.6))
+                                if recency_params
+                                else 0.6,
+                                "wa": float(recency_params.get("wa", 0.4))
+                                if recency_params
+                                else 0.4,
+                                "half_life_last_access_days": float(
+                                    recency_params.get(
+                                        "half_life_last_access_days", 7.0
+                                    )
+                                )
+                                if recency_params
+                                else 7.0,
+                                "half_life_created_days": float(
+                                    recency_params.get("half_life_created_days", 30.0)
+                                )
+                                if recency_params
+                                else 30.0,
+                            }
+                            memory_results = rerank_with_recency(
+                                memory_results, now=now, params=params
+                            )
+                        except Exception:
+                            pass
+
+                    next_offset = (
+                        offset + limit
+                        if (len(docs) if docs else 0) > offset + limit
+                        else None
+                    )
+                    return MemoryRecordResults(
+                        memories=memory_results[:limit],
+                        total=(len(docs) if docs else 0),
+                        next_offset=next_offset,
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"RedisVL DB-level recency search failed; falling back to client-side path: {e}"
+                )
+
+        # Prepare search kwargs (standard LangChain path)
         search_kwargs = {
             "query": query,
             "filter": redis_filter,
