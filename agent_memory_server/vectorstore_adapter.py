@@ -376,13 +376,13 @@ class VectorStoreAdapter(ABC):
             updated_at=updated_at,
             pinned=pinned_bool,
             access_count=access_count_val,
-            topics=metadata.get("topics"),
-            entities=metadata.get("entities"),
+            topics=self._parse_list_field(metadata.get("topics")),
+            entities=self._parse_list_field(metadata.get("entities")),
             memory_hash=metadata.get("memory_hash"),
             discrete_memory_extracted=metadata.get("discrete_memory_extracted", "f"),
             memory_type=metadata.get("memory_type", "message"),
             persisted_at=persisted_at,
-            extracted_from=metadata.get("extracted_from"),
+            extracted_from=self._parse_list_field(metadata.get("extracted_from")),
             event_date=event_date,
             dist=score,
         )
@@ -898,14 +898,14 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                             vector_field_name="vector",
                             filter_expression=redis_filter,
                             distance_threshold=float(distance_threshold),
-                            k=limit,
+                            num_results=limit,
                         )
                     else:
                         knn = VectorQuery(
                             vector=embedding_vector,
                             vector_field_name="vector",
                             filter_expression=redis_filter,
-                            k=limit,
+                            num_results=limit,
                         )
 
                     # Aggregate with APPLY/SORTBY boosted score via helper

@@ -12,7 +12,7 @@ async def test_recency_aggregation_query_builds_and_paginates():
     from redisvl.query import VectorQuery
 
     dummy_vec = [0.0, 0.0, 0.0]
-    vq = VectorQuery(vector=dummy_vec, vector_field_name="vector", k=10)
+    vq = VectorQuery(vector=dummy_vec, vector_field_name="vector", num_results=10)
 
     # Build aggregation
     agg = (
@@ -33,13 +33,13 @@ async def test_recency_aggregation_query_builds_and_paginates():
         .paginate(5, 7)
     )
 
-    # Implementation detail: AggregationQuery has a private builder we can sanity-check
-    # We only assert key substrings to avoid coupling to exact formatting
-    qs = agg._build_query_string()  # type: ignore[attr-defined]
-    assert "APPLY" in qs
-    assert "boosted_score" in qs
-    assert "SORTBY" in qs
-    assert "LIMIT" in qs
+    # Validate the aggregate request contains APPLY, SORTBY, and LIMIT via build_args
+    args = agg.build_args()
+    args_str = " ".join(map(str, args))
+    assert "APPLY" in args_str
+    assert "boosted_score" in args_str
+    assert "SORTBY" in args_str
+    assert "LIMIT" in args_str
 
 
 @pytest.mark.asyncio
@@ -82,6 +82,10 @@ async def test_redis_adapter_uses_aggregation_when_server_side_recency():
 
     mock_vectorstore = MagicMock()
     mock_vectorstore._index = mock_index
+    # If the adapter falls back, ensure awaited LC call is defined
+    mock_vectorstore.asimilarity_search_with_relevance_scores = AsyncMock(
+        return_value=[]
+    )
 
     # Mock embeddings
     mock_embeddings = MagicMock()

@@ -43,7 +43,10 @@ class RecencyAggregationQuery(AggregationQuery):
         *,
         filter_expression: Any | None = None,
     ) -> RecencyAggregationQuery:
-        return cls(vq.query, filter_expression=filter_expression)
+        agg = cls(vq.query)
+        if filter_expression is not None:
+            agg.filter(filter_expression)
+        return agg
 
     def load_default_fields(self) -> RecencyAggregationQuery:
         self.load(self.DEFAULT_RETURN_FIELDS)
@@ -60,15 +63,13 @@ class RecencyAggregationQuery(AggregationQuery):
         hl_la = float(params.get("half_life_last_access_days", 7.0))
         hl_cr = float(params.get("half_life_created_days", 30.0))
 
-        self.apply(
-            f"max(0, ({now_ts} - @last_accessed)/86400.0)", AS="days_since_access"
-        ).apply(
-            f"max(0, ({now_ts} - @created_at)/86400.0)", AS="days_since_created"
-        ).apply(f"pow(2, -@days_since_access/{hl_la})", AS="freshness").apply(
-            f"pow(2, -@days_since_created/{hl_cr})", AS="novelty"
-        ).apply(f"{wf}*@freshness+{wa}*@novelty", AS="recency").apply(
-            "1-(@__vector_score/2)", AS="sim"
-        ).apply(f"{w_sem}*@sim+{w_rec}*@recency", AS="boosted_score")
+        self.apply(days_since_access=f"max(0, ({now_ts} - @last_accessed)/86400.0)")
+        self.apply(days_since_created=f"max(0, ({now_ts} - @created_at)/86400.0)")
+        self.apply(freshness=f"pow(2, -@days_since_access/{hl_la})")
+        self.apply(novelty=f"pow(2, -@days_since_created/{hl_cr})")
+        self.apply(recency=f"{wf}*@freshness+{wa}*@novelty")
+        self.apply(sim="1-(@__vector_score/2)")
+        self.apply(boosted_score=f"{w_sem}*@sim+{w_rec}*@recency")
 
         return self
 
@@ -79,3 +80,7 @@ class RecencyAggregationQuery(AggregationQuery):
     def paginate(self, offset: int, limit: int) -> RecencyAggregationQuery:
         self.limit(offset, limit)
         return self
+
+    # Compatibility helper for tests that inspect the built query
+    def build_args(self) -> list:
+        return super().build_args()
