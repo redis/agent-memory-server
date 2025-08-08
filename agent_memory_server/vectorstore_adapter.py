@@ -885,19 +885,12 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         # If server-side recency is requested, attempt RedisVL query first (DB-level path)
         if server_side_recency:
             try:
-                from redisvl.query import VectorQuery
+                from redisvl.query import RangeQuery, VectorQuery
 
                 index = getattr(self.vectorstore, "_index", None)
                 if index is not None:
                     # Embed the query text to vector
                     embedding_vector = self.embeddings.embed_query(query)
-
-                    # Score threshold maps from distance threshold if provided
-                    score_threshold = (
-                        1.0 - float(distance_threshold)
-                        if distance_threshold is not None
-                        else None
-                    )
 
                     # Collect fields we need back from Redis
                     return_fields = [
@@ -921,14 +914,23 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                         "text",
                     ]
 
-                    vq = VectorQuery(
-                        vector=embedding_vector,
-                        vector_field_name="vector",
-                        return_fields=return_fields,
-                        filter_expression=redis_filter,
-                        k=limit + offset,
-                        score_threshold=score_threshold,
-                    )
+                    if distance_threshold is not None:
+                        vq = RangeQuery(
+                            vector=embedding_vector,
+                            vector_field_name="vector",
+                            return_fields=return_fields,
+                            filter_expression=redis_filter,
+                            distance_threshold=float(distance_threshold),
+                            k=limit + offset,
+                        )
+                    else:
+                        vq = VectorQuery(
+                            vector=embedding_vector,
+                            vector_field_name="vector",
+                            return_fields=return_fields,
+                            filter_expression=redis_filter,
+                            k=limit + offset,
+                        )
 
                     # Execute via AsyncSearchIndex if available
                     if hasattr(index, "asearch"):
