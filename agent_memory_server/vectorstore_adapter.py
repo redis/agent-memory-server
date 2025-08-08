@@ -921,7 +921,7 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                             return_fields=return_fields,
                             filter_expression=redis_filter,
                             distance_threshold=float(distance_threshold),
-                            k=limit + offset,
+                            k=limit,
                         )
                     else:
                         vq = VectorQuery(
@@ -929,8 +929,14 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                             vector_field_name="vector",
                             return_fields=return_fields,
                             filter_expression=redis_filter,
-                            k=limit + offset,
+                            k=limit,
                         )
+
+                    # Apply RedisVL paging instead of manual slicing
+                    from contextlib import suppress
+
+                    with suppress(Exception):
+                        vq.paging(offset, limit)
 
                     # Execute via AsyncSearchIndex if available
                     if hasattr(index, "asearch"):
@@ -942,9 +948,7 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                     docs = getattr(raw, "docs", raw) or []
 
                     memory_results: list[MemoryRecordResult] = []
-                    for i, doc in enumerate(docs):
-                        if i < offset:
-                            continue
+                    for doc in docs:
                         fields = (
                             getattr(doc, "fields", None)
                             or getattr(doc, "__dict__", {})
@@ -1029,14 +1033,11 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                         except Exception:
                             pass
 
-                    next_offset = (
-                        offset + limit
-                        if (len(docs) if docs else 0) > offset + limit
-                        else None
-                    )
+                    total_docs = len(docs) if docs else 0
+                    next_offset = offset + limit if total_docs == limit else None
                     return MemoryRecordResults(
                         memories=memory_results[:limit],
-                        total=(len(docs) if docs else 0),
+                        total=offset + total_docs,
                         next_offset=next_offset,
                     )
             except Exception as e:
