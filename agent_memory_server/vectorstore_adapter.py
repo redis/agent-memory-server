@@ -261,6 +261,20 @@ class VectorStoreAdapter(ABC):
         """
         pass
 
+    def _parse_list_field(self, field_value):
+        """Parse a field that might be a list, comma-separated string, or None.
+
+        Centralized here so both LangChain and Redis adapters can normalize
+        metadata fields like topics/entities/extracted_from.
+        """
+        if not field_value:
+            return []
+        if isinstance(field_value, list):
+            return field_value
+        if isinstance(field_value, str):
+            return field_value.split(",") if field_value else []
+        return []
+
     def memory_to_document(self, memory: MemoryRecord) -> Document:
         """Convert a MemoryRecord to a LangChain Document.
 
