@@ -189,6 +189,8 @@ class VectorStoreAdapter(ABC):
         id: Id | None = None,
         discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
         distance_threshold: float | None = None,
+        server_side_recency: bool | None = None,
+        recency_params: dict | None = None,
         limit: int = 10,
         offset: int = 0,
     ) -> MemoryRecordResults:
@@ -278,6 +280,9 @@ class VectorStoreAdapter(ABC):
         )
         event_date_val = memory.event_date.isoformat() if memory.event_date else None
 
+        pinned_int = 1 if getattr(memory, "pinned", False) else 0
+        access_count_int = int(getattr(memory, "access_count", 0) or 0)
+
         metadata = {
             "id_": memory.id,
             "session_id": memory.session_id,
@@ -286,6 +291,8 @@ class VectorStoreAdapter(ABC):
             "created_at": created_at_val,
             "last_accessed": last_accessed_val,
             "updated_at": updated_at_val,
+            "pinned": pinned_int,
+            "access_count": access_count_int,
             "topics": memory.topics,
             "entities": memory.entities,
             "memory_hash": memory.memory_hash,
@@ -345,6 +352,18 @@ class VectorStoreAdapter(ABC):
         if not updated_at:
             updated_at = datetime.now(UTC)
 
+        # Normalize pinned/access_count from metadata
+        pinned_meta = metadata.get("pinned", 0)
+        try:
+            pinned_bool = bool(int(pinned_meta))
+        except Exception:
+            pinned_bool = bool(pinned_meta)
+        access_count_meta = metadata.get("access_count", 0)
+        try:
+            access_count_val = int(access_count_meta or 0)
+        except Exception:
+            access_count_val = 0
+
         return MemoryRecordResult(
             text=doc.page_content,
             id=metadata.get("id") or metadata.get("id_") or "",
@@ -354,6 +373,8 @@ class VectorStoreAdapter(ABC):
             created_at=created_at,
             last_accessed=last_accessed,
             updated_at=updated_at,
+            pinned=pinned_bool,
+            access_count=access_count_val,
             topics=metadata.get("topics"),
             entities=metadata.get("entities"),
             memory_hash=metadata.get("memory_hash"),
@@ -494,6 +515,8 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
         id: Id | None = None,
         distance_threshold: float | None = None,
         discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
+        server_side_recency: bool | None = None,
+        recency_params: dict | None = None,
         limit: int = 10,
         offset: int = 0,
     ) -> MemoryRecordResults:
@@ -516,7 +539,7 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
             )
 
             # Use LangChain's similarity search with filters
-            search_kwargs = {"k": limit + offset}
+            search_kwargs: dict[str, Any] = {"k": limit + offset}
             if filter_dict:
                 search_kwargs["filter"] = filter_dict
 
@@ -675,6 +698,9 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         )
         event_date_val = memory.event_date.timestamp() if memory.event_date else None
 
+        pinned_int = 1 if memory.pinned else 0
+        access_count_int = int(memory.access_count or 0)
+
         metadata = {
             "id_": memory.id,  # The client-generated ID
             "session_id": memory.session_id,
@@ -683,6 +709,8 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             "created_at": created_at_val,
             "last_accessed": last_accessed_val,
             "updated_at": updated_at_val,
+            "pinned": pinned_int,
+            "access_count": access_count_int,
             "topics": memory.topics,
             "entities": memory.entities,
             "memory_hash": memory.memory_hash,
@@ -772,6 +800,8 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         id: Id | None = None,
         discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
         distance_threshold: float | None = None,
+        server_side_recency: bool | None = None,
+        recency_params: dict | None = None,
         limit: int = 10,
         offset: int = 0,
     ) -> MemoryRecordResults:
@@ -871,6 +901,8 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                 user_id=doc.metadata.get("user_id"),
                 session_id=doc.metadata.get("session_id"),
                 namespace=doc.metadata.get("namespace"),
+                pinned=doc.metadata.get("pinned", False),
+                access_count=int(doc.metadata.get("access_count", 0) or 0),
                 topics=self._parse_list_field(doc.metadata.get("topics")),
                 entities=self._parse_list_field(doc.metadata.get("entities")),
                 memory_hash=doc.metadata.get("memory_hash", ""),
@@ -890,6 +922,47 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             # Stop if we have enough results
             if len(memory_results) >= limit:
                 break
+
+        # Optional server-side recency-aware rerank (adapter-level fallback)
+        # If requested, re-rank using the same logic as server API's local reranking.
+        if server_side_recency:
+            try:
+                from datetime import UTC as _UTC, datetime as _dt
+
+                from agent_memory_server.long_term_memory import rerank_with_recency
+
+                now = _dt.now(_UTC)
+                params = {
+                    "w_sem": float(recency_params.get("w_sem", 0.8))
+                    if recency_params
+                    else 0.8,
+                    "w_recency": float(recency_params.get("w_recency", 0.2))
+                    if recency_params
+                    else 0.2,
+                    "wf": float(recency_params.get("wf", 0.6))
+                    if recency_params
+                    else 0.6,
+                    "wa": float(recency_params.get("wa", 0.4))
+                    if recency_params
+                    else 0.4,
+                    "half_life_last_access_days": float(
+                        recency_params.get("half_life_last_access_days", 7.0)
+                    )
+                    if recency_params
+                    else 7.0,
+                    "half_life_created_days": float(
+                        recency_params.get("half_life_created_days", 30.0)
+                    )
+                    if recency_params
+                    else 30.0,
+                }
+                memory_results = rerank_with_recency(
+                    memory_results, now=now, params=params
+                )
+            except Exception as e:
+                logger.warning(
+                    f"server_side_recency fallback rerank failed, returning base order: {e}"
+                )
 
         next_offset = offset + limit if len(search_results) > offset + limit else None
 
