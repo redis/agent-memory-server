@@ -13,6 +13,7 @@ from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
 from langchain_redis.vectorstores import RedisVectorStore
+from redisvl.query import RangeQuery, VectorQuery
 
 from agent_memory_server.filters import (
     CreatedAt,
@@ -885,10 +886,6 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         # If server-side recency is requested, attempt RedisVL query first (DB-level path)
         if server_side_recency:
             try:
-                from datetime import UTC as _UTC, datetime as _dt
-
-                from redisvl.query import AggregateQuery, RangeQuery, VectorQuery
-
                 index = getattr(self.vectorstore, "_index", None)
                 if index is not None:
                     # Embed the query text to vector
@@ -911,72 +908,23 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                             k=limit,
                         )
 
-                    # Aggregate with APPLY/SORTBY boosted score
-                    agg = AggregateQuery(knn.query, filter_expression=redis_filter)
-                    agg.load(
-                        [
-                            "id_",
-                            "session_id",
-                            "user_id",
-                            "namespace",
-                            "created_at",
-                            "last_accessed",
-                            "updated_at",
-                            "pinned",
-                            "access_count",
-                            "topics",
-                            "entities",
-                            "memory_hash",
-                            "discrete_memory_extracted",
-                            "memory_type",
-                            "persisted_at",
-                            "extracted_from",
-                            "event_date",
-                            "text",
-                            "__vector_score",
-                        ]
+                    # Aggregate with APPLY/SORTBY boosted score via helper
+                    from datetime import UTC as _UTC, datetime as _dt
+
+                    from agent_memory_server.utils.redis_query import (
+                        RecencyAggregationQuery,
                     )
 
                     now_ts = int(_dt.now(_UTC).timestamp())
-                    w_sem = (
-                        float(recency_params.get("w_sem", 0.8))
-                        if recency_params
-                        else 0.8
+                    agg = (
+                        RecencyAggregationQuery.from_vector_query(
+                            knn, filter_expression=redis_filter
+                        )
+                        .load_default_fields()
+                        .apply_recency(now_ts=now_ts, params=recency_params or {})
+                        .sort_by_boosted_desc()
+                        .paginate(offset, limit)
                     )
-                    w_rec = (
-                        float(recency_params.get("w_recency", 0.2))
-                        if recency_params
-                        else 0.2
-                    )
-                    wf = float(recency_params.get("wf", 0.6)) if recency_params else 0.6
-                    wa = float(recency_params.get("wa", 0.4)) if recency_params else 0.4
-                    hl_la = (
-                        float(recency_params.get("half_life_last_access_days", 7.0))
-                        if recency_params
-                        else 7.0
-                    )
-                    hl_cr = (
-                        float(recency_params.get("half_life_created_days", 30.0))
-                        if recency_params
-                        else 30.0
-                    )
-
-                    agg.apply(
-                        f"max(0, ({now_ts} - @last_accessed)/86400.0)",
-                        AS="days_since_access",
-                    ).apply(
-                        f"max(0, ({now_ts} - @created_at)/86400.0)",
-                        AS="days_since_created",
-                    ).apply(
-                        f"pow(2, -@days_since_access/{hl_la})", AS="freshness"
-                    ).apply(
-                        f"pow(2, -@days_since_created/{hl_cr})", AS="novelty"
-                    ).apply(f"{wf}*@freshness+{wa}*@novelty", AS="recency").apply(
-                        "1-(@__vector_score/2)", AS="sim"
-                    ).apply(f"{w_sem}*@sim+{w_rec}*@recency", AS="boosted_score")
-
-                    agg.sort_by([("boosted_score", "DESC")])
-                    agg.limit(offset, limit)
 
                     raw = (
                         await index.aaggregate(agg)
