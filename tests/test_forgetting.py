@@ -1,6 +1,5 @@
 from datetime import UTC, datetime, timedelta
 
-# TDD: These helpers/functions will be implemented in agent_memory_server.long_term_memory
 from agent_memory_server.long_term_memory import (
     rerank_with_recency,  # new: pure function
     score_recency,  # new: pure function

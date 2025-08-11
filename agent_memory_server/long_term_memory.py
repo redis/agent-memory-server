@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import numbers
 import time
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
@@ -1428,6 +1429,11 @@ def rerank_with_recency(
     return sorted(results, key=combined_score, reverse=True)
 
 
+def _is_numeric(value: Any) -> bool:
+    """Check if a value is numeric (int, float, or other number type)."""
+    return isinstance(value, numbers.Number)
+
+
 def select_ids_for_forgetting(
     results: Iterable[MemoryRecordResult],
     *,
@@ -1442,6 +1448,7 @@ def select_ids_for_forgetting(
       - max_inactive_days: float | None
       - budget: int | None (keep top N by recency score)
       - memory_type_allowlist: set[str] | list[str] | None (only consider these types for deletion)
+      - hard_age_multiplier: float (default 12.0) - multiplier for max_age_days to determine extremely old items
     """
     pinned_ids = pinned_ids or set()
     max_age_days = policy.get("max_age_days")
@@ -1476,9 +1483,7 @@ def select_ids_for_forgetting(
         # - If both thresholds are set, prefer not to delete recently accessed
         #   items unless they are extremely old.
         # - Extremely old: age > max_age_days * hard_age_multiplier (default 12x)
-        if isinstance(max_age_days, int | float) and isinstance(
-            max_inactive_days, int | float
-        ):
+        if _is_numeric(max_age_days) and _is_numeric(max_inactive_days):
             if age_days > float(max_age_days) * hard_age_multiplier:
                 to_delete.add(mem.id)
                 continue
@@ -1488,10 +1493,8 @@ def select_ids_for_forgetting(
                 to_delete.add(mem.id)
                 continue
         else:
-            ttl_hit = isinstance(max_age_days, int | float) and age_days > float(
-                max_age_days
-            )
-            inactivity_hit = isinstance(max_inactive_days, int | float) and (
+            ttl_hit = _is_numeric(max_age_days) and age_days > float(max_age_days)
+            inactivity_hit = _is_numeric(max_inactive_days) and (
                 inactive_days > float(max_inactive_days)
             )
             if ttl_hit or inactivity_hit:

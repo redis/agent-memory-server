@@ -13,7 +13,6 @@ from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
 from langchain_redis.vectorstores import RedisVectorStore
-from redisvl.query import RangeQuery, VectorQuery
 
 from agent_memory_server.filters import (
     CreatedAt,
@@ -837,6 +836,127 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         added = await self.add_memories(memories)
         return len(added)
 
+    def _get_vectorstore_index(self):
+        """Safely access the underlying RedisVL index from the vectorstore.
+
+        Returns:
+            RedisVL SearchIndex or None if not available
+        """
+        return getattr(self.vectorstore, "_index", None)
+
+    async def _search_with_redis_aggregation(
+        self,
+        query: str,
+        redis_filter,
+        limit: int,
+        offset: int,
+        distance_threshold: float | None,
+        recency_params: dict | None,
+    ) -> MemoryRecordResults:
+        """Perform server-side Redis aggregation search with recency scoring.
+
+        Args:
+            query: Search query text
+            redis_filter: Redis filter expression
+            limit: Maximum number of results
+            offset: Offset for pagination
+            distance_threshold: Distance threshold for range queries
+            recency_params: Parameters for recency scoring
+
+        Returns:
+            MemoryRecordResults with server-side scored results
+
+        Raises:
+            Exception: If Redis aggregation fails (caller should handle fallback)
+        """
+        from datetime import UTC as _UTC, datetime as _dt
+
+        from langchain_core.documents import Document
+        from redisvl.query import RangeQuery, VectorQuery
+
+        from agent_memory_server.utils.redis_query import RecencyAggregationQuery
+
+        index = self._get_vectorstore_index()
+        if index is None:
+            raise Exception("RedisVL index not available")
+
+        # Embed the query text to vector
+        embedding_vector = self.embeddings.embed_query(query)
+
+        # Build base KNN query (hybrid)
+        if distance_threshold is not None:
+            knn = RangeQuery(
+                vector=embedding_vector,
+                vector_field_name="vector",
+                filter_expression=redis_filter,
+                distance_threshold=float(distance_threshold),
+                num_results=limit,
+            )
+        else:
+            knn = VectorQuery(
+                vector=embedding_vector,
+                vector_field_name="vector",
+                filter_expression=redis_filter,
+                num_results=limit,
+            )
+
+        # Aggregate with APPLY/SORTBY boosted score via helper
+        now_ts = int(_dt.now(_UTC).timestamp())
+        agg = (
+            RecencyAggregationQuery.from_vector_query(
+                knn, filter_expression=redis_filter
+            )
+            .load_default_fields()
+            .apply_recency(now_ts=now_ts, params=recency_params or {})
+            .sort_by_boosted_desc()
+            .paginate(offset, limit)
+        )
+
+        raw = (
+            await index.aaggregate(agg)
+            if hasattr(index, "aaggregate")
+            else index.aggregate(agg)  # type: ignore
+        )
+
+        rows = getattr(raw, "rows", raw) or []
+        memory_results: list[MemoryRecordResult] = []
+        for row in rows:
+            fields = getattr(row, "__dict__", None) or row
+            metadata = {
+                k: fields.get(k)
+                for k in [
+                    "id_",
+                    "session_id",
+                    "user_id",
+                    "namespace",
+                    "created_at",
+                    "last_accessed",
+                    "updated_at",
+                    "pinned",
+                    "access_count",
+                    "topics",
+                    "entities",
+                    "memory_hash",
+                    "discrete_memory_extracted",
+                    "memory_type",
+                    "persisted_at",
+                    "extracted_from",
+                    "event_date",
+                ]
+                if k in fields
+            }
+            text_val = fields.get("text", "")
+            score = fields.get("__vector_score", 1.0) or 1.0
+            doc_obj = Document(page_content=text_val, metadata=metadata)
+            memory_results.append(self.document_to_memory(doc_obj, float(score)))
+
+        next_offset = offset + limit if len(memory_results) == limit else None
+        return MemoryRecordResults(
+            memories=memory_results[:limit],
+            total=offset + len(memory_results),
+            next_offset=next_offset,
+        )
+
     async def search_memories(
         self,
         query: str,
@@ -900,94 +1020,14 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         # If server-side recency is requested, attempt RedisVL query first (DB-level path)
         if server_side_recency:
             try:
-                index = getattr(self.vectorstore, "_index", None)
-                if index is not None:
-                    # Embed the query text to vector
-                    embedding_vector = self.embeddings.embed_query(query)
-
-                    # Build base KNN query (hybrid)
-                    if distance_threshold is not None:
-                        knn = RangeQuery(
-                            vector=embedding_vector,
-                            vector_field_name="vector",
-                            filter_expression=redis_filter,
-                            distance_threshold=float(distance_threshold),
-                            num_results=limit,
-                        )
-                    else:
-                        knn = VectorQuery(
-                            vector=embedding_vector,
-                            vector_field_name="vector",
-                            filter_expression=redis_filter,
-                            num_results=limit,
-                        )
-
-                    # Aggregate with APPLY/SORTBY boosted score via helper
-                    from datetime import UTC as _UTC, datetime as _dt
-
-                    from agent_memory_server.utils.redis_query import (
-                        RecencyAggregationQuery,
-                    )
-
-                    now_ts = int(_dt.now(_UTC).timestamp())
-                    agg = (
-                        RecencyAggregationQuery.from_vector_query(
-                            knn, filter_expression=redis_filter
-                        )
-                        .load_default_fields()
-                        .apply_recency(now_ts=now_ts, params=recency_params or {})
-                        .sort_by_boosted_desc()
-                        .paginate(offset, limit)
-                    )
-
-                    raw = (
-                        await index.aaggregate(agg)
-                        if hasattr(index, "aaggregate")
-                        else index.aggregate(agg)  # type: ignore
-                    )
-
-                    rows = getattr(raw, "rows", raw) or []
-                    memory_results: list[MemoryRecordResult] = []
-                    for row in rows:
-                        fields = getattr(row, "__dict__", None) or row
-                        metadata = {
-                            k: fields.get(k)
-                            for k in [
-                                "id_",
-                                "session_id",
-                                "user_id",
-                                "namespace",
-                                "created_at",
-                                "last_accessed",
-                                "updated_at",
-                                "pinned",
-                                "access_count",
-                                "topics",
-                                "entities",
-                                "memory_hash",
-                                "discrete_memory_extracted",
-                                "memory_type",
-                                "persisted_at",
-                                "extracted_from",
-                                "event_date",
-                            ]
-                            if k in fields
-                        }
-                        text_val = fields.get("text", "")
-                        score = fields.get("__vector_score", 1.0) or 1.0
-                        doc_obj = Document(page_content=text_val, metadata=metadata)
-                        memory_results.append(
-                            self.document_to_memory(doc_obj, float(score))
-                        )
-
-                    next_offset = (
-                        offset + limit if len(memory_results) == limit else None
-                    )
-                    return MemoryRecordResults(
-                        memories=memory_results[:limit],
-                        total=offset + len(memory_results),
-                        next_offset=next_offset,
-                    )
+                return await self._search_with_redis_aggregation(
+                    query=query,
+                    redis_filter=redis_filter,
+                    limit=limit,
+                    offset=offset,
+                    distance_threshold=distance_threshold,
+                    recency_params=recency_params,
+                )
             except Exception as e:
                 logger.warning(
                     f"RedisVL DB-level recency search failed; falling back to client-side path: {e}"
