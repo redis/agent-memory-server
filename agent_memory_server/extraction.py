@@ -225,12 +225,35 @@ DISCRETE_EXTRACTION_PROMPT = """
     2. SEMANTIC: User preferences and general knowledge outside of your training data.
        Example: "Trek discontinued the Trek 520 steel touring bike in 2023"
 
+    CONTEXTUAL GROUNDING REQUIREMENTS:
+    When extracting memories, you must resolve all contextual references to their concrete referents:
+
+    1. PRONOUNS: Replace ALL pronouns (he/she/they/him/her/them/his/hers/theirs) with the actual person's name
+       - "He loves coffee" → "John loves coffee" (if "he" refers to John)
+       - "I told her about it" → "User told Sarah about it" (if "her" refers to Sarah)
+       - "Her experience is valuable" → "Sarah's experience is valuable" (if "her" refers to Sarah)
+       - "His work is excellent" → "John's work is excellent" (if "his" refers to John)
+       - NEVER leave pronouns unresolved - always replace with the specific person's name
+
+    2. TEMPORAL REFERENCES: Convert relative time expressions to absolute dates/times
+       - "yesterday" → "March 15, 2025" (if today is March 16, 2025)
+       - "last year" → "2024" (if current year is 2025)
+       - "three months ago" → "December 2024" (if current date is March 2025)
+
+    3. SPATIAL REFERENCES: Resolve place references to specific locations
+       - "there" → "San Francisco" (if referring to San Francisco)
+       - "that place" → "Chez Panisse restaurant" (if referring to that restaurant)
+       - "here" → "the office" (if referring to the office)
+
+    4. DEFINITE REFERENCES: Resolve definite articles to specific entities
+       - "the meeting" → "the quarterly planning meeting"
+       - "the document" → "the budget proposal document"
+
     For each memory, return a JSON object with the following fields:
-    - type: str --The memory type, either "episodic" or "semantic"
-    - text: str -- The actual information to store
+    - type: str -- The memory type, either "episodic" or "semantic"
+    - text: str -- The actual information to store (with all contextual references grounded)
     - topics: list[str] -- The topics of the memory (top {top_k_topics})
     - entities: list[str] -- The entities of the memory
-    -
 
     Return a list of memories, for example:
     {{
@@ -254,9 +277,19 @@ DISCRETE_EXTRACTION_PROMPT = """
     1. Only extract information that would be genuinely useful for future interactions.
     2. Do not extract procedural knowledge - that is handled by the system's built-in tools and prompts.
     3. You are a large language model - do not extract facts that you already know.
+    4. CRITICAL: ALWAYS ground ALL contextual references - never leave ANY pronouns, relative times, or vague place references unresolved.
+    5. MANDATORY: Replace every instance of "he/she/they/him/her/them/his/hers/theirs" with the actual person's name.
+    6. MANDATORY: Replace possessive pronouns like "her experience" with "Sarah's experience" (if "her" refers to Sarah).
+    7. If you cannot determine what a contextual reference refers to, either omit that memory or use generic terms like "someone" instead of ungrounded pronouns.
 
     Message:
     {message}
+
+    STEP-BY-STEP PROCESS:
+    1. First, identify all pronouns in the text: he, she, they, him, her, them, his, hers, theirs
+    2. Determine what person each pronoun refers to based on the context
+    3. Replace every single pronoun with the actual person's name
+    4. Extract the grounded memories with NO pronouns remaining
 
     Extracted memories:
     """
