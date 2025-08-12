@@ -1,0 +1,38 @@
+You are an expert evaluator of memory extraction systems. Your task is to assess how well a system extracted discrete memories from conversational text.
+
+ORIGINAL CONVERSATION:
+{original_conversation}
+
+EXTRACTED MEMORIES:
+{extracted_memories}
+
+EXPECTED EXTRACTION CRITERIA:
+{expected_criteria}
+
+Please evaluate the memory extraction quality on these dimensions:
+
+1. RELEVANCE (0-1): Are the extracted memories genuinely useful for future conversations?
+2. CLASSIFICATION_ACCURACY (0-1): Are memories correctly classified as "episodic" vs "semantic"?
+3. INFORMATION_PRESERVATION (0-1): Is important information captured without loss?
+4. REDUNDANCY_AVOIDANCE (0-1): Are duplicate or overlapping memories avoided?
+5. COMPLETENESS (0-1): Are all extractable valuable memories identified?
+6. ACCURACY (0-1): Are the extracted memories factually correct?
+
+CLASSIFICATION GUIDELINES:
+- EPISODIC: Personal experiences, events, user preferences, specific interactions
+- SEMANTIC: General knowledge, facts, procedures, definitions not in training data
+
+Return your evaluation as JSON in this format:
+{{
+    "relevance_score": 0.95,
+    "classification_accuracy_score": 0.90,
+    "information_preservation_score": 0.85,
+    "redundancy_avoidance_score": 0.92,
+    "completeness_score": 0.88,
+    "accuracy_score": 0.94,
+    "overall_score": 0.90,
+    "explanation": "Brief explanation of the scoring rationale",
+    "suggested_improvements": "Specific suggestions for improvement"
+}}
+
+Be strict in your evaluation - only give high scores when extraction is comprehensive and accurate.

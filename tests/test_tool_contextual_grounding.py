@@ -1,7 +1,5 @@
 """Tests for tool-based contextual grounding functionality."""
 
-import os
-
 import pytest
 
 from agent_memory_server.mcp import create_long_term_memories
@@ -15,8 +13,6 @@ class TestToolBasedContextualGrounding:
     @pytest.mark.requires_api_keys
     async def test_tool_based_pronoun_grounding_evaluation(self):
         """Test that the create_long_term_memories tool properly grounds pronouns."""
-        if not os.getenv("OPENAI_API_KEY"):
-            pytest.skip("OpenAI API key required for tool grounding evaluation")
 
         # Simulate an LLM using the tool with contextual references
         # This is what an LLM might try to create without proper grounding
@@ -83,8 +79,6 @@ class TestToolBasedContextualGrounding:
     @pytest.mark.requires_api_keys
     async def test_judge_evaluation_of_tool_created_memories(self):
         """Test LLM judge evaluation of memories that could be created via tools."""
-        if not os.getenv("OPENAI_API_KEY"):
-            pytest.skip("OpenAI API key required for judge evaluation")
 
         judge = LLMContextualGroundingJudge()
 
@@ -146,8 +140,6 @@ class TestToolBasedContextualGrounding:
     @pytest.mark.requires_api_keys
     async def test_realistic_tool_usage_scenario(self):
         """Test a realistic scenario where an LLM creates memories via tools during conversation."""
-        if not os.getenv("OPENAI_API_KEY"):
-            pytest.skip("OpenAI API key required for realistic tool scenario")
 
         # Simulate a conversation where user mentions people and facts
         # Then an LLM creates memories using the tool

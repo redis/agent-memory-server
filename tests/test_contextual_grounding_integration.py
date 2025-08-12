@@ -11,6 +11,7 @@ Run with: uv run pytest tests/test_contextual_grounding_integration.py --run-api
 import json
 import os
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 import ulid
@@ -180,62 +181,16 @@ class ContextualGroundingBenchmark:
 class LLMContextualGroundingJudge:
     """LLM-as-a-Judge system for evaluating contextual grounding quality"""
 
-    EVALUATION_PROMPT = """
-    You are an expert evaluator of contextual grounding in text. Your task is to assess how well contextual references (pronouns, temporal expressions, spatial references, etc.) have been resolved to their concrete referents.
-
-    INPUT CONTEXT MESSAGES:
-    {context_messages}
-
-    ORIGINAL TEXT WITH CONTEXTUAL REFERENCES:
-    {original_text}
-
-    GROUNDED TEXT (what the system produced):
-    {grounded_text}
-
-    EXPECTED GROUNDINGS:
-    {expected_grounding}
-
-    Please evaluate the grounding quality on these dimensions:
-
-    1. PRONOUN_RESOLUTION (0-1): How well are pronouns (he/she/they/him/her/them) resolved to specific entities? If no pronouns are present, score as 1.0. If pronouns remain unchanged from the original text, this indicates no grounding was performed and should receive a low score (0.0-0.2).
-
-    2. TEMPORAL_GROUNDING (0-1): How well are relative time expressions converted to absolute times? If no temporal expressions are present, score as 1.0. If temporal expressions remain unchanged when they should be grounded, this indicates incomplete grounding.
-
-    3. SPATIAL_GROUNDING (0-1): How well are place references (there/here/that place) resolved to specific locations? If no spatial references are present, score as 1.0. If spatial references remain unchanged when they should be grounded, this indicates incomplete grounding.
-
-    4. COMPLETENESS (0-1): Are all context-dependent references that exist in the text properly resolved? This should be high (0.8-1.0) if all relevant references were grounded, moderate (0.4-0.7) if some were missed, and low (0.0-0.3) if most/all were missed.
-
-    5. ACCURACY (0-1): Are the groundings factually correct given the context?
-
-    IMPORTANT SCORING PRINCIPLES:
-    - Only penalize dimensions that are actually relevant to the text
-    - If no pronouns exist, pronoun_resolution_score = 1.0 (not applicable = perfect)
-    - If no temporal expressions exist, temporal_grounding_score = 1.0 (not applicable = perfect)
-    - If no spatial references exist, spatial_grounding_score = 1.0 (not applicable = perfect)
-    - The overall_score should reflect performance on relevant dimensions only
-
-    CRITICAL: If the grounded text is identical to the original text, this means NO grounding was performed. In this case:
-    - Set relevant dimension scores to 0.0 based on what should have been grounded
-    - Set irrelevant dimension scores to 1.0 (not applicable)
-    - COMPLETENESS should be 0.0 since nothing was resolved
-    - OVERALL_SCORE should be very low (0.0-0.2) if grounding was expected
-
-    Return your evaluation as JSON in this format:
-    {{
-        "pronoun_resolution_score": 0.95,
-        "temporal_grounding_score": 0.90,
-        "spatial_grounding_score": 0.85,
-        "completeness_score": 0.92,
-        "accuracy_score": 0.88,
-        "overall_score": 0.90,
-        "explanation": "Brief explanation of the scoring rationale"
-    }}
-
-    Be strict in your evaluation - only give high scores when grounding is complete and accurate.
-    """
-
     def __init__(self, judge_model: str = "gpt-4o"):
         self.judge_model = judge_model
+        # Load the evaluation prompt from template file
+        template_path = (
+            Path(__file__).parent
+            / "templates"
+            / "contextual_grounding_evaluation_prompt.txt"
+        )
+        with open(template_path) as f:
+            self.EVALUATION_PROMPT = f.read()
 
     async def evaluate_grounding(
         self,
@@ -440,8 +395,6 @@ class TestContextualGroundingIntegration:
     @pytest.mark.requires_api_keys
     async def test_comprehensive_grounding_evaluation_with_judge(self):
         """Comprehensive test using LLM-as-a-judge for grounding evaluation"""
-        if not os.getenv("OPENAI_API_KEY"):
-            pytest.skip("OpenAI API key required for judge evaluation")
 
         judge = LLMContextualGroundingJudge()
         benchmark = ContextualGroundingBenchmark()

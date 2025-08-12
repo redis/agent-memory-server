@@ -1,6 +1,5 @@
 """Tests for thread-aware contextual grounding functionality."""
 
-import os
 from datetime import UTC, datetime
 
 import pytest
@@ -60,8 +59,6 @@ class TestThreadAwareContextualGrounding:
     @pytest.mark.requires_api_keys
     async def test_thread_aware_pronoun_resolution(self):
         """Test that thread-aware extraction properly resolves pronouns across messages."""
-        if not os.getenv("OPENAI_API_KEY"):
-            pytest.skip("OpenAI API key required for thread-aware extraction")
 
         session_id = f"test-thread-{ulid.ULID()}"
 
@@ -133,8 +130,6 @@ class TestThreadAwareContextualGrounding:
     @pytest.mark.requires_api_keys
     async def test_empty_conversation_handling(self):
         """Test that empty or non-existent conversations are handled gracefully."""
-        if not os.getenv("OPENAI_API_KEY"):
-            pytest.skip("OpenAI API key required for thread-aware extraction")
 
         session_id = f"test-empty-{ulid.ULID()}"
 
@@ -151,8 +146,6 @@ class TestThreadAwareContextualGrounding:
     @pytest.mark.requires_api_keys
     async def test_multi_entity_conversation(self):
         """Test contextual grounding with multiple entities in conversation."""
-        if not os.getenv("OPENAI_API_KEY"):
-            pytest.skip("OpenAI API key required for thread-aware extraction")
 
         session_id = f"test-multi-entity-{ulid.ULID()}"
 
