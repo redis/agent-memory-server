@@ -326,17 +326,61 @@ class TestRecencyConfig:
                 text="q", recency=rc, limit=5
             )
 
-            # Verify payload contained recency fields
+            # Verify payload contained recency fields (both old and new names for compatibility)
             args, kwargs = mock_post.call_args
             assert args[0] == "/v1/long-term-memory/search"
             body = kwargs["json"]
             assert body["recency_boost"] is True
+            # Old parameter names (for backward compatibility)
             assert body["recency_w_sem"] == 0.7
             assert body["recency_w_recency"] == 0.3
             assert body["recency_wf"] == 0.6
             assert body["recency_wa"] == 0.4
+            # New descriptive parameter names (preferred)
+            assert body["recency_semantic_weight"] == 0.7
+            assert body["recency_recency_weight"] == 0.3
+            assert body["recency_freshness_weight"] == 0.6
+            assert body["recency_novelty_weight"] == 0.4
             assert body["recency_half_life_last_access_days"] == 7
             assert body["recency_half_life_created_days"] == 30
+            assert body["server_side_recency"] is True
+
+    async def test_recency_config_new_parameter_names(self, enhanced_test_client):
+        """Test that new descriptive parameter names work and take precedence."""
+        with patch.object(enhanced_test_client._client, "post") as mock_post:
+            mock_response = AsyncMock()
+            mock_response.raise_for_status.return_value = None
+            mock_response.json.return_value = MemoryRecordResults(
+                total=0, memories=[], next_offset=None
+            ).model_dump()
+            mock_post.return_value = mock_response
+
+            rc = RecencyConfig(
+                recency_boost=True,
+                semantic_weight=0.9,  # New parameter name should take precedence
+                w_sem=0.1,  # Old parameter name (should be ignored)
+                recency_weight=0.1,
+                freshness_weight=0.7,
+                novelty_weight=0.3,
+                half_life_last_access_days=5,
+                half_life_created_days=20,
+                server_side_recency=True,
+            )
+
+            await enhanced_test_client.search_long_term_memory(
+                text="test query", recency=rc, limit=10
+            )
+
+            # Verify new parameter names take precedence
+            args, kwargs = mock_post.call_args
+            body = kwargs["json"]
+            assert body["recency_boost"] is True
+            # Both old and new names should be present
+            assert body["recency_w_sem"] == 0.9  # Uses new value, not old
+            assert body["recency_semantic_weight"] == 0.9  # New parameter
+            assert body["recency_recency_weight"] == 0.1
+            assert body["recency_freshness_weight"] == 0.7
+            assert body["recency_novelty_weight"] == 0.3
             assert body["server_side_recency"] is True
 
 

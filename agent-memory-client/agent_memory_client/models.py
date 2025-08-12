@@ -250,12 +250,29 @@ class RecencyConfig(BaseModel):
     recency_boost: bool | None = Field(
         default=None, description="Enable recency-aware re-ranking"
     )
+    # Legacy short parameter names (deprecated)
     w_sem: float | None = Field(default=None, description="Weight for semantic score")
     w_recency: float | None = Field(
         default=None, description="Weight for recency composite"
     )
     wf: float | None = Field(default=None, description="Weight for freshness")
     wa: float | None = Field(default=None, description="Weight for age/novelty")
+
+    # New descriptive parameter names (preferred)
+    semantic_weight: float | None = Field(
+        default=None,
+        description="Weight for semantic similarity (preferred over w_sem)",
+    )
+    recency_weight: float | None = Field(
+        default=None, description="Weight for recency score (preferred over w_recency)"
+    )
+    freshness_weight: float | None = Field(
+        default=None, description="Weight for freshness component (preferred over wf)"
+    )
+    novelty_weight: float | None = Field(
+        default=None, description="Weight for novelty/age component (preferred over wa)"
+    )
+
     half_life_last_access_days: float | None = Field(
         default=None, description="Half-life (days) for last_accessed decay"
     )
