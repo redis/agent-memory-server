@@ -10,7 +10,6 @@ from agent_memory_server.long_term_memory import (
     should_extract_session_thread,
 )
 from agent_memory_server.models import MemoryMessage, WorkingMemory
-from agent_memory_server.utils.redis import get_redis_conn
 from agent_memory_server.working_memory import set_working_memory
 
 
@@ -108,9 +107,11 @@ class TestThreadAwareContextualGrounding:
             ungrounded_count <= 2
         ), f"Should have minimal ungrounded pronouns, found {ungrounded_count}"
 
-    async def test_debounce_mechanism(self):
+    async def test_debounce_mechanism(self, redis_url):
         """Test that the debounce mechanism prevents frequent re-extraction."""
-        redis = await get_redis_conn()
+        from redis.asyncio import Redis
+
+        redis = Redis.from_url(redis_url)
         session_id = f"test-debounce-{ulid.ULID()}"
 
         # First call should allow extraction
