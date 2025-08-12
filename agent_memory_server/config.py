@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     anthropic_api_base: str | None = None
     generation_model: str = "gpt-4o"
     embedding_model: str = "text-embedding-3-small"
+
+    # Model selection for query optimization
+    slow_model: str = "gpt-4o"  # Slower, more capable model for complex tasks
+    fast_model: str = (
+        "gpt-4o-mini"  # Faster, smaller model for quick tasks like query optimization
+    )
     port: int = 8000
     mcp_port: int = 9000
 
@@ -123,6 +129,21 @@ class Settings(BaseSettings):
     summarization_threshold: float = (
         0.7  # Fraction of context window that triggers summarization
     )
+
+    # Query optimization settings
+    query_optimization_prompt_template: str = """Transform this natural language query into an optimized version for semantic search. The goal is to make it more effective for finding semantically similar content while preserving the original intent.
+
+Guidelines:
+- Keep the core meaning and intent
+- Use more specific and descriptive terms
+- Remove unnecessary words like "tell me", "I want to know", "can you"
+- Focus on the key concepts and topics
+- Make it concise but comprehensive
+
+Original query: {query}
+
+Optimized query:"""
+    min_optimized_query_length: int = 2
 
     # Other Application settings
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
