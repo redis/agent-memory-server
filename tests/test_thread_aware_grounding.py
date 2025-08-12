@@ -111,8 +111,10 @@ class TestThreadAwareContextualGrounding:
         """Test that the debounce mechanism prevents frequent re-extraction."""
         from redis.asyncio import Redis
 
+        # Use testcontainer Redis instead of localhost:6379
         redis = Redis.from_url(redis_url)
         session_id = f"test-debounce-{ulid.ULID()}"
+        print(f"Testing debounce with Redis URL: {redis_url}")
 
         # First call should allow extraction
         should_extract_1 = await should_extract_session_thread(session_id, redis)
