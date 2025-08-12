@@ -449,19 +449,10 @@ async def optimize_query_for_vector_search(
     # Use fast model from settings if not specified
     effective_model = model_name or settings.fast_model
 
-    # Create optimization prompt
-    optimization_prompt = f"""Transform this natural language query into an optimized version for semantic search. The goal is to make it more effective for finding semantically similar content while preserving the original intent.
-
-Guidelines:
-- Keep the core meaning and intent
-- Use more specific and descriptive terms
-- Remove unnecessary words like "tell me", "I want to know", "can you"
-- Focus on the key concepts and topics
-- Make it concise but comprehensive
-
-Original query: {query}
-
-Optimized query:"""
+    # Create optimization prompt from config template
+    optimization_prompt = settings.query_optimization_prompt_template.format(
+        query=query
+    )
 
     try:
         client = await get_model_client(effective_model)
@@ -471,7 +462,11 @@ Optimized query:"""
             prompt=optimization_prompt,
         )
 
-        if response.choices and len(response.choices) > 0:
+        if (
+            hasattr(response, "choices")
+            and response.choices
+            and len(response.choices) > 0
+        ):
             optimized = ""
             if hasattr(response.choices[0], "message"):
                 optimized = response.choices[0].message.content
@@ -484,7 +479,7 @@ Optimized query:"""
             optimized = optimized.strip()
 
             # Fallback to original if optimization failed
-            if not optimized or len(optimized) < 2:
+            if not optimized or len(optimized) < settings.min_optimized_query_length:
                 logger.warning(f"Query optimization failed for: {query}")
                 return query
 

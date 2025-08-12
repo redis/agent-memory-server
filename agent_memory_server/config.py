@@ -130,6 +130,21 @@ class Settings(BaseSettings):
         0.7  # Fraction of context window that triggers summarization
     )
 
+    # Query optimization settings
+    query_optimization_prompt_template: str = """Transform this natural language query into an optimized version for semantic search. The goal is to make it more effective for finding semantically similar content while preserving the original intent.
+
+Guidelines:
+- Keep the core meaning and intent
+- Use more specific and descriptive terms
+- Remove unnecessary words like "tell me", "I want to know", "can you"
+- Focus on the key concepts and topics
+- Make it concise but comprehensive
+
+Original query: {query}
+
+Optimized query:"""
+    min_optimized_query_length: int = 2
+
     # Other Application settings
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     default_mcp_user_id: str | None = None

@@ -15,6 +15,8 @@ from agent_memory_server.models import MemoryRecordResults
 class TestQueryOptimizationErrorHandling:
     """Test error handling scenarios for query optimization."""
 
+    VERY_LONG_QUERY_REPEAT_COUNT = 1000
+
     @patch("agent_memory_server.llms.get_model_client")
     async def test_optimization_with_network_timeout(self, mock_get_client):
         """Test graceful fallback when model API times out."""
@@ -50,12 +52,19 @@ class TestQueryOptimizationErrorHandling:
         mock_client = AsyncMock()
         mock_response = MagicMock()
         # Malformed response - no choices attribute
-        del mock_response.choices
+        if hasattr(mock_response, "choices"):
+            del mock_response.choices
         mock_client.create_chat_completion.return_value = mock_response
         mock_get_client.return_value = mock_client
 
         original_query = "Find my user settings"
-        result = await optimize_query_for_vector_search(original_query)
+        # The function should handle AttributeError gracefully and fall back
+        try:
+            result = await optimize_query_for_vector_search(original_query)
+        except AttributeError:
+            pytest.fail(
+                "optimize_query_for_vector_search did not handle missing choices attribute gracefully"
+            )
 
         # Should fall back to original query
         assert result == original_query
@@ -100,7 +109,11 @@ class TestQueryOptimizationErrorHandling:
         mock_get_client.return_value = mock_client
 
         # Create a very long query (10,000 characters)
-        long_query = "Tell me about " + "preferences " * 1000 + "settings"
+        long_query = (
+            "Tell me about "
+            + "preferences " * self.VERY_LONG_QUERY_REPEAT_COUNT
+            + "settings"
+        )
         result = await optimize_query_for_vector_search(long_query)
 
         assert result == "long query optimized"
