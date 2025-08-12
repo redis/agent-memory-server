@@ -21,10 +21,10 @@ async def test_recency_aggregation_query_builds_and_paginates():
         .apply_recency(
             now_ts=1_700_000_000,
             params={
-                "w_sem": 0.7,
-                "w_recency": 0.3,
-                "wf": 0.5,
-                "wa": 0.5,
+                "semantic_weight": 0.7,
+                "recency_weight": 0.3,
+                "freshness_weight": 0.5,
+                "novelty_weight": 0.5,
                 "half_life_last_access_days": 5.0,
                 "half_life_created_days": 20.0,
             },

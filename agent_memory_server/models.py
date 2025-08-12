@@ -390,6 +390,25 @@ class SearchRequest(BaseModel):
     recency_half_life_created_days: float | None = Field(
         default=None, description="Half-life (days) for created_at decay"
     )
+
+    # New descriptive parameter names (preferred over short names above)
+    recency_semantic_weight: float | None = Field(
+        default=None,
+        description="Weight for semantic similarity (preferred over recency_w_sem)",
+    )
+    recency_recency_weight: float | None = Field(
+        default=None,
+        description="Weight for recency score (preferred over recency_w_recency)",
+    )
+    recency_freshness_weight: float | None = Field(
+        default=None,
+        description="Weight for freshness component (preferred over recency_wf)",
+    )
+    recency_novelty_weight: float | None = Field(
+        default=None,
+        description="Weight for novelty (age) component (preferred over recency_wa)",
+    )
+
     # Server-side recency rerank (Redis-only path) toggle
     server_side_recency: bool | None = Field(
         default=None,

@@ -56,20 +56,24 @@ class RecencyAggregationQuery(AggregationQuery):
         self, *, now_ts: int, params: dict[str, Any] | None = None
     ) -> RecencyAggregationQuery:
         params = params or {}
-        w_sem = float(params.get("w_sem", 0.8))
-        w_rec = float(params.get("w_recency", 0.2))
-        wf = float(params.get("wf", 0.6))
-        wa = float(params.get("wa", 0.4))
-        hl_la = float(params.get("half_life_last_access_days", 7.0))
-        hl_cr = float(params.get("half_life_created_days", 30.0))
+
+        # Support both old and new parameter names for backward compatibility
+        semantic_weight = float(params.get("semantic_weight", params.get("w_sem", 0.8)))
+        recency_weight = float(
+            params.get("recency_weight", params.get("w_recency", 0.2))
+        )
+        freshness_weight = float(params.get("freshness_weight", params.get("wf", 0.6)))
+        novelty_weight = float(params.get("novelty_weight", params.get("wa", 0.4)))
+        half_life_access = float(params.get("half_life_last_access_days", 7.0))
+        half_life_created = float(params.get("half_life_created_days", 30.0))
 
         self.apply(days_since_access=f"max(0, ({now_ts} - @last_accessed)/86400.0)")
         self.apply(days_since_created=f"max(0, ({now_ts} - @created_at)/86400.0)")
-        self.apply(freshness=f"pow(2, -@days_since_access/{hl_la})")
-        self.apply(novelty=f"pow(2, -@days_since_created/{hl_cr})")
-        self.apply(recency=f"{wf}*@freshness+{wa}*@novelty")
+        self.apply(freshness=f"pow(2, -@days_since_access/{half_life_access})")
+        self.apply(novelty=f"pow(2, -@days_since_created/{half_life_created})")
+        self.apply(recency=f"{freshness_weight}*@freshness+{novelty_weight}*@novelty")
         self.apply(sim="1-(@__vector_score/2)")
-        self.apply(boosted_score=f"{w_sem}*@sim+{w_rec}*@recency")
+        self.apply(boosted_score=f"{semantic_weight}*@sim+{recency_weight}*@recency")
 
         return self
 

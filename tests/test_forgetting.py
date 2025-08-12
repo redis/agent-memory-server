@@ -40,10 +40,10 @@ def make_result(
 
 def default_params():
     return {
-        "w_sem": 0.8,
-        "w_recency": 0.2,
-        "wf": 0.6,
-        "wa": 0.4,
+        "semantic_weight": 0.8,
+        "recency_weight": 0.2,
+        "freshness_weight": 0.6,
+        "novelty_weight": 0.4,
         "half_life_last_access_days": 7.0,
         "half_life_created_days": 30.0,
     }
@@ -87,8 +87,8 @@ def test_rerank_with_recency_prefers_recent_when_similarity_close():
 def test_rerank_with_recency_respects_semantic_weight_when_gap_large():
     # If semantic similarity difference is large, it should dominate
     params = default_params()
-    params["w_sem"] = 0.9
-    params["w_recency"] = 0.1
+    params["semantic_weight"] = 0.9
+    params["recency_weight"] = 0.1
     now = datetime.now(UTC)
 
     much_more_similar_old = make_result(

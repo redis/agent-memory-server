@@ -1383,28 +1383,32 @@ def score_recency(
 ) -> float:
     """Compute a recency score in [0, 1] combining freshness and novelty.
 
-    - freshness f decays with last_accessed using half-life `half_life_last_access_days`
-    - novelty a decays with created_at using half-life `half_life_created_days`
-    - r = wf * f + wa * a
+    - freshness decays with last_accessed using half-life `half_life_last_access_days`
+    - novelty decays with created_at using half-life `half_life_created_days`
+    - recency = freshness_weight * freshness + novelty_weight * novelty
     """
-    half_life_la = max(float(params.get("half_life_last_access_days", 7.0)), 0.001)
-    half_life_cr = max(float(params.get("half_life_created_days", 30.0)), 0.001)
-    wf = float(params.get("wf", 0.6))
-    wa = float(params.get("wa", 0.4))
+    half_life_last_access = max(
+        float(params.get("half_life_last_access_days", 7.0)), 0.001
+    )
+    half_life_created = max(float(params.get("half_life_created_days", 30.0)), 0.001)
+
+    # Support both old and new parameter names for backward compatibility
+    freshness_weight = float(params.get("freshness_weight", params.get("wf", 0.6)))
+    novelty_weight = float(params.get("novelty_weight", params.get("wa", 0.4)))
 
     # Convert to decay rates
-    mu = log(2.0) / half_life_la
-    lam = log(2.0) / half_life_cr
+    access_decay_rate = log(2.0) / half_life_last_access
+    creation_decay_rate = log(2.0) / half_life_created
 
     days_since_access = _days_between(now, memory.last_accessed)
     days_since_created = _days_between(now, memory.created_at)
 
-    f = exp(-mu * days_since_access)
-    a = exp(-lam * days_since_created)
+    freshness = exp(-access_decay_rate * days_since_access)
+    novelty = exp(-creation_decay_rate * days_since_created)
 
-    r = wf * f + wa * a
+    recency_score = freshness_weight * freshness + novelty_weight * novelty
     # Clamp to [0, 1]
-    return max(0.0, min(1.0, r))
+    return max(0.0, min(1.0, recency_score))
 
 
 def rerank_with_recency(
@@ -1415,15 +1419,16 @@ def rerank_with_recency(
 ) -> list[MemoryRecordResult]:
     """Re-rank results using combined semantic similarity and recency.
 
-    score = w_sem * (1 - dist) + w_recency * recency_score
+    score = semantic_weight * (1 - dist) + recency_weight * recency_score
     """
-    w_sem = float(params.get("w_sem", 0.8))
-    w_rec = float(params.get("w_recency", 0.2))
+    # Support both old and new parameter names for backward compatibility
+    semantic_weight = float(params.get("semantic_weight", params.get("w_sem", 0.8)))
+    recency_weight = float(params.get("recency_weight", params.get("w_recency", 0.2)))
 
     def combined_score(mem: MemoryRecordResult) -> float:
-        sim = 1.0 - float(mem.dist)
-        rec = score_recency(mem, now=now, params=params)
-        return w_sem * sim + w_rec * rec
+        similarity = 1.0 - float(mem.dist)
+        recency = score_recency(mem, now=now, params=params)
+        return semantic_weight * similarity + recency_weight * recency
 
     # Sort by descending score (stable sort preserves original order on ties)
     return sorted(results, key=combined_score, reverse=True)
@@ -1507,10 +1512,10 @@ def select_ids_for_forgetting(
     # Budget-based pruning (keep top N by recency among eligible)
     if isinstance(budget, int) and budget >= 0 and budget < len(eligible_for_budget):
         params = {
-            "w_sem": 0.0,  # budget considers only recency
-            "w_recency": 1.0,
-            "wf": 0.6,
-            "wa": 0.4,
+            "semantic_weight": 0.0,  # budget considers only recency
+            "recency_weight": 1.0,
+            "freshness_weight": 0.6,
+            "novelty_weight": 0.4,
             "half_life_last_access_days": 7.0,
             "half_life_created_days": 30.0,
         }
