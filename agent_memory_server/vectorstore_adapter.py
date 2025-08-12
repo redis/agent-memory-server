@@ -7,12 +7,14 @@ import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import reduce
 from typing import Any, TypeVar
 
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
 from langchain_redis.vectorstores import RedisVectorStore
+from redisvl.query import RangeQuery, VectorQuery
 
 from agent_memory_server.filters import (
     CreatedAt,
@@ -415,6 +417,7 @@ class VectorStoreAdapter(ABC):
             A stable hash string
         """
         # Use the same hash logic as long_term_memory.py for consistency
+        # Lazy import to avoid circular dependency
         from agent_memory_server.long_term_memory import generate_memory_hash
 
         return generate_memory_hash(memory)
@@ -435,11 +438,10 @@ class VectorStoreAdapter(ABC):
             return memory_results
 
         try:
-            from datetime import UTC as _UTC, datetime as _dt
-
+            # Lazy import to avoid circular dependency
             from agent_memory_server.long_term_memory import rerank_with_recency
 
-            now = _dt.now(_UTC)
+            now = datetime.now(UTC)
             params = {
                 "semantic_weight": float(recency_params.get("semantic_weight", 0.8))
                 if recency_params
@@ -686,8 +688,6 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
         """Count memories in the vector store using LangChain."""
         try:
             # Convert basic filters to our filter objects, then to backend format
-            from agent_memory_server.filters import Namespace, SessionId, UserId
-
             namespace_filter = Namespace(eq=namespace) if namespace else None
             user_id_filter = UserId(eq=user_id) if user_id else None
             session_id_filter = SessionId(eq=session_id) if session_id else None
@@ -891,12 +891,6 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         Raises:
             Exception: If Redis aggregation fails (caller should handle fallback)
         """
-        from datetime import UTC as _UTC, datetime as _dt
-
-        from langchain_core.documents import Document
-        from redisvl.query import RangeQuery, VectorQuery
-
-        from agent_memory_server.utils.redis_query import RecencyAggregationQuery
 
         index = self._get_vectorstore_index()
         if index is None:
@@ -923,7 +917,10 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             )
 
         # Aggregate with APPLY/SORTBY boosted score via helper
-        now_ts = int(_dt.now(_UTC).timestamp())
+        # Lazy import to avoid circular dependency
+        from agent_memory_server.utils.redis_query import RecencyAggregationQuery
+
+        now_ts = int(datetime.now(UTC).timestamp())
         agg = (
             RecencyAggregationQuery.from_vector_query(
                 knn, filter_expression=redis_filter
@@ -1035,8 +1032,6 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             if len(filters) == 1:
                 redis_filter = filters[0]
             else:
-                from functools import reduce
-
                 redis_filter = reduce(lambda x, y: x & y, filters)
 
         # If server-side recency is requested, attempt RedisVL query first (DB-level path)
@@ -1179,18 +1174,12 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             filters = []
 
             if namespace:
-                from agent_memory_server.filters import Namespace
-
                 namespace_filter = Namespace(eq=namespace).to_filter()
                 filters.append(namespace_filter)
             if user_id:
-                from agent_memory_server.filters import UserId
-
                 user_filter = UserId(eq=user_id).to_filter()
                 filters.append(user_filter)
             if session_id:
-                from agent_memory_server.filters import SessionId
-
                 session_filter = SessionId(eq=session_id).to_filter()
                 filters.append(session_filter)
 
@@ -1200,8 +1189,6 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                 if len(filters) == 1:
                     redis_filter = filters[0]
                 else:
-                    from functools import reduce
-
                     redis_filter = reduce(lambda x, y: x & y, filters)
 
             # Use the same search method as search_memories but for counting
