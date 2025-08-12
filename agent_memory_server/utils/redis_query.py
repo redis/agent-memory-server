@@ -4,6 +4,9 @@ from typing import Any
 
 from redisvl.query import AggregationQuery, RangeQuery, VectorQuery
 
+# Import constants from long_term_memory module
+from agent_memory_server.long_term_memory import SECONDS_PER_DAY
+
 
 class RecencyAggregationQuery(AggregationQuery):
     """AggregationQuery helper for KNN + recency boosting with APPLY/SORTBY and paging.
@@ -64,8 +67,12 @@ class RecencyAggregationQuery(AggregationQuery):
         half_life_access = float(params.get("half_life_last_access_days", 7.0))
         half_life_created = float(params.get("half_life_created_days", 30.0))
 
-        self.apply(days_since_access=f"max(0, ({now_ts} - @last_accessed)/86400.0)")
-        self.apply(days_since_created=f"max(0, ({now_ts} - @created_at)/86400.0)")
+        self.apply(
+            days_since_access=f"max(0, ({now_ts} - @last_accessed)/{SECONDS_PER_DAY})"
+        )
+        self.apply(
+            days_since_created=f"max(0, ({now_ts} - @created_at)/{SECONDS_PER_DAY})"
+        )
         self.apply(freshness=f"pow(2, -@days_since_access/{half_life_access})")
         self.apply(novelty=f"pow(2, -@days_since_created/{half_life_created})")
         self.apply(recency=f"{freshness_weight}*@freshness+{novelty_weight}*@novelty")

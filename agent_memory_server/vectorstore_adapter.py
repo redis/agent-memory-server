@@ -131,7 +131,6 @@ class LangChainFilterProcessor:
         """Convert filter objects to backend format for LangChain vectorstores."""
         filter_dict: dict[str, Any] = {}
 
-        # TODO: Seems like we could take *args filters and decide what to do based on type.
         # Apply tag/string filters using the helper function
         self.process_tag_filter(session_id, "session_id", filter_dict)
         self.process_tag_filter(user_id, "user_id", filter_dict)
@@ -260,11 +259,17 @@ class VectorStoreAdapter(ABC):
         """
         pass
 
-    def _parse_list_field(self, field_value):
+    def _parse_list_field(self, field_value: Any) -> list[str]:
         """Parse a field that might be a list, comma-separated string, or None.
 
         Centralized here so both LangChain and Redis adapters can normalize
         metadata fields like topics/entities/extracted_from.
+
+        Args:
+            field_value: Value that may be a list, string, or None
+
+        Returns:
+            List of strings, empty list if field_value is falsy
         """
         if not field_value:
             return []
@@ -414,6 +419,56 @@ class VectorStoreAdapter(ABC):
 
         return generate_memory_hash(memory)
 
+    def _apply_client_side_recency_reranking(
+        self, memory_results: list[MemoryRecordResult], recency_params: dict | None
+    ) -> list[MemoryRecordResult]:
+        """Apply client-side recency reranking as a fallback when server-side is not available.
+
+        Args:
+            memory_results: List of memory results to rerank
+            recency_params: Parameters for recency scoring
+
+        Returns:
+            Reranked list of memory results
+        """
+        if not memory_results:
+            return memory_results
+
+        try:
+            from datetime import UTC as _UTC, datetime as _dt
+
+            from agent_memory_server.long_term_memory import rerank_with_recency
+
+            now = _dt.now(_UTC)
+            params = {
+                "semantic_weight": float(recency_params.get("semantic_weight", 0.8))
+                if recency_params
+                else 0.8,
+                "recency_weight": float(recency_params.get("recency_weight", 0.2))
+                if recency_params
+                else 0.2,
+                "freshness_weight": float(recency_params.get("freshness_weight", 0.6))
+                if recency_params
+                else 0.6,
+                "novelty_weight": float(recency_params.get("novelty_weight", 0.4))
+                if recency_params
+                else 0.4,
+                "half_life_last_access_days": float(
+                    recency_params.get("half_life_last_access_days", 7.0)
+                )
+                if recency_params
+                else 7.0,
+                "half_life_created_days": float(
+                    recency_params.get("half_life_created_days", 30.0)
+                )
+                if recency_params
+                else 30.0,
+            }
+            return rerank_with_recency(memory_results, now=now, params=params)
+        except Exception as e:
+            logger.warning(f"Client-side recency reranking failed: {e}")
+            return memory_results
+
     def _convert_filters_to_backend_format(
         self,
         session_id: SessionId | None = None,
@@ -445,7 +500,6 @@ class VectorStoreAdapter(ABC):
             Dictionary filter in format: {"field": {"$eq": "value"}} or None
         """
         processor = LangChainFilterProcessor(self.vectorstore)
-        # TODO: Seems like we could take *args and pass them to the processor
         filter_dict = processor.convert_filters_to_backend_format(
             session_id=session_id,
             user_id=user_id,
@@ -585,50 +639,10 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
                 memory_results.append(memory_result)
 
             # If recency requested but backend does not support DB-level, rerank here as a fallback
-            if server_side_recency and memory_results:
-                try:
-                    from datetime import UTC as _UTC, datetime as _dt
-
-                    from agent_memory_server.long_term_memory import rerank_with_recency
-
-                    now = _dt.now(_UTC)
-                    params = {
-                        "semantic_weight": float(
-                            recency_params.get("semantic_weight", 0.8)
-                        )
-                        if recency_params
-                        else 0.8,
-                        "recency_weight": float(
-                            recency_params.get("recency_weight", 0.2)
-                        )
-                        if recency_params
-                        else 0.2,
-                        "freshness_weight": float(
-                            recency_params.get("freshness_weight", 0.6)
-                        )
-                        if recency_params
-                        else 0.6,
-                        "novelty_weight": float(
-                            recency_params.get("novelty_weight", 0.4)
-                        )
-                        if recency_params
-                        else 0.4,
-                        "half_life_last_access_days": float(
-                            recency_params.get("half_life_last_access_days", 7.0)
-                        )
-                        if recency_params
-                        else 7.0,
-                        "half_life_created_days": float(
-                            recency_params.get("half_life_created_days", 30.0)
-                        )
-                        if recency_params
-                        else 30.0,
-                    }
-                    memory_results = rerank_with_recency(
-                        memory_results, now=now, params=params
-                    )
-                except Exception:
-                    pass
+            if server_side_recency:
+                memory_results = self._apply_client_side_recency_reranking(
+                    memory_results, recency_params
+                )
 
             # Calculate next offset
             next_offset = offset + limit if len(docs_with_scores) > limit else None
@@ -844,7 +858,7 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         added = await self.add_memories(memories)
         return len(added)
 
-    def _get_vectorstore_index(self):
+    def _get_vectorstore_index(self) -> Any | None:
         """Safely access the underlying RedisVL index from the vectorstore.
 
         Returns:
@@ -1066,8 +1080,7 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         # Convert results to MemoryRecordResult objects
         memory_results = []
         for i, (doc, score) in enumerate(search_results):
-            # Apply offset - VectorStore doesn't support pagination...
-            # TODO: Implement pagination in RedisVectorStore as a kwarg.
+            # Apply offset - VectorStore doesn't support native pagination
             if i < offset:
                 continue
 
@@ -1120,48 +1133,11 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             if len(memory_results) >= limit:
                 break
 
-        # Optional server-side recency-aware rerank (adapter-level fallback)
-        # If requested, re-rank using the same logic as server API's local reranking.
+        # Optional client-side recency-aware rerank (adapter-level fallback)
         if server_side_recency:
-            try:
-                from datetime import UTC as _UTC, datetime as _dt
-
-                from agent_memory_server.long_term_memory import rerank_with_recency
-
-                now = _dt.now(_UTC)
-                params = {
-                    "semantic_weight": float(recency_params.get("semantic_weight", 0.8))
-                    if recency_params
-                    else 0.8,
-                    "recency_weight": float(recency_params.get("recency_weight", 0.2))
-                    if recency_params
-                    else 0.2,
-                    "freshness_weight": float(
-                        recency_params.get("freshness_weight", 0.6)
-                    )
-                    if recency_params
-                    else 0.6,
-                    "novelty_weight": float(recency_params.get("novelty_weight", 0.4))
-                    if recency_params
-                    else 0.4,
-                    "half_life_last_access_days": float(
-                        recency_params.get("half_life_last_access_days", 7.0)
-                    )
-                    if recency_params
-                    else 7.0,
-                    "half_life_created_days": float(
-                        recency_params.get("half_life_created_days", 30.0)
-                    )
-                    if recency_params
-                    else 30.0,
-                }
-                memory_results = rerank_with_recency(
-                    memory_results, now=now, params=params
-                )
-            except Exception as e:
-                logger.warning(
-                    f"server_side_recency fallback rerank failed, returning base order: {e}"
-                )
+            memory_results = self._apply_client_side_recency_reranking(
+                memory_results, recency_params
+            )
 
         next_offset = offset + limit if len(search_results) > offset + limit else None
 
@@ -1170,16 +1146,6 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             total=len(search_results),
             next_offset=next_offset,
         )
-
-    def _parse_list_field(self, field_value):
-        """Parse a field that might be a list, comma-separated string, or None."""
-        if not field_value:
-            return []
-        if isinstance(field_value, list):
-            return field_value
-        if isinstance(field_value, str):
-            return field_value.split(",") if field_value else []
-        return []
 
     async def delete_memories(self, memory_ids: list[str]) -> int:
         """Delete memories by their IDs using LangChain's RedisVectorStore."""
