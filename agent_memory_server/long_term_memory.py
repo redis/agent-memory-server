@@ -1363,16 +1363,15 @@ async def delete_long_term_memories(
     return await adapter.delete_memories(ids)
 
 
-# =========================
-# Recency scoring and forgetting helpers (pure functions for TDD)
-# =========================
+# Seconds per day constant for time calculations
+SECONDS_PER_DAY = 86400.0
 
 
 def _days_between(now: datetime, then: datetime | None) -> float:
     if then is None:
         return float("inf")
     delta = now - then
-    return max(delta.total_seconds() / 86400.0, 0.0)
+    return max(delta.total_seconds() / SECONDS_PER_DAY, 0.0)
 
 
 def score_recency(
@@ -1586,7 +1585,7 @@ async def forget_long_term_memories(
 ) -> dict:
     """Select and delete long-term memories according to policy.
 
-    Uses RedisVL via the vectorstore adapter to fetch candidates (empty query + filters),
+    Uses the vectorstore adapter to fetch candidates (empty query + filters),
     then applies `select_ids_for_forgetting` locally and deletes via adapter.
     """
     adapter = await get_vectorstore_adapter()
