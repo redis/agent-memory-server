@@ -89,16 +89,18 @@ The following endpoints are available:
     "last_accessed": { "gt": 1704063600 },
     "user_id": { "eq": "user-456" },
     "recency_boost": true,
-    "recency_w_sem": 0.8,
-    "recency_w_recency": 0.2,
-    "recency_wf": 0.6,
-    "recency_wa": 0.4,
+    "recency_semantic_weight": 0.8,
+    "recency_recency_weight": 0.2,
+    "recency_freshness_weight": 0.6,
+    "recency_novelty_weight": 0.4,
     "recency_half_life_last_access_days": 7.0,
     "recency_half_life_created_days": 30.0
   }
   ```
 
   When `recency_boost` is enabled (default), results are re-ranked using a combined score of semantic similarity and a recency score computed from `last_accessed` and `created_at`. The optional fields adjust weighting and half-lives. The server rate-limits updates to `last_accessed` in the background when results are returned.
+
+  **Note:** Legacy parameter names (`recency_w_sem`, `recency_w_recency`, `recency_wf`, `recency_wa`) are still supported for backward compatibility but are deprecated. Use the descriptive names shown above for new implementations.
 
 - **POST /v1/long-term-memory/forget**
   Trigger a forgetting pass (admin/maintenance).
