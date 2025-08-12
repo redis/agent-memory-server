@@ -372,41 +372,27 @@ class SearchRequest(BaseModel):
         default=None,
         description="Enable recency-aware re-ranking (defaults to enabled if None)",
     )
-    recency_w_sem: float | None = Field(
-        default=None, description="Weight for semantic similarity"
+    recency_semantic_weight: float | None = Field(
+        default=None,
+        description="Weight for semantic similarity",
     )
-    recency_w_recency: float | None = Field(
-        default=None, description="Weight for recency score"
+    recency_recency_weight: float | None = Field(
+        default=None,
+        description="Weight for recency score",
     )
-    recency_wf: float | None = Field(
-        default=None, description="Weight for freshness component"
+    recency_freshness_weight: float | None = Field(
+        default=None,
+        description="Weight for freshness component",
     )
-    recency_wa: float | None = Field(
-        default=None, description="Weight for novelty (age) component"
+    recency_novelty_weight: float | None = Field(
+        default=None,
+        description="Weight for novelty (age) component",
     )
     recency_half_life_last_access_days: float | None = Field(
         default=None, description="Half-life (days) for last_accessed decay"
     )
     recency_half_life_created_days: float | None = Field(
         default=None, description="Half-life (days) for created_at decay"
-    )
-
-    # New descriptive parameter names (preferred over short names above)
-    recency_semantic_weight: float | None = Field(
-        default=None,
-        description="Weight for semantic similarity (preferred over recency_w_sem)",
-    )
-    recency_recency_weight: float | None = Field(
-        default=None,
-        description="Weight for recency score (preferred over recency_w_recency)",
-    )
-    recency_freshness_weight: float | None = Field(
-        default=None,
-        description="Weight for freshness component (preferred over recency_wf)",
-    )
-    recency_novelty_weight: float | None = Field(
-        default=None,
-        description="Weight for novelty (age) component (preferred over recency_wa)",
     )
 
     # Server-side recency rerank (Redis-only path) toggle

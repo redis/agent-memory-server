@@ -57,13 +57,10 @@ class RecencyAggregationQuery(AggregationQuery):
     ) -> RecencyAggregationQuery:
         params = params or {}
 
-        # Support both old and new parameter names for backward compatibility
-        semantic_weight = float(params.get("semantic_weight", params.get("w_sem", 0.8)))
-        recency_weight = float(
-            params.get("recency_weight", params.get("w_recency", 0.2))
-        )
-        freshness_weight = float(params.get("freshness_weight", params.get("wf", 0.6)))
-        novelty_weight = float(params.get("novelty_weight", params.get("wa", 0.4)))
+        semantic_weight = float(params.get("semantic_weight", 0.8))
+        recency_weight = float(params.get("recency_weight", 0.2))
+        freshness_weight = float(params.get("freshness_weight", 0.6))
+        novelty_weight = float(params.get("novelty_weight", 0.4))
         half_life_access = float(params.get("half_life_last_access_days", 7.0))
         half_life_created = float(params.get("half_life_created_days", 30.0))
 

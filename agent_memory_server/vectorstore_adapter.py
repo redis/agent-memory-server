@@ -594,30 +594,22 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
                     now = _dt.now(_UTC)
                     params = {
                         "semantic_weight": float(
-                            recency_params.get(
-                                "semantic_weight", recency_params.get("w_sem", 0.8)
-                            )
+                            recency_params.get("semantic_weight", 0.8)
                         )
                         if recency_params
                         else 0.8,
                         "recency_weight": float(
-                            recency_params.get(
-                                "recency_weight", recency_params.get("w_recency", 0.2)
-                            )
+                            recency_params.get("recency_weight", 0.2)
                         )
                         if recency_params
                         else 0.2,
                         "freshness_weight": float(
-                            recency_params.get(
-                                "freshness_weight", recency_params.get("wf", 0.6)
-                            )
+                            recency_params.get("freshness_weight", 0.6)
                         )
                         if recency_params
                         else 0.6,
                         "novelty_weight": float(
-                            recency_params.get(
-                                "novelty_weight", recency_params.get("wa", 0.4)
-                            )
+                            recency_params.get("novelty_weight", 0.4)
                         )
                         if recency_params
                         else 0.4,
@@ -1138,32 +1130,18 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
 
                 now = _dt.now(_UTC)
                 params = {
-                    "semantic_weight": float(
-                        recency_params.get(
-                            "semantic_weight", recency_params.get("w_sem", 0.8)
-                        )
-                    )
+                    "semantic_weight": float(recency_params.get("semantic_weight", 0.8))
                     if recency_params
                     else 0.8,
-                    "recency_weight": float(
-                        recency_params.get(
-                            "recency_weight", recency_params.get("w_recency", 0.2)
-                        )
-                    )
+                    "recency_weight": float(recency_params.get("recency_weight", 0.2))
                     if recency_params
                     else 0.2,
                     "freshness_weight": float(
-                        recency_params.get(
-                            "freshness_weight", recency_params.get("wf", 0.6)
-                        )
+                        recency_params.get("freshness_weight", 0.6)
                     )
                     if recency_params
                     else 0.6,
-                    "novelty_weight": float(
-                        recency_params.get(
-                            "novelty_weight", recency_params.get("wa", 0.4)
-                        )
-                    )
+                    "novelty_weight": float(recency_params.get("novelty_weight", 0.4))
                     if recency_params
                     else 0.4,
                     "half_life_last_access_days": float(

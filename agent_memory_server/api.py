@@ -131,40 +131,28 @@ def _calculate_context_usage_percentages(
 
 
 def _build_recency_params(payload: SearchRequest) -> dict[str, Any]:
-    """Build recency parameters dict with backward compatibility.
-
-    Prefers new descriptive parameter names over old short names.
-    """
-    # Use new parameter names if available, fall back to old ones, then defaults
-    semantic_weight = (
-        payload.recency_semantic_weight
-        if payload.recency_semantic_weight is not None
-        else (payload.recency_w_sem if payload.recency_w_sem is not None else 0.8)
-    )
-    recency_weight = (
-        payload.recency_recency_weight
-        if payload.recency_recency_weight is not None
-        else (
-            payload.recency_w_recency if payload.recency_w_recency is not None else 0.2
-        )
-    )
-    freshness_weight = (
-        payload.recency_freshness_weight
-        if payload.recency_freshness_weight is not None
-        else (payload.recency_wf if payload.recency_wf is not None else 0.6)
-    )
-    novelty_weight = (
-        payload.recency_novelty_weight
-        if payload.recency_novelty_weight is not None
-        else (payload.recency_wa if payload.recency_wa is not None else 0.4)
-    )
-
+    """Build recency parameters dict from payload."""
     return {
-        # Use new descriptive names internally
-        "semantic_weight": semantic_weight,
-        "recency_weight": recency_weight,
-        "freshness_weight": freshness_weight,
-        "novelty_weight": novelty_weight,
+        "semantic_weight": (
+            payload.recency_semantic_weight
+            if payload.recency_semantic_weight is not None
+            else 0.8
+        ),
+        "recency_weight": (
+            payload.recency_recency_weight
+            if payload.recency_recency_weight is not None
+            else 0.2
+        ),
+        "freshness_weight": (
+            payload.recency_freshness_weight
+            if payload.recency_freshness_weight is not None
+            else 0.6
+        ),
+        "novelty_weight": (
+            payload.recency_novelty_weight
+            if payload.recency_novelty_weight is not None
+            else 0.4
+        ),
         "half_life_last_access_days": (
             payload.recency_half_life_last_access_days
             if payload.recency_half_life_last_access_days is not None
@@ -626,26 +614,7 @@ async def search_long_term_memory(
             return raw_results
 
         now = _dt.now(UTC)
-        recency_params = {
-            "w_sem": payload.recency_w_sem
-            if payload.recency_w_sem is not None
-            else 0.8,
-            "w_recency": payload.recency_w_recency
-            if payload.recency_w_recency is not None
-            else 0.2,
-            "wf": payload.recency_wf if payload.recency_wf is not None else 0.6,
-            "wa": payload.recency_wa if payload.recency_wa is not None else 0.4,
-            "half_life_last_access_days": (
-                payload.recency_half_life_last_access_days
-                if payload.recency_half_life_last_access_days is not None
-                else 7.0
-            ),
-            "half_life_created_days": (
-                payload.recency_half_life_created_days
-                if payload.recency_half_life_created_days is not None
-                else 30.0
-            ),
-        }
+        recency_params = _build_recency_params(payload)
         ranked = long_term_memory.rerank_with_recency(
             raw_results.memories, now=now, params=recency_params
         )

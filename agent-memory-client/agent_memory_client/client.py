@@ -675,45 +675,14 @@ class MemoryAPIClient:
         if recency is not None:
             if recency.recency_boost is not None:
                 payload["recency_boost"] = recency.recency_boost
-            # Handle both new descriptive names and legacy short names
-            # Prefer new descriptive names, fall back to old short names
-            semantic_weight = (
-                recency.semantic_weight
-                if recency.semantic_weight is not None
-                else recency.w_sem
-            )
-            if semantic_weight is not None:
-                payload["recency_semantic_weight"] = semantic_weight
-                payload["recency_w_sem"] = semantic_weight  # For backward compatibility
-
-            recency_weight = (
-                recency.recency_weight
-                if recency.recency_weight is not None
-                else recency.w_recency
-            )
-            if recency_weight is not None:
-                payload["recency_recency_weight"] = recency_weight
-                payload["recency_w_recency"] = (
-                    recency_weight  # For backward compatibility
-                )
-
-            freshness_weight = (
-                recency.freshness_weight
-                if recency.freshness_weight is not None
-                else recency.wf
-            )
-            if freshness_weight is not None:
-                payload["recency_freshness_weight"] = freshness_weight
-                payload["recency_wf"] = freshness_weight  # For backward compatibility
-
-            novelty_weight = (
-                recency.novelty_weight
-                if recency.novelty_weight is not None
-                else recency.wa
-            )
-            if novelty_weight is not None:
-                payload["recency_novelty_weight"] = novelty_weight
-                payload["recency_wa"] = novelty_weight  # For backward compatibility
+            if recency.semantic_weight is not None:
+                payload["recency_semantic_weight"] = recency.semantic_weight
+            if recency.recency_weight is not None:
+                payload["recency_recency_weight"] = recency.recency_weight
+            if recency.freshness_weight is not None:
+                payload["recency_freshness_weight"] = recency.freshness_weight
+            if recency.novelty_weight is not None:
+                payload["recency_novelty_weight"] = recency.novelty_weight
             if recency.half_life_last_access_days is not None:
                 payload["recency_half_life_last_access_days"] = (
                     recency.half_life_last_access_days

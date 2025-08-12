@@ -263,14 +263,6 @@ results = await client.search_long_term_memory(
     limit=10
 )
 
-# Legacy parameter names are still supported for backward compatibility
-legacy_config = RecencyConfig(
-    recency_boost=True,
-    w_sem=0.8,      # Deprecated: use semantic_weight
-    w_recency=0.2,  # Deprecated: use recency_weight
-    wf=0.6,         # Deprecated: use freshness_weight
-    wa=0.4          # Deprecated: use novelty_weight
-)
 ```
 
 ## Error Handling

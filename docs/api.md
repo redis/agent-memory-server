@@ -100,8 +100,6 @@ The following endpoints are available:
 
   When `recency_boost` is enabled (default), results are re-ranked using a combined score of semantic similarity and a recency score computed from `last_accessed` and `created_at`. The optional fields adjust weighting and half-lives. The server rate-limits updates to `last_accessed` in the background when results are returned.
 
-  **Note:** Legacy parameter names (`recency_w_sem`, `recency_w_recency`, `recency_wf`, `recency_wa`) are still supported for backward compatibility but are deprecated. Use the descriptive names shown above for new implementations.
-
 - **POST /v1/long-term-memory/forget**
   Trigger a forgetting pass (admin/maintenance).
 
