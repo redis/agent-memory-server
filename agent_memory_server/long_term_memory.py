@@ -106,6 +106,142 @@ Extracted memories:
 
 logger = logging.getLogger(__name__)
 
+# Debounce configuration for thread-aware extraction
+EXTRACTION_DEBOUNCE_TTL = 300  # 5 minutes
+EXTRACTION_DEBOUNCE_KEY_PREFIX = "extraction_debounce"
+
+
+async def should_extract_session_thread(session_id: str, redis: Redis) -> bool:
+    """
+    Check if enough time has passed since last thread-aware extraction for this session.
+
+    This implements a debounce mechanism to avoid constantly re-extracting memories
+    from the same conversation thread as new messages arrive.
+
+    Args:
+        session_id: The session ID to check
+        redis: Redis client
+
+    Returns:
+        True if extraction should proceed, False if debounced
+    """
+
+    debounce_key = f"{EXTRACTION_DEBOUNCE_KEY_PREFIX}:{session_id}"
+
+    # Check if debounce key exists
+    exists = await redis.exists(debounce_key)
+    if not exists:
+        # Set debounce key with TTL to prevent extraction for the next period
+        await redis.setex(debounce_key, EXTRACTION_DEBOUNCE_TTL, "extracting")
+        logger.info(
+            f"Starting thread-aware extraction for session {session_id} (debounce set for {EXTRACTION_DEBOUNCE_TTL}s)"
+        )
+        return True
+
+    remaining_ttl = await redis.ttl(debounce_key)
+    logger.info(
+        f"Skipping thread-aware extraction for session {session_id} (debounced, {remaining_ttl}s remaining)"
+    )
+    return False
+
+
+async def extract_memories_from_session_thread(
+    session_id: str,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    llm_client: OpenAIClientWrapper | AnthropicClientWrapper | None = None,
+) -> list[MemoryRecord]:
+    """
+    Extract memories from the entire conversation thread in working memory.
+
+    This provides full conversational context for proper contextual grounding,
+    allowing pronouns and references to be resolved across the entire thread.
+
+    Args:
+        session_id: The session ID to extract memories from
+        namespace: Optional namespace for the memories
+        user_id: Optional user ID for the memories
+        llm_client: Optional LLM client for extraction
+
+    Returns:
+        List of extracted memory records with proper contextual grounding
+    """
+    from agent_memory_server.working_memory import get_working_memory
+
+    # Get the complete working memory thread
+    working_memory = await get_working_memory(
+        session_id=session_id, namespace=namespace, user_id=user_id
+    )
+
+    if not working_memory or not working_memory.messages:
+        logger.info(f"No working memory messages found for session {session_id}")
+        return []
+
+    # Build full conversation context from all messages
+    conversation_messages = []
+    for msg in working_memory.messages:
+        # Include role and content for better context
+        role_prefix = (
+            f"[{msg.role.upper()}]: " if hasattr(msg, "role") and msg.role else ""
+        )
+        conversation_messages.append(f"{role_prefix}{msg.content}")
+
+    full_conversation = "\n".join(conversation_messages)
+
+    logger.info(
+        f"Extracting memories from {len(working_memory.messages)} messages in session {session_id}"
+    )
+    logger.debug(
+        f"Full conversation context length: {len(full_conversation)} characters"
+    )
+
+    # Use the enhanced extraction prompt with contextual grounding
+    from agent_memory_server.extraction import DISCRETE_EXTRACTION_PROMPT
+
+    client = llm_client or await get_model_client(settings.generation_model)
+
+    try:
+        response = await client.create_chat_completion(
+            model=settings.generation_model,
+            prompt=DISCRETE_EXTRACTION_PROMPT.format(
+                message=full_conversation,
+                top_k_topics=settings.top_k_topics,
+                current_datetime=datetime.now().strftime(
+                    "%A, %B %d, %Y at %I:%M %p %Z"
+                ),
+            ),
+            response_format={"type": "json_object"},
+        )
+
+        extraction_result = json.loads(response.choices[0].message.content)
+        memories_data = extraction_result.get("memories", [])
+
+        logger.info(
+            f"Extracted {len(memories_data)} memories from session thread {session_id}"
+        )
+
+        # Convert to MemoryRecord objects
+        extracted_memories = []
+        for memory_data in memories_data:
+            memory = MemoryRecord(
+                id=str(ULID()),
+                text=memory_data["text"],
+                memory_type=memory_data.get("type", "semantic"),
+                topics=memory_data.get("topics", []),
+                entities=memory_data.get("entities", []),
+                session_id=session_id,
+                namespace=namespace,
+                user_id=user_id,
+                discrete_memory_extracted="t",  # Mark as extracted
+            )
+            extracted_memories.append(memory)
+
+        return extracted_memories
+
+    except Exception as e:
+        logger.error(f"Error extracting memories from session thread {session_id}: {e}")
+        return []
+
 
 async def extract_memory_structure(memory: MemoryRecord):
     redis = await get_redis_conn()
@@ -1119,7 +1255,7 @@ async def promote_working_memory_to_long_term(
     updated_memories = []
     extracted_memories = []
 
-    # Find messages that haven't been extracted yet for discrete memory extraction
+    # Thread-aware discrete memory extraction with debouncing
     unextracted_messages = [
         message
         for message in current_working_memory.messages
@@ -1127,15 +1263,24 @@ async def promote_working_memory_to_long_term(
     ]
 
     if settings.enable_discrete_memory_extraction and unextracted_messages:
-        logger.info(f"Extracting memories from {len(unextracted_messages)} messages")
-        extracted_memories = await extract_memories_from_messages(
-            messages=unextracted_messages,
-            session_id=session_id,
-            user_id=user_id,
-            namespace=namespace,
-        )
-        for message in unextracted_messages:
-            message.discrete_memory_extracted = "t"
+        # Check if we should run thread-aware extraction (debounced)
+        if await should_extract_session_thread(session_id, redis):
+            logger.info(
+                f"Running thread-aware extraction from {len(current_working_memory.messages)} total messages in session {session_id}"
+            )
+            extracted_memories = await extract_memories_from_session_thread(
+                session_id=session_id,
+                namespace=namespace,
+                user_id=user_id,
+            )
+
+            # Mark ALL messages in the session as extracted since we processed the full thread
+            for message in current_working_memory.messages:
+                message.discrete_memory_extracted = "t"
+
+        else:
+            logger.info(f"Skipping extraction for session {session_id} - debounced")
+            extracted_memories = []
 
     for memory in current_working_memory.memories:
         if memory.persisted_at is None:
