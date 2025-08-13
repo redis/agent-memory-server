@@ -181,6 +181,27 @@ async def create_long_term_memories(
 
     This tool saves memories contained in the payload for future retrieval.
 
+    CONTEXTUAL GROUNDING REQUIREMENTS:
+    When creating memories, you MUST resolve all contextual references to their concrete referents:
+
+    1. PRONOUNS: Replace ALL pronouns (he/she/they/him/her/them/his/hers/theirs) with actual person names
+       - "He prefers Python" → "John prefers Python" (if "he" refers to John)
+       - "Her expertise is valuable" → "Sarah's expertise is valuable" (if "her" refers to Sarah)
+
+    2. TEMPORAL REFERENCES: Convert relative time expressions to absolute dates/times
+       - "yesterday" → "2024-03-15" (if today is March 16, 2024)
+       - "last week" → "March 4-10, 2024" (if current week is March 11-17, 2024)
+
+    3. SPATIAL REFERENCES: Resolve place references to specific locations
+       - "there" → "San Francisco office" (if referring to SF office)
+       - "here" → "the main conference room" (if referring to specific room)
+
+    4. DEFINITE REFERENCES: Resolve definite articles to specific entities
+       - "the project" → "the customer portal redesign project"
+       - "the bug" → "the authentication timeout issue"
+
+    MANDATORY: Never create memories with unresolved pronouns, vague time references, or unclear spatial references. Always ground contextual references using the full conversation context.
+
     MEMORY TYPES - SEMANTIC vs EPISODIC:
 
     There are two main types of long-term memories you can create:
