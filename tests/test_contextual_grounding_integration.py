@@ -20,7 +20,6 @@ from pydantic import BaseModel
 from agent_memory_server.config import settings
 from agent_memory_server.extraction import extract_discrete_memories
 from agent_memory_server.llms import get_model_client
-from agent_memory_server.models import MemoryRecord, MemoryTypeEnum
 
 
 class GroundingEvaluationResult(BaseModel):
@@ -244,22 +243,38 @@ class LLMContextualGroundingJudge:
 class TestContextualGroundingIntegration:
     """Integration tests for contextual grounding with real LLM calls"""
 
-    async def create_test_memory_with_context(
-        self, context_messages: list[str], target_message: str, context_date: datetime
-    ) -> MemoryRecord:
-        """Create a memory record with conversational context"""
-        # Combine context messages and target message
-        full_conversation = "\n".join(context_messages + [target_message])
+    async def create_test_conversation_with_context(
+        self, all_messages: list[str], context_date: datetime, session_id: str
+    ) -> str:
+        """Create a test conversation with proper working memory setup for cross-message grounding"""
+        from agent_memory_server.models import MemoryMessage, WorkingMemory
+        from agent_memory_server.working_memory import set_working_memory
 
-        return MemoryRecord(
-            id=str(ulid.ULID()),
-            text=full_conversation,
-            memory_type=MemoryTypeEnum.MESSAGE,
-            discrete_memory_extracted="f",
-            session_id=f"test-integration-session-{ulid.ULID()}",
+        # Create individual MemoryMessage objects for each message in the conversation
+        messages = []
+        for i, message_text in enumerate(all_messages):
+            messages.append(
+                MemoryMessage(
+                    id=str(ulid.ULID()),
+                    role="user" if i % 2 == 0 else "assistant",
+                    content=message_text,
+                    timestamp=context_date.isoformat(),
+                    discrete_memory_extracted="f",
+                )
+            )
+
+        # Create working memory with the conversation
+        working_memory = WorkingMemory(
+            session_id=session_id,
             user_id="test-integration-user",
-            timestamp=context_date.isoformat(),
+            namespace="test-namespace",
+            messages=messages,
+            memories=[],
         )
+
+        # Store in working memory for thread-aware extraction
+        await set_working_memory(working_memory)
+        return session_id
 
     async def test_pronoun_grounding_integration_he_him(self):
         """Integration test for he/him pronoun grounding with real LLM"""
@@ -407,35 +422,31 @@ class TestContextualGroundingIntegration:
         ]  # Just first 2 for integration testing
 
         for example in sample_examples:
-            # Create memory and extract with real LLM
-            memory = await self.create_test_memory_with_context(
-                example["messages"][:-1],
-                example["messages"][-1],
-                example["context_date"],
+            # Create a unique session for this test
+            session_id = f"test-grounding-{ulid.ULID()}"
+
+            # Set up proper conversation context for cross-message grounding
+            await self.create_test_conversation_with_context(
+                example["messages"], example["context_date"], session_id
             )
 
             original_text = example["messages"][-1]
 
-            # Store and extract
-            from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
+            # Use thread-aware extraction (the whole point of our implementation!)
+            from agent_memory_server.long_term_memory import (
+                extract_memories_from_session_thread,
+            )
 
-            adapter = await get_vectorstore_adapter()
-            await adapter.add_memories([memory])
-            await extract_discrete_memories([memory])
-
-            # Retrieve all extracted discrete memories to get the grounded text
-            all_memories = await adapter.search_memories(query="", limit=50)
-            discrete_memories = [
-                m
-                for m in all_memories.memories
-                if m.memory_type in ["episodic", "semantic"]
-                and m.session_id == memory.session_id
-            ]
+            extracted_memories = await extract_memories_from_session_thread(
+                session_id=session_id,
+                namespace="test-namespace",
+                user_id="test-integration-user",
+            )
 
             # Combine the grounded memories into a single text for evaluation
             grounded_text = (
-                " ".join([dm.text for dm in discrete_memories])
-                if discrete_memories
+                " ".join([mem.text for mem in extracted_memories])
+                if extracted_memories
                 else original_text
             )
 
