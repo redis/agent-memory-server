@@ -213,8 +213,35 @@ async def extract_memories_from_session_thread(
             response_format={"type": "json_object"},
         )
 
-        extraction_result = json.loads(response.choices[0].message.content)
-        memories_data = extraction_result.get("memories", [])
+        # Extract content from response with error handling
+        try:
+            if (
+                hasattr(response, "choices")
+                and isinstance(response.choices, list)
+                and len(response.choices) > 0
+            ):
+                if hasattr(response.choices[0], "message") and hasattr(
+                    response.choices[0].message, "content"
+                ):
+                    content = response.choices[0].message.content
+                else:
+                    logger.error(
+                        f"Unexpected response structure - no message.content: {response}"
+                    )
+                    return []
+            else:
+                logger.error(
+                    f"Unexpected response structure - no choices list: {response}"
+                )
+                return []
+
+            extraction_result = json.loads(content)
+            memories_data = extraction_result.get("memories", [])
+        except (json.JSONDecodeError, AttributeError, TypeError) as e:
+            logger.error(
+                f"Failed to parse extraction response: {e}, response: {response}"
+            )
+            return []
 
         logger.info(
             f"Extracted {len(memories_data)} memories from session thread {session_id}"
