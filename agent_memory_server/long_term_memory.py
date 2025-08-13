@@ -1505,3 +1505,89 @@ async def delete_long_term_memories(
     """
     adapter = await get_vectorstore_adapter()
     return await adapter.delete_memories(ids)
+
+
+async def get_long_term_memory_by_id(memory_id: str) -> MemoryRecord | None:
+    """
+    Get a single long-term memory by its ID.
+
+    Args:
+        memory_id: The ID of the memory to retrieve
+
+    Returns:
+        MemoryRecord if found, None if not found
+    """
+    from agent_memory_server.filters import Id
+
+    adapter = await get_vectorstore_adapter()
+
+    # Search for the memory by ID using the existing search function
+    results = await adapter.search_memories(
+        text="",  # Empty search text to get all results
+        limit=1,
+        id=Id(eq=memory_id),
+    )
+
+    if results.memories:
+        return results.memories[0]
+    return None
+
+
+async def update_long_term_memory(
+    memory_id: str,
+    updates: dict[str, Any],
+) -> MemoryRecord | None:
+    """
+    Update a long-term memory by ID.
+
+    Args:
+        memory_id: The ID of the memory to update
+        updates: Dictionary of fields to update
+
+    Returns:
+        Updated MemoryRecord if found and updated, None if not found
+
+    Raises:
+        ValueError: If the update contains invalid fields
+    """
+    # First, get the existing memory
+    existing_memory = await get_long_term_memory_by_id(memory_id)
+    if not existing_memory:
+        return None
+
+    # Valid fields that can be updated
+    updatable_fields = {
+        "text",
+        "topics",
+        "entities",
+        "memory_type",
+        "namespace",
+        "user_id",
+        "session_id",
+        "event_date",
+    }
+
+    # Validate update fields
+    invalid_fields = set(updates.keys()) - updatable_fields
+    if invalid_fields:
+        raise ValueError(
+            f"Cannot update fields: {invalid_fields}. Valid fields: {updatable_fields}"
+        )
+
+    # Create updated memory record
+    updated_data = existing_memory.model_dump()
+    updated_data.update(updates)
+    updated_data["updated_at"] = datetime.now(UTC)
+
+    # If text was updated, regenerate the hash
+    if "text" in updates:
+        temp_memory = MemoryRecord(**updated_data)
+        updated_data["memory_hash"] = generate_memory_hash(temp_memory)
+
+    updated_memory = MemoryRecord(**updated_data)
+
+    # Update in the vectorstore
+    adapter = await get_vectorstore_adapter()
+    await adapter.update_memories([updated_memory])
+
+    return updated_memory

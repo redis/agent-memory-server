@@ -6,10 +6,12 @@ from mcp.server.fastmcp import FastMCP as _FastMCPBase
 
 from agent_memory_server.api import (
     create_long_term_memory as core_create_long_term_memory,
+    get_long_term_memory as core_get_long_term_memory,
     get_working_memory as core_get_working_memory,
     memory_prompt as core_memory_prompt,
     put_working_memory as core_put_working_memory,
     search_long_term_memory as core_search_long_term_memory,
+    update_long_term_memory as core_update_long_term_memory,
 )
 from agent_memory_server.config import settings
 from agent_memory_server.dependencies import get_background_tasks
@@ -26,12 +28,14 @@ from agent_memory_server.filters import (
 from agent_memory_server.models import (
     AckResponse,
     CreateMemoryRecordRequest,
+    EditMemoryRecordRequest,
     LenientMemoryRecord,
     MemoryMessage,
     MemoryPromptRequest,
     MemoryPromptResponse,
     MemoryRecord,
     MemoryRecordResults,
+    MemoryTypeEnum,
     ModelNameLiteral,
     SearchRequest,
     WorkingMemory,
@@ -829,3 +833,142 @@ async def get_working_memory(
     Get working memory for a session. This works like the GET /sessions/{id}/memory API endpoint.
     """
     return await core_get_working_memory(session_id=session_id)
+
+
+@mcp_app.tool()
+async def get_long_term_memory(
+    memory_id: str,
+) -> MemoryRecord:
+    """
+    Get a long-term memory by its ID.
+
+    This tool retrieves a specific long-term memory record using its unique identifier.
+
+    Args:
+        memory_id: The unique ID of the memory to retrieve
+
+    Returns:
+        The memory record if found
+
+    Raises:
+        Exception: If memory not found or long-term memory is disabled
+
+    Example:
+    ```python
+    get_long_term_memory(memory_id="01HXE2B1234567890ABCDEF")
+    ```
+    """
+    return await core_get_long_term_memory(memory_id=memory_id)
+
+
+@mcp_app.tool()
+async def edit_long_term_memory(
+    memory_id: str,
+    text: str | None = None,
+    topics: list[str] | None = None,
+    entities: list[str] | None = None,
+    memory_type: MemoryTypeEnum | None = None,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    event_date: str | None = None,
+) -> MemoryRecord:
+    """
+    Edit an existing long-term memory by its ID.
+
+    This tool allows you to update specific fields of a long-term memory record.
+    Only the fields you provide will be updated; other fields remain unchanged.
+
+    IMPORTANT: Use this tool whenever you need to update existing memories based on new information
+    or corrections provided by the user. This is essential for maintaining accurate memory records.
+
+    Args:
+        memory_id: The unique ID of the memory to edit (required)
+        text: Updated text content for the memory
+        topics: Updated list of topics for the memory
+        entities: Updated list of entities mentioned in the memory
+        memory_type: Updated memory type ("semantic", "episodic", or "message")
+        namespace: Updated namespace for organizing the memory
+        user_id: Updated user ID associated with the memory
+        session_id: Updated session ID where the memory originated
+        event_date: Updated event date for episodic memories (ISO 8601 format: "2024-01-15T14:30:00Z")
+
+    Returns:
+        The updated memory record
+
+    Raises:
+        Exception: If memory not found, invalid fields, or long-term memory is disabled
+
+    COMMON USAGE PATTERNS:
+
+    1. Update memory text content:
+    ```python
+    edit_long_term_memory(
+        memory_id="01HXE2B1234567890ABCDEF",
+        text="User prefers dark mode UI (updated preference)"
+    )
+    ```
+
+    2. Update memory type and add event date:
+    ```python
+    edit_long_term_memory(
+        memory_id="01HXE2B1234567890ABCDEF",
+        memory_type="episodic",
+        event_date="2024-01-15T14:30:00Z"
+    )
+    ```
+
+    3. Update topics and entities:
+    ```python
+    edit_long_term_memory(
+        memory_id="01HXE2B1234567890ABCDEF",
+        topics=["preferences", "ui", "accessibility"],
+        entities=["dark_mode", "user_interface"]
+    )
+    ```
+
+    4. Update multiple fields at once:
+    ```python
+    edit_long_term_memory(
+        memory_id="01HXE2B1234567890ABCDEF",
+        text="User completed Python certification course",
+        memory_type="episodic",
+        event_date="2024-01-10T00:00:00Z",
+        topics=["education", "achievement", "python"],
+        entities=["Python", "certification"]
+    )
+    ```
+
+    5. Move memory to different namespace or user:
+    ```python
+    edit_long_term_memory(
+        memory_id="01HXE2B1234567890ABCDEF",
+        namespace="work_projects",
+        user_id="user_456"
+    )
+    ```
+    """
+    # Build the update request, converting event_date string to datetime if provided
+    updates = EditMemoryRecordRequest()
+
+    if text is not None:
+        updates.text = text
+    if topics is not None:
+        updates.topics = topics
+    if entities is not None:
+        updates.entities = entities
+    if memory_type is not None:
+        updates.memory_type = memory_type
+    if namespace is not None:
+        updates.namespace = namespace
+    if user_id is not None:
+        updates.user_id = user_id
+    if session_id is not None:
+        updates.session_id = session_id
+    if event_date is not None:
+        from datetime import datetime
+
+        # Parse ISO 8601 datetime string
+        updates.event_date = datetime.fromisoformat(event_date.replace("Z", "+00:00"))
+
+    return await core_update_long_term_memory(memory_id=memory_id, updates=updates)

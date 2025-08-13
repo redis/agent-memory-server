@@ -424,3 +424,32 @@ class DeleteMemoryRecordRequest(BaseModel):
     """Payload for deleting memory records"""
 
     ids: list[str]
+
+
+class EditMemoryRecordRequest(BaseModel):
+    """Payload for editing a memory record"""
+
+    text: str | None = Field(
+        default=None, description="Updated text content for the memory"
+    )
+    topics: list[str] | None = Field(
+        default=None, description="Updated topics for the memory"
+    )
+    entities: list[str] | None = Field(
+        default=None, description="Updated entities for the memory"
+    )
+    memory_type: MemoryTypeEnum | None = Field(
+        default=None, description="Updated memory type (semantic, episodic, message)"
+    )
+    namespace: str | None = Field(
+        default=None, description="Updated namespace for the memory"
+    )
+    user_id: str | None = Field(
+        default=None, description="Updated user ID for the memory"
+    )
+    session_id: str | None = Field(
+        default=None, description="Updated session ID for the memory"
+    )
+    event_date: datetime | None = Field(
+        default=None, description="Updated event date for episodic memories"
+    )

@@ -13,10 +13,12 @@ from agent_memory_server.logging import get_logger
 from agent_memory_server.models import (
     AckResponse,
     CreateMemoryRecordRequest,
+    EditMemoryRecordRequest,
     GetSessionsQuery,
     MemoryMessage,
     MemoryPromptRequest,
     MemoryPromptResponse,
+    MemoryRecord,
     MemoryRecordResultsResponse,
     ModelNameLiteral,
     SearchRequest,
@@ -549,6 +551,77 @@ async def delete_long_term_memory(
     return AckResponse(status=f"ok, deleted {count} memories")
 
 
+@router.get("/v1/long-term-memory/{memory_id}", response_model=MemoryRecord)
+async def get_long_term_memory(
+    memory_id: str,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """
+    Get a long-term memory by its ID
+
+    Args:
+        memory_id: The ID of the memory to retrieve
+
+    Returns:
+        The memory record if found
+
+    Raises:
+        HTTPException: 404 if memory not found, 400 if long-term memory disabled
+    """
+    if not settings.long_term_memory:
+        raise HTTPException(status_code=400, detail="Long-term memory is disabled")
+
+    memory = await long_term_memory.get_long_term_memory_by_id(memory_id)
+    if not memory:
+        raise HTTPException(
+            status_code=404, detail=f"Memory with ID {memory_id} not found"
+        )
+
+    return memory
+
+
+@router.patch("/v1/long-term-memory/{memory_id}", response_model=MemoryRecord)
+async def update_long_term_memory(
+    memory_id: str,
+    updates: EditMemoryRecordRequest,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """
+    Update a long-term memory by its ID
+
+    Args:
+        memory_id: The ID of the memory to update
+        updates: The fields to update
+
+    Returns:
+        The updated memory record
+
+    Raises:
+        HTTPException: 404 if memory not found, 400 if invalid fields or long-term memory disabled
+    """
+    if not settings.long_term_memory:
+        raise HTTPException(status_code=400, detail="Long-term memory is disabled")
+
+    # Convert request model to dictionary, excluding None values
+    update_dict = {k: v for k, v in updates.model_dump().items() if v is not None}
+
+    if not update_dict:
+        raise HTTPException(status_code=400, detail="No fields provided for update")
+
+    try:
+        updated_memory = await long_term_memory.update_long_term_memory(
+            memory_id, update_dict
+        )
+        if not updated_memory:
+            raise HTTPException(
+                status_code=404, detail=f"Memory with ID {memory_id} not found"
+            )
+
+        return updated_memory
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
 @router.post("/v1/memory/prompt", response_model=MemoryPromptResponse)
 async def memory_prompt(
     params: MemoryPromptRequest,
@@ -683,7 +756,7 @@ async def memory_prompt(
 
         if long_term_memories.total > 0:
             long_term_memories_text = "\n".join(
-                [f"- {m.text}" for m in long_term_memories.memories]
+                [f"- {m.text} (ID: {m.id})" for m in long_term_memories.memories]
             )
             _messages.append(
                 SystemMessage(
