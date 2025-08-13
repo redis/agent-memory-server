@@ -35,6 +35,8 @@ from agent_memory_server.models import (
     MemoryRecordResult,
     MemoryRecordResults,
 )
+from agent_memory_server.utils.recency import generate_memory_hash, rerank_with_recency
+from agent_memory_server.utils.redis_query import RecencyAggregationQuery
 
 
 logger = logging.getLogger(__name__)
@@ -417,9 +419,6 @@ class VectorStoreAdapter(ABC):
             A stable hash string
         """
         # Use the same hash logic as long_term_memory.py for consistency
-        # Lazy import to avoid circular dependency
-        from agent_memory_server.long_term_memory import generate_memory_hash
-
         return generate_memory_hash(memory)
 
     def _apply_client_side_recency_reranking(
@@ -438,9 +437,6 @@ class VectorStoreAdapter(ABC):
             return memory_results
 
         try:
-            # Lazy import to avoid circular dependency
-            from agent_memory_server.long_term_memory import rerank_with_recency
-
             now = datetime.now(UTC)
             params = {
                 "semantic_weight": float(recency_params.get("semantic_weight", 0.8))
@@ -917,8 +913,6 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             )
 
         # Aggregate with APPLY/SORTBY boosted score via helper
-        # Lazy import to avoid circular dependency
-        from agent_memory_server.utils.redis_query import RecencyAggregationQuery
 
         now_ts = int(datetime.now(UTC).timestamp())
         agg = (

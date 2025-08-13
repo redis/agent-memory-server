@@ -1,11 +1,9 @@
-import hashlib
 import json
 import logging
 import numbers
 import time
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
-from math import exp, log
 from typing import Any
 
 from docket.dependencies import Perpetual
@@ -41,6 +39,11 @@ from agent_memory_server.models import (
     MemoryTypeEnum,
 )
 from agent_memory_server.utils.keys import Keys
+from agent_memory_server.utils.recency import (
+    _days_between,
+    generate_memory_hash,
+    rerank_with_recency,
+)
 from agent_memory_server.utils.redis import (
     ensure_search_index_exists,
     get_redis_conn,
@@ -120,29 +123,6 @@ async def extract_memory_structure(memory: MemoryRecord):
         Keys.memory_key(memory.id),
         mapping={"topics": topics_joined, "entities": entities_joined},
     )  # type: ignore
-
-
-def generate_memory_hash(memory: MemoryRecord) -> str:
-    """
-    Generate a stable hash for a memory based on text, user_id, and session_id.
-
-    Args:
-        memory: MemoryRecord object containing memory data
-
-    Returns:
-        A stable hash string
-    """
-    # Create a deterministic string representation of the key content fields only
-    # This ensures merged memories with same content have the same hash
-    content_fields = {
-        "text": memory.text,
-        "user_id": memory.user_id,
-        "session_id": memory.session_id,
-        "namespace": memory.namespace,
-        "memory_type": memory.memory_type,
-    }
-    content_json = json.dumps(content_fields, sort_keys=True)
-    return hashlib.sha256(content_json.encode()).hexdigest()
 
 
 async def merge_memories_with_llm(
@@ -1361,74 +1341,6 @@ async def delete_long_term_memories(
     """
     adapter = await get_vectorstore_adapter()
     return await adapter.delete_memories(ids)
-
-
-# Seconds per day constant for time calculations
-SECONDS_PER_DAY = 86400.0
-
-
-def _days_between(now: datetime, then: datetime | None) -> float:
-    if then is None:
-        return float("inf")
-    delta = now - then
-    return max(delta.total_seconds() / SECONDS_PER_DAY, 0.0)
-
-
-def score_recency(
-    memory: MemoryRecordResult,
-    *,
-    now: datetime,
-    params: dict,
-) -> float:
-    """Compute a recency score in [0, 1] combining freshness and novelty.
-
-    - freshness decays with last_accessed using half-life `half_life_last_access_days`
-    - novelty decays with created_at using half-life `half_life_created_days`
-    - recency = freshness_weight * freshness + novelty_weight * novelty
-    """
-    half_life_last_access = max(
-        float(params.get("half_life_last_access_days", 7.0)), 0.001
-    )
-    half_life_created = max(float(params.get("half_life_created_days", 30.0)), 0.001)
-
-    freshness_weight = float(params.get("freshness_weight", 0.6))
-    novelty_weight = float(params.get("novelty_weight", 0.4))
-
-    # Convert to decay rates
-    access_decay_rate = log(2.0) / half_life_last_access
-    creation_decay_rate = log(2.0) / half_life_created
-
-    days_since_access = _days_between(now, memory.last_accessed)
-    days_since_created = _days_between(now, memory.created_at)
-
-    freshness = exp(-access_decay_rate * days_since_access)
-    novelty = exp(-creation_decay_rate * days_since_created)
-
-    recency_score = freshness_weight * freshness + novelty_weight * novelty
-    # Clamp to [0, 1]
-    return max(0.0, min(1.0, recency_score))
-
-
-def rerank_with_recency(
-    results: list[MemoryRecordResult],
-    *,
-    now: datetime,
-    params: dict,
-) -> list[MemoryRecordResult]:
-    """Re-rank results using combined semantic similarity and recency.
-
-    score = semantic_weight * (1 - dist) + recency_weight * recency_score
-    """
-    semantic_weight = float(params.get("semantic_weight", 0.8))
-    recency_weight = float(params.get("recency_weight", 0.2))
-
-    def combined_score(mem: MemoryRecordResult) -> float:
-        similarity = 1.0 - float(mem.dist)
-        recency = score_recency(mem, now=now, params=params)
-        return semantic_weight * similarity + recency_weight * recency
-
-    # Sort by descending score (stable sort preserves original order on ties)
-    return sorted(results, key=combined_score, reverse=True)
 
 
 def _is_numeric(value: Any) -> bool:

@@ -3,7 +3,6 @@ from typing import Any
 
 import ulid
 from mcp.server.fastmcp import FastMCP as _FastMCPBase
-from mcp.types import TextContent
 
 from agent_memory_server.api import (
     create_long_term_memory as core_create_long_term_memory,
@@ -451,28 +450,14 @@ async def search_long_term_memory(
             offset=offset,
         )
         results = await core_search_long_term_memory(payload)
-        import json as _json
-
-        return TextContent(
-            type="text",
-            text=_json.dumps(
-                MemoryRecordResults(
-                    total=results.total,
-                    memories=results.memories,
-                    next_offset=results.next_offset,
-                ).model_dump(mode="json")
-            ),
+        return MemoryRecordResults(
+            total=results.total,
+            memories=results.memories,
+            next_offset=results.next_offset,
         )
     except Exception as e:
         logger.error(f"Error in search_long_term_memory tool: {e}")
-        import json as _json
-
-        return TextContent(
-            type="text",
-            text=_json.dumps(
-                MemoryRecordResults(total=0, memories=[], next_offset=None).model_dump()
-            ),
-        )
+        return MemoryRecordResults(total=0, memories=[], next_offset=None)
 
 
 # Notes that exist outside of the docstring to avoid polluting the LLM prompt:
@@ -621,12 +606,7 @@ async def memory_prompt(
     if search_payload is not None:
         _params["long_term_search"] = search_payload
 
-    import json as _json
-
-    result = await core_memory_prompt(
-        params=MemoryPromptRequest(query=query, **_params)
-    )
-    return TextContent(type="text", text=_json.dumps(result.model_dump()))
+    return await core_memory_prompt(params=MemoryPromptRequest(query=query, **_params))
 
 
 @mcp_app.tool()

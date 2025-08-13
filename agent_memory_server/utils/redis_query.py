@@ -4,8 +4,8 @@ from typing import Any
 
 from redisvl.query import AggregationQuery, RangeQuery, VectorQuery
 
-# Import constants from long_term_memory module
-from agent_memory_server.long_term_memory import SECONDS_PER_DAY
+# Import constants from utils.recency module
+from agent_memory_server.utils.recency import SECONDS_PER_DAY
 
 
 class RecencyAggregationQuery(AggregationQuery):
