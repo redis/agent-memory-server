@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from typing import Any
 
 import ulid
@@ -45,6 +46,29 @@ from agent_memory_server.models import (
 
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_iso8601_datetime(event_date: str) -> datetime:
+    """
+    Parse ISO 8601 datetime string with robust handling of different timezone formats.
+
+    Args:
+        event_date: ISO 8601 formatted datetime string
+
+    Returns:
+        Parsed datetime object
+
+    Raises:
+        ValueError: If the datetime format is invalid
+    """
+    try:
+        # Handle 'Z' suffix (UTC indicator)
+        if event_date.endswith("Z"):
+            return datetime.fromisoformat(event_date.replace("Z", "+00:00"))
+        # Let fromisoformat handle other timezone formats like +05:00, -08:00, etc.
+        return datetime.fromisoformat(event_date)
+    except ValueError as e:
+        raise ValueError(f"Invalid ISO 8601 datetime format '{event_date}': {e}") from e
 
 
 class FastMCP(_FastMCPBase):
@@ -948,27 +972,22 @@ async def edit_long_term_memory(
     )
     ```
     """
-    # Build the update request, converting event_date string to datetime if provided
-    updates = EditMemoryRecordRequest()
+    # Build the update request dictionary, handling event_date parsing
+    update_dict = {
+        "text": text,
+        "topics": topics,
+        "entities": entities,
+        "memory_type": memory_type,
+        "namespace": namespace,
+        "user_id": user_id,
+        "session_id": session_id,
+        "event_date": (
+            _parse_iso8601_datetime(event_date) if event_date is not None else None
+        ),
+    }
 
-    if text is not None:
-        updates.text = text
-    if topics is not None:
-        updates.topics = topics
-    if entities is not None:
-        updates.entities = entities
-    if memory_type is not None:
-        updates.memory_type = memory_type
-    if namespace is not None:
-        updates.namespace = namespace
-    if user_id is not None:
-        updates.user_id = user_id
-    if session_id is not None:
-        updates.session_id = session_id
-    if event_date is not None:
-        from datetime import datetime
-
-        # Parse ISO 8601 datetime string
-        updates.event_date = datetime.fromisoformat(event_date.replace("Z", "+00:00"))
+    # Filter out None values to only include fields that should be updated
+    update_dict = {k: v for k, v in update_dict.items() if v is not None}
+    updates = EditMemoryRecordRequest(**update_dict)
 
     return await core_update_long_term_memory(memory_id=memory_id, updates=updates)

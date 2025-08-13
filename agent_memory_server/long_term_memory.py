@@ -278,6 +278,30 @@ def generate_memory_hash(memory: MemoryRecord) -> str:
     return hashlib.sha256(content_json.encode()).hexdigest()
 
 
+def update_memory_hash_if_text_changed(memory: MemoryRecord, updates: dict) -> dict:
+    """
+    Helper function to regenerate memory hash if text field was updated.
+
+    This avoids code duplication of the hash regeneration logic across
+    different update flows (like memory creation, merging, and editing).
+
+    Args:
+        memory: The original memory record
+        updates: Dictionary of updates to apply
+
+    Returns:
+        Dictionary with updated memory_hash added if text was in the updates
+    """
+    result_updates = dict(updates)
+
+    # If text was updated, regenerate the hash
+    if "text" in updates:
+        temp_memory = memory.model_copy(update=updates)
+        result_updates["memory_hash"] = generate_memory_hash(temp_memory)
+
+    return result_updates
+
+
 async def merge_memories_with_llm(
     memories: list[MemoryRecord], llm_client: Any = None
 ) -> MemoryRecord:
@@ -1574,17 +1598,10 @@ async def update_long_term_memory(
             f"Cannot update fields: {invalid_fields}. Valid fields: {updatable_fields}"
         )
 
-    # Create updated memory record
-    updated_data = existing_memory.model_dump()
-    updated_data.update(updates)
-    updated_data["updated_at"] = datetime.now(UTC)
-
-    # If text was updated, regenerate the hash
-    if "text" in updates:
-        temp_memory = MemoryRecord(**updated_data)
-        updated_data["memory_hash"] = generate_memory_hash(temp_memory)
-
-    updated_memory = MemoryRecord(**updated_data)
+    # Create updated memory record using efficient model_copy and hash helper
+    base_updates = {**updates, "updated_at": datetime.now(UTC)}
+    update_dict = update_memory_hash_if_text_changed(existing_memory, base_updates)
+    updated_memory = existing_memory.model_copy(update=update_dict)
 
     # Update in the vectorstore
     adapter = await get_vectorstore_adapter()
