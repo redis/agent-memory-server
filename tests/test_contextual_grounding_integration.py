@@ -18,7 +18,6 @@ import ulid
 from pydantic import BaseModel
 
 from agent_memory_server.config import settings
-from agent_memory_server.extraction import extract_discrete_memories
 from agent_memory_server.llms import get_model_client
 
 
@@ -279,133 +278,81 @@ class TestContextualGroundingIntegration:
     async def test_pronoun_grounding_integration_he_him(self):
         """Integration test for he/him pronoun grounding with real LLM"""
         example = ContextualGroundingBenchmark.get_pronoun_grounding_examples()[0]
+        session_id = f"test-pronoun-{ulid.ULID()}"
 
-        # Create memory record and store it first
-        memory = await self.create_test_memory_with_context(
-            example["messages"][:-1],  # Context
-            example["messages"][-1],  # Target message with pronouns
-            example["context_date"],
+        # Set up conversation context for cross-message grounding
+        await self.create_test_conversation_with_context(
+            example["messages"], example["context_date"], session_id
         )
 
-        # Store the memory so it can be found by extract_discrete_memories
-        from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
-
-        adapter = await get_vectorstore_adapter()
-        await adapter.add_memories([memory])
-
-        # Extract memories using real LLM
-        await extract_discrete_memories([memory])
-
-        # Retrieve all memories to verify extraction occurred
-        all_memories = await adapter.search_memories(
-            query="",
-            limit=50,  # Get all memories
+        # Use thread-aware extraction
+        from agent_memory_server.long_term_memory import (
+            extract_memories_from_session_thread,
         )
 
-        # Find the original memory by session_id and verify it was processed
-        session_memories = [
-            m for m in all_memories.memories if m.session_id == memory.session_id
-        ]
-
-        # Should find the original message memory that was processed
-        assert (
-            len(session_memories) >= 1
-        ), f"No memories found in session {memory.session_id}"
-
-        # Find our specific memory in the results
-        processed_memory = next(
-            (m for m in session_memories if m.id == memory.id), None
+        extracted_memories = await extract_memories_from_session_thread(
+            session_id=session_id,
+            namespace="test-namespace",
+            user_id="test-integration-user",
         )
 
-        if processed_memory is None:
-            # If we can't find by ID, try to find any memory in the session with discrete_memory_extracted = "t"
-            processed_memory = next(
-                (m for m in session_memories if m.discrete_memory_extracted == "t"),
-                None,
-            )
+        # Verify extraction was successful
+        assert len(extracted_memories) >= 1, "Expected at least one extracted memory"
 
-        assert (
-            processed_memory is not None
-        ), f"Could not find processed memory {memory.id} in session"
-        assert processed_memory.discrete_memory_extracted == "t"
+        # Check that pronoun grounding occurred
+        all_memory_text = " ".join([mem.text for mem in extracted_memories])
+        print(f"Extracted memories: {all_memory_text}")
 
-        # Should also find extracted discrete memories
-        discrete_memories = [
-            m
-            for m in all_memories.memories
-            if m.memory_type in ["episodic", "semantic"]
-        ]
-        assert (
-            len(discrete_memories) >= 1
-        ), "Expected at least one discrete memory to be extracted"
-
-        # Note: Full evaluation with LLM judge will be implemented in subsequent tests
+        # Should mention "John" instead of leaving "he/him" unresolved
+        assert "john" in all_memory_text.lower(), "Should contain grounded name 'John'"
 
     async def test_temporal_grounding_integration_last_year(self):
         """Integration test for temporal grounding with real LLM"""
         example = ContextualGroundingBenchmark.get_temporal_grounding_examples()[0]
+        session_id = f"test-temporal-{ulid.ULID()}"
 
-        memory = await self.create_test_memory_with_context(
-            example["messages"][:-1], example["messages"][-1], example["context_date"]
+        # Set up conversation context
+        await self.create_test_conversation_with_context(
+            example["messages"], example["context_date"], session_id
         )
 
-        # Store and extract
-        from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
-
-        adapter = await get_vectorstore_adapter()
-        await adapter.add_memories([memory])
-        await extract_discrete_memories([memory])
-
-        # Check extraction was successful - search by session_id since ID search may not work reliably
-        from agent_memory_server.filters import MemoryType, SessionId
-
-        updated_memories = await adapter.search_memories(
-            query="",
-            session_id=SessionId(eq=memory.session_id),
-            memory_type=MemoryType(eq="message"),
-            limit=10,
+        # Use thread-aware extraction
+        from agent_memory_server.long_term_memory import (
+            extract_memories_from_session_thread,
         )
-        # Find our specific memory in the results
-        target_memory = next(
-            (m for m in updated_memories.memories if m.id == memory.id), None
+
+        extracted_memories = await extract_memories_from_session_thread(
+            session_id=session_id,
+            namespace="test-namespace",
+            user_id="test-integration-user",
         )
-        assert (
-            target_memory is not None
-        ), f"Could not find memory {memory.id} after extraction"
-        assert target_memory.discrete_memory_extracted == "t"
+
+        # Verify extraction was successful
+        assert len(extracted_memories) >= 1, "Expected at least one extracted memory"
 
     async def test_spatial_grounding_integration_there(self):
         """Integration test for spatial grounding with real LLM"""
         example = ContextualGroundingBenchmark.get_spatial_grounding_examples()[0]
+        session_id = f"test-spatial-{ulid.ULID()}"
 
-        memory = await self.create_test_memory_with_context(
-            example["messages"][:-1], example["messages"][-1], example["context_date"]
+        # Set up conversation context
+        await self.create_test_conversation_with_context(
+            example["messages"], example["context_date"], session_id
         )
 
-        # Store and extract
-        from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
-
-        adapter = await get_vectorstore_adapter()
-        await adapter.add_memories([memory])
-        await extract_discrete_memories([memory])
-
-        # Check extraction was successful - search by session_id since ID search may not work reliably
-        from agent_memory_server.filters import MemoryType, SessionId
-
-        updated_memories = await adapter.search_memories(
-            query="",
-            session_id=SessionId(eq=memory.session_id),
-            memory_type=MemoryType(eq="message"),
-            limit=10,
+        # Use thread-aware extraction
+        from agent_memory_server.long_term_memory import (
+            extract_memories_from_session_thread,
         )
-        # Find our specific memory in the results
-        target_memory = next(
-            (m for m in updated_memories.memories if m.id == memory.id), None
+
+        extracted_memories = await extract_memories_from_session_thread(
+            session_id=session_id,
+            namespace="test-namespace",
+            user_id="test-integration-user",
         )
-        assert (
-            target_memory is not None
-        ), f"Could not find memory {memory.id} after extraction"
-        assert target_memory.discrete_memory_extracted == "t"
+
+        # Verify extraction was successful
+        assert len(extracted_memories) >= 1, "Expected at least one extracted memory"
 
     @pytest.mark.requires_api_keys
     async def test_comprehensive_grounding_evaluation_with_judge(self):
@@ -526,41 +473,25 @@ class TestContextualGroundingIntegration:
                 settings.generation_model = model
 
                 try:
-                    memory = await self.create_test_memory_with_context(
-                        example["messages"][:-1],
-                        example["messages"][-1],
-                        example["context_date"],
+                    session_id = f"test-model-comparison-{ulid.ULID()}"
+
+                    # Set up conversation context
+                    await self.create_test_conversation_with_context(
+                        example["messages"], example["context_date"], session_id
                     )
 
-                    # Store the memory so it can be found by extract_discrete_memories
-                    from agent_memory_server.vectorstore_factory import (
-                        get_vectorstore_adapter,
+                    # Use thread-aware extraction
+                    from agent_memory_server.long_term_memory import (
+                        extract_memories_from_session_thread,
                     )
 
-                    adapter = await get_vectorstore_adapter()
-                    await adapter.add_memories([memory])
-
-                    await extract_discrete_memories([memory])
-
-                    # Check if extraction was successful by searching for the memory
-                    from agent_memory_server.filters import MemoryType, SessionId
-
-                    updated_memories = await adapter.search_memories(
-                        query="",
-                        session_id=SessionId(eq=memory.session_id),
-                        memory_type=MemoryType(eq="message"),
-                        limit=10,
+                    extracted_memories = await extract_memories_from_session_thread(
+                        session_id=session_id,
+                        namespace="test-namespace",
+                        user_id="test-integration-user",
                     )
 
-                    # Find our specific memory in the results
-                    target_memory = next(
-                        (m for m in updated_memories.memories if m.id == memory.id),
-                        None,
-                    )
-                    success = (
-                        target_memory is not None
-                        and target_memory.discrete_memory_extracted == "t"
-                    )
+                    success = len(extracted_memories) >= 1
 
                     # Record success/failure for this model
                     results_by_model[model] = {"success": success, "model": model}
