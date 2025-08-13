@@ -12,7 +12,6 @@ from agent_memory_server.long_term_memory import (
     deduplicate_by_id,
     delete_long_term_memories,
     extract_memory_structure,
-    generate_memory_hash,
     index_long_term_memories,
     merge_memories_with_llm,
     promote_working_memory_to_long_term,
@@ -24,6 +23,7 @@ from agent_memory_server.models import (
     MemoryRecordResults,
     MemoryTypeEnum,
 )
+from agent_memory_server.utils.recency import generate_memory_hash
 
 
 # from agent_memory_server.utils.redis import ensure_search_index_exists  # Not used currently

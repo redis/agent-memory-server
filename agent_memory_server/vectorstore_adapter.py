@@ -7,12 +7,14 @@ import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import reduce
 from typing import Any, TypeVar
 
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
 from langchain_redis.vectorstores import RedisVectorStore
+from redisvl.query import RangeQuery, VectorQuery
 
 from agent_memory_server.filters import (
     CreatedAt,
@@ -33,6 +35,8 @@ from agent_memory_server.models import (
     MemoryRecordResult,
     MemoryRecordResults,
 )
+from agent_memory_server.utils.recency import generate_memory_hash, rerank_with_recency
+from agent_memory_server.utils.redis_query import RecencyAggregationQuery
 
 
 logger = logging.getLogger(__name__)
@@ -131,7 +135,6 @@ class LangChainFilterProcessor:
         """Convert filter objects to backend format for LangChain vectorstores."""
         filter_dict: dict[str, Any] = {}
 
-        # TODO: Seems like we could take *args filters and decide what to do based on type.
         # Apply tag/string filters using the helper function
         self.process_tag_filter(session_id, "session_id", filter_dict)
         self.process_tag_filter(user_id, "user_id", filter_dict)
@@ -189,6 +192,8 @@ class VectorStoreAdapter(ABC):
         id: Id | None = None,
         discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
         distance_threshold: float | None = None,
+        server_side_recency: bool | None = None,
+        recency_params: dict | None = None,
         limit: int = 10,
         offset: int = 0,
     ) -> MemoryRecordResults:
@@ -258,6 +263,26 @@ class VectorStoreAdapter(ABC):
         """
         pass
 
+    def _parse_list_field(self, field_value: Any) -> list[str]:
+        """Parse a field that might be a list, comma-separated string, or None.
+
+        Centralized here so both LangChain and Redis adapters can normalize
+        metadata fields like topics/entities/extracted_from.
+
+        Args:
+            field_value: Value that may be a list, string, or None
+
+        Returns:
+            List of strings, empty list if field_value is falsy
+        """
+        if not field_value:
+            return []
+        if isinstance(field_value, list):
+            return field_value
+        if isinstance(field_value, str):
+            return field_value.split(",") if field_value else []
+        return []
+
     def memory_to_document(self, memory: MemoryRecord) -> Document:
         """Convert a MemoryRecord to a LangChain Document.
 
@@ -278,6 +303,9 @@ class VectorStoreAdapter(ABC):
         )
         event_date_val = memory.event_date.isoformat() if memory.event_date else None
 
+        pinned_int = 1 if getattr(memory, "pinned", False) else 0
+        access_count_int = int(getattr(memory, "access_count", 0) or 0)
+
         metadata = {
             "id_": memory.id,
             "session_id": memory.session_id,
@@ -286,6 +314,8 @@ class VectorStoreAdapter(ABC):
             "created_at": created_at_val,
             "last_accessed": last_accessed_val,
             "updated_at": updated_at_val,
+            "pinned": pinned_int,
+            "access_count": access_count_int,
             "topics": memory.topics,
             "entities": memory.entities,
             "memory_hash": memory.memory_hash,
@@ -345,6 +375,18 @@ class VectorStoreAdapter(ABC):
         if not updated_at:
             updated_at = datetime.now(UTC)
 
+        # Normalize pinned/access_count from metadata
+        pinned_meta = metadata.get("pinned", 0)
+        try:
+            pinned_bool = bool(int(pinned_meta))
+        except Exception:
+            pinned_bool = bool(pinned_meta)
+        access_count_meta = metadata.get("access_count", 0)
+        try:
+            access_count_val = int(access_count_meta or 0)
+        except Exception:
+            access_count_val = 0
+
         return MemoryRecordResult(
             text=doc.page_content,
             id=metadata.get("id") or metadata.get("id_") or "",
@@ -354,13 +396,15 @@ class VectorStoreAdapter(ABC):
             created_at=created_at,
             last_accessed=last_accessed,
             updated_at=updated_at,
-            topics=metadata.get("topics"),
-            entities=metadata.get("entities"),
+            pinned=pinned_bool,
+            access_count=access_count_val,
+            topics=self._parse_list_field(metadata.get("topics")),
+            entities=self._parse_list_field(metadata.get("entities")),
             memory_hash=metadata.get("memory_hash"),
             discrete_memory_extracted=metadata.get("discrete_memory_extracted", "f"),
             memory_type=metadata.get("memory_type", "message"),
             persisted_at=persisted_at,
-            extracted_from=metadata.get("extracted_from"),
+            extracted_from=self._parse_list_field(metadata.get("extracted_from")),
             event_date=event_date,
             dist=score,
         )
@@ -375,9 +419,53 @@ class VectorStoreAdapter(ABC):
             A stable hash string
         """
         # Use the same hash logic as long_term_memory.py for consistency
-        from agent_memory_server.long_term_memory import generate_memory_hash
-
         return generate_memory_hash(memory)
+
+    def _apply_client_side_recency_reranking(
+        self, memory_results: list[MemoryRecordResult], recency_params: dict | None
+    ) -> list[MemoryRecordResult]:
+        """Apply client-side recency reranking as a fallback when server-side is not available.
+
+        Args:
+            memory_results: List of memory results to rerank
+            recency_params: Parameters for recency scoring
+
+        Returns:
+            Reranked list of memory results
+        """
+        if not memory_results:
+            return memory_results
+
+        try:
+            now = datetime.now(UTC)
+            params = {
+                "semantic_weight": float(recency_params.get("semantic_weight", 0.8))
+                if recency_params
+                else 0.8,
+                "recency_weight": float(recency_params.get("recency_weight", 0.2))
+                if recency_params
+                else 0.2,
+                "freshness_weight": float(recency_params.get("freshness_weight", 0.6))
+                if recency_params
+                else 0.6,
+                "novelty_weight": float(recency_params.get("novelty_weight", 0.4))
+                if recency_params
+                else 0.4,
+                "half_life_last_access_days": float(
+                    recency_params.get("half_life_last_access_days", 7.0)
+                )
+                if recency_params
+                else 7.0,
+                "half_life_created_days": float(
+                    recency_params.get("half_life_created_days", 30.0)
+                )
+                if recency_params
+                else 30.0,
+            }
+            return rerank_with_recency(memory_results, now=now, params=params)
+        except Exception as e:
+            logger.warning(f"Client-side recency reranking failed: {e}")
+            return memory_results
 
     def _convert_filters_to_backend_format(
         self,
@@ -410,7 +498,6 @@ class VectorStoreAdapter(ABC):
             Dictionary filter in format: {"field": {"$eq": "value"}} or None
         """
         processor = LangChainFilterProcessor(self.vectorstore)
-        # TODO: Seems like we could take *args and pass them to the processor
         filter_dict = processor.convert_filters_to_backend_format(
             session_id=session_id,
             user_id=user_id,
@@ -494,6 +581,8 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
         id: Id | None = None,
         distance_threshold: float | None = None,
         discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
+        server_side_recency: bool | None = None,
+        recency_params: dict | None = None,
         limit: int = 10,
         offset: int = 0,
     ) -> MemoryRecordResults:
@@ -516,7 +605,7 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
             )
 
             # Use LangChain's similarity search with filters
-            search_kwargs = {"k": limit + offset}
+            search_kwargs: dict[str, Any] = {"k": limit + offset}
             if filter_dict:
                 search_kwargs["filter"] = filter_dict
 
@@ -546,6 +635,12 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
             for doc, score in docs_with_scores:
                 memory_result = self.document_to_memory(doc, score)
                 memory_results.append(memory_result)
+
+            # If recency requested but backend does not support DB-level, rerank here as a fallback
+            if server_side_recency:
+                memory_results = self._apply_client_side_recency_reranking(
+                    memory_results, recency_params
+                )
 
             # Calculate next offset
             next_offset = offset + limit if len(docs_with_scores) > limit else None
@@ -589,8 +684,6 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
         """Count memories in the vector store using LangChain."""
         try:
             # Convert basic filters to our filter objects, then to backend format
-            from agent_memory_server.filters import Namespace, SessionId, UserId
-
             namespace_filter = Namespace(eq=namespace) if namespace else None
             user_id_filter = UserId(eq=user_id) if user_id else None
             session_id_filter = SessionId(eq=session_id) if session_id else None
@@ -675,6 +768,9 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         )
         event_date_val = memory.event_date.timestamp() if memory.event_date else None
 
+        pinned_int = 1 if memory.pinned else 0
+        access_count_int = int(memory.access_count or 0)
+
         metadata = {
             "id_": memory.id,  # The client-generated ID
             "session_id": memory.session_id,
@@ -683,6 +779,8 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             "created_at": created_at_val,
             "last_accessed": last_accessed_val,
             "updated_at": updated_at_val,
+            "pinned": pinned_int,
+            "access_count": access_count_int,
             "topics": memory.topics,
             "entities": memory.entities,
             "memory_hash": memory.memory_hash,
@@ -756,6 +854,122 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         added = await self.add_memories(memories)
         return len(added)
 
+    def _get_vectorstore_index(self) -> Any | None:
+        """Safely access the underlying RedisVL index from the vectorstore.
+
+        Returns:
+            RedisVL SearchIndex or None if not available
+        """
+        return getattr(self.vectorstore, "_index", None)
+
+    async def _search_with_redis_aggregation(
+        self,
+        query: str,
+        redis_filter,
+        limit: int,
+        offset: int,
+        distance_threshold: float | None,
+        recency_params: dict | None,
+    ) -> MemoryRecordResults:
+        """Perform server-side Redis aggregation search with recency scoring.
+
+        Args:
+            query: Search query text
+            redis_filter: Redis filter expression
+            limit: Maximum number of results
+            offset: Offset for pagination
+            distance_threshold: Distance threshold for range queries
+            recency_params: Parameters for recency scoring
+
+        Returns:
+            MemoryRecordResults with server-side scored results
+
+        Raises:
+            Exception: If Redis aggregation fails (caller should handle fallback)
+        """
+
+        index = self._get_vectorstore_index()
+        if index is None:
+            raise Exception("RedisVL index not available")
+
+        # Embed the query text to vector
+        embedding_vector = self.embeddings.embed_query(query)
+
+        # Build base KNN query (hybrid)
+        if distance_threshold is not None:
+            knn = RangeQuery(
+                vector=embedding_vector,
+                vector_field_name="vector",
+                filter_expression=redis_filter,
+                distance_threshold=float(distance_threshold),
+                num_results=limit,
+            )
+        else:
+            knn = VectorQuery(
+                vector=embedding_vector,
+                vector_field_name="vector",
+                filter_expression=redis_filter,
+                num_results=limit,
+            )
+
+        # Aggregate with APPLY/SORTBY boosted score via helper
+
+        now_ts = int(datetime.now(UTC).timestamp())
+        agg = (
+            RecencyAggregationQuery.from_vector_query(
+                knn, filter_expression=redis_filter
+            )
+            .load_default_fields()
+            .apply_recency(now_ts=now_ts, params=recency_params or {})
+            .sort_by_boosted_desc()
+            .paginate(offset, limit)
+        )
+
+        raw = (
+            await index.aaggregate(agg)
+            if hasattr(index, "aaggregate")
+            else index.aggregate(agg)  # type: ignore
+        )
+
+        rows = getattr(raw, "rows", raw) or []
+        memory_results: list[MemoryRecordResult] = []
+        for row in rows:
+            fields = getattr(row, "__dict__", None) or row
+            metadata = {
+                k: fields.get(k)
+                for k in [
+                    "id_",
+                    "session_id",
+                    "user_id",
+                    "namespace",
+                    "created_at",
+                    "last_accessed",
+                    "updated_at",
+                    "pinned",
+                    "access_count",
+                    "topics",
+                    "entities",
+                    "memory_hash",
+                    "discrete_memory_extracted",
+                    "memory_type",
+                    "persisted_at",
+                    "extracted_from",
+                    "event_date",
+                ]
+                if k in fields
+            }
+            text_val = fields.get("text", "")
+            score = fields.get("__vector_score", 1.0) or 1.0
+            doc_obj = Document(page_content=text_val, metadata=metadata)
+            memory_results.append(self.document_to_memory(doc_obj, float(score)))
+
+        next_offset = offset + limit if len(memory_results) == limit else None
+        return MemoryRecordResults(
+            memories=memory_results[:limit],
+            total=offset + len(memory_results),
+            next_offset=next_offset,
+        )
+
     async def search_memories(
         self,
         query: str,
@@ -772,6 +986,8 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         id: Id | None = None,
         discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
         distance_threshold: float | None = None,
+        server_side_recency: bool | None = None,
+        recency_params: dict | None = None,
         limit: int = 10,
         offset: int = 0,
     ) -> MemoryRecordResults:
@@ -810,11 +1026,25 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             if len(filters) == 1:
                 redis_filter = filters[0]
             else:
-                from functools import reduce
-
                 redis_filter = reduce(lambda x, y: x & y, filters)
 
-        # Prepare search kwargs
+        # If server-side recency is requested, attempt RedisVL query first (DB-level path)
+        if server_side_recency:
+            try:
+                return await self._search_with_redis_aggregation(
+                    query=query,
+                    redis_filter=redis_filter,
+                    limit=limit,
+                    offset=offset,
+                    distance_threshold=distance_threshold,
+                    recency_params=recency_params,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"RedisVL DB-level recency search failed; falling back to client-side path: {e}"
+                )
+
+        # Prepare search kwargs (standard LangChain path)
         search_kwargs = {
             "query": query,
             "filter": redis_filter,
@@ -839,8 +1069,7 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         # Convert results to MemoryRecordResult objects
         memory_results = []
         for i, (doc, score) in enumerate(search_results):
-            # Apply offset - VectorStore doesn't support pagination...
-            # TODO: Implement pagination in RedisVectorStore as a kwarg.
+            # Apply offset - VectorStore doesn't support native pagination
             if i < offset:
                 continue
 
@@ -871,6 +1100,8 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                 user_id=doc.metadata.get("user_id"),
                 session_id=doc.metadata.get("session_id"),
                 namespace=doc.metadata.get("namespace"),
+                pinned=doc.metadata.get("pinned", False),
+                access_count=int(doc.metadata.get("access_count", 0) or 0),
                 topics=self._parse_list_field(doc.metadata.get("topics")),
                 entities=self._parse_list_field(doc.metadata.get("entities")),
                 memory_hash=doc.metadata.get("memory_hash", ""),
@@ -891,6 +1122,12 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             if len(memory_results) >= limit:
                 break
 
+        # Optional client-side recency-aware rerank (adapter-level fallback)
+        if server_side_recency:
+            memory_results = self._apply_client_side_recency_reranking(
+                memory_results, recency_params
+            )
+
         next_offset = offset + limit if len(search_results) > offset + limit else None
 
         return MemoryRecordResults(
@@ -898,16 +1135,6 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             total=len(search_results),
             next_offset=next_offset,
         )
-
-    def _parse_list_field(self, field_value):
-        """Parse a field that might be a list, comma-separated string, or None."""
-        if not field_value:
-            return []
-        if isinstance(field_value, list):
-            return field_value
-        if isinstance(field_value, str):
-            return field_value.split(",") if field_value else []
-        return []
 
     async def delete_memories(self, memory_ids: list[str]) -> int:
         """Delete memories by their IDs using LangChain's RedisVectorStore."""
@@ -941,18 +1168,12 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
             filters = []
 
             if namespace:
-                from agent_memory_server.filters import Namespace
-
                 namespace_filter = Namespace(eq=namespace).to_filter()
                 filters.append(namespace_filter)
             if user_id:
-                from agent_memory_server.filters import UserId
-
                 user_filter = UserId(eq=user_id).to_filter()
                 filters.append(user_filter)
             if session_id:
-                from agent_memory_server.filters import SessionId
-
                 session_filter = SessionId(eq=session_id).to_filter()
                 filters.append(session_filter)
 
@@ -962,8 +1183,6 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                 if len(filters) == 1:
                     redis_filter = filters[0]
                 else:
-                    from functools import reduce
-
                     redis_filter = reduce(lambda x, y: x & y, filters)
 
             # Use the same search method as search_memories but for counting

@@ -244,6 +244,37 @@ class MemoryRecordResult(MemoryRecord):
     dist: float
 
 
+class RecencyConfig(BaseModel):
+    """Client-side configuration for recency-aware ranking options."""
+
+    recency_boost: bool | None = Field(
+        default=None, description="Enable recency-aware re-ranking"
+    )
+    semantic_weight: float | None = Field(
+        default=None, description="Weight for semantic similarity"
+    )
+    recency_weight: float | None = Field(
+        default=None, description="Weight for recency score"
+    )
+    freshness_weight: float | None = Field(
+        default=None, description="Weight for freshness component"
+    )
+    novelty_weight: float | None = Field(
+        default=None, description="Weight for novelty/age component"
+    )
+
+    half_life_last_access_days: float | None = Field(
+        default=None, description="Half-life (days) for last_accessed decay"
+    )
+    half_life_created_days: float | None = Field(
+        default=None, description="Half-life (days) for created_at decay"
+    )
+    server_side_recency: bool | None = Field(
+        default=None,
+        description="If true, attempt server-side recency ranking (Redis-only)",
+    )
+
+
 class MemoryRecordResults(BaseModel):
     """Results from memory search operations"""
 

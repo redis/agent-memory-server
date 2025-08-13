@@ -475,19 +475,14 @@ async def search_long_term_memory(
         results = await core_search_long_term_memory(
             payload, optimize_query=optimize_query
         )
-        results = MemoryRecordResults(
+        return MemoryRecordResults(
             total=results.total,
             memories=results.memories,
             next_offset=results.next_offset,
         )
     except Exception as e:
         logger.error(f"Error in search_long_term_memory tool: {e}")
-        results = MemoryRecordResults(
-            total=0,
-            memories=[],
-            next_offset=None,
-        )
-    return results
+        return MemoryRecordResults(total=0, memories=[], next_offset=None)
 
 
 # Notes that exist outside of the docstring to avoid polluting the LLM prompt:
