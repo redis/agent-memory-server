@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import ulid
@@ -218,6 +219,9 @@ DISCRETE_EXTRACTION_PROMPT = """
     You are a long-memory manager. Your job is to analyze text and extract
     information that might be useful in future conversations with users.
 
+    CURRENT CONTEXT:
+    Current date and time: {current_datetime}
+
     Extract two types of memories:
     1. EPISODIC: Personal experiences specific to a user or agent.
        Example: "User prefers window seats" or "User had a bad experience in Paris"
@@ -235,10 +239,13 @@ DISCRETE_EXTRACTION_PROMPT = """
        - "His work is excellent" → "John's work is excellent" (if "his" refers to John)
        - NEVER leave pronouns unresolved - always replace with the specific person's name
 
-    2. TEMPORAL REFERENCES: Convert relative time expressions to absolute dates/times
-       - "yesterday" → "March 15, 2025" (if today is March 16, 2025)
-       - "last year" → "2024" (if current year is 2025)
-       - "three months ago" → "December 2024" (if current date is March 2025)
+    2. TEMPORAL REFERENCES: Convert relative time expressions to absolute dates/times using the current datetime provided above
+       - "yesterday" → specific date (e.g., "March 15, 2025" if current date is March 16, 2025)
+       - "last year" → specific year (e.g., "2024" if current year is 2025)
+       - "three months ago" → specific month/year (e.g., "December 2024" if current date is March 2025)
+       - "next week" → specific date range (e.g., "December 22-28, 2024" if current date is December 15, 2024)
+       - "tomorrow" → specific date (e.g., "December 16, 2024" if current date is December 15, 2024)
+       - "last month" → specific month/year (e.g., "November 2024" if current date is December 2024)
 
     3. SPATIAL REFERENCES: Resolve place references to specific locations
        - "there" → "San Francisco" (if referring to San Francisco)
@@ -352,7 +359,11 @@ async def extract_discrete_memories(
                 response = await client.create_chat_completion(
                     model=settings.generation_model,
                     prompt=DISCRETE_EXTRACTION_PROMPT.format(
-                        message=memory.text, top_k_topics=settings.top_k_topics
+                        message=memory.text,
+                        top_k_topics=settings.top_k_topics,
+                        current_datetime=datetime.now().strftime(
+                            "%A, %B %d, %Y at %I:%M %p %Z"
+                        ),
                     ),
                     response_format={"type": "json_object"},
                 )

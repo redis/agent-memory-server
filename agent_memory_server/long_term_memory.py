@@ -196,7 +196,11 @@ async def extract_memories_from_session_thread(
         response = await client.create_chat_completion(
             model=settings.generation_model,
             prompt=DISCRETE_EXTRACTION_PROMPT.format(
-                message=full_conversation, top_k_topics=settings.top_k_topics
+                message=full_conversation,
+                top_k_topics=settings.top_k_topics,
+                current_datetime=datetime.now().strftime(
+                    "%A, %B %d, %Y at %I:%M %p %Z"
+                ),
             ),
             response_format={"type": "json_object"},
         )
