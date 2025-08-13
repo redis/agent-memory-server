@@ -1,11 +1,13 @@
 from datetime import UTC, datetime, timedelta
 
 from agent_memory_server.long_term_memory import (
-    rerank_with_recency,  # new: pure function
-    score_recency,  # new: pure function
-    select_ids_for_forgetting,  # new: pure function
+    select_ids_for_forgetting,
 )
 from agent_memory_server.models import MemoryRecordResult, MemoryTypeEnum
+from agent_memory_server.utils.recency import (
+    rerank_with_recency,
+    score_recency,
+)
 
 
 def make_result(
