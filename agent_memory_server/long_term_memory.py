@@ -1476,9 +1476,15 @@ async def extract_memories_from_messages(
                     event_date = None
                     if memory_data.get("event_date"):
                         try:
-                            event_date = datetime.fromisoformat(
-                                memory_data["event_date"].replace("Z", "+00:00")
-                            )
+                            event_date_str = memory_data["event_date"]
+                            # Handle 'Z' suffix (UTC indicator)
+                            if event_date_str.endswith("Z"):
+                                event_date = datetime.fromisoformat(
+                                    event_date_str.replace("Z", "+00:00")
+                                )
+                            else:
+                                # Let fromisoformat handle other timezone formats like +05:00, -08:00, etc.
+                                event_date = datetime.fromisoformat(event_date_str)
                         except (ValueError, TypeError) as e:
                             logger.warning(
                                 f"Could not parse event_date '{memory_data.get('event_date')}': {e}"
