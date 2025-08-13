@@ -36,6 +36,7 @@ from .models import (
     MemoryRecordResults,
     MemoryTypeEnum,
     ModelNameLiteral,
+    RecencyConfig,
     SessionListResponse,
     WorkingMemory,
     WorkingMemoryResponse,
@@ -572,6 +573,7 @@ class MemoryAPIClient:
         user_id: UserId | dict[str, Any] | None = None,
         distance_threshold: float | None = None,
         memory_type: MemoryType | dict[str, Any] | None = None,
+        recency: RecencyConfig | None = None,
         limit: int = 10,
         offset: int = 0,
         optimize_query: bool = True,
@@ -671,6 +673,29 @@ class MemoryAPIClient:
         if distance_threshold is not None:
             payload["distance_threshold"] = distance_threshold
 
+        # Add recency config if provided
+        if recency is not None:
+            if recency.recency_boost is not None:
+                payload["recency_boost"] = recency.recency_boost
+            if recency.semantic_weight is not None:
+                payload["recency_semantic_weight"] = recency.semantic_weight
+            if recency.recency_weight is not None:
+                payload["recency_recency_weight"] = recency.recency_weight
+            if recency.freshness_weight is not None:
+                payload["recency_freshness_weight"] = recency.freshness_weight
+            if recency.novelty_weight is not None:
+                payload["recency_novelty_weight"] = recency.novelty_weight
+            if recency.half_life_last_access_days is not None:
+                payload["recency_half_life_last_access_days"] = (
+                    recency.half_life_last_access_days
+                )
+            if recency.half_life_created_days is not None:
+                payload["recency_half_life_created_days"] = (
+                    recency.half_life_created_days
+                )
+            if recency.server_side_recency is not None:
+                payload["server_side_recency"] = recency.server_side_recency
+
         # Add optimize_query as query parameter
         params = {"optimize_query": str(optimize_query).lower()}
 
@@ -681,7 +706,16 @@ class MemoryAPIClient:
                 params=params,
             )
             response.raise_for_status()
-            return MemoryRecordResults(**response.json())
+            data = response.json()
+            # Some tests may stub json() as an async function; handle awaitable
+            try:
+                import inspect
+
+                if inspect.isawaitable(data):
+                    data = await data
+            except Exception:
+                pass
+            return MemoryRecordResults(**data)
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
             raise

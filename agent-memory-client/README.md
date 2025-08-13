@@ -240,6 +240,31 @@ results = await client.search_long_term_memory(
 )
 ```
 
+## Recency-Aware Search
+
+```python
+from agent_memory_client.models import RecencyConfig
+
+# Search with recency-aware ranking
+recency_config = RecencyConfig(
+    recency_boost=True,
+    semantic_weight=0.8,           # Weight for semantic similarity
+    recency_weight=0.2,            # Weight for recency score
+    freshness_weight=0.6,          # Weight for freshness component
+    novelty_weight=0.4,            # Weight for novelty/age component
+    half_life_last_access_days=7,  # Last accessed decay half-life
+    half_life_created_days=30,     # Creation date decay half-life
+    server_side_recency=True       # Use server-side optimization
+)
+
+results = await client.search_long_term_memory(
+    text="project updates",
+    recency=recency_config,
+    limit=10
+)
+
+```
+
 ## Error Handling
 
 ```python

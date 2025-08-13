@@ -1,3 +1,5 @@
+from typing import Any
+
 import tiktoken
 from fastapi import APIRouter, Depends, HTTPException, Query
 from mcp.server.fastmcp.prompts import base
@@ -34,6 +36,32 @@ from agent_memory_server.utils.redis import get_redis_conn
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+@router.post("/v1/long-term-memory/forget")
+async def forget_endpoint(
+    policy: dict,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    limit: int = 1000,
+    dry_run: bool = True,
+    pinned_ids: list[str] | None = None,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Run a forgetting pass with the provided policy. Returns summary data.
+
+    This is an admin-style endpoint; auth is enforced by the standard dependency.
+    """
+    return await long_term_memory.forget_long_term_memories(
+        policy,
+        namespace=namespace,
+        user_id=user_id,
+        session_id=session_id,
+        limit=limit,
+        dry_run=dry_run,
+        pinned_ids=pinned_ids,
+    )
 
 
 def _get_effective_token_limit(
@@ -102,6 +130,42 @@ def _calculate_context_usage_percentages(
 
     # Cap both at 100% for display purposes
     return min(total_percentage, 100.0), min(until_summarization_percentage, 100.0)
+
+
+def _build_recency_params(payload: SearchRequest) -> dict[str, Any]:
+    """Build recency parameters dict from payload."""
+    return {
+        "semantic_weight": (
+            payload.recency_semantic_weight
+            if payload.recency_semantic_weight is not None
+            else 0.8
+        ),
+        "recency_weight": (
+            payload.recency_recency_weight
+            if payload.recency_recency_weight is not None
+            else 0.2
+        ),
+        "freshness_weight": (
+            payload.recency_freshness_weight
+            if payload.recency_freshness_weight is not None
+            else 0.6
+        ),
+        "novelty_weight": (
+            payload.recency_novelty_weight
+            if payload.recency_novelty_weight is not None
+            else 0.4
+        ),
+        "half_life_last_access_days": (
+            payload.recency_half_life_last_access_days
+            if payload.recency_half_life_last_access_days is not None
+            else 7.0
+        ),
+        "half_life_created_days": (
+            payload.recency_half_life_created_days
+            if payload.recency_half_life_created_days is not None
+            else 30.0
+        ),
+    }
 
 
 async def _summarize_working_memory(
@@ -530,7 +594,45 @@ async def search_long_term_memory(
     logger.debug(f"Long-term search kwargs: {kwargs}")
 
     # Pass text and filter objects to the search function (no redis needed for vectorstore adapter)
-    return await long_term_memory.search_long_term_memories(**kwargs)
+    # Server-side recency rerank toggle (Redis-only path); defaults to False
+    server_side_recency = (
+        payload.server_side_recency
+        if payload.server_side_recency is not None
+        else False
+    )
+    if server_side_recency:
+        kwargs["server_side_recency"] = True
+        kwargs["recency_params"] = _build_recency_params(payload)
+        return await long_term_memory.search_long_term_memories(**kwargs)
+
+    raw_results = await long_term_memory.search_long_term_memories(**kwargs)
+
+    # Recency-aware re-ranking of results (configurable)
+    try:
+        from datetime import UTC, datetime as _dt
+
+        # Decide whether to apply recency boost
+        recency_boost = (
+            payload.recency_boost if payload.recency_boost is not None else True
+        )
+        if not recency_boost or not raw_results.memories:
+            return raw_results
+
+        now = _dt.now(UTC)
+        recency_params = _build_recency_params(payload)
+        ranked = long_term_memory.rerank_with_recency(
+            raw_results.memories, now=now, params=recency_params
+        )
+        # Update last_accessed in background with rate limiting
+        ids = [m.id for m in ranked if m.id]
+        if ids:
+            background_tasks = get_background_tasks()
+            await background_tasks.add_task(long_term_memory.update_last_accessed, ids)
+
+        raw_results.memories = ranked
+        return raw_results
+    except Exception:
+        return raw_results
 
 
 @router.delete("/v1/long-term-memory", response_model=AckResponse)

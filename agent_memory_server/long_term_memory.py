@@ -1,7 +1,8 @@
-import hashlib
 import json
 import logging
+import numbers
 import time
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -34,10 +35,17 @@ from agent_memory_server.models import (
     ExtractedMemoryRecord,
     MemoryMessage,
     MemoryRecord,
+    MemoryRecordResult,
     MemoryRecordResults,
     MemoryTypeEnum,
 )
 from agent_memory_server.utils.keys import Keys
+from agent_memory_server.utils.recency import (
+    _days_between,
+    generate_memory_hash,
+    rerank_with_recency,
+    update_memory_hash_if_text_changed,
+)
 from agent_memory_server.utils.redis import (
     ensure_search_index_exists,
     get_redis_conn,
@@ -206,8 +214,35 @@ async def extract_memories_from_session_thread(
             response_format={"type": "json_object"},
         )
 
-        extraction_result = json.loads(response.choices[0].message.content)
-        memories_data = extraction_result.get("memories", [])
+        # Extract content from response with error handling
+        try:
+            if (
+                hasattr(response, "choices")
+                and isinstance(response.choices, list)
+                and len(response.choices) > 0
+            ):
+                if hasattr(response.choices[0], "message") and hasattr(
+                    response.choices[0].message, "content"
+                ):
+                    content = response.choices[0].message.content
+                else:
+                    logger.error(
+                        f"Unexpected response structure - no message.content: {response}"
+                    )
+                    return []
+            else:
+                logger.error(
+                    f"Unexpected response structure - no choices list: {response}"
+                )
+                return []
+
+            extraction_result = json.loads(content)
+            memories_data = extraction_result.get("memories", [])
+        except (json.JSONDecodeError, AttributeError, TypeError) as e:
+            logger.error(
+                f"Failed to parse extraction response: {e}, response: {response}"
+            )
+            return []
 
         logger.info(
             f"Extracted {len(memories_data)} memories from session thread {session_id}"
@@ -253,53 +288,6 @@ async def extract_memory_structure(memory: MemoryRecord):
         Keys.memory_key(memory.id),
         mapping={"topics": topics_joined, "entities": entities_joined},
     )  # type: ignore
-
-
-def generate_memory_hash(memory: MemoryRecord) -> str:
-    """
-    Generate a stable hash for a memory based on text, user_id, and session_id.
-
-    Args:
-        memory: MemoryRecord object containing memory data
-
-    Returns:
-        A stable hash string
-    """
-    # Create a deterministic string representation of the key content fields only
-    # This ensures merged memories with same content have the same hash
-    content_fields = {
-        "text": memory.text,
-        "user_id": memory.user_id,
-        "session_id": memory.session_id,
-        "namespace": memory.namespace,
-        "memory_type": memory.memory_type,
-    }
-    content_json = json.dumps(content_fields, sort_keys=True)
-    return hashlib.sha256(content_json.encode()).hexdigest()
-
-
-def update_memory_hash_if_text_changed(memory: MemoryRecord, updates: dict) -> dict:
-    """
-    Helper function to regenerate memory hash if text field was updated.
-
-    This avoids code duplication of the hash regeneration logic across
-    different update flows (like memory creation, merging, and editing).
-
-    Args:
-        memory: The original memory record
-        updates: Dictionary of updates to apply
-
-    Returns:
-        Dictionary with updated memory_hash added if text was in the updates
-    """
-    result_updates = dict(updates)
-
-    # If text was updated, regenerate the hash
-    if "text" in updates:
-        temp_memory = memory.model_copy(update=updates)
-        result_updates["memory_hash"] = generate_memory_hash(temp_memory)
-
-    return result_updates
 
 
 async def merge_memories_with_llm(
@@ -877,6 +865,8 @@ async def search_long_term_memories(
     memory_type: MemoryType | None = None,
     event_date: EventDate | None = None,
     memory_hash: MemoryHash | None = None,
+    server_side_recency: bool | None = None,
+    recency_params: dict | None = None,
     limit: int = 10,
     offset: int = 0,
     optimize_query: bool = True,
@@ -926,6 +916,8 @@ async def search_long_term_memories(
         event_date=event_date,
         memory_hash=memory_hash,
         distance_threshold=distance_threshold,
+        server_side_recency=server_side_recency,
+        recency_params=recency_params,
         limit=limit,
         offset=offset,
     )
@@ -1547,7 +1539,7 @@ async def get_long_term_memory_by_id(memory_id: str) -> MemoryRecord | None:
 
     # Search for the memory by ID using the existing search function
     results = await adapter.search_memories(
-        text="",  # Empty search text to get all results
+        query="",  # Empty search text to get all results
         limit=1,
         id=Id(eq=memory_id),
     )
@@ -1608,3 +1600,236 @@ async def update_long_term_memory(
     await adapter.update_memories([updated_memory])
 
     return updated_memory
+
+
+def _is_numeric(value: Any) -> bool:
+    """Check if a value is numeric (int, float, or other number type)."""
+    return isinstance(value, numbers.Number)
+
+
+def select_ids_for_forgetting(
+    results: Iterable[MemoryRecordResult],
+    *,
+    policy: dict,
+    now: datetime,
+    pinned_ids: set[str] | None = None,
+) -> list[str]:
+    """Select IDs for deletion based on TTL, inactivity and budget policies.
+
+    Policy keys:
+      - max_age_days: float | None
+      - max_inactive_days: float | None
+      - budget: int | None (keep top N by recency score)
+      - memory_type_allowlist: set[str] | list[str] | None (only consider these types for deletion)
+      - hard_age_multiplier: float (default 12.0) - multiplier for max_age_days to determine extremely old items
+    """
+    pinned_ids = pinned_ids or set()
+    max_age_days = policy.get("max_age_days")
+    max_inactive_days = policy.get("max_inactive_days")
+    hard_age_multiplier = float(policy.get("hard_age_multiplier", 12.0))
+    budget = policy.get("budget")
+    allowlist = policy.get("memory_type_allowlist")
+    if allowlist is not None and not isinstance(allowlist, set):
+        allowlist = set(allowlist)
+
+    to_delete: set[str] = set()
+    eligible_for_budget: list[MemoryRecordResult] = []
+
+    for mem in results:
+        if not mem.id or mem.id in pinned_ids or getattr(mem, "pinned", False):
+            continue
+
+        # If allowlist provided, only consider those types for deletion
+        mem_type_value = (
+            mem.memory_type.value
+            if isinstance(mem.memory_type, MemoryTypeEnum)
+            else mem.memory_type
+        )
+        if allowlist is not None and mem_type_value not in allowlist:
+            # Not eligible for deletion under current policy
+            continue
+
+        age_days = _days_between(now, mem.created_at)
+        inactive_days = _days_between(now, mem.last_accessed)
+
+        # Combined TTL/inactivity policy:
+        # - If both thresholds are set, prefer not to delete recently accessed
+        #   items unless they are extremely old.
+        # - Extremely old: age > max_age_days * hard_age_multiplier (default 12x)
+        if _is_numeric(max_age_days) and _is_numeric(max_inactive_days):
+            if age_days > float(max_age_days) * hard_age_multiplier:
+                to_delete.add(mem.id)
+                continue
+            if age_days > float(max_age_days) and inactive_days > float(
+                max_inactive_days
+            ):
+                to_delete.add(mem.id)
+                continue
+        else:
+            ttl_hit = _is_numeric(max_age_days) and age_days > float(max_age_days)
+            inactivity_hit = _is_numeric(max_inactive_days) and (
+                inactive_days > float(max_inactive_days)
+            )
+            if ttl_hit or inactivity_hit:
+                to_delete.add(mem.id)
+                continue
+
+        # Eligible for budget consideration
+        eligible_for_budget.append(mem)
+
+    # Budget-based pruning (keep top N by recency among eligible)
+    if isinstance(budget, int) and budget >= 0 and budget < len(eligible_for_budget):
+        params = {
+            "semantic_weight": 0.0,  # budget considers only recency
+            "recency_weight": 1.0,
+            "freshness_weight": 0.6,
+            "novelty_weight": 0.4,
+            "half_life_last_access_days": 7.0,
+            "half_life_created_days": 30.0,
+        }
+        ranked = rerank_with_recency(eligible_for_budget, now=now, params=params)
+        keep_ids = {mem.id for mem in ranked[:budget]}
+        for mem in eligible_for_budget:
+            if mem.id not in keep_ids:
+                to_delete.add(mem.id)
+
+    return list(to_delete)
+
+
+async def update_last_accessed(
+    ids: list[str],
+    *,
+    redis_client: Redis | None = None,
+    min_interval_seconds: int = 900,
+) -> int:
+    """Rate-limited update of last_accessed for a list of memory IDs.
+
+    Returns the number of records updated.
+    """
+    if not ids:
+        return 0
+
+    redis = redis_client or await get_redis_conn()
+    now_ts = int(datetime.now(UTC).timestamp())
+
+    # Batch read existing last_accessed
+    keys = [Keys.memory_key(mid) for mid in ids]
+    pipeline = redis.pipeline()
+    for key in keys:
+        pipeline.hget(key, "last_accessed")
+    current_vals = await pipeline.execute()
+
+    # Decide which to update and whether to increment access_count
+    to_update: list[tuple[str, int]] = []
+    incr_keys: list[str] = []
+    for key, val in zip(keys, current_vals, strict=False):
+        try:
+            last_ts = int(val) if val is not None else 0
+        except (TypeError, ValueError):
+            last_ts = 0
+        if now_ts - last_ts >= min_interval_seconds:
+            to_update.append((key, now_ts))
+            incr_keys.append(key)
+
+    if not to_update:
+        return 0
+
+    pipeline2 = redis.pipeline()
+    for key, ts in to_update:
+        pipeline2.hset(key, mapping={"last_accessed": str(ts)})
+        pipeline2.hincrby(key, "access_count", 1)
+    await pipeline2.execute()
+    return len(to_update)
+
+
+async def forget_long_term_memories(
+    policy: dict,
+    *,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    limit: int = 1000,
+    dry_run: bool = True,
+    pinned_ids: list[str] | None = None,
+) -> dict:
+    """Select and delete long-term memories according to policy.
+
+    Uses the vectorstore adapter to fetch candidates (empty query + filters),
+    then applies `select_ids_for_forgetting` locally and deletes via adapter.
+    """
+    adapter = await get_vectorstore_adapter()
+
+    # Build filters
+    namespace_filter = Namespace(eq=namespace) if namespace else None
+    user_id_filter = UserId(eq=user_id) if user_id else None
+    session_id_filter = SessionId(eq=session_id) if session_id else None
+
+    # Fetch candidates with an empty query honoring filters
+    results = await adapter.search_memories(
+        query="",
+        namespace=namespace_filter,
+        user_id=user_id_filter,
+        session_id=session_id_filter,
+        limit=limit,
+    )
+
+    now = datetime.now(UTC)
+    candidate_results = results.memories or []
+
+    # Select IDs for deletion using policy
+    to_delete_ids = select_ids_for_forgetting(
+        candidate_results,
+        policy=policy,
+        now=now,
+        pinned_ids=set(pinned_ids) if pinned_ids else None,
+    )
+
+    deleted = 0
+    if to_delete_ids and not dry_run:
+        deleted = await adapter.delete_memories(to_delete_ids)
+
+    return {
+        "scanned": len(candidate_results),
+        "deleted": deleted if not dry_run else len(to_delete_ids),
+        "deleted_ids": to_delete_ids,
+        "dry_run": dry_run,
+    }
+
+
+async def periodic_forget_long_term_memories(
+    *,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    limit: int = 1000,
+    dry_run: bool = False,
+    perpetual: Perpetual = Perpetual(
+        every=timedelta(minutes=settings.forgetting_every_minutes), automatic=True
+    ),
+) -> dict:
+    """Periodic forgetting using defaults from settings.
+
+    This function can be registered with Docket and will run automatically
+    according to the `perpetual` schedule when a worker is active.
+    """
+    # Build default policy from settings
+    policy: dict[str, object] = {
+        "max_age_days": settings.forgetting_max_age_days,
+        "max_inactive_days": settings.forgetting_max_inactive_days,
+        "budget": settings.forgetting_budget_keep_top_n,
+        "memory_type_allowlist": None,
+    }
+
+    # If feature disabled, no-op
+    if not settings.forgetting_enabled:
+        logger.info("Forgetting is disabled; skipping periodic run")
+        return {"scanned": 0, "deleted": 0, "deleted_ids": [], "dry_run": True}
+
+    return await forget_long_term_memories(
+        policy,
+        namespace=namespace,
+        user_id=user_id,
+        session_id=session_id,
+        limit=limit,
+        dry_run=dry_run,
+    )
