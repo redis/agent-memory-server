@@ -184,7 +184,6 @@ class ClientMemoryRecord(MemoryRecord):
 class WorkingMemory(BaseModel):
     """Working memory for a session - contains both messages and structured memory records"""
 
-    # Support both message-based memory (conversation) and structured memory records
     messages: list[MemoryMessage] = Field(
         default_factory=list,
         description="Conversation messages (role/content pairs)",
@@ -193,17 +192,13 @@ class WorkingMemory(BaseModel):
         default_factory=list,
         description="Structured memory records for promotion to long-term storage",
     )
-
-    # Arbitrary JSON data storage (separate from memories)
     data: dict[str, JSONTypes] | None = Field(
         default=None,
         description="Arbitrary JSON data storage (key-value pairs)",
     )
-
-    # Session context and metadata (moved from SessionMemory)
     context: str | None = Field(
         default=None,
-        description="Optional summary of past session messages",
+        description="Summary of past session messages if server has auto-summarized",
     )
     user_id: str | None = Field(
         default=None,
@@ -213,8 +208,6 @@ class WorkingMemory(BaseModel):
         default=0,
         description="Optional number of tokens in the working memory",
     )
-
-    # Required session scoping
     session_id: str
     namespace: str | None = Field(
         default=None,

@@ -7,6 +7,7 @@ from mcp.server.fastmcp import FastMCP as _FastMCPBase
 
 from agent_memory_server.api import (
     create_long_term_memory as core_create_long_term_memory,
+    delete_long_term_memory as core_delete_long_term_memory,
     get_long_term_memory as core_get_long_term_memory,
     get_working_memory as core_get_working_memory,
     memory_prompt as core_memory_prompt,
@@ -198,6 +199,33 @@ mcp_app = FastMCP(
     instructions=INSTRUCTIONS,
     default_namespace=settings.default_mcp_namespace,
 )
+
+
+@mcp_app.tool()
+async def get_current_datetime() -> dict[str, str | int]:
+    """
+    Get the current datetime in UTC for grounding relative time expressions.
+
+    Use this tool whenever the user provides a relative time (e.g., "today",
+    "yesterday", "last week") or when you need to include a concrete date in
+    text. Always combine this with setting the structured `event_date` field on
+    episodic memories.
+
+    Returns:
+        - iso_utc: Current time in ISO 8601 format with Z suffix, e.g.,
+          "2025-08-14T23:59:59Z"
+        - unix_ts: Current Unix timestamp (seconds)
+
+    Example:
+        1. User: "I was promoted today"
+           - Call get_current_datetime → use `iso_utc` to set `event_date`
+           - Update text to include a grounded, human-readable date
+             (e.g., "Alice was promoted to Principal Engineer on August 14, 2025.")
+    """
+    now = datetime.utcnow()
+    # Produce a Z-suffixed ISO 8601 string
+    iso_utc = now.replace(microsecond=0).isoformat() + "Z"
+    return {"iso_utc": iso_utc, "unix_ts": int(now.timestamp())}
 
 
 @mcp_app.tool()
@@ -918,6 +946,14 @@ async def edit_long_term_memory(
     Raises:
         Exception: If memory not found, invalid fields, or long-term memory is disabled
 
+    IMPORTANT DATE HANDLING RULES:
+    - For time-bound updates (episodic), ALWAYS set `event_date`.
+    - When users provide relative dates ("today", "yesterday", "last week"),
+      call `get_current_datetime` to resolve the current date/time, then set
+      `event_date` using the ISO value and include a grounded, human-readable
+      date in the `text` (e.g., "on August 14, 2025").
+    - Do not guess dates; if unsure, ask or omit the date phrase in `text`.
+
     COMMON USAGE PATTERNS:
 
     1. Update memory text content:
@@ -932,6 +968,17 @@ async def edit_long_term_memory(
     ```python
     edit_long_term_memory(
         memory_id="01HXE2B1234567890ABCDEF",
+        memory_type="episodic",
+        event_date="2024-01-15T14:30:00Z"
+    )
+    ```
+
+    2b. Include grounded date in text AND set event_date:
+    ```python
+    # After resolving relative time with get_current_datetime
+    edit_long_term_memory(
+        memory_id="01HXE2B1234567890ABCDEF",
+        text="User was promoted to Principal Engineer on January 15, 2024.",
         memory_type="episodic",
         event_date="2024-01-15T14:30:00Z"
     )
@@ -986,3 +1033,35 @@ async def edit_long_term_memory(
     updates = EditMemoryRecordRequest(**update_dict)
 
     return await core_update_long_term_memory(memory_id=memory_id, updates=updates)
+
+
+@mcp_app.tool()
+async def delete_long_term_memories(
+    memory_ids: list[str],
+) -> AckResponse:
+    """
+    Delete long-term memories by their IDs.
+
+    This tool permanently removes specified long-term memory records.
+    Use with caution as this action cannot be undone.
+
+    Args:
+        memory_ids: List of memory IDs to delete
+
+    Returns:
+        Acknowledgment response with the count of deleted memories
+
+    Raises:
+        Exception: If long-term memory is disabled or deletion fails
+
+    Example:
+    ```python
+    delete_long_term_memories(
+        memory_ids=["01HXE2B1234567890ABCDEF", "01HXE2B9876543210FEDCBA"]
+    )
+    ```
+    """
+    if not settings.long_term_memory:
+        raise ValueError("Long-term memory is disabled")
+
+    return await core_delete_long_term_memory(memory_ids=memory_ids)

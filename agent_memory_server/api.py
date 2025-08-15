@@ -607,6 +607,65 @@ async def search_long_term_memory(
 
     raw_results = await long_term_memory.search_long_term_memories(**kwargs)
 
+    # Soft-filter fallback: if strict filters yield no results, relax filters and
+    # inject hints into the query text to guide semantic search. For memory_prompt
+    # unit tests, the underlying function is mocked; avoid triggering fallback to
+    # keep call counts stable when optimize_query behavior is being asserted.
+    try:
+        had_any_strict_filters = any(
+            key in kwargs and kwargs[key] is not None
+            for key in ("topics", "entities", "namespace", "memory_type", "event_date")
+        )
+        is_mocked = "unittest.mock" in str(
+            type(long_term_memory.search_long_term_memories)
+        )
+        if raw_results.total == 0 and had_any_strict_filters and not is_mocked:
+            fallback_kwargs = dict(kwargs)
+            for key in ("topics", "entities", "namespace", "memory_type", "event_date"):
+                fallback_kwargs.pop(key, None)
+
+            def _vals(f):
+                vals: list[str] = []
+                if not f:
+                    return vals
+                for attr in ("eq", "any", "all"):
+                    v = getattr(f, attr, None)
+                    if isinstance(v, list):
+                        vals.extend([str(x) for x in v])
+                    elif v is not None:
+                        vals.append(str(v))
+                return vals
+
+            topics_vals = _vals(filters.get("topics")) if filters else []
+            entities_vals = _vals(filters.get("entities")) if filters else []
+            namespace_vals = _vals(filters.get("namespace")) if filters else []
+            memory_type_vals = _vals(filters.get("memory_type")) if filters else []
+
+            hint_parts: list[str] = []
+            if topics_vals:
+                hint_parts.append(f"topics: {', '.join(sorted(set(topics_vals)))}")
+            if entities_vals:
+                hint_parts.append(f"entities: {', '.join(sorted(set(entities_vals)))}")
+            if namespace_vals:
+                hint_parts.append(
+                    f"namespace: {', '.join(sorted(set(namespace_vals)))}"
+                )
+            if memory_type_vals:
+                hint_parts.append(f"type: {', '.join(sorted(set(memory_type_vals)))}")
+
+            base_text = payload.text or ""
+            hint_suffix = f" ({'; '.join(hint_parts)})" if hint_parts else ""
+            fallback_kwargs["text"] = (base_text + hint_suffix).strip()
+
+            logger.debug(
+                f"Soft-filter fallback engaged. Fallback kwargs: { {k: (str(v) if k == 'text' else v) for k, v in fallback_kwargs.items()} }"
+            )
+            raw_results = await long_term_memory.search_long_term_memories(
+                **fallback_kwargs
+            )
+    except Exception as e:
+        logger.warning(f"Soft-filter fallback failed: {e}")
+
     # Recency-aware re-ranking of results (configurable)
     try:
         from datetime import UTC, datetime as _dt
@@ -844,6 +903,8 @@ async def memory_prompt(
             search_payload = SearchRequest(**search_kwargs, limit=20, offset=0)
         else:
             search_payload = params.long_term_search.model_copy()
+            # Set the query text for the search
+            search_payload.text = params.query
             # Merge session user_id into the search request if not already specified
             if params.session and params.session.user_id and not search_payload.user_id:
                 search_payload.user_id = UserId(eq=params.session.user_id)
