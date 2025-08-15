@@ -184,7 +184,6 @@ class ClientMemoryRecord(MemoryRecord):
 class WorkingMemory(BaseModel):
     """Working memory for a session - contains both messages and structured memory records"""
 
-    # Support both message-based memory (conversation) and structured memory records
     messages: list[MemoryMessage] = Field(
         default_factory=list,
         description="Conversation messages (role/content pairs)",
@@ -193,17 +192,13 @@ class WorkingMemory(BaseModel):
         default_factory=list,
         description="Structured memory records for promotion to long-term storage",
     )
-
-    # Arbitrary JSON data storage (separate from memories)
     data: dict[str, JSONTypes] | None = Field(
         default=None,
         description="Arbitrary JSON data storage (key-value pairs)",
     )
-
-    # Session context and metadata (moved from SessionMemory)
     context: str | None = Field(
         default=None,
-        description="Optional summary of past session messages",
+        description="Summary of past session messages if server has auto-summarized",
     )
     user_id: str | None = Field(
         default=None,
@@ -213,8 +208,6 @@ class WorkingMemory(BaseModel):
         default=0,
         description="Optional number of tokens in the working memory",
     )
-
-    # Required session scoping
     session_id: str
     namespace: str | None = Field(
         default=None,
@@ -467,3 +460,32 @@ class DeleteMemoryRecordRequest(BaseModel):
     """Payload for deleting memory records"""
 
     ids: list[str]
+
+
+class EditMemoryRecordRequest(BaseModel):
+    """Payload for editing a memory record"""
+
+    text: str | None = Field(
+        default=None, description="Updated text content for the memory"
+    )
+    topics: list[str] | None = Field(
+        default=None, description="Updated topics for the memory"
+    )
+    entities: list[str] | None = Field(
+        default=None, description="Updated entities for the memory"
+    )
+    memory_type: MemoryTypeEnum | None = Field(
+        default=None, description="Updated memory type (semantic, episodic, message)"
+    )
+    namespace: str | None = Field(
+        default=None, description="Updated namespace for the memory"
+    )
+    user_id: str | None = Field(
+        default=None, description="Updated user ID for the memory"
+    )
+    session_id: str | None = Field(
+        default=None, description="Updated session ID for the memory"
+    )
+    event_date: datetime | None = Field(
+        default=None, description="Updated event date for episodic memories"
+    )
