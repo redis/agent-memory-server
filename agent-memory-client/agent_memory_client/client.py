@@ -1719,7 +1719,7 @@ class MemoryAPIClient:
                 id=tool_call.get("id"),
                 name=tool_call.get("name", ""),
                 arguments=tool_call.get("args", {}),
-                provider="langchain",
+                provider="generic",
             )
 
         # Generic format - assume it's already in a usable format
@@ -2104,9 +2104,9 @@ class MemoryAPIClient:
         result = await self.delete_long_term_memories(memory_ids=memory_ids)
         # Handle both dict-like and model responses
         try:
-            status = result.get("status")  # type: ignore[call-arg]
-        except Exception:
             status = getattr(result, "status", None)
+        except Exception:
+            status = None
         if not status:
             status = "Deleted memories successfully"
         return {"status": status}

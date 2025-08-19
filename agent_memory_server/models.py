@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Literal
 
 from mcp.server.fastmcp.prompts import base
+from mcp.types import AudioContent, EmbeddedResource, ImageContent, TextContent
 from pydantic import BaseModel, Field
 from ulid import ULID
 
@@ -434,10 +435,11 @@ class MemoryPromptRequest(BaseModel):
     long_term_search: SearchRequest | bool | None = None
 
 
-class SystemMessage(base.Message):
+class SystemMessage(BaseModel):
     """A system message"""
 
     role: Literal["system"] = "system"
+    content: str | TextContent | ImageContent | AudioContent | EmbeddedResource
 
 
 class UserMessage(base.Message):
@@ -453,7 +455,7 @@ class MemoryPromptResponse(BaseModel):
 class LenientMemoryRecord(ExtractedMemoryRecord):
     """A memory record that can be created without an ID"""
 
-    id: str | None = Field(default_factory=lambda: str(ULID()))
+    id: str = Field(default_factory=lambda: str(ULID()))
 
 
 class DeleteMemoryRecordRequest(BaseModel):

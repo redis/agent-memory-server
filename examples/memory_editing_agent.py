@@ -156,7 +156,7 @@ class MemoryEditingAgent:
         # Execute all tool calls
         for i, tool_call in enumerate(tool_calls):
             function_name = tool_call.get("name", "unknown")
-            print(f"🔧 Using {function_name} tool ({i+1}/{len(tool_calls)})...")
+            print(f"🔧 Using {function_name} tool ({i + 1}/{len(tool_calls)})...")
 
             # Use the client's unified tool call resolver
             result = await client.resolve_tool_call(
@@ -312,7 +312,7 @@ class MemoryEditingAgent:
             for i, tool_call in enumerate(followup_calls):
                 fname = tool_call.get("name", "unknown")
                 print(
-                    f"   🔧 Follow-up using {fname} tool ({i+1}/{len(followup_calls)})..."
+                    f"   🔧 Follow-up using {fname} tool ({i + 1}/{len(followup_calls)})..."
                 )
                 res = await client.resolve_tool_call(
                     tool_call=tool_call,
