@@ -1030,18 +1030,7 @@ async def edit_long_term_memory(
 
     # Filter out None values to only include fields that should be updated
     update_dict = {k: v for k, v in update_dict.items() if v is not None}
-    updates = EditMemoryRecordRequest(
-        text=text if text is not None else None,
-        topics=topics if topics is not None else None,
-        entities=entities if entities is not None else None,
-        memory_type=memory_type if memory_type is not None else None,
-        namespace=namespace if namespace is not None else None,
-        user_id=user_id if user_id is not None else None,
-        session_id=session_id if session_id is not None else None,
-        event_date=update_dict.get("event_date")
-        if "event_date" in update_dict
-        else None,
-    )
+    updates = EditMemoryRecordRequest(**update_dict)
 
     return await core_update_long_term_memory(memory_id=memory_id, updates=updates)
 
