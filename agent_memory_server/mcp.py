@@ -220,7 +220,7 @@ async def get_current_datetime() -> dict[str, str | int]:
         1. User: "I was promoted today"
            - Call get_current_datetime → use `iso_utc` to set `event_date`
            - Update text to include a grounded, human-readable date
-             (e.g., "Alice was promoted to Principal Engineer on August 14, 2025.")
+             (e.g., "User was promoted to Principal Engineer on August 14, 2025.")
     """
     now = datetime.utcnow()
     # Produce a Z-suffixed ISO 8601 string
@@ -241,8 +241,8 @@ async def create_long_term_memories(
     When creating memories, you MUST resolve all contextual references to their concrete referents:
 
     1. PRONOUNS: Replace ALL pronouns (he/she/they/him/her/them/his/hers/theirs) with actual person names
-       - "He prefers Python" → "John prefers Python" (if "he" refers to John)
-       - "Her expertise is valuable" → "Sarah's expertise is valuable" (if "her" refers to Sarah)
+       - "He prefers Python" → "User prefers Python" (if "he" refers to the user)
+       - "Her expertise is valuable" → "User's expertise is valuable" (if "her" refers to the user)
 
     2. TEMPORAL REFERENCES: Convert relative time expressions to absolute dates/times
        - "yesterday" → "2024-03-15" (if today is March 16, 2024)

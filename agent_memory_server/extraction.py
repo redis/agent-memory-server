@@ -233,9 +233,9 @@ DISCRETE_EXTRACTION_PROMPT = """
     When extracting memories, you must resolve all contextual references to their concrete referents:
 
     1. PRONOUNS: Replace ALL pronouns (he/she/they/him/her/them/his/hers/theirs) with the actual person's name, EXCEPT for the application user, who must always be referred to as "User".
-       - "He loves coffee" → "John loves coffee" (if "he" refers to John)
-       - "I told her about it" → "User told Sarah about it" (if "her" refers to Sarah)
-       - "Her experience is valuable" → "Sarah's experience is valuable" (if "her" refers to Sarah)
+       - "He loves coffee" → "User loves coffee" (if "he" refers to the user)
+       - "I told her about it" → "User told colleague about it" (if "her" refers to a colleague)
+       - "Her experience is valuable" → "User's experience is valuable" (if "her" refers to the user)
        - "My name is Alice and I prefer tea" → "User prefers tea" (do NOT store the application user's given name in text)
        - NEVER leave pronouns unresolved - always replace with the specific person's name
 
@@ -286,7 +286,7 @@ DISCRETE_EXTRACTION_PROMPT = """
     3. You are a large language model - do not extract facts that you already know.
     4. CRITICAL: ALWAYS ground ALL contextual references - never leave ANY pronouns, relative times, or vague place references unresolved. For the application user, always use "User" instead of their given name to avoid stale naming if they change their profile name later.
     5. MANDATORY: Replace every instance of "he/she/they/him/her/them/his/hers/theirs" with the actual person's name.
-    6. MANDATORY: Replace possessive pronouns like "her experience" with "Sarah's experience" (if "her" refers to Sarah).
+    6. MANDATORY: Replace possessive pronouns like "her experience" with "User's experience" (if "her" refers to the user).
     7. If you cannot determine what a contextual reference refers to, either omit that memory or use generic terms like "someone" instead of ungrounded pronouns.
 
     Message:
