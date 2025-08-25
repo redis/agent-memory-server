@@ -453,7 +453,12 @@ class MemoryPromptResponse(BaseModel):
 
 
 class LenientMemoryRecord(ExtractedMemoryRecord):
-    """A memory record that can be created without an ID"""
+    """
+    A memory record that can be created without an ID.
+
+    Useful for the MCP server, where we would otherwise have to expect
+    an agent or LLM to provide a memory ID.
+    """
 
     id: str = Field(default_factory=lambda: str(ULID()))
 
