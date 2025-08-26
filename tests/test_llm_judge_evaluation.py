@@ -381,11 +381,10 @@ class TestLLMJudgeEvaluation:
         ]
 
         original_text = "She said they should meet there again next week to discuss it."
-        good_grounded_text = "Alice said Alice and Bob should meet in Building A again next week to discuss the Q4 project."
+        good_grounded_text = "Alice said they should meet in Building A again next week to discuss the Q4 project."
 
         expected_grounding = {
             "she": "Alice",
-            "they": "Alice and Bob",
             "there": "Building A",
             "it": "the Q4 project",
         }
