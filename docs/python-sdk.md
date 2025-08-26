@@ -4,6 +4,8 @@ The Python SDK (`agent-memory-client`) provides the easiest way to integrate mem
 
 ## Installation
 
+**Requirements**: Python 3.10 or higher
+
 ```bash
 pip install agent-memory-client
 ```

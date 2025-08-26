@@ -12,7 +12,7 @@ By the end of this guide, you'll:
 
 ## Prerequisites
 
-- Python 3.8 or higher
+- Python 3.12 (for the memory server)
 - Docker (for Redis)
 - 5 minutes
 
