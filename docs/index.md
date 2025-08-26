@@ -6,37 +6,37 @@ Transform your AI agents from goldfish 🐠 into elephants 🐘 with Redis-power
 
 <div class="grid cards" markdown>
 
--   :rocket:{ .lg .middle } **Quick Start**
+-   🚀 **Quick Start**
 
     ---
 
     Get up and running in 5 minutes with our step-by-step guide
 
-    [:octicons-arrow-right-24: Quick Start Guide](quick-start.md)
+    [Quick Start Guide →](quick-start.md)
 
--   :brain:{ .lg .middle } **Use Cases**
+-   🧠 **Use Cases**
 
     ---
 
     See real-world examples across industries and applications
 
-    [:octicons-arrow-right-24: Explore Use Cases](use-cases.md)
+    [Explore Use Cases →](use-cases.md)
 
--   :material-sdk:{ .lg .middle } **Python SDK**
+-   🐍 **Python SDK**
 
     ---
 
     Easy integration with tool abstractions for OpenAI and Anthropic
 
-    [:octicons-arrow-right-24: SDK Documentation](python-sdk.md)
+    [SDK Documentation →](python-sdk.md)
 
--   :sparkles:{ .lg .middle } **New Features**
+-   ✨ **New Features**
 
     ---
 
     Advanced features in v0.10.0: query optimization, memory editing, and more
 
-    [:octicons-arrow-right-24: Advanced Features](query-optimization.md)
+    [Advanced Features →](query-optimization.md)
 
 </div>
 
@@ -134,7 +134,7 @@ Ready to give your AI agents perfect memory?
 
 Start with our quick tutorial to understand the basics and see immediate results.
 
-[Quick Start Guide :material-rocket-launch:](quick-start.md){ .md-button .md-button--primary }
+[🚀 Quick Start Guide](quick-start.md){ .md-button .md-button--primary }
 </div>
 
 <div markdown>
@@ -142,7 +142,7 @@ Start with our quick tutorial to understand the basics and see immediate results
 
 Jump into the API documentation and start building with REST or MCP interfaces.
 
-[API Documentation :material-api:](api.md){ .md-button }
+[📚 API Documentation](api.md){ .md-button }
 </div>
 
 </div>
@@ -153,46 +153,46 @@ Jump into the API documentation and start building with REST or MCP interfaces.
 
 <div class="grid cards" markdown>
 
--   :brain:{ .lg .middle } **Query Optimization**
+-   🧠 **Query Optimization**
 
     ---
 
     AI-powered query refinement with configurable models for better search accuracy
 
-    [:octicons-arrow-right-24: Learn More](query-optimization.md)
+    [Learn More →](query-optimization.md)
 
--   :link:{ .lg .middle } **Contextual Grounding**
+-   🔗 **Contextual Grounding**
 
     ---
 
     Resolve pronouns and references in extracted memories for clearer context
 
-    [:octicons-arrow-right-24: Learn More](contextual-grounding.md)
+    [Learn More →](contextual-grounding.md)
 
--   :pencil2:{ .lg .middle } **Memory Editing**
+-   ✏️ **Memory Editing**
 
     ---
 
     Update and correct existing memories through REST API and MCP tools
 
-    [:octicons-arrow-right-24: Learn More](memory-editing.md)
+    [Learn More →](memory-editing.md)
 
--   :clock1:{ .lg .middle } **Recency Boost**
+-   🕐 **Recency Boost**
 
     ---
 
     Time-aware memory ranking that surfaces relevant recent information
 
-    [:octicons-arrow-right-24: Learn More](recency-boost.md)
+    [Learn More →](recency-boost.md)
 
 </div>
 
 ## Community & Support
 
-- **:material-github: Source Code**: [GitHub Repository](https://github.com/redis/agent-memory-server)
-- **:material-docker: Docker Images**: [Docker Hub](https://hub.docker.com/r/andrewbrookins510/agent-memory-server)
-- **:material-bug: Issues**: [Report Issues](https://github.com/redis/agent-memory-server/issues)
-- **:material-book-open: Examples**: [Complete Examples](https://github.com/redis/agent-memory-server/tree/main/examples)
+- **💻 Source Code**: [GitHub Repository](https://github.com/redis/agent-memory-server)
+- **🐳 Docker Images**: [Docker Hub](https://hub.docker.com/r/andrewbrookins510/agent-memory-server)
+- **🐛 Issues**: [Report Issues](https://github.com/redis/agent-memory-server/issues)
+- **📖 Examples**: [Complete Examples](https://github.com/redis/agent-memory-server/tree/main/examples)
 
 ---
 
