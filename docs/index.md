@@ -189,10 +189,10 @@ Jump into the API documentation and start building with REST or MCP interfaces.
 
 ## Community & Support
 
-- **:material-github: Source Code**: [GitHub Repository](https://github.com/redis/redis-memory-server)
+- **:material-github: Source Code**: [GitHub Repository](https://github.com/redis/agent-memory-server)
 - **:material-docker: Docker Images**: [Docker Hub](https://hub.docker.com/r/andrewbrookins510/agent-memory-server)
-- **:material-bug: Issues**: [Report Issues](https://github.com/redis/redis-memory-server/issues)
-- **:material-book-open: Examples**: [Complete Examples](examples/)
+- **:material-bug: Issues**: [Report Issues](https://github.com/redis/agent-memory-server/issues)
+- **:material-book-open: Examples**: [Complete Examples](https://github.com/redis/agent-memory-server/tree/main/examples)
 
 ---
 
