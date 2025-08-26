@@ -263,13 +263,13 @@ class TestLLMJudgeEvaluation:
 
         # Test case: good pronoun grounding
         context_messages = [
-            "John is a software engineer at Google.",
-            "Sarah works with him on the AI team.",
+            "Alice is the team lead for the project.",
+            "Bob is a junior developer working under her.",
         ]
 
-        original_text = "He mentioned that he prefers Python over JavaScript."
-        good_grounded_text = "John mentioned that he prefers Python over JavaScript."
-        expected_grounding = {"he": "John"}
+        original_text = "She said that he prefers Python over JavaScript."
+        good_grounded_text = "Alice said that Bob prefers Python over JavaScript."
+        expected_grounding = {"she": "Alice", "he": "Bob"}
 
         evaluation = await judge.evaluate_grounding(
             context_messages=context_messages,
