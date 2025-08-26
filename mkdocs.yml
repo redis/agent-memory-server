@@ -1,8 +1,12 @@
 site_name: Redis Agent Memory Server
 site_description: Give your AI agents persistent memory and context that gets smarter over time
-site_url: https://redis.github.io/redis-memory-server
-repo_url: https://github.com/redis/redis-memory-server
-repo_name: redis/redis-memory-server
+site_url: https://redis.github.io/agent-memory-server
+repo_url: https://github.com/redis/agent-memory-server
+repo_name: redis/agent-memory-server
+
+docs_dir: docs
+exclude_docs: |
+  README.md
 
 theme:
   name: material
@@ -96,6 +100,7 @@ nav:
 
   - Development:
     - Development Guide: development.md
+    - Claude Code Guide: CLAUDE.md
 
 plugins:
   - search:
