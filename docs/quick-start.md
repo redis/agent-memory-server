@@ -32,7 +32,7 @@ git clone https://github.com/redis/redis-memory-server.git
 cd redis-memory-server
 
 # Install server dependencies
-uv sync --all-extras
+uv sync
 ```
 
 ## Step 2: Start Redis
@@ -363,8 +363,8 @@ Now that you have the basics working, explore these advanced features:
 - Or disable AI features temporarily
 
 **"Module 'redisvl' not found"**
-- Install with extras: `uv sync --all-extras`
-- Or install manually: `uv add redisvl`
+- Run: `uv sync` (redisvl is a required dependency, not optional)
+- If still failing, try: `uv add redisvl>=0.6.0`
 
 **"Background tasks not processing"**
 - Make sure the task worker is running: `uv run agent-memory task-worker`
