@@ -330,7 +330,7 @@ mypy agent_memory_client/
 
 ## License
 
-Apache 2.0 License - see [LICENSE](LICENSE) file for details.
+Apache 2.0 License - see [LICENSE](https://github.com/redis/agent-memory-server/blob/main/LICENSE) file for details.
 
 ## Contributing
 
