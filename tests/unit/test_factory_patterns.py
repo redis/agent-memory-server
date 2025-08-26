@@ -226,7 +226,7 @@ class TestHybridPattern:
                     metadatas = [{}] * len(texts)
 
                 results = []
-                for text, meta in zip(texts, metadatas, strict=False):
+                for text, meta in zip(texts, metadatas, strict=True):
                     if self._should_use_fast_store(meta):
                         item_id = f"fast_{len(self.fast_store_items)}"
                         self.fast_store_items.append(

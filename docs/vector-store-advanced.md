@@ -802,7 +802,3 @@ class ZeroDowntimeMigrator:
 ```
 
 This documentation covers advanced architectural patterns for vector store configuration, focusing on flexible factory patterns, custom implementations, and data migration strategies that work across different backends.
-
-<function_calls>
-<invoke name="TodoWrite">
-<parameter name="todos">[{"content": "Create advanced vector store configuration examples", "status": "completed", "activeForm": "Creating advanced vector store configuration examples"}, {"content": "Add performance optimization guides for different backends", "status": "completed", "activeForm": "Adding performance optimization guides for different backends"}, {"content": "Document migration strategies between vector stores", "status": "completed", "activeForm": "Documenting migration strategies between vector stores"}]

@@ -46,7 +46,8 @@ class TestFactoryLoading:
         with patch("importlib.import_module") as mock_import:
             mock_module = Mock()
             # Function doesn't exist on module
-            del mock_module.nonexistent_function  # Ensure it doesn't exist
+            if hasattr(mock_module, "nonexistent_function"):
+                del mock_module.nonexistent_function
             mock_import.return_value = mock_module
 
             embeddings = MockEmbeddings()
