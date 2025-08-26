@@ -271,19 +271,11 @@ curl -X POST "http://localhost:8000/v1/memory/prompt" \
 
 ## Using MCP Interface (Optional)
 
-If you want to use the MCP interface with Claude Desktop or other MCP clients:
-
-### Start MCP Server
-
-```bash
-# Start MCP server in stdio mode (for Claude Desktop)
-uv run agent-memory mcp --mode stdio
-
-# Or start in SSE mode (for web clients)
-uv run agent-memory mcp --mode sse --port 9000
-```
+If you want to use the MCP interface with Claude Desktop:
 
 ### Configure Claude Desktop
+
+**Note**: You don't need to manually start the MCP server. Claude Desktop will automatically start and manage the server process when needed.
 
 Add to your Claude Desktop config:
 
@@ -307,6 +299,17 @@ Add to your Claude Desktop config:
 ```
 
 Now Claude can use memory tools directly in conversations!
+
+### Alternative: SSE Mode (Advanced)
+
+For web-based MCP clients, you can use SSE mode, but this requires manually starting the server:
+
+```bash
+# Only needed for SSE mode
+uv run agent-memory mcp --mode sse --port 9000
+```
+
+**Recommendation**: Use stdio mode with Claude Desktop as it's much simpler to set up.
 
 ## Understanding Memory Types
 
