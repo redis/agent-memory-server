@@ -339,5 +339,4 @@ Contributions are welcome! Please see the [main repository](https://github.com/r
 ## Links
 
 - [Agent Memory Server](https://github.com/redis-developer/agent-memory-server) - The server this client connects to
-- [Documentation](https://agent-memory-client.readthedocs.io) - Full API documentation
-- [Issues](https://github.com/redis-developer/agent-memory-client/issues) - Bug reports and feature requests
+- [Issues](https://github.com/redis-developer/agent-memory-server/issues) - Bug reports and feature requests
