@@ -1,0 +1,137 @@
+site_name: Redis Agent Memory Server
+site_description: Give your AI agents persistent memory and context that gets smarter over time
+site_url: https://redis.github.io/agent-memory-server
+repo_url: https://github.com/redis/agent-memory-server
+repo_name: redis/agent-memory-server
+
+docs_dir: docs
+exclude_docs: |
+  README.md
+
+theme:
+  name: material
+  palette:
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: red
+      accent: red
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: red
+      accent: red
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - toc.integrate
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.select
+    - content.action.edit
+    - content.action.view
+
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/redis/redis-memory-server
+    - icon: fontawesome/brands/docker
+      link: https://hub.docker.com/r/andrewbrookins510/agent-memory-server
+
+  version:
+    provider: mike
+    default: latest
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Quick Start: quick-start.md
+    - Installation: getting-started.md
+    - Use Cases: use-cases.md
+
+  - Integration:
+    - Python SDK: python-sdk.md
+    - Memory Integration Patterns: memory-integration-patterns.md
+
+  - Core Concepts:
+    - Memory Types: memory-types.md
+    - Authentication: authentication.md
+    - Configuration: configuration.md
+
+  - Advanced Features:
+    - Query Optimization: query-optimization.md
+    - Contextual Grounding: contextual-grounding.md
+    - Memory Editing: memory-editing.md
+    - Memory Lifecycle: memory-lifecycle.md
+    - Recency Boost: recency-boost.md
+    - Vector Store Backends: vector-store-backends.md
+    - Advanced Vector Store Config: vector-store-advanced.md
+
+  - API Interfaces:
+    - REST API: api.md
+    - MCP Server: mcp.md
+    - CLI Reference: cli.md
+
+  - Development:
+    - Development Guide: development.md
+    - Claude Code Guide: CLAUDE.md
+
+plugins:
+  - search:
+      separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - minify:
+      minify_html: true
+  - git-revision-date-localized:
+      enable_creation_date: true
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
+  - pymdownx.emoji
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - toc:
+      permalink: true
+
+extra_css:
+  - stylesheets/extra.css
+
+copyright: |
+  &copy; 2024 <a href="https://github.com/redis"  target="_blank" rel="noopener">Redis</a>

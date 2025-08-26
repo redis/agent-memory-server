@@ -1,95 +1,132 @@
-# 🔮 Redis Agent Memory Server
+# Redis Agent Memory Server
 
-A Redis-powered memory server built for AI agents and applications. It manages both conversational context and long-term memories, offering semantic search, automatic summarization, and flexible APIs through both REST and MCP interfaces.
+A memory layer for AI agents using Redis as the vector database.
 
 ## Features
 
-- **Working Memory**
+- **Dual Interface**: REST API and Model Context Protocol (MCP) server
+- **Two-Tier Memory**: Working memory (session-scoped) and long-term memory (persistent)
+- **Semantic Search**: Vector-based similarity search with metadata filtering
+- **Flexible Backends**: Pluggable vector store factory system
+- **AI Integration**: Automatic topic extraction, entity recognition, and conversation summarization
+- **Python SDK**: Easy integration with AI applications
 
-  - Session-scoped storage for messages, structured memories, context, and metadata
-  - Automatically summarizes conversations when they exceed a client-configured (or server-managed) window size
-  - Supports all major OpenAI and Anthropic models
-  - Automatic (background) promotion of structured memories to long-term storage
+## Quick Start
 
-- **Long-Term Memory**
+### 1. Installation
 
-  - Persistent storage for memories across sessions
-  - Pluggable vector store backends - support for any LangChain VectorStore (defaults to Redis)
-  - Semantic search to retrieve memories with advanced filtering
-  - Filter by session, user ID, namespace, topics, entities, timestamps, and more
-  - Supports both exact match and semantic similarity search
-  - Automatic topic modeling for stored memories with BERTopic or configured LLM
-  - Automatic Entity Recognition using BERT or configured LLM
-  - Memory deduplication and compaction
+```bash
+# Install dependencies
+pip install uv
+uv install --all-extras
 
-- **Production-Grade Memory Isolation**
-  - OAuth2/JWT Bearer token authentication
-  - Supports RBAC permissions
-  - Top-level support for user ID and session ID isolation
+# Start Redis
+docker-compose up redis
 
-- **Other Features**
-  - Dedicated SDK offering direct access to API calls _and_ memory operations as tools to pass to your LLM
-  - Both a REST interface and MCP server
-  - Heavy operations run as background tasks
+# Start the server
+uv run agent-memory api
+```
 
-For detailed information about memory types, their differences, and when to use each, see the [Memory Types Guide](docs/memory-types.md).
+### 2. Python SDK
 
-## Authentication
+```bash
+# Install the client
+pip install agent-memory-client
+```
 
-The Redis Agent Memory Server supports OAuth2/JWT Bearer token authentication for secure API access. It's compatible with Auth0, AWS Cognito, Okta, Azure AD, and other standard OAuth2 providers.
+```python
+from agent_memory_client import MemoryAPIClient
 
-For complete authentication setup, configuration, and usage examples, see [Authentication Documentation](docs/authentication.md).
+# Connect to server
+client = MemoryAPIClient(base_url="http://localhost:8000")
 
-For manual Auth0 testing, see the [manual OAuth testing guide](manual_oauth_qa/README.md).
+# Store memories
+await client.create_long_term_memories([
+    {
+        "text": "User prefers morning meetings",
+        "user_id": "user123",
+        "memory_type": "preference"
+    }
+])
 
-## System Diagram
+# Search memories
+results = await client.search_long_term_memory(
+    text="What time does the user like meetings?",
+    user_id="user123"
+)
+```
 
-![System Diagram](diagram.png)
+### 3. MCP Integration
 
-## Project Status and Roadmap
+```bash
+# Start MCP server
+uv run agent-memory mcp
 
-### Project Status: Experimental
+# Or with SSE mode
+uv run agent-memory mcp --mode sse --port 9000
+```
 
-This project is under active development and is **experimental** software. We do not officially support it, nor are there long-term plans to maintain it.
+## Documentation
 
-### Roadmap
+📚 **[Full Documentation](https://redis.github.io/redis-memory-server/)** - Complete guides, API reference, and examples
 
-- [] Easier RBAC customization: role definitions, more hooks
+### Key Documentation Sections:
 
-## REST API Endpoints
+- **[Quick Start Guide](docs/quick-start.md)** - Get up and running in minutes
+- **[Python SDK](docs/python-sdk.md)** - Complete SDK reference with examples
+- **[Vector Store Backends](docs/vector-store-backends.md)** - Configure different vector databases
+- **[Authentication](docs/authentication.md)** - OAuth2/JWT setup for production
+- **[Memory Types](docs/memory-types.md)** - Understanding semantic vs episodic memory
+- **[API Reference](docs/api.md)** - REST API endpoints
+- **[MCP Protocol](docs/mcp.md)** - Model Context Protocol integration
 
-The server provides REST endpoints for managing working memory, long-term memory, and memory search. Key endpoints include session management, memory storage/retrieval, semantic search, and memory-enriched prompts.
+## Architecture
 
-For complete API documentation with examples, see [REST API Documentation](docs/api.md).
+```
+Working Memory (Session-scoped)  →  Long-term Memory (Persistent)
+    ↓                                      ↓
+- Messages                          - Semantic search
+- Context                          - Topic modeling
+- Structured memories              - Entity recognition
+- Metadata                         - Deduplication
+```
 
-## MCP Server Interface
+## Use Cases
 
-Agent Memory Server offers an MCP (Model Context Protocol) server interface powered by FastMCP, providing tool-based memory management for LLMs and agents. Includes tools for working memory, long-term memory, semantic search, and memory-enriched prompts.
-
-For complete MCP setup and usage examples, see [MCP Documentation](docs/mcp.md).
-
-## Command Line Interface
-
-The `agent-memory-server` provides a comprehensive CLI for managing servers and tasks. Key commands include starting API/MCP servers, scheduling background tasks, running workers, and managing migrations.
-
-For complete CLI documentation and examples, see [CLI Documentation](docs/cli.md).
-
-## Getting Started
-
-For complete setup instructions, see [Getting Started Guide](docs/getting-started.md).
-
-## Configuration
-
-Configure servers and workers using environment variables. Includes background task management, memory compaction, and data migrations.
-
-For complete configuration details, see [Configuration Guide](docs/configuration.md).
-
-For vector store backend options and setup, see [Vector Store Backends](docs/vector-store-backends.md).
-
-## License
-
-Apache 2.0 License - see [LICENSE](LICENSE) file for details.
+- **AI Assistants**: Persistent memory across conversations
+- **Customer Support**: Context from previous interactions
+- **Personal AI**: Learning user preferences and history
+- **Research Assistants**: Accumulating knowledge over time
+- **Chatbots**: Maintaining context and personalization
 
 ## Development
 
-For development setup, testing, and contributing guidelines, see [Development Guide](docs/development.md).
+```bash
+# Install dependencies
+uv install --all-extras
+
+# Run tests
+uv run pytest
+
+# Format code
+uv run ruff format
+uv run ruff check
+
+# Start development stack
+docker-compose up
+```
+
+## Production Deployment
+
+- **Authentication**: OAuth2/JWT with multiple providers (Auth0, AWS Cognito, etc.)
+- **Redis**: Requires Redis with RediSearch module (RedisStack recommended)
+- **Scaling**: Supports Redis clustering and background task processing
+- **Monitoring**: Structured logging and health checks included
+
+## License
+
+Apache License 2.0 - see [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+We welcome contributions! Please see the [development documentation](docs/development.md) for guidelines.

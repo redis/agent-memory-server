@@ -155,6 +155,11 @@ dev = [
     "mypy>=1.16.1",
     "ipdb>=0.13.13",
 ]
+docs = [
+    "mkdocs-material>=9.5.0",
+    "mkdocs-minify-plugin>=0.8.0",
+    "mkdocs-git-revision-date-localized-plugin>=1.2.0",
+]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]

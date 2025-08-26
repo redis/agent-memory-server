@@ -249,4 +249,4 @@ Common error scenarios:
 
 ## Manual Testing
 
-For comprehensive Auth0 testing instructions, see the [manual OAuth testing guide](../manual_oauth_qa/README.md).
+For comprehensive Auth0 testing instructions, see the [manual OAuth testing guide](https://github.com/redis/agent-memory-server/tree/main/manual_oauth_qa/README.md).
