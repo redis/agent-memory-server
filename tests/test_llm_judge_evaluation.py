@@ -268,7 +268,7 @@ class TestLLMJudgeEvaluation:
         ]
 
         original_text = "He mentioned that he prefers Python over JavaScript."
-        good_grounded_text = "John mentioned that John prefers Python over JavaScript."
+        good_grounded_text = "John mentioned that he prefers Python over JavaScript."
         expected_grounding = {"he": "John"}
 
         evaluation = await judge.evaluate_grounding(
