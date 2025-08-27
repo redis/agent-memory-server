@@ -79,7 +79,7 @@ For example, with Claude, use the following configuration:
         "/ABSOLUTE/PATH/TO/REPO/DIRECTORY/agent-memory-server",
         "run",
         "agent-memory",
-        "-mcp",
+        "mcp",
         "--mode",
         "stdio"
       ]
