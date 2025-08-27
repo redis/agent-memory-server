@@ -7,6 +7,7 @@ Recency boost is an intelligent memory ranking system that combines semantic sim
 Traditional semantic search relies solely on vector similarity, which may return old or rarely-used memories that are semantically similar but not contextually relevant. Recency boost addresses this by incorporating temporal factors to provide more useful, context-aware search results.
 
 **Key Benefits:**
+
 - **Time-aware search**: Recent memories are weighted higher in results
 - **Access pattern learning**: Frequently accessed memories get priority
 - **Freshness boost**: Newly created memories are more likely to surface
