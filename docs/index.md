@@ -34,9 +34,9 @@ Transform your AI agents from goldfish 🐠 into elephants 🐘 with Redis-power
 
     ---
 
-    Advanced features in v0.10.0: query optimization, memory editing, and more
+    Advanced features: configurable memory strategies, query optimization, memory editing, and more
 
-    [Advanced Features →](query-optimization.md)
+    [Memory Strategies →](memory-strategies.md)
 
 </div>
 
@@ -184,6 +184,14 @@ Jump into the API documentation and start building with REST or MCP interfaces.
     Time-aware memory ranking that surfaces relevant recent information
 
     [Learn More →](recency-boost.md)
+
+-   🧠 **Memory Strategies**
+
+    ---
+
+    Configurable memory extraction: discrete facts, summaries, preferences, or custom prompts
+
+    [Learn More →](memory-strategies.md)
 
 </div>
 

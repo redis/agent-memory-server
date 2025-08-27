@@ -421,6 +421,13 @@ response = await memory_prompt({
 - Use unified search for comprehensive results
 - Consider both working and long-term contexts
 
+## Memory Extraction
+
+By default, the system automatically extracts structured memories from conversations as they flow from working memory to long-term storage. This extraction process can be customized using different **memory strategies**.
+
+!!! info "Memory Strategies"
+    The system supports multiple extraction strategies (discrete facts, summaries, preferences, custom prompts) that determine how conversations are processed into memories. See [Memory Strategies](memory-strategies.md) for complete documentation and examples.
+
 ## Configuration
 
 Memory behavior can be configured through environment variables:

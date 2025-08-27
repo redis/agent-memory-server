@@ -6,6 +6,7 @@ A memory layer for AI agents using Redis as the vector database.
 
 - **Dual Interface**: REST API and Model Context Protocol (MCP) server
 - **Two-Tier Memory**: Working memory (session-scoped) and long-term memory (persistent)
+- **Configurable Memory Strategies**: Customize how memories are extracted (discrete, summary, preferences, custom)
 - **Semantic Search**: Vector-based similarity search with metadata filtering
 - **Flexible Backends**: Pluggable vector store factory system
 - **AI Integration**: Automatic topic extraction, entity recognition, and conversation summarization
