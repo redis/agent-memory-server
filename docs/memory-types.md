@@ -56,16 +56,17 @@ Working memory contains:
 
 2. **Temporary Structured Data**
    ```python
-   # Store temporary facts during conversation
+   # Store temporary facts during conversation (using data field)
    working_memory = WorkingMemory(
        session_id="chat_123",
-       memories=[
-           MemoryRecord(
-               text="User is planning a trip to Paris next month",
-               id="temp_trip_info",
-               memory_type="episodic"
-           )
-       ]
+       data={
+           "temp_trip_info": {
+               "destination": "Paris",
+               "travel_month": "next month",
+               "planning_stage": "initial"
+           },
+           "conversation_context": "travel planning"
+       }
    )
    ```
 
@@ -81,6 +82,29 @@ Working memory contains:
        }
    )
    ```
+
+4. **Promoting Memories to Long-Term Storage**
+   ```python
+   # Memories in working memory are automatically promoted to long-term storage
+   working_memory = WorkingMemory(
+       session_id="chat_123",
+       memories=[
+           MemoryRecord(
+               text="User is planning a trip to Paris next month",
+               id="trip_planning_paris",
+               memory_type="episodic",
+               topics=["travel", "planning"],
+               entities=["Paris"]
+           )
+       ]
+   )
+   # This memory will become permanent in long-term storage
+   ```
+
+> **🔑 Key Distinction**:
+> - Use `data` field for **temporary** facts that stay only in the session
+> - Use `memories` field for **permanent** facts that should be promoted to long-term storage
+> - Anything in the `memories` field will automatically become persistent and searchable across all future sessions
 
 ### API Endpoints
 
@@ -103,6 +127,61 @@ When structured memories in working memory are stored, they are automatically pr
 2. Server assigns unique IDs and timestamps
 3. Memories are indexed in long-term storage with vector embeddings
 4. Working memory is updated with `persisted_at` timestamps
+
+### Three Ways to Create Long-Term Memories
+
+Long-term memories are typically created by LLMs (either yours or the memory server's) based on conversations. There are three pathways:
+
+#### 1. 🤖 **Automatic Extraction from Conversations**
+The server automatically extracts memories from conversation messages using an LLM in the background:
+
+```python
+# Server analyzes messages and creates memories automatically
+working_memory = WorkingMemory(
+    session_id="chat_123",
+    messages=[
+        {"role": "user", "content": "I love Italian food, especially carbonara"},
+        {"role": "assistant", "content": "Great! I'll remember your preference for Italian cuisine."}
+    ]
+    # Server will extract: "User enjoys Italian food, particularly carbonara pasta"
+)
+```
+
+#### 2. ⚡ **LLM-Identified Memories via Working Memory** (Performance Optimization)
+Your LLM can pre-identify memories and add them to working memory for batch storage:
+
+```python
+# LLM identifies important facts and adds to memories field
+working_memory = WorkingMemory(
+    session_id="chat_123",
+    memories=[
+        MemoryRecord(
+            text="User prefers morning meetings and dislikes calls after 4 PM",
+            memory_type="semantic",
+            topics=["preferences", "scheduling"],
+            entities=["morning meetings", "4 PM"]
+        )
+    ]
+    # Automatically promoted to long-term storage when saving working memory
+)
+```
+
+#### 3. 🎯 **Direct Long-Term Memory Creation**
+Create memories directly via API or LLM tool calls:
+
+```python
+# Direct API call or LLM using create_long_term_memory tool
+await client.create_long_term_memories([
+    {
+        "text": "User works as a software engineer at TechCorp",
+        "memory_type": "semantic",
+        "topics": ["career", "work"],
+        "entities": ["software engineer", "TechCorp"]
+    }
+])
+```
+
+> **💡 LLM-Driven Design**: The system is designed for LLMs to make memory decisions. Your LLM can use memory tools to search existing memories, decide what's important to remember, and choose the most efficient storage method.
 
 ## Long-Term Memory
 

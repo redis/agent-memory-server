@@ -12,7 +12,7 @@ By the end of this guide, you'll:
 
 ## Prerequisites
 
-- Python 3.8 or higher
+- Python 3.12 (for the memory server)
 - Docker (for Redis)
 - 5 minutes
 
@@ -32,7 +32,7 @@ git clone https://github.com/redis/redis-memory-server.git
 cd redis-memory-server
 
 # Install server dependencies
-uv sync --all-extras
+uv sync
 ```
 
 ## Step 2: Start Redis
@@ -201,7 +201,7 @@ For more advanced use cases, use automatic tool integration with OpenAI:
 
 ```python
 # Get OpenAI tool schemas
-memory_tools = memory_client.get_openai_tool_schemas()
+memory_tools = MemoryAPIClient.get_all_memory_tool_schemas()
 
 # Chat with automatic memory tools
 response = await openai_client.chat.completions.create(
@@ -213,11 +213,15 @@ response = await openai_client.chat.completions.create(
 
 # Let the AI decide when to store memories
 if response.choices[0].message.tool_calls:
-    tool_results = await memory_client.resolve_openai_tool_calls(
-        tool_calls=response.choices[0].message.tool_calls,
-        session_id="my-session"
-    )
-    print("AI automatically stored your allergy information!")
+    for tool_call in response.choices[0].message.tool_calls:
+        result = await memory_client.resolve_tool_call(
+            tool_call=tool_call,
+            session_id="my-session"
+        )
+        if result["success"]:
+            print("AI automatically stored your allergy information!")
+        else:
+            print(f"Error: {result['error']}")
 ```
 
 ## Alternative: REST API Usage
@@ -271,19 +275,11 @@ curl -X POST "http://localhost:8000/v1/memory/prompt" \
 
 ## Using MCP Interface (Optional)
 
-If you want to use the MCP interface with Claude Desktop or other MCP clients:
-
-### Start MCP Server
-
-```bash
-# Start MCP server in stdio mode (for Claude Desktop)
-uv run agent-memory mcp --mode stdio
-
-# Or start in SSE mode (for web clients)
-uv run agent-memory mcp --mode sse --port 9000
-```
+If you want to use the MCP interface with Claude Desktop:
 
 ### Configure Claude Desktop
+
+**Note**: You don't need to manually start the MCP server. Claude Desktop will automatically start and manage the server process when needed.
 
 Add to your Claude Desktop config:
 
@@ -307,6 +303,17 @@ Add to your Claude Desktop config:
 ```
 
 Now Claude can use memory tools directly in conversations!
+
+### Alternative: SSE Mode (Advanced)
+
+For web-based MCP clients, you can use SSE mode, but this requires manually starting the server:
+
+```bash
+# Only needed for SSE mode
+uv run agent-memory mcp --mode sse --port 9000
+```
+
+**Recommendation**: Use stdio mode with Claude Desktop as it's much simpler to set up.
 
 ## Understanding Memory Types
 
@@ -360,8 +367,8 @@ Now that you have the basics working, explore these advanced features:
 - Or disable AI features temporarily
 
 **"Module 'redisvl' not found"**
-- Install with extras: `uv sync --all-extras`
-- Or install manually: `uv add redisvl`
+- Run: `uv sync` (redisvl is a required dependency, not optional)
+- If still failing, try: `uv add redisvl>=0.6.0`
 
 **"Background tasks not processing"**
 - Make sure the task worker is running: `uv run agent-memory task-worker`

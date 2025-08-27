@@ -27,7 +27,7 @@ memory_client = MemoryAPIClient(base_url="http://localhost:8000")
 openai_client = openai.AsyncOpenAI()
 
 # Get memory tools for the LLM
-memory_tools = memory_client.get_openai_tool_schemas()
+memory_tools = MemoryAPIClient.get_all_memory_tool_schemas()
 
 # Give LLM access to memory tools
 response = await openai_client.chat.completions.create(
@@ -70,7 +70,7 @@ class LLMMemoryAgent:
         })
 
         # Get memory tools
-        tools = self.memory_client.get_openai_tool_schemas()
+        tools = MemoryAPIClient.get_all_memory_tool_schemas()
 
         # Generate response with memory tools
         response = await self.openai_client.chat.completions.create(
@@ -690,7 +690,7 @@ class SmartChatAgent:
 
     async def chat(self, user_message: str, user_id: str, session_id: str) -> str:
         # Get memory tools
-        tools = self.memory_client.get_openai_tool_schemas()
+        tools = MemoryAPIClient.get_all_memory_tool_schemas()
 
         # LLM-driven: Let LLM use memory tools
         response = await self.openai_client.chat.completions.create(
