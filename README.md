@@ -68,7 +68,7 @@ uv run agent-memory mcp --mode sse --port 9000
 
 ## Documentation
 
-📚 **[Full Documentation](https://redis.github.io/redis-memory-server/)** - Complete guides, API reference, and examples
+📚 **[Full Documentation](https://redis.github.io/agent-memory-server/)** - Complete guides, API reference, and examples
 
 ### Key Documentation Sections:
 
