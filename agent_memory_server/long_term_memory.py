@@ -428,7 +428,9 @@ async def compact_long_term_memories(
     vector_distance_threshold: float = 0.12,
     compact_hash_duplicates: bool = True,
     compact_semantic_duplicates: bool = True,
-    perpetual: Perpetual = Perpetual(every=timedelta(minutes=10), automatic=True),
+    perpetual: Perpetual = Perpetual(
+        every=timedelta(minutes=settings.compaction_every_minutes), automatic=True
+    ),
 ) -> int:
     """
     Compact long-term memories by merging duplicates and semantically similar memories.
