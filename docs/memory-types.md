@@ -56,16 +56,17 @@ Working memory contains:
 
 2. **Temporary Structured Data**
    ```python
-   # Store temporary facts during conversation
+   # Store temporary facts during conversation (using data field)
    working_memory = WorkingMemory(
        session_id="chat_123",
-       memories=[
-           MemoryRecord(
-               text="User is planning a trip to Paris next month",
-               id="temp_trip_info",
-               memory_type="episodic"
-           )
-       ]
+       data={
+           "temp_trip_info": {
+               "destination": "Paris",
+               "travel_month": "next month",
+               "planning_stage": "initial"
+           },
+           "conversation_context": "travel planning"
+       }
    )
    ```
 
@@ -81,6 +82,29 @@ Working memory contains:
        }
    )
    ```
+
+4. **Promoting Memories to Long-Term Storage**
+   ```python
+   # Memories in working memory are automatically promoted to long-term storage
+   working_memory = WorkingMemory(
+       session_id="chat_123",
+       memories=[
+           MemoryRecord(
+               text="User is planning a trip to Paris next month",
+               id="trip_planning_paris",
+               memory_type="episodic",
+               topics=["travel", "planning"],
+               entities=["Paris"]
+           )
+       ]
+   )
+   # This memory will become permanent in long-term storage
+   ```
+
+> **🔑 Key Distinction**:
+> - Use `data` field for **temporary** facts that stay only in the session
+> - Use `memories` field for **permanent** facts that should be promoted to long-term storage
+> - Anything in the `memories` field will automatically become persistent and searchable across all future sessions
 
 ### API Endpoints
 
