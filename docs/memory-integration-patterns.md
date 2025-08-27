@@ -1,8 +1,8 @@
-# Memory Integration Patterns
+# Memory Patterns
 
 The most common question developers have is: *"How do I actually get memories into and out of my LLM?"* Redis Agent Memory Server provides three distinct patterns for integrating memory with your AI applications, each optimized for different use cases and levels of control.
 
-## Overview of Integration Patterns
+## Overview of Using Memory
 
 | Pattern | Control | Best For | Memory Flow |
 |---------|---------|----------|-------------|
@@ -230,14 +230,13 @@ class CodeDrivenAgent:
         user_id: str,
         session_id: str
     ) -> str:
-        # 1. Search for relevant context
+        # 1. Get working memory session (creates if doesn't exist)
+        working_memory = await self.memory_client.get_working_memory(session_id)
+
+        # 2. Search for relevant context using session ID
         context_search = await self.memory_client.memory_prompt(
             query=user_message,
-            session={
-                "session_id": session_id,
-                "user_id": user_id,
-                "model_name": "gpt-4o"
-            },
+            session_id=session_id,
             long_term_search={
                 "text": user_message,
                 "filters": {"user_id": {"eq": user_id}},
@@ -246,13 +245,13 @@ class CodeDrivenAgent:
             }
         )
 
-        # 2. Generate response with enriched context
+        # 3. Generate response with enriched context
         response = await self.openai_client.chat.completions.create(
             model="gpt-4o",
             messages=context_search.messages  # Pre-loaded with relevant memories
         )
 
-        # 3. Optionally store the interaction
+        # 4. Optionally store the interaction
         await self.store_interaction(user_message, response.choices[0].message.content, user_id, session_id)
 
         return response.choices[0].message.content
@@ -339,14 +338,13 @@ results = await asyncio.gather(*search_tasks)
 # 1. Use memory_prompt for enriched context
 async def get_enriched_context(user_query: str, user_id: str, session_id: str):
     """Get context that includes both working memory and relevant long-term memories"""
+    # First, get the working memory session (creates if doesn't exist)
+    working_memory = await client.get_working_memory(session_id)
+
+    # Then use memory_prompt with session ID
     return await client.memory_prompt(
         query=user_query,
-        session={
-            "session_id": session_id,
-            "user_id": user_id,
-            "model_name": "gpt-4o-mini",  # Match your LLM model
-            "context_window_max": 4000
-        },
+        session_id=session_id,
         long_term_search={
             "text": user_query,
             "filters": {
@@ -496,14 +494,13 @@ class AutoLearningAgent:
     ) -> str:
         """Process conversation with automatic learning"""
 
-        # 1. Get existing context for better responses
+        # 1. Get working memory session (creates if doesn't exist)
+        working_memory = await self.memory_client.get_working_memory(session_id)
+
+        # 2. Get existing context for better responses
         context = await self.memory_client.memory_prompt(
             query=user_message,
-            session={
-                "session_id": session_id,
-                "user_id": user_id,
-                "model_name": "gpt-4o"
-            },
+            session_id=session_id,
             long_term_search={
                 "text": user_message,
                 "filters": {"user_id": {"eq": user_id}},
@@ -511,7 +508,7 @@ class AutoLearningAgent:
             }
         )
 
-        # 2. Generate response with context
+        # 3. Generate response with context
         response = await self.openai_client.chat.completions.create(
             model="gpt-4o",
             messages=context.messages + [
@@ -521,7 +518,7 @@ class AutoLearningAgent:
 
         assistant_message = response.choices[0].message.content
 
-        # 3. Store conversation for automatic extraction
+        # 4. Store conversation for automatic extraction
         await self.memory_client.set_working_memory(
             session_id,
             WorkingMemory(
@@ -646,10 +643,13 @@ class HybridMemoryAgent:
         self.openai_client = openai.AsyncOpenAI()
 
     async def chat(self, user_message: str, user_id: str, session_id: str) -> str:
-        # 1. Code-driven: Get relevant context
+        # 1. Get working memory session (creates if doesn't exist)
+        working_memory = await self.memory_client.get_working_memory(session_id)
+
+        # 2. Code-driven: Get relevant context
         context = await self.memory_client.memory_prompt(
             query=user_message,
-            session={"session_id": session_id, "user_id": user_id},
+            session_id=session_id,
             long_term_search={
                 "text": user_message,
                 "filters": {"user_id": {"eq": user_id}},
@@ -657,7 +657,7 @@ class HybridMemoryAgent:
             }
         )
 
-        # 2. Generate response
+        # 3. Generate response
         response = await self.openai_client.chat.completions.create(
             model="gpt-4o",
             messages=context.messages + [
@@ -667,7 +667,7 @@ class HybridMemoryAgent:
 
         assistant_message = response.choices[0].message.content
 
-        # 3. Background: Store for automatic extraction
+        # 4. Background: Store for automatic extraction
         await self.memory_client.set_working_memory(
             session_id,
             WorkingMemory(
@@ -713,6 +713,9 @@ class SmartChatAgent:
                 )
 
         # Background: Also store conversation for automatic extraction
+        # First ensure working memory session exists
+        working_memory = await self.memory_client.get_working_memory(session_id)
+
         await self.memory_client.set_working_memory(
             session_id,
             WorkingMemory(
