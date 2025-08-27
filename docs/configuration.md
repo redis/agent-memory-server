@@ -114,13 +114,17 @@ QUERY_OPTIMIZATION_PROMPT_TEMPLATE="Transform this query for semantic search..."
 
 ## Memory Lifecycle
 
-### Forgetting Configuration
+### Memory Management Configuration
 ```bash
+# Forgetting settings
 FORGETTING_ENABLED=false          # Enable automatic forgetting (default: false)
 FORGETTING_EVERY_MINUTES=60       # Run forgetting every N minutes (default: 60)
 FORGETTING_MAX_AGE_DAYS=30        # Delete memories older than N days
 FORGETTING_MAX_INACTIVE_DAYS=7    # Delete memories inactive for N days
 FORGETTING_BUDGET_KEEP_TOP_N=1000 # Keep only top N most recent memories
+
+# Compaction settings
+COMPACTION_EVERY_MINUTES=10       # Run memory compaction every N minutes (default: 10)
 ```
 
 ## Background Tasks
@@ -209,6 +213,7 @@ enable_topic_extraction: true
 enable_ner: true
 forgetting_enabled: true
 forgetting_max_age_days: 90
+compaction_every_minutes: 15
 ```
 
 ### High-Performance Setup

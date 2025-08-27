@@ -158,6 +158,9 @@ Optimized query:"""
     # Keep only top N most recent (by recency score) when budget is set
     forgetting_budget_keep_top_n: int | None = None
 
+    # Compaction settings
+    compaction_every_minutes: int = 10
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
