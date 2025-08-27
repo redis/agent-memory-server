@@ -236,13 +236,81 @@ async def extract_memories_from_session_thread(
                 )
                 return []
 
-            extraction_result = json.loads(content)
-            memories_data = extraction_result.get("memories", [])
+            # Try to parse JSON with fallback for malformed responses
+            try:
+                extraction_result = json.loads(content)
+                memories_data = extraction_result.get("memories", [])
+            except json.JSONDecodeError:
+                # Attempt to repair common JSON issues
+                logger.warning(
+                    f"Initial JSON parsing failed, attempting repair on content: {content[:500]}..."
+                )
+
+                # Try to extract just the memories array if it exists
+                import re
+
+                # Look for memories array in the response
+                memories_match = re.search(
+                    r'"memories"\s*:\s*\[(.*?)\]', content, re.DOTALL
+                )
+                if memories_match:
+                    try:
+                        # Try to reconstruct a valid JSON object
+                        memories_json = (
+                            '{"memories": [' + memories_match.group(1) + "]}"
+                        )
+                        extraction_result = json.loads(memories_json)
+                        memories_data = extraction_result.get("memories", [])
+                        logger.info("Successfully repaired malformed JSON response")
+                    except json.JSONDecodeError:
+                        logger.error("JSON repair attempt failed")
+                        raise
+                else:
+                    logger.error("Could not find memories array in malformed response")
+                    raise
         except (json.JSONDecodeError, AttributeError, TypeError) as e:
             logger.error(
                 f"Failed to parse extraction response: {e}, response: {response}"
             )
-            return []
+
+            # Log the content for debugging
+            if hasattr(response, "choices") and response.choices:
+                content = getattr(response.choices[0].message, "content", "No content")
+                logger.error(
+                    f"Problematic content (first 1000 chars): {content[:1000]}"
+                )
+
+            # For test stability, retry once with a simpler prompt
+            logger.info("Attempting retry with simplified extraction")
+            try:
+                simple_response = await client.create_chat_completion(
+                    model=settings.generation_model,
+                    prompt=f"""Extract key information from this conversation and format as JSON:
+{full_conversation}
+
+Return in this exact format:
+{{"memories": [{{"type": "episodic", "text": "extracted information", "topics": ["topic1"], "entities": ["entity1"]}}]}}""",
+                    response_format={"type": "json_object"},
+                )
+
+                if (
+                    hasattr(simple_response, "choices")
+                    and simple_response.choices
+                    and hasattr(simple_response.choices[0].message, "content")
+                ):
+                    retry_content = simple_response.choices[0].message.content
+                    retry_result = json.loads(retry_content)
+                    memories_data = retry_result.get("memories", [])
+                    logger.info(
+                        f"Retry extraction succeeded with {len(memories_data)} memories"
+                    )
+                else:
+                    logger.error("Retry extraction failed - no valid response")
+                    return []
+
+            except Exception as retry_error:
+                logger.error(f"Retry extraction failed: {retry_error}")
+                return []
 
         logger.info(
             f"Extracted {len(memories_data)} memories from session thread {session_id}"
