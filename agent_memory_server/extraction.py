@@ -256,6 +256,15 @@ DISCRETE_EXTRACTION_PROMPT = """
        - "the meeting" → "the quarterly planning meeting"
        - "the document" → "the budget proposal document"
 
+    MULTI-ENTITY HANDLING:
+    When multiple people are mentioned in the conversation, you MUST extract separate memories for each distinct person and their activities. Do NOT omit any person who is mentioned by name.
+
+    Example: If the conversation mentions "John and Sarah are working on a project. He handles backend, she handles frontend. His Python skills complement her React expertise."
+    You should extract:
+    - "John works on the backend of a project and has Python skills"
+    - "Sarah works on the frontend of a project and has React expertise"
+    - "John and Sarah collaborate effectively on a project"
+
     For each memory, return a JSON object with the following fields:
     - type: str -- The memory type, either "episodic" or "semantic"
     - text: str -- The actual information to store (with all contextual references grounded)
@@ -273,9 +282,15 @@ DISCRETE_EXTRACTION_PROMPT = """
             }},
             {{
                 "type": "episodic",
-                "text": "Trek discontinued the Trek 520 steel touring bike in 2023",
-                "topics": ["travel", "bicycle"],
-                "entities": ["Trek", "Trek 520 steel touring bike"],
+                "text": "John works on backend development and has Python programming skills",
+                "topics": ["programming", "backend"],
+                "entities": ["John", "Python"],
+            }},
+            {{
+                "type": "episodic",
+                "text": "Sarah works on frontend integration and has React expertise",
+                "topics": ["programming", "frontend"],
+                "entities": ["Sarah", "React"],
             }},
         ]
     }}
@@ -288,15 +303,19 @@ DISCRETE_EXTRACTION_PROMPT = """
     5. MANDATORY: Replace every instance of "he/she/they/him/her/them/his/hers/theirs" with the actual person's name.
     6. MANDATORY: Replace possessive pronouns like "her experience" with "User's experience" (if "her" refers to the user).
     7. If you cannot determine what a contextual reference refers to, either omit that memory or use generic terms like "someone" instead of ungrounded pronouns.
+    8. CRITICAL: When multiple people are mentioned by name, extract memories for EACH person individually. Do not ignore any named person.
 
     Message:
     {message}
 
     STEP-BY-STEP PROCESS:
-    1. First, identify all pronouns in the text: he, she, they, him, her, them, his, hers, theirs
-    2. Determine what person each pronoun refers to based on the context
-    3. Replace every single pronoun with the actual person's name
-    4. Extract the grounded memories with NO pronouns remaining
+    1. First, identify all people mentioned by name in the conversation
+    2. Identify all pronouns in the text: he, she, they, him, her, them, his, hers, theirs
+    3. Determine what person each pronoun refers to based on the context
+    4. Replace every single pronoun with the actual person's name
+    5. Extract memories for EACH named person and their activities/attributes
+    6. Extract any additional collaborative or relational memories
+    7. Ensure NO pronouns remain unresolved
 
     Extracted memories:
     """
