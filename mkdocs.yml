@@ -100,7 +100,6 @@ nav:
 
   - Development:
     - Development Guide: development.md
-    - Claude Code Guide: CLAUDE.md
 
 plugins:
   - search:
