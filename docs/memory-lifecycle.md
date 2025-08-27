@@ -13,6 +13,88 @@ Memory lifecycle in the system follows these stages:
 5. **Forgetting** - Memories are deleted based on configurable policies
 6. **Compaction** - Background processes optimize storage and indexes
 
+## Memory Creation Patterns
+
+The memory server is designed for **LLM-driven memory management**, where AI agents make intelligent decisions about what to remember and when. There are three primary patterns for creating long-term memories:
+
+### 1. Automatic Background Extraction
+The server continuously analyzes conversation messages using an LLM to automatically extract important facts:
+
+```python
+# Conversations are analyzed in the background
+working_memory = WorkingMemory(
+    session_id="user_session",
+    messages=[
+        {"role": "user", "content": "My name is Sarah, I'm a data scientist at Google"},
+        {"role": "assistant", "content": "Nice to meet you Sarah! How long have you been at Google?"},
+        {"role": "user", "content": "About 2 years now. I work primarily with machine learning models"}
+    ]
+)
+
+# Server automatically extracts and creates:
+# - "User's name is Sarah, works as data scientist at Google for 2 years"
+# - "Sarah specializes in machine learning models"
+```
+
+**Benefits**:
+- Zero extra API calls required
+- No LLM token usage from your application
+- Continuous learning from natural conversations
+- Handles implicit information extraction
+
+### 2. LLM-Optimized Batch Storage
+Your LLM pre-identifies important information and batches it with working memory updates:
+
+```python
+# Your LLM analyzes conversation and identifies memories
+working_memory = WorkingMemory(
+    session_id="user_session",
+    messages=conversation_messages,
+    memories=[
+        MemoryRecord(
+            text="User Sarah prefers Python over R for data analysis",
+            memory_type="semantic",
+            topics=["preferences", "programming", "data_science"],
+            entities=["Sarah", "Python", "R", "data analysis"]
+        )
+    ]
+)
+
+# Single API call stores both conversation and memories
+await client.set_working_memory("user_session", working_memory)
+```
+
+**Benefits**:
+- Performance optimization - no separate API calls
+- LLM has full conversation context for better memory decisions
+- Structured metadata (topics, entities) for better search
+- Immediate availability for search
+
+### 3. Direct Long-Term Memory API
+For real-time memory creation or when working without sessions:
+
+```python
+# LLM can use create_long_term_memory tool directly
+await client.create_long_term_memories([
+    {
+        "text": "User completed advanced Python certification course",
+        "memory_type": "episodic",
+        "event_date": "2024-01-15T10:00:00Z",
+        "topics": ["education", "certification", "python"],
+        "entities": ["Python certification"],
+        "user_id": "sarah_123"
+    }
+])
+```
+
+**Benefits**:
+- Immediate storage without working memory
+- Perfect for event-driven memory creation
+- Fine-grained control over memory attributes
+- Cross-session memory creation
+
+> **🎯 Recommended Pattern**: Use method #2 (LLM-optimized batch storage) for most applications as it provides the best balance of performance, control, and automatic background processing.
+
 ## Memory Forgetting
 
 ### Forgetting Policies
