@@ -78,6 +78,7 @@ nav:
   - Integration:
     - Python SDK: python-sdk.md
     - Memory Integration Patterns: memory-integration-patterns.md
+    - Agent Examples: agent-examples.md
 
   - Core Concepts:
     - Memory Types: memory-types.md
