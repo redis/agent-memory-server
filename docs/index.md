@@ -44,10 +44,10 @@ Transform your AI agents from goldfish 🐠 into elephants 🐘 with Redis-power
 
 Redis Agent Memory Server is a production-ready memory system for AI agents and applications that:
 
-- **:brain: Remembers everything**: Stores conversation history, user preferences, and important facts across sessions
-- **:mag: Finds relevant context**: Uses semantic search to surface the right information at the right time
-- **:chart_with_upwards_trend: Gets smarter over time**: Automatically extracts, organizes, and deduplicates memories from interactions
-- **:electric_plug: Works with any AI model**: REST API and MCP interfaces compatible with OpenAI, Anthropic, and others
+- **🧠 Remembers everything**: Stores conversation history, user preferences, and important facts across sessions
+- **🔍 Finds relevant context**: Uses semantic search to surface the right information at the right time
+- **📈 Gets smarter over time**: Automatically extracts, organizes, and deduplicates memories from interactions
+- **🔌 Works with any AI model**: REST API and MCP interfaces compatible with OpenAI, Anthropic, and others
 
 ## Why Use It?
 
@@ -92,7 +92,7 @@ print(f"Found: {results.memories[0].text}")
 
 ## Core Features
 
-### :brain: Two-Tier Memory System
+### 🧠 Two-Tier Memory System
 
 !!! info "Working Memory (Session-scoped)"
     - Current conversation state and context
@@ -104,19 +104,19 @@ print(f"Found: {results.memories[0].text}")
     - Semantic search with vector embeddings
     - Advanced filtering by time, topics, entities, users
 
-### :mag: Intelligent Search
+### 🔍 Intelligent Search
 - **Semantic similarity**: Find memories by meaning, not just keywords
 - **Advanced filters**: Search by user, session, time, topics, entities
 - **Query optimization**: AI-powered query refinement for better results
 - **Recency boost**: Time-aware ranking that surfaces relevant recent information
 
-### :sparkles: Smart Memory Management
+### ✨ Smart Memory Management
 - **Automatic extraction**: Pull important facts from conversations
 - **Contextual grounding**: Resolve pronouns and references ("he" → "John")
 - **Deduplication**: Prevent duplicate memories with content hashing
 - **Memory editing**: Update, correct, or enrich existing memories
 
-### :rocket: Production Ready
+### 🚀 Production Ready
 - **Multiple interfaces**: REST API, MCP server, Python client
 - **Authentication**: OAuth2/JWT, token-based, or disabled for development
 - **Scalable storage**: Redis (default), Pinecone, Chroma, PostgreSQL, and more
@@ -196,4 +196,4 @@ Jump into the API documentation and start building with REST or MCP interfaces.
 
 ---
 
-**Ready to transform your AI agents?** Start with the [Quick Start Guide](quick-start.md) and build smarter agents in minutes! :brain::sparkles:
+**Ready to transform your AI agents?** Start with the [Quick Start Guide](quick-start.md) and build smarter agents in minutes! 🧠✨
