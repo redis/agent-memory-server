@@ -91,7 +91,7 @@ memory_client = MemoryAPIClient(base_url="http://localhost:8000")
 openai_client = openai.AsyncClient()
 
 # Get tool schemas for OpenAI
-memory_tools = memory_client.get_openai_tool_schemas()
+memory_tools = MemoryAPIClient.get_all_memory_tool_schemas()
 
 async def chat_with_memory(message: str, session_id: str):
     # Make request with memory tools
@@ -105,16 +105,32 @@ async def chat_with_memory(message: str, session_id: str):
     # Process tool calls automatically
     if response.choices[0].message.tool_calls:
         # Resolve all tool calls
-        tool_results = await memory_client.resolve_openai_tool_calls(
-            tool_calls=response.choices[0].message.tool_calls,
-            session_id=session_id
-        )
+        results = []
+        for tool_call in response.choices[0].message.tool_calls:
+            result = await memory_client.resolve_tool_call(
+                tool_call=tool_call,
+                session_id=session_id
+            )
+            if result["success"]:
+                results.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "name": tool_call.function.name,
+                    "content": result["formatted_response"]
+                })
+            else:
+                results.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "name": tool_call.function.name,
+                    "content": f"Error: {result['error']}"
+                })
 
         # Continue conversation with results
         messages = [
             {"role": "user", "content": message},
             response.choices[0].message,
-            *tool_results
+            *results
         ]
 
         final_response = await openai_client.chat.completions.create(
@@ -140,7 +156,7 @@ memory_client = MemoryAPIClient(base_url="http://localhost:8000")
 anthropic_client = anthropic.AsyncClient()
 
 # Get tool schemas for Anthropic
-memory_tools = memory_client.get_anthropic_tool_schemas()
+memory_tools = MemoryAPIClient.get_all_memory_tool_schemas_anthropic()
 
 async def chat_with_memory(message: str, session_id: str):
     response = await anthropic_client.messages.create(
@@ -152,16 +168,35 @@ async def chat_with_memory(message: str, session_id: str):
 
     # Process tool calls
     if response.stop_reason == "tool_use":
-        tool_results = await memory_client.resolve_anthropic_tool_calls(
-            tool_calls=response.content,
-            session_id=session_id
-        )
+        results = []
+        for content_block in response.content:
+            if content_block.type == "tool_use":
+                result = await memory_client.resolve_tool_call(
+                    tool_call={
+                        "type": "tool_use",
+                        "id": content_block.id,
+                        "name": content_block.name,
+                        "input": content_block.input
+                    },
+                    session_id=session_id
+                )
+                if result["success"]:
+                    results.append({
+                        "type": "tool_result",
+                        "tool_use_id": content_block.id,
+                        "content": result["formatted_response"]
+                    })
+                else:
+                    results.append({
+                        "type": "tool_result",
+                        "tool_use_id": content_block.id,
+                        "content": f"Error: {result['error']}"
+                    })
 
         # Continue conversation
         messages = [
             {"role": "user", "content": message},
-            {"role": "assistant", "content": response.content},
-            {"role": "user", "content": tool_results}
+            {"role": "assistant", "content": response.content + results}
         ]
 
         final_response = await anthropic_client.messages.create(

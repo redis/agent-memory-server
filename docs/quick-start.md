@@ -201,7 +201,7 @@ For more advanced use cases, use automatic tool integration with OpenAI:
 
 ```python
 # Get OpenAI tool schemas
-memory_tools = memory_client.get_openai_tool_schemas()
+memory_tools = MemoryAPIClient.get_all_memory_tool_schemas()
 
 # Chat with automatic memory tools
 response = await openai_client.chat.completions.create(
@@ -213,11 +213,15 @@ response = await openai_client.chat.completions.create(
 
 # Let the AI decide when to store memories
 if response.choices[0].message.tool_calls:
-    tool_results = await memory_client.resolve_openai_tool_calls(
-        tool_calls=response.choices[0].message.tool_calls,
-        session_id="my-session"
-    )
-    print("AI automatically stored your allergy information!")
+    for tool_call in response.choices[0].message.tool_calls:
+        result = await memory_client.resolve_tool_call(
+            tool_call=tool_call,
+            session_id="my-session"
+        )
+        if result["success"]:
+            print("AI automatically stored your allergy information!")
+        else:
+            print(f"Error: {result['error']}")
 ```
 
 ## Alternative: REST API Usage
