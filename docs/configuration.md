@@ -27,8 +27,9 @@ The memory compaction functionality optimizes storage by merging duplicate and s
 
 ### Running Compaction
 
-Memory compaction is available as a task function in `agent_memory_server.long_term_memory.compact_long_term_memories`. You can trigger it manually
-by running the `agent-memory schedule-task` command:
+Memory compaction runs **automatically every 10 minutes** when the task worker is active. The compaction task is defined in `agent_memory_server.long_term_memory.compact_long_term_memories`.
+
+You can also trigger it manually by running the `agent-memory schedule-task` command:
 
 ```bash
 uv run agent-memory schedule-task "agent_memory_server.long_term_memory.compact_long_term_memories"

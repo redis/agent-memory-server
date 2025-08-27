@@ -275,7 +275,7 @@ async def cleanup_working_memory(client: MemoryAPIClient):
 
 ### Background Compaction
 
-The system automatically runs compaction tasks to:
+The system automatically runs compaction tasks every 10 minutes to:
 
 - Merge similar memories
 - Update embeddings for improved accuracy
