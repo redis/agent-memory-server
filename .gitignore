@@ -233,3 +233,4 @@ libs/redis/docs/.Trash*
 *.pyc
 .ai
 .claude
+TASK_MEMORY.md
