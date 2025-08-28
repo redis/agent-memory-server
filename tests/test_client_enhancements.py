@@ -10,6 +10,7 @@ from agent_memory_client.models import (
     MemoryRecordResult,
     MemoryRecordResults,
     MemoryTypeEnum,
+    WorkingMemoryGetOrCreateResponse,
     WorkingMemoryResponse,
 )
 from fastapi import FastAPI
@@ -77,13 +78,20 @@ class TestMemoryLifecycleManagement:
             user_id=None,
         )
 
+        # Mock the get_or_create response
+        get_or_create_response = WorkingMemoryGetOrCreateResponse(
+            memory=working_memory_response, created=False
+        )
+
         with (
-            patch.object(enhanced_test_client, "get_working_memory") as mock_get,
+            patch.object(
+                enhanced_test_client, "get_or_create_working_memory"
+            ) as mock_get,
             patch.object(
                 enhanced_test_client, "create_long_term_memory"
             ) as mock_create,
         ):
-            mock_get.return_value = working_memory_response
+            mock_get.return_value = get_or_create_response
             mock_create.return_value = AckResponse(status="ok")
 
             # Test promoting all memories
@@ -122,13 +130,20 @@ class TestMemoryLifecycleManagement:
             user_id=None,
         )
 
+        # Mock the get_or_create response
+        get_or_create_response = WorkingMemoryGetOrCreateResponse(
+            memory=working_memory_response, created=False
+        )
+
         with (
-            patch.object(enhanced_test_client, "get_working_memory") as mock_get,
+            patch.object(
+                enhanced_test_client, "get_or_create_working_memory"
+            ) as mock_get,
             patch.object(
                 enhanced_test_client, "create_long_term_memory"
             ) as mock_create,
         ):
-            mock_get.return_value = working_memory_response
+            mock_get.return_value = get_or_create_response
             mock_create.return_value = AckResponse(status="ok")
 
             # Test promoting only specific memory
@@ -157,8 +172,15 @@ class TestMemoryLifecycleManagement:
             user_id=None,
         )
 
-        with patch.object(enhanced_test_client, "get_working_memory") as mock_get:
-            mock_get.return_value = working_memory_response
+        # Mock the get_or_create response
+        get_or_create_response = WorkingMemoryGetOrCreateResponse(
+            memory=working_memory_response, created=False
+        )
+
+        with patch.object(
+            enhanced_test_client, "get_or_create_working_memory"
+        ) as mock_get:
+            mock_get.return_value = get_or_create_response
 
             result = await enhanced_test_client.promote_working_memories_to_long_term(
                 session_id=session_id
@@ -411,11 +433,17 @@ class TestEnhancedConvenienceMethods:
             user_id=None,
         )
 
+        get_or_create_response = WorkingMemoryGetOrCreateResponse(
+            memory=existing_memory, created=False
+        )
+
         with (
-            patch.object(enhanced_test_client, "get_working_memory") as mock_get,
+            patch.object(
+                enhanced_test_client, "get_or_create_working_memory"
+            ) as mock_get,
             patch.object(enhanced_test_client, "put_working_memory") as mock_put,
         ):
-            mock_get.return_value = existing_memory
+            mock_get.return_value = get_or_create_response
             mock_put.return_value = existing_memory
 
             updates = {"new_key": "new_value", "shared_key": "new_value"}
@@ -450,11 +478,17 @@ class TestEnhancedConvenienceMethods:
             user_id=None,
         )
 
+        get_or_create_response = WorkingMemoryGetOrCreateResponse(
+            memory=existing_memory, created=False
+        )
+
         with (
-            patch.object(enhanced_test_client, "get_working_memory") as mock_get,
+            patch.object(
+                enhanced_test_client, "get_or_create_working_memory"
+            ) as mock_get,
             patch.object(enhanced_test_client, "put_working_memory") as mock_put,
         ):
-            mock_get.return_value = existing_memory
+            mock_get.return_value = get_or_create_response
             mock_put.return_value = existing_memory
 
             updates = {"new_key": "new_value"}
@@ -487,10 +521,14 @@ class TestEnhancedConvenienceMethods:
         )
 
         with (
-            patch.object(enhanced_test_client, "get_working_memory") as mock_get,
+            patch.object(
+                enhanced_test_client, "get_or_create_working_memory"
+            ) as mock_get,
             patch.object(enhanced_test_client, "put_working_memory") as mock_put,
         ):
-            mock_get.return_value = existing_memory
+            mock_get.return_value = WorkingMemoryGetOrCreateResponse(
+                memory=existing_memory, created=False
+            )
             mock_put.return_value = existing_memory
 
             updates = {
@@ -537,10 +575,14 @@ class TestEnhancedConvenienceMethods:
         ]
 
         with (
-            patch.object(enhanced_test_client, "get_working_memory") as mock_get,
+            patch.object(
+                enhanced_test_client, "get_or_create_working_memory"
+            ) as mock_get,
             patch.object(enhanced_test_client, "put_working_memory") as mock_put,
         ):
-            mock_get.return_value = existing_memory
+            mock_get.return_value = WorkingMemoryGetOrCreateResponse(
+                memory=existing_memory, created=False
+            )
             mock_put.return_value = existing_memory
 
             await enhanced_test_client.append_messages_to_working_memory(

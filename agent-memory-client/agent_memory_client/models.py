@@ -283,6 +283,15 @@ class MemoryRecordResults(BaseModel):
     next_offset: int | None = None
 
 
+class WorkingMemoryGetOrCreateResponse(BaseModel):
+    """Response from get_or_create_working_memory operations"""
+
+    memory: WorkingMemoryResponse
+    created: bool = Field(
+        description="True if the session was created, False if it already existed"
+    )
+
+
 class MemoryPromptResponse(BaseModel):
     """Response from memory prompt endpoint"""
 

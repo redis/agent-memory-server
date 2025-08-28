@@ -39,6 +39,7 @@ from .models import (
     RecencyConfig,
     SessionListResponse,
     WorkingMemory,
+    WorkingMemoryGetOrCreateResponse,
     WorkingMemoryResponse,
 )
 
@@ -216,6 +217,11 @@ class MemoryAPIClient:
         """
         Get working memory for a session, including messages and context.
 
+        .. deprecated:: next_version
+           This method is deprecated because it doesn't inform you whether
+           a session was created or found existing. Use `get_or_create_working_memory`
+           instead, which returns a tuple of (memory, created) for better session management.
+
         Args:
             session_id: The session ID to retrieve working memory for
             user_id: The user ID to retrieve working memory for
@@ -230,6 +236,15 @@ class MemoryAPIClient:
             MemoryNotFoundError: If the session is not found
             MemoryServerError: For other server errors
         """
+        import warnings
+
+        warnings.warn(
+            "get_working_memory is deprecated and will be removed in a future version. "
+            "Use get_or_create_working_memory instead, which returns both the memory and "
+            "whether the session was created or found existing.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         params = {}
 
         if user_id is not None:
@@ -266,6 +281,82 @@ class MemoryAPIClient:
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
             raise
+
+    async def get_or_create_working_memory(
+        self,
+        session_id: str,
+        user_id: str | None = None,
+        namespace: str | None = None,
+        model_name: ModelNameLiteral | None = None,
+        context_window_max: int | None = None,
+    ) -> WorkingMemoryGetOrCreateResponse:
+        """
+        Get working memory for a session, creating it if it doesn't exist.
+
+        This method returns both the working memory and whether it was created or found.
+        This is important for applications that need to know if they're working with
+        a new session or an existing one.
+
+        Args:
+            session_id: The session ID to retrieve or create working memory for
+            user_id: The user ID to retrieve working memory for
+            namespace: Optional namespace for the session
+            model_name: Optional model name to determine context window size
+            context_window_max: Optional direct specification of context window tokens
+
+        Returns:
+            WorkingMemoryGetOrCreateResponse containing the memory and creation status
+
+        Example:
+            ```python
+            # Get or create session memory
+            result = await client.get_or_create_working_memory(
+                session_id="chat_session_123",
+                user_id="user_456"
+            )
+
+            if result.created:
+                print("Created new session")
+            else:
+                print("Found existing session")
+
+            # Access the memory
+            memory = result.memory
+            print(f"Session has {len(memory.messages)} messages")
+            ```
+        """
+        try:
+            # Try to get existing working memory first
+            existing_memory = await self.get_working_memory(
+                session_id=session_id,
+                user_id=user_id,
+                namespace=namespace,
+                model_name=model_name,
+                context_window_max=context_window_max,
+            )
+            return WorkingMemoryGetOrCreateResponse(
+                memory=existing_memory, created=False
+            )
+        except Exception:
+            # Session doesn't exist, create it
+            empty_memory = WorkingMemory(
+                session_id=session_id,
+                namespace=namespace or self.config.default_namespace,
+                messages=[],
+                memories=[],
+                data={},
+                user_id=user_id,
+            )
+
+            created_memory = await self.put_working_memory(
+                session_id=session_id,
+                memory=empty_memory,
+                user_id=user_id,
+                model_name=model_name,
+                context_window_max=context_window_max,
+            )
+
+            return WorkingMemoryGetOrCreateResponse(memory=created_memory, created=True)
 
     async def put_working_memory(
         self,
@@ -392,10 +483,14 @@ class MemoryAPIClient:
         # Get existing memory if preserving
         existing_memory = None
         if preserve_existing:
-            existing_memory = await self.get_working_memory(
-                session_id=session_id,
-                namespace=namespace,
-            )
+            try:
+                result_obj = await self.get_or_create_working_memory(
+                    session_id=session_id,
+                    namespace=namespace,
+                )
+                existing_memory = result_obj.memory
+            except Exception:
+                existing_memory = None
 
         # Create new working memory with the data
         working_memory = WorkingMemory(
@@ -449,10 +544,11 @@ class MemoryAPIClient:
             ```
         """
         # Get existing memory
-        existing_memory = await self.get_working_memory(
+        result_obj = await self.get_or_create_working_memory(
             session_id=session_id,
             namespace=namespace,
         )
+        existing_memory = result_obj.memory
 
         # Determine final memories list
         if replace or not existing_memory:
@@ -1029,11 +1125,12 @@ class MemoryAPIClient:
             ```
         """
         try:
-            result = await self.get_working_memory(
+            result_obj = await self.get_or_create_working_memory(
                 session_id=session_id,
                 namespace=namespace or self.config.default_namespace,
                 user_id=user_id,
             )
+            result = result_obj.memory
 
             # Format for LLM consumption
             message_count = len(result.messages) if result.messages else 0
@@ -1072,6 +1169,95 @@ class MemoryAPIClient:
                 "session_id": session_id,
                 "error": str(e),
                 "summary": f"Error retrieving working memory: {str(e)}",
+            }
+
+    async def get_or_create_working_memory_tool(
+        self,
+        session_id: str,
+        namespace: str | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Get or create working memory state formatted for LLM consumption.
+
+        This method provides a summary of the current working memory state
+        that's easy for LLMs to understand and work with. If the session
+        doesn't exist, it creates a new one.
+
+        Args:
+            session_id: The session ID to get or create memory for
+            namespace: Optional namespace for the session
+            user_id: Optional user ID for the session
+
+        Returns:
+            Dict with formatted working memory information and creation status
+
+        Example:
+            ```python
+            # Get or create working memory state for LLM
+            memory_state = await client.get_or_create_working_memory_tool(
+                session_id="current_session"
+            )
+
+            if memory_state["created"]:
+                print("Created new session")
+            else:
+                print("Found existing session")
+
+            print(memory_state["summary"])  # Human-readable summary
+            print(f"Messages: {memory_state['message_count']}")
+            print(f"Memories: {len(memory_state['memories'])}")
+            ```
+        """
+        try:
+            result_obj = await self.get_or_create_working_memory(
+                session_id=session_id,
+                namespace=namespace or self.config.default_namespace,
+                user_id=user_id,
+            )
+
+            # Format for LLM consumption
+            result = result_obj.memory
+            message_count = len(result.messages) if result.messages else 0
+            memory_count = len(result.memories) if result.memories else 0
+            data_keys = list(result.data.keys()) if result.data else []
+
+            # Create formatted memories list
+            formatted_memories = []
+            if result.memories:
+                for memory in result.memories:
+                    formatted_memories.append(
+                        {
+                            "text": memory.text,
+                            "memory_type": memory.memory_type,
+                            "topics": memory.topics or [],
+                            "entities": memory.entities or [],
+                            "created_at": memory.created_at.isoformat()
+                            if memory.created_at
+                            else None,
+                        }
+                    )
+
+            status_text = "new session" if result_obj.created else "existing session"
+
+            return {
+                "session_id": session_id,
+                "created": result_obj.created,
+                "message_count": message_count,
+                "memory_count": memory_count,
+                "memories": formatted_memories,
+                "data_keys": data_keys,
+                "data": result.data or {},
+                "context": result.context,
+                "summary": f"Retrieved {status_text} with {message_count} messages, {memory_count} stored memories, and {len(data_keys)} data entries",
+            }
+
+        except Exception as e:
+            return {
+                "session_id": session_id,
+                "created": False,
+                "error": str(e),
+                "summary": f"Error retrieving or creating working memory: {str(e)}",
             }
 
     async def add_memory_tool(
@@ -1227,8 +1413,8 @@ class MemoryAPIClient:
         return {
             "type": "function",
             "function": {
-                "name": "get_working_memory",
-                "description": "Get the current working memory state including recent messages, temporarily stored memories, and session-specific data. Use this to check what's already in the current conversation context before deciding whether to search long-term memory or add new information. Examples: Check if user preferences are already loaded in this session, review recent conversation context, see what structured data has been stored for this session.",
+                "name": "get_or_create_working_memory",
+                "description": "Get the current working memory state including recent messages, temporarily stored memories, and session-specific data. Creates a new session if one doesn't exist. Returns information about whether the session was created or found existing. Use this to check what's already in the current conversation context before deciding whether to search long-term memory or add new information. Examples: Check if user preferences are already loaded in this session, review recent conversation context, see what structured data has been stored for this session.",
                 "parameters": {
                     "type": "object",
                     "properties": {},
@@ -1907,7 +2093,13 @@ class MemoryAPIClient:
                 result = await self._resolve_search_memory(args)
 
             elif function_name == "get_working_memory":
+                # Keep backward compatibility for deprecated method
                 result = await self._resolve_get_working_memory(
+                    session_id, effective_namespace, user_id
+                )
+
+            elif function_name == "get_or_create_working_memory":
+                result = await self._resolve_get_or_create_working_memory(
                     session_id, effective_namespace, user_id
                 )
 
@@ -1993,6 +2185,17 @@ class MemoryAPIClient:
             namespace=namespace,
             user_id=user_id,
         )
+
+    async def _resolve_get_or_create_working_memory(
+        self, session_id: str, namespace: str | None, user_id: str | None = None
+    ) -> dict[str, Any]:
+        """Resolve get_or_create_working_memory function call."""
+        result = await self.get_or_create_working_memory_tool(
+            session_id=session_id,
+            namespace=namespace,
+            user_id=user_id,
+        )
+        return result
 
     async def _resolve_add_memory(
         self,
@@ -2192,9 +2395,10 @@ class MemoryAPIClient:
             Acknowledgement of promotion operation
         """
         # Get current working memory
-        working_memory = await self.get_working_memory(
+        result_obj = await self.get_or_create_working_memory(
             session_id=session_id, namespace=namespace
         )
+        working_memory = result_obj.memory
 
         # Filter memories if specific IDs are requested
         memories_to_promote = working_memory.memories
@@ -2407,9 +2611,10 @@ class MemoryAPIClient:
             WorkingMemoryResponse with updated memory
         """
         # Get existing memory
-        existing_memory = await self.get_working_memory(
+        result_obj = await self.get_or_create_working_memory(
             session_id=session_id, namespace=namespace, user_id=user_id
         )
+        existing_memory = result_obj.memory
 
         # Determine final data based on merge strategy
         if existing_memory and existing_memory.data:
@@ -2462,9 +2667,10 @@ class MemoryAPIClient:
             WorkingMemoryResponse with updated memory (potentially summarized if token limit exceeded)
         """
         # Get existing memory
-        existing_memory = await self.get_working_memory(
+        result_obj = await self.get_or_create_working_memory(
             session_id=session_id, namespace=namespace, user_id=user_id
         )
+        existing_memory = result_obj.memory
 
         # Convert messages to MemoryMessage objects
         converted_messages = []

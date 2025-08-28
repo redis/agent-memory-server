@@ -8,7 +8,7 @@ Agent Memory Server offers an MCP (Model Context Protocol) server interface powe
 - **edit_long_term_memory**: Update existing long-term memories with new or corrected information. Allows partial updates to specific fields while preserving other data.
 - **delete_long_term_memories**: Remove specific long-term memories by ID. Useful for cleaning up outdated or incorrect information.
 - **get_long_term_memory**: Retrieve specific memories by ID for detailed inspection or verification before editing.
-- **memory_prompt**: Generate prompts enriched with session context and long-term memories. Essential for retrieving relevant context before answering questions.
+- **memory_prompt**: Generate prompts enriched with working memory session and long-term memories. Essential for retrieving relevant context before answering questions.
 
 ## Available MCP Tools
 

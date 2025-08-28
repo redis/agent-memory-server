@@ -456,12 +456,13 @@ class MemoryEditingAgent:
         """Generate a response using the LLM with conversation context."""
         # Get working memory for context
         client = await self.get_client()
-        working_memory = await client.get_working_memory(
+        result_obj = await client.get_or_create_working_memory(
             session_id=session_id,
             namespace=self._get_namespace(user_id),
             model_name="gpt-4o-mini",
             user_id=user_id,
         )
+        working_memory = result_obj.memory
 
         context_messages = working_memory.messages
 
