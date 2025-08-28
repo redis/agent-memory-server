@@ -17,7 +17,7 @@ A comprehensive travel assistant that demonstrates:
 The travel agent automatically discovers and uses all memory tools available from the client:
 
 1. **search_memory** - Search through previous conversations and stored information
-2. **get_working_memory** - Check current session state, stored memories, and data
+2. **get_or_create_working_memory** - Check current session state, stored memories, and data
 3. **add_memory_to_working_memory** - Store important information as structured memories
 4. **update_working_memory_data** - Store/update session-specific data like trip plans
 
@@ -106,7 +106,7 @@ The memory editing agent uses all memory tools to demonstrate comprehensive memo
 3. **add_memory_to_working_memory** - Store new important information as structured memories
 4. **edit_long_term_memory** - Update existing memories with corrections or new information
 5. **delete_long_term_memories** - Remove memories that are no longer relevant or accurate
-6. **get_working_memory** - Check current session context and stored memories
+6. **get_or_create_working_memory** - Check current session context and stored memories
 7. **update_working_memory_data** - Store session-specific data
 
 ### Common Memory Editing Scenarios

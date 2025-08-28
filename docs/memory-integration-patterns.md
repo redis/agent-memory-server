@@ -4,11 +4,15 @@ The most common question developers have is: *"How do I actually get memories in
 
 ## Overview of Using Memory
 
+These integration patterns are **not mutually exclusive** and can be combined based on your application's needs. Each pattern excels in different scenarios, but most production systems benefit from using multiple patterns together.
+
 | Pattern | Control | Best For | Memory Flow |
 |---------|---------|----------|-------------|
 | **🤖 LLM-Driven** | LLM decides | Conversational agents, chatbots | LLM ← tools → Memory |
 | **📝 Code-Driven** | Your code decides | Applications, workflows | Code ← SDK → Memory |
 | **🔄 Background** | Automatic extraction | Learning systems | Conversation → Auto Extract → Memory |
+
+**Pro tip**: Start with Code-Driven for predictable behavior, then add Background extraction for continuous learning, and finally consider LLM tools for conversational control when needed.
 
 ## Pattern 1: LLM-Driven Memory (Tool-Based)
 
@@ -231,7 +235,8 @@ class CodeDrivenAgent:
         session_id: str
     ) -> str:
         # 1. Get working memory session (creates if doesn't exist)
-        working_memory = await self.memory_client.get_working_memory(session_id)
+        result = await self.memory_client.get_or_create_working_memory(session_id)
+        working_memory = result.memory
 
         # 2. Search for relevant context using session ID
         context_search = await self.memory_client.memory_prompt(
@@ -339,7 +344,8 @@ results = await asyncio.gather(*search_tasks)
 async def get_enriched_context(user_query: str, user_id: str, session_id: str):
     """Get context that includes both working memory and relevant long-term memories"""
     # First, get the working memory session (creates if doesn't exist)
-    working_memory = await client.get_working_memory(session_id)
+    result = await client.get_or_create_working_memory(session_id)
+    working_memory = result.memory
 
     # Then use memory_prompt with session ID
     return await client.memory_prompt(
@@ -495,7 +501,8 @@ class AutoLearningAgent:
         """Process conversation with automatic learning"""
 
         # 1. Get working memory session (creates if doesn't exist)
-        working_memory = await self.memory_client.get_working_memory(session_id)
+        result = await self.memory_client.get_or_create_working_memory(session_id)
+        working_memory = result.memory
 
         # 2. Get existing context for better responses
         context = await self.memory_client.memory_prompt(
@@ -644,7 +651,8 @@ class HybridMemoryAgent:
 
     async def chat(self, user_message: str, user_id: str, session_id: str) -> str:
         # 1. Get working memory session (creates if doesn't exist)
-        working_memory = await self.memory_client.get_working_memory(session_id)
+        result = await self.memory_client.get_or_create_working_memory(session_id)
+        working_memory = result.memory
 
         # 2. Code-driven: Get relevant context
         context = await self.memory_client.memory_prompt(
@@ -714,7 +722,8 @@ class SmartChatAgent:
 
         # Background: Also store conversation for automatic extraction
         # First ensure working memory session exists
-        working_memory = await self.memory_client.get_working_memory(session_id)
+        result = await self.memory_client.get_or_create_working_memory(session_id)
+        working_memory = result.memory
 
         await self.memory_client.set_working_memory(
             session_id,

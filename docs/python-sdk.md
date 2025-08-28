@@ -219,7 +219,7 @@ The SDK provides these tools for LLM integration:
 3. **`edit_memory`** - Update existing memories
 4. **`delete_memory`** - Remove memories
 5. **`set_working_memory`** - Manage session memory
-6. **`get_working_memory`** - Retrieve session context
+6. **`get_or_create_working_memory`** - Retrieve or create session context
 
 ## Memory Operations
 
@@ -329,9 +329,13 @@ conversation = {
 
 await client.set_working_memory("session-123", conversation)
 
-# Retrieve working memory
-session = await client.get_working_memory("session-123")
-print(f"Session has {len(session.messages)} messages")
+# Retrieve or create working memory
+result = await client.get_or_create_working_memory("session-123")
+if result.created:
+    print("Created new session")
+else:
+    print("Found existing session")
+print(f"Session has {len(result.memory.messages)} messages")
 ```
 
 ## Memory-Enhanced Conversations
