@@ -9,7 +9,7 @@ from tenacity.stop import stop_after_attempt
 from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
 
 from agent_memory_server.config import settings
-from agent_memory_server.filters import DiscreteMemoryExtracted
+from agent_memory_server.filters import DiscreteMemoryExtracted, MemoryType
 from agent_memory_server.llms import (
     AnthropicClientWrapper,
     OpenAIClientWrapper,
@@ -312,8 +312,8 @@ async def extract_discrete_memories(
     client = await get_model_client(settings.generation_model)
 
     # Use vectorstore adapter to find messages that need discrete memory extraction
-    # TODO: Sort out circular imports
-    from agent_memory_server.filters import MemoryType
+    # Local imports to avoid circular dependencies:
+    # long_term_memory imports from extraction, so we import locally here
     from agent_memory_server.long_term_memory import index_long_term_memories
     from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
 
@@ -420,7 +420,8 @@ async def extract_memories_with_strategy(
     This function replaces extract_discrete_memories for strategy-aware extraction.
     Each memory record contains its extraction strategy configuration.
     """
-    from agent_memory_server.filters import MemoryType
+    # Local imports to avoid circular dependencies:
+    # long_term_memory imports from extraction, so we import locally here
     from agent_memory_server.long_term_memory import index_long_term_memories
     from agent_memory_server.memory_strategies import get_memory_strategy
     from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
