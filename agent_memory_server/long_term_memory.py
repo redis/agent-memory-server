@@ -12,7 +12,10 @@ from ulid import ULID
 
 from agent_memory_server.config import settings
 from agent_memory_server.dependencies import get_background_tasks
-from agent_memory_server.extraction import extract_discrete_memories, handle_extraction
+from agent_memory_server.extraction import (
+    extract_memories_with_strategy,
+    handle_extraction,
+)
 from agent_memory_server.filters import (
     CreatedAt,
     Entities,
@@ -428,7 +431,9 @@ async def compact_long_term_memories(
     vector_distance_threshold: float = 0.12,
     compact_hash_duplicates: bool = True,
     compact_semantic_duplicates: bool = True,
-    perpetual: Perpetual = Perpetual(every=timedelta(minutes=10), automatic=True),
+    perpetual: Perpetual = Perpetual(
+        every=timedelta(minutes=settings.compaction_every_minutes), automatic=True
+    ),
 ) -> int:
     """
     Compact long-term memories by merging duplicates and semantically similar memories.
@@ -846,7 +851,7 @@ async def index_long_term_memories(
         # them as separate long-term memory records. This process also
         # runs deduplication if requested.
         await background_tasks.add_task(
-            extract_discrete_memories,
+            extract_memories_with_strategy,
             memories=needs_extraction,
             deduplicate=deduplicate,
         )
@@ -1370,6 +1375,14 @@ async def promote_working_memory_to_long_term(
             current_memory = deduped_memory or memory
             current_memory.persisted_at = datetime.now(UTC)
 
+            # Set extraction strategy configuration from working memory
+            current_memory.extraction_strategy = (
+                current_working_memory.long_term_memory_strategy.strategy
+            )
+            current_memory.extraction_strategy_config = (
+                current_working_memory.long_term_memory_strategy.config
+            )
+
             # Index the memory in long-term storage
             await index_long_term_memories(
                 [current_memory],
@@ -1431,6 +1444,14 @@ async def promote_working_memory_to_long_term(
                 # Set persisted_at timestamp
                 current_memory = deduped_memory or memory_record
                 current_memory.persisted_at = datetime.now(UTC)
+
+                # Set extraction strategy configuration from working memory
+                current_memory.extraction_strategy = (
+                    current_working_memory.long_term_memory_strategy.strategy
+                )
+                current_memory.extraction_strategy_config = (
+                    current_working_memory.long_term_memory_strategy.config
+                )
 
                 # Collect memory record for batch indexing
                 message_records_to_index.append(current_memory)

@@ -157,49 +157,57 @@ async def session(use_test_redis_connection, async_redis_client):
             )
             long_term_memories.append(memory)
 
-        # Index the memories directly
-        vectorizer = OpenAITextVectorizer()
-        embeddings = await vectorizer.aembed_many(
-            [memory.text for memory in long_term_memories],
-            batch_size=20,
-            as_buffer=True,
-        )
+        # Index the memories directly (only if OpenAI API key is available)
+        import os
 
-        async with use_test_redis_connection.pipeline(transaction=False) as pipe:
-            for idx, vector in enumerate(embeddings):
-                memory = long_term_memories[idx]
-                id_ = memory.id if memory.id else str(ULID())
-                key = Keys.memory_key(id_)
+        if not os.getenv("OPENAI_API_KEY"):
+            # Skip embedding creation if no API key - tests can still run with empty index
+            embeddings = []
+        else:
+            vectorizer = OpenAITextVectorizer()
+            embeddings = await vectorizer.aembed_many(
+                [memory.text for memory in long_term_memories],
+                batch_size=20,
+                as_buffer=True,
+            )
 
-                # Generate memory hash for the memory
-                from agent_memory_server.long_term_memory import (
-                    generate_memory_hash,
-                )
+        # Only index if we have embeddings
+        if embeddings:
+            async with use_test_redis_connection.pipeline(transaction=False) as pipe:
+                for idx, vector in enumerate(embeddings):
+                    memory = long_term_memories[idx]
+                    id_ = memory.id if memory.id else str(ULID())
+                    key = Keys.memory_key(id_)
 
-                memory_hash = generate_memory_hash(memory)
+                    # Generate memory hash for the memory
+                    from agent_memory_server.long_term_memory import (
+                        generate_memory_hash,
+                    )
 
-                await pipe.hset(  # type: ignore
-                    key,
-                    mapping={
-                        "text": memory.text,
-                        "id_": id_,
-                        "session_id": memory.session_id or "",
-                        "user_id": memory.user_id or "",
-                        "last_accessed": int(memory.last_accessed.timestamp())
-                        if memory.last_accessed
-                        else int(time.time()),
-                        "created_at": int(memory.created_at.timestamp())
-                        if memory.created_at
-                        else int(time.time()),
-                        "namespace": memory.namespace or "",
-                        "memory_hash": memory_hash,
-                        "vector": vector,
-                        "topics": "",
-                        "entities": "",
-                    },
-                )
+                    memory_hash = generate_memory_hash(memory)
 
-            await pipe.execute()
+                    await pipe.hset(  # type: ignore
+                        key,
+                        mapping={
+                            "text": memory.text,
+                            "id_": id_,
+                            "session_id": memory.session_id or "",
+                            "user_id": memory.user_id or "",
+                            "last_accessed": int(memory.last_accessed.timestamp())
+                            if memory.last_accessed
+                            else int(time.time()),
+                            "created_at": int(memory.created_at.timestamp())
+                            if memory.created_at
+                            else int(time.time()),
+                            "namespace": memory.namespace or "",
+                            "memory_hash": memory_hash,
+                            "vector": vector,
+                            "topics": "",
+                            "entities": "",
+                        },
+                    )
+
+                await pipe.execute()
 
         return session_id
     except Exception:
