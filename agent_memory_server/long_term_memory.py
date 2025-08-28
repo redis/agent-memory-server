@@ -1,6 +1,7 @@
 import json
 import logging
 import numbers
+import re
 import time
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
@@ -54,6 +55,46 @@ from agent_memory_server.utils.redis import (
     get_redis_conn,
 )
 from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
+
+
+def _parse_extraction_response_with_fallback(content: str, logger) -> dict:
+    """
+    Parse JSON response with fallback mechanisms for malformed responses.
+
+    Args:
+        content: The JSON content to parse
+        logger: Logger instance for error reporting
+
+    Returns:
+        Parsed JSON dictionary with 'memories' key
+
+    Raises:
+        json.JSONDecodeError: If all parsing attempts fail
+    """
+    # Try standard JSON parsing first
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        # Attempt to repair common JSON issues
+        logger.warning(
+            f"Initial JSON parsing failed, attempting repair on content: {content[:500]}..."
+        )
+
+        # Try to extract just the memories array if it exists
+        memories_match = re.search(r'"memories"\s*:\s*\[(.*?)\]', content, re.DOTALL)
+        if memories_match:
+            try:
+                # Try to reconstruct a valid JSON object
+                memories_json = '{"memories": [' + memories_match.group(1) + "]}"
+                extraction_result = json.loads(memories_json)
+                logger.info("Successfully repaired malformed JSON response")
+                return extraction_result
+            except json.JSONDecodeError:
+                logger.error("JSON repair attempt failed")
+                raise
+        else:
+            logger.error("Could not find memories array in malformed response")
+            raise
 
 
 # Prompt for extracting memories from messages in working memory context
@@ -239,38 +280,11 @@ async def extract_memories_from_session_thread(
                 )
                 return []
 
-            # Try to parse JSON with fallback for malformed responses
-            try:
-                extraction_result = json.loads(content)
-                memories_data = extraction_result.get("memories", [])
-            except json.JSONDecodeError:
-                # Attempt to repair common JSON issues
-                logger.warning(
-                    f"Initial JSON parsing failed, attempting repair on content: {content[:500]}..."
-                )
-
-                # Try to extract just the memories array if it exists
-                import re
-
-                # Look for memories array in the response
-                memories_match = re.search(
-                    r'"memories"\s*:\s*\[(.*?)\]', content, re.DOTALL
-                )
-                if memories_match:
-                    try:
-                        # Try to reconstruct a valid JSON object
-                        memories_json = (
-                            '{"memories": [' + memories_match.group(1) + "]}"
-                        )
-                        extraction_result = json.loads(memories_json)
-                        memories_data = extraction_result.get("memories", [])
-                        logger.info("Successfully repaired malformed JSON response")
-                    except json.JSONDecodeError:
-                        logger.error("JSON repair attempt failed")
-                        raise
-                else:
-                    logger.error("Could not find memories array in malformed response")
-                    raise
+            # Parse JSON with fallback for malformed responses
+            extraction_result = _parse_extraction_response_with_fallback(
+                content, logger
+            )
+            memories_data = extraction_result.get("memories", [])
         except (json.JSONDecodeError, AttributeError, TypeError) as e:
             logger.error(
                 f"Failed to parse extraction response: {e}, response: {response}"
