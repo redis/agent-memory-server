@@ -721,10 +721,6 @@ class SmartChatAgent:
                 )
 
         # Background: Also store conversation for automatic extraction
-        # First ensure working memory session exists
-        result = await self.memory_client.get_or_create_working_memory(session_id)
-        working_memory = result.memory
-
         await self.memory_client.set_working_memory(
             session_id,
             WorkingMemory(
