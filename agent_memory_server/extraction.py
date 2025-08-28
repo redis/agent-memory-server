@@ -9,7 +9,7 @@ from tenacity.stop import stop_after_attempt
 from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
 
 from agent_memory_server.config import settings
-from agent_memory_server.filters import DiscreteMemoryExtracted
+from agent_memory_server.filters import DiscreteMemoryExtracted, MemoryType
 from agent_memory_server.llms import (
     AnthropicClientWrapper,
     OpenAIClientWrapper,
@@ -331,8 +331,8 @@ async def extract_discrete_memories(
     client = await get_model_client(settings.generation_model)
 
     # Use vectorstore adapter to find messages that need discrete memory extraction
-    # TODO: Sort out circular imports
-    from agent_memory_server.filters import MemoryType
+    # Local imports to avoid circular dependencies:
+    # long_term_memory imports from extraction, so we import locally here
     from agent_memory_server.long_term_memory import index_long_term_memories
     from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
 
@@ -421,6 +421,131 @@ async def extract_discrete_memories(
                 discrete_memory_extracted="t",
             )
             for new_memory in new_discrete_memories
+        ]
+
+        await index_long_term_memories(
+            long_term_memories,
+            deduplicate=deduplicate,
+        )
+
+
+async def extract_memories_with_strategy(
+    memories: list[MemoryRecord] | None = None,
+    deduplicate: bool = True,
+):
+    """
+    Extract memories using their configured strategies.
+
+    This function replaces extract_discrete_memories for strategy-aware extraction.
+    Each memory record contains its extraction strategy configuration.
+    """
+    # Local imports to avoid circular dependencies:
+    # long_term_memory imports from extraction, so we import locally here
+    from agent_memory_server.long_term_memory import index_long_term_memories
+    from agent_memory_server.memory_strategies import get_memory_strategy
+    from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
+
+    adapter = await get_vectorstore_adapter()
+
+    if not memories:
+        # If no memories are provided, search for any messages in long-term memory
+        # that haven't been processed for extraction
+        memories = []
+        offset = 0
+        while True:
+            search_result = await adapter.search_memories(
+                query="",  # Empty query to get all messages
+                memory_type=MemoryType(eq="message"),
+                discrete_memory_extracted=DiscreteMemoryExtracted(eq="f"),
+                limit=25,
+                offset=offset,
+            )
+
+            logger.info(
+                f"Found {len(search_result.memories)} memories to extract: {[m.id for m in search_result.memories]}"
+            )
+
+            memories += search_result.memories
+
+            if len(search_result.memories) < 25:
+                break
+
+            offset += 25
+
+    # Group memories by extraction strategy for batch processing
+    strategy_groups = {}
+    for memory in memories:
+        if not memory or not memory.text:
+            logger.info(f"Deleting memory with no text: {memory}")
+            await adapter.delete_memories([memory.id])
+            continue
+
+        strategy_key = (
+            memory.extraction_strategy,
+            tuple(sorted(memory.extraction_strategy_config.items())),
+        )
+        if strategy_key not in strategy_groups:
+            strategy_groups[strategy_key] = []
+        strategy_groups[strategy_key].append(memory)
+
+    all_new_memories = []
+    all_updated_memories = []
+
+    # Process each strategy group
+    for (strategy_name, config_items), strategy_memories in strategy_groups.items():
+        logger.info(
+            f"Processing {len(strategy_memories)} memories with strategy: {strategy_name}"
+        )
+
+        # Get strategy instance
+        config_dict = dict(config_items)
+        try:
+            strategy = get_memory_strategy(strategy_name, **config_dict)
+        except ValueError as e:
+            logger.error(f"Unknown strategy {strategy_name}: {e}")
+            # Fall back to discrete strategy
+            strategy = get_memory_strategy("discrete")
+
+        # Process memories with this strategy
+        for memory in strategy_memories:
+            try:
+                extracted_memories = await strategy.extract_memories(memory.text)
+                all_new_memories.extend(extracted_memories)
+
+                # Update the memory to mark it as processed
+                updated_memory = memory.model_copy(
+                    update={"discrete_memory_extracted": "t"}
+                )
+                all_updated_memories.append(updated_memory)
+
+            except Exception as e:
+                logger.error(
+                    f"Error extracting memory {memory.id} with strategy {strategy_name}: {e}"
+                )
+                # Still mark as processed to avoid infinite retry
+                updated_memory = memory.model_copy(
+                    update={"discrete_memory_extracted": "t"}
+                )
+                all_updated_memories.append(updated_memory)
+
+    # Update processed memories
+    if all_updated_memories:
+        await adapter.update_memories(all_updated_memories)
+
+    # Index new extracted memories
+    if all_new_memories:
+        long_term_memories = [
+            MemoryRecord(
+                id=str(ulid.ULID()),
+                text=new_memory["text"],
+                memory_type=new_memory.get("type", "episodic"),
+                topics=new_memory.get("topics", []),
+                entities=new_memory.get("entities", []),
+                discrete_memory_extracted="t",
+                extraction_strategy="discrete",  # These are already extracted
+                extraction_strategy_config={},
+            )
+            for new_memory in all_new_memories
         ]
 
         await index_long_term_memories(

@@ -357,7 +357,7 @@ async def cleanup_working_memory(client: MemoryAPIClient):
 
 ### Background Compaction
 
-The system automatically runs compaction tasks every 10 minutes to:
+The system automatically runs compaction tasks (configurable, default every 10 minutes) to:
 
 - Merge similar memories
 - Update embeddings for improved accuracy
@@ -376,6 +376,18 @@ await client.schedule_compaction(
     run_at=datetime.now() + timedelta(hours=1),
     full_rebuild=False
 )
+```
+
+#### Configuring Compaction Schedule
+
+The frequency of automatic compaction can be configured:
+
+```bash
+# Environment variable (minutes)
+COMPACTION_EVERY_MINUTES=15
+
+# Or in configuration file
+compaction_every_minutes: 15
 ```
 
 ### Compaction Strategies

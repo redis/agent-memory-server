@@ -7,7 +7,12 @@ from datetime import UTC, datetime
 
 from redis.asyncio import Redis
 
-from agent_memory_server.models import MemoryMessage, MemoryRecord, WorkingMemory
+from agent_memory_server.models import (
+    MemoryMessage,
+    MemoryRecord,
+    MemoryStrategyConfig,
+    WorkingMemory,
+)
 from agent_memory_server.utils.keys import Keys
 from agent_memory_server.utils.redis import get_redis_conn
 
@@ -113,6 +118,15 @@ async def get_working_memory(
             message = MemoryMessage(**message_data)
             messages.append(message)
 
+        # Handle memory strategy configuration
+        strategy_data = working_memory_data.get("long_term_memory_strategy")
+        if strategy_data:
+            long_term_memory_strategy = MemoryStrategyConfig(**strategy_data)
+        else:
+            long_term_memory_strategy = (
+                MemoryStrategyConfig()
+            )  # Default to discrete strategy
+
         return WorkingMemory(
             messages=messages,
             memories=memories,
@@ -123,6 +137,7 @@ async def get_working_memory(
             namespace=namespace,
             ttl_seconds=working_memory_data.get("ttl_seconds", None),
             data=working_memory_data.get("data") or {},
+            long_term_memory_strategy=long_term_memory_strategy,
             last_accessed=datetime.fromtimestamp(
                 working_memory_data.get("last_accessed", int(time.time())), UTC
             ),
@@ -182,6 +197,7 @@ async def set_working_memory(
         "namespace": working_memory.namespace,
         "ttl_seconds": working_memory.ttl_seconds,
         "data": working_memory.data or {},
+        "long_term_memory_strategy": working_memory.long_term_memory_strategy.model_dump(),
         "last_accessed": int(working_memory.last_accessed.timestamp()),
         "created_at": int(working_memory.created_at.timestamp()),
         "updated_at": int(working_memory.updated_at.timestamp()),

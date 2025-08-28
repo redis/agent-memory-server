@@ -88,7 +88,13 @@ class TestMemoryLifecycleManagement:
             )
 
             assert result.status == "ok"
-            mock_get.assert_called_once_with(session_id=session_id, namespace=None)
+            mock_get.assert_called_once_with(
+                session_id=session_id,
+                user_id=None,
+                namespace=None,
+                model_name=None,
+                context_window_max=None,
+            )
             mock_create.assert_called_once_with(memories)
 
     @pytest.mark.asyncio

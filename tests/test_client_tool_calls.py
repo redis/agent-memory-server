@@ -446,7 +446,7 @@ class TestToolSchemaGeneration:
         function_names = {schema["function"]["name"] for schema in schemas}
         required = {
             "search_memory",
-            "get_working_memory",
+            "get_or_create_working_memory",
             "add_memory_to_working_memory",
             "update_working_memory_data",
             "get_current_datetime",
@@ -461,7 +461,7 @@ class TestToolSchemaGeneration:
         function_names = {schema["name"] for schema in schemas}
         required = {
             "search_memory",
-            "get_working_memory",
+            "get_or_create_working_memory",
             "add_memory_to_working_memory",
             "update_working_memory_data",
             "get_current_datetime",

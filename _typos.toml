@@ -1,0 +1,8 @@
+[default.extend-words]
+# LangChain async method names - not typos
+aadd = "aadd"
+# Gitignore patterns - not typos
+nclude = "nclude"
+
+[files]
+extend-exclude = ["tests/fixtures/"]

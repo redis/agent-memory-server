@@ -1,7 +1,8 @@
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 from mcp.server.fastmcp.prompts import base
 from mcp.types import AudioContent, EmbeddedResource, ImageContent, TextContent
@@ -60,6 +61,21 @@ ModelNameLiteral = Literal[
     "claude-3-5-haiku-latest",
     "claude-3-opus-latest",
 ]
+
+
+class MemoryStrategyConfig(BaseModel):
+    """Configuration for memory extraction strategy."""
+
+    strategy: Literal["discrete", "summary", "preferences", "custom"] = Field(
+        default="discrete", description="Type of memory extraction strategy to use"
+    )
+    config: dict[str, Any] = Field(
+        default_factory=dict, description="Strategy-specific configuration options"
+    )
+
+    def model_dump(self, **kwargs) -> dict[str, Any]:
+        """Override to ensure JSON serialization works properly."""
+        return super().model_dump(mode="json", **kwargs)
 
 
 class MemoryMessage(BaseModel):
@@ -158,6 +174,14 @@ class MemoryRecord(BaseModel):
         default=None,
         description="Date/time when the event described in this memory occurred (primarily for episodic memories)",
     )
+    extraction_strategy: str = Field(
+        default="discrete",
+        description="Memory extraction strategy used when this was promoted from working memory",
+    )
+    extraction_strategy_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Configuration for the extraction strategy used",
+    )
 
 
 class ExtractedMemoryRecord(MemoryRecord):
@@ -214,6 +238,10 @@ class WorkingMemory(BaseModel):
         default=None,
         description="Optional namespace for the working memory",
     )
+    long_term_memory_strategy: MemoryStrategyConfig = Field(
+        default_factory=MemoryStrategyConfig,
+        description="Configuration for memory extraction strategy when promoting to long-term memory",
+    )
 
     # TTL and timestamps
     ttl_seconds: int | None = Field(
@@ -232,6 +260,122 @@ class WorkingMemory(BaseModel):
         default_factory=lambda: datetime.now(UTC),
         description="Datetime when the working memory was last updated",
     )
+
+    def get_create_long_term_memory_tool_description(self) -> str:
+        """
+        Generate a strategy-aware description for the create_long_term_memory MCP tool.
+
+        Returns:
+            Description string that includes strategy-specific extraction behavior
+        """
+        from agent_memory_server.memory_strategies import get_memory_strategy
+
+        # Get the configured strategy
+        strategy = get_memory_strategy(
+            self.long_term_memory_strategy.strategy,
+            **self.long_term_memory_strategy.config,
+        )
+
+        base_description = """Create long-term memories that can be searched later.
+
+This tool creates persistent memories that are stored for future retrieval. Use this
+when you want to remember information that would be useful in future conversations.
+
+MEMORY EXTRACTION BEHAVIOR:
+The memory extraction for this session is configured with: {}
+
+MEMORY TYPES:
+1. **SEMANTIC MEMORIES** (memory_type="semantic"):
+   - User preferences and general knowledge
+   - Facts, rules, and persistent information
+   - Examples:
+     * "User prefers dark mode in all applications"
+     * "User is a data scientist working with Python"
+     * "User dislikes spicy food"
+     * "The company's API rate limit is 1000 requests per hour"
+
+2. **EPISODIC MEMORIES** (memory_type="episodic"):
+   - Specific events, experiences, or time-bound information
+   - Things that happened at a particular time or in a specific context
+   - MUST have a time dimension to be truly episodic
+   - Should include an event_date when the event occurred
+   - Examples:
+     * "User visited Paris last month and had trouble with the metro"
+     * "User reported a login bug on January 15th, 2024"
+     * "User completed the onboarding process yesterday"
+     * "User mentioned they're traveling to Tokyo next week"
+
+IMPORTANT NOTES ON SESSION IDs:
+- When including a session_id, use the EXACT session identifier from the current conversation
+- NEVER invent or guess a session ID - if you don't know it, omit the field
+- If you want memories accessible across all sessions, omit the session_id field
+
+Args:
+    memories: A list of MemoryRecord objects to create
+
+Returns:
+    An acknowledgement response indicating success"""
+
+        return base_description.format(strategy.get_extraction_description())
+
+    def create_long_term_memory_tool(self) -> Callable:
+        """
+        Create a strategy-aware MCP tool function for creating long-term memories.
+
+        This method generates a tool function that uses the working memory's
+        configured strategy for memory extraction guidance.
+
+        Returns:
+            A callable MCP tool function with strategy-aware description
+        """
+        description = self.get_create_long_term_memory_tool_description()
+
+        async def create_long_term_memories_with_strategy(memories: list[dict]) -> dict:
+            """
+            Create long-term memories using the configured extraction strategy.
+
+            This tool is generated dynamically based on the working memory session's
+            configured memory extraction strategy.
+            """
+            # Import here to avoid circular imports
+            from agent_memory_server.api import (
+                create_long_term_memory as core_create_long_term_memory,
+            )
+            from agent_memory_server.config import settings
+            from agent_memory_server.dependencies import get_background_tasks
+            from agent_memory_server.models import (
+                CreateMemoryRecordRequest,
+                LenientMemoryRecord,
+            )
+
+            # Apply default namespace for STDIO if not provided in memory entries
+            processed_memories = []
+            for mem_data in memories:
+                if isinstance(mem_data, dict):
+                    mem = LenientMemoryRecord(**mem_data)
+                else:
+                    mem = mem_data
+
+                if mem.namespace is None and settings.default_mcp_namespace:
+                    mem.namespace = settings.default_mcp_namespace
+                if mem.user_id is None and settings.default_mcp_user_id:
+                    mem.user_id = settings.default_mcp_user_id
+
+                processed_memories.append(mem)
+
+            payload = CreateMemoryRecordRequest(memories=processed_memories)
+            result = await core_create_long_term_memory(
+                payload, background_tasks=get_background_tasks()
+            )
+            return result.model_dump() if hasattr(result, "model_dump") else result
+
+        # Set the function's metadata
+        create_long_term_memories_with_strategy.__doc__ = description
+        create_long_term_memories_with_strategy.__name__ = (
+            f"create_long_term_memories_{self.long_term_memory_strategy.strategy}"
+        )
+
+        return create_long_term_memories_with_strategy
 
 
 class WorkingMemoryResponse(WorkingMemory):
@@ -255,6 +399,10 @@ class WorkingMemoryRequest(BaseModel):
     user_id: str | None = None
     model_name: ModelNameLiteral | None = None
     context_window_max: int | None = None
+    long_term_memory_strategy: MemoryStrategyConfig | None = Field(
+        default=None,
+        description="Configuration for memory extraction strategy when promoting to long-term memory",
+    )
 
 
 class AckResponse(BaseModel):
