@@ -133,9 +133,9 @@ Start with our quick tutorial to understand the basics and see immediate results
 <div markdown>
 **Ready to integrate?**
 
-Jump into the API documentation and start building with REST or MCP interfaces.
+Jump into the Developer Guide for memory patterns and integration strategies.
 
-[📚 API Documentation](api.md){ .md-button }
+[🧠 Developer Guide](memory-integration-patterns.md){ .md-button }
 </div>
 
 </div>
