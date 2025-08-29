@@ -434,11 +434,12 @@ class TestMemoryEndpoints:
         response = await client.get(
             f"/v1/working-memory/{session_id}?namespace=test-namespace&user_id=test-user"
         )
+        # Should return 200 with empty session (backwards compatibility - creates new session)
         assert response.status_code == 200
-
-        # Should return empty working memory after deletion
         data = response.json()
-        assert len(data["messages"]) == 0
+        assert data["new_session"] is True  # Session was created
+        assert len(data["messages"]) == 0  # Empty session
+        assert len(data["memories"]) == 0
 
 
 @pytest.mark.requires_api_keys

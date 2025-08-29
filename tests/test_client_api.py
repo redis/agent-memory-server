@@ -156,15 +156,18 @@ async def test_session_lifecycle(memory_test_client: MemoryAPIClient):
         response = await memory_test_client.delete_working_memory(session_id)
         assert response.status == "ok"
 
-    # Verify it's gone by mocking a 404 response
+    # Verify it's gone - should now raise MemoryNotFoundError since we return 404 when session doesn't exist
+    import pytest
+    from agent_memory_client.exceptions import MemoryNotFoundError
+
     with patch(
         "agent_memory_server.working_memory.get_working_memory"
     ) as mock_get_memory:
         mock_get_memory.return_value = None
 
-        # This should not raise an error anymore since the unified API returns empty working memory instead of 404
-        session = await memory_test_client.get_working_memory(session_id)
-        assert len(session.messages) == 0  # Should return empty working memory
+        # Should raise MemoryNotFoundError since session was deleted
+        with pytest.raises(MemoryNotFoundError):
+            await memory_test_client.get_working_memory(session_id)
 
 
 @pytest.mark.asyncio

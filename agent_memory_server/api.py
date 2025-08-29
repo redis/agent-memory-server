@@ -347,14 +347,19 @@ async def get_working_memory(
         user_id=user_id,
     )
 
+    # For backwards compatibility, create session if it doesn't exist
+    new_session = False
     if not working_mem:
-        # Create empty working memory if none exists
+        new_session = True
+        # Create empty working memory for the session
         working_mem = WorkingMemory(
-            messages=[],
-            memories=[],
             session_id=session_id,
             namespace=namespace,
             user_id=user_id,
+        )
+        await working_memory.set_working_memory(
+            working_memory=working_mem,
+            redis_client=redis,
         )
 
     # Apply token-based truncation if we have messages and model info
@@ -383,12 +388,13 @@ async def get_working_memory(
         )
     )
 
-    # Return WorkingMemoryResponse with both percentage values
+    # Return WorkingMemoryResponse with both percentage values and new_session flag
     working_mem_data = working_mem.model_dump()
     working_mem_data["context_percentage_total_used"] = total_percentage
     working_mem_data["context_percentage_until_summarization"] = (
         until_summarization_percentage
     )
+    working_mem_data["new_session"] = new_session
     return WorkingMemoryResponse(**working_mem_data)
 
 
@@ -420,6 +426,15 @@ async def put_working_memory(
         Updated working memory (potentially with summary if tokens were condensed)
     """
     redis = await get_redis_conn()
+
+    # Check if session already exists to determine new_session flag
+    existing_memory = await working_memory.get_working_memory(
+        session_id=session_id,
+        namespace=memory.namespace,
+        redis_client=redis,
+        user_id=user_id if user_id is not None else memory.user_id,
+    )
+    new_session = existing_memory is None
 
     # Ensure session_id matches
     memory.session_id = session_id
@@ -477,12 +492,13 @@ async def put_working_memory(
         )
     )
 
-    # Return WorkingMemoryResponse with both percentage values
+    # Return WorkingMemoryResponse with both percentage values and new_session flag
     updated_memory_data = updated_memory.model_dump()
     updated_memory_data["context_percentage_total_used"] = total_percentage
     updated_memory_data["context_percentage_until_summarization"] = (
         until_summarization_percentage
     )
+    updated_memory_data["new_session"] = new_session
     return WorkingMemoryResponse(**updated_memory_data)
 
 

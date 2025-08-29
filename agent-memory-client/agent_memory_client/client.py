@@ -39,7 +39,6 @@ from .models import (
     RecencyConfig,
     SessionListResponse,
     WorkingMemory,
-    WorkingMemoryGetOrCreateResponse,
     WorkingMemoryResponse,
 )
 
@@ -289,11 +288,11 @@ class MemoryAPIClient:
         namespace: str | None = None,
         model_name: ModelNameLiteral | None = None,
         context_window_max: int | None = None,
-    ) -> WorkingMemoryGetOrCreateResponse:
+    ) -> tuple[bool, WorkingMemory]:
         """
         Get working memory for a session, creating it if it doesn't exist.
 
-        This method returns both the working memory and whether it was created or found.
+        This method returns a tuple with the creation status and the working memory.
         This is important for applications that need to know if they're working with
         a new session or an existing one.
 
@@ -305,23 +304,23 @@ class MemoryAPIClient:
             context_window_max: Optional direct specification of context window tokens
 
         Returns:
-            WorkingMemoryGetOrCreateResponse containing the memory and creation status
+            Tuple of (created: bool, memory: WorkingMemory)
+            - created: True if the session was created, False if it already existed
+            - memory: The WorkingMemory object
 
         Example:
             ```python
             # Get or create session memory
-            result = await client.get_or_create_working_memory(
+            created, memory = await client.get_or_create_working_memory(
                 session_id="chat_session_123",
                 user_id="user_456"
             )
 
-            if result.created:
+            if created:
                 print("Created new session")
             else:
                 print("Found existing session")
 
-            # Access the memory
-            memory = result.memory
             print(f"Session has {len(memory.messages)} messages")
             ```
         """
@@ -334,29 +333,31 @@ class MemoryAPIClient:
                 model_name=model_name,
                 context_window_max=context_window_max,
             )
-            return WorkingMemoryGetOrCreateResponse(
-                memory=existing_memory, created=False
-            )
-        except Exception:
-            # Session doesn't exist, create it
-            empty_memory = WorkingMemory(
-                session_id=session_id,
-                namespace=namespace or self.config.default_namespace,
-                messages=[],
-                memories=[],
-                data={},
-                user_id=user_id,
-            )
+            return (False, existing_memory)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                # Session doesn't exist, create it
+                empty_memory = WorkingMemory(
+                    session_id=session_id,
+                    namespace=namespace or self.config.default_namespace,
+                    messages=[],
+                    memories=[],
+                    data={},
+                    user_id=user_id,
+                )
 
-            created_memory = await self.put_working_memory(
-                session_id=session_id,
-                memory=empty_memory,
-                user_id=user_id,
-                model_name=model_name,
-                context_window_max=context_window_max,
-            )
+                created_memory = await self.put_working_memory(
+                    session_id=session_id,
+                    memory=empty_memory,
+                    user_id=user_id,
+                    model_name=model_name,
+                    context_window_max=context_window_max,
+                )
 
-            return WorkingMemoryGetOrCreateResponse(memory=created_memory, created=True)
+                return (True, created_memory)
+            else:
+                # Re-raise other HTTP errors
+                raise
 
     async def put_working_memory(
         self,
@@ -484,11 +485,10 @@ class MemoryAPIClient:
         existing_memory = None
         if preserve_existing:
             try:
-                result_obj = await self.get_or_create_working_memory(
+                created, existing_memory = await self.get_or_create_working_memory(
                     session_id=session_id,
                     namespace=namespace,
                 )
-                existing_memory = result_obj.memory
             except Exception:
                 existing_memory = None
 
@@ -544,11 +544,10 @@ class MemoryAPIClient:
             ```
         """
         # Get existing memory
-        result_obj = await self.get_or_create_working_memory(
+        created, existing_memory = await self.get_or_create_working_memory(
             session_id=session_id,
             namespace=namespace,
         )
-        existing_memory = result_obj.memory
 
         # Determine final memories list
         if replace or not existing_memory:
@@ -1210,14 +1209,13 @@ class MemoryAPIClient:
             ```
         """
         try:
-            result_obj = await self.get_or_create_working_memory(
+            created, result = await self.get_or_create_working_memory(
                 session_id=session_id,
                 namespace=namespace or self.config.default_namespace,
                 user_id=user_id,
             )
 
             # Format for LLM consumption
-            result = result_obj.memory
             message_count = len(result.messages) if result.messages else 0
             memory_count = len(result.memories) if result.memories else 0
             data_keys = list(result.data.keys()) if result.data else []
@@ -1238,11 +1236,11 @@ class MemoryAPIClient:
                         }
                     )
 
-            status_text = "new session" if result_obj.created else "existing session"
+            status_text = "new session" if created else "existing session"
 
             return {
                 "session_id": session_id,
-                "created": result_obj.created,
+                "created": created,
                 "message_count": message_count,
                 "memory_count": memory_count,
                 "memories": formatted_memories,
@@ -2395,10 +2393,9 @@ class MemoryAPIClient:
             Acknowledgement of promotion operation
         """
         # Get current working memory
-        result_obj = await self.get_or_create_working_memory(
+        created, working_memory = await self.get_or_create_working_memory(
             session_id=session_id, namespace=namespace
         )
-        working_memory = result_obj.memory
 
         # Filter memories if specific IDs are requested
         memories_to_promote = working_memory.memories
@@ -2611,10 +2608,9 @@ class MemoryAPIClient:
             WorkingMemoryResponse with updated memory
         """
         # Get existing memory
-        result_obj = await self.get_or_create_working_memory(
+        created, existing_memory = await self.get_or_create_working_memory(
             session_id=session_id, namespace=namespace, user_id=user_id
         )
-        existing_memory = result_obj.memory
 
         # Determine final data based on merge strategy
         if existing_memory and existing_memory.data:
@@ -2667,10 +2663,9 @@ class MemoryAPIClient:
             WorkingMemoryResponse with updated memory (potentially summarized if token limit exceeded)
         """
         # Get existing memory
-        result_obj = await self.get_or_create_working_memory(
+        created, existing_memory = await self.get_or_create_working_memory(
             session_id=session_id, namespace=namespace, user_id=user_id
         )
-        existing_memory = result_obj.memory
 
         # Convert messages to MemoryMessage objects
         converted_messages = []

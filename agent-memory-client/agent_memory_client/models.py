@@ -236,6 +236,10 @@ class WorkingMemoryResponse(WorkingMemory):
         default=None,
         description="Percentage until auto-summarization triggers (0-100, reaches 100% at summarization threshold)",
     )
+    new_session: bool | None = Field(
+        default=None,
+        description="True if session was created, False if existing session was found, None if not applicable",
+    )
 
 
 class MemoryRecordResult(MemoryRecord):
@@ -281,15 +285,6 @@ class MemoryRecordResults(BaseModel):
     memories: list[MemoryRecordResult]
     total: int
     next_offset: int | None = None
-
-
-class WorkingMemoryGetOrCreateResponse(BaseModel):
-    """Response from get_or_create_working_memory operations"""
-
-    memory: WorkingMemoryResponse
-    created: bool = Field(
-        description="True if the session was created, False if it already existed"
-    )
 
 
 class MemoryPromptResponse(BaseModel):
