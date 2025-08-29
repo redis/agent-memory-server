@@ -30,6 +30,7 @@ With grounding: "John was really helpful with the project"
 Replaces pronouns with their actual referents from conversation context.
 
 **Examples:**
+
 - "He likes coffee" → "John likes coffee"
 - "She recommended the book" → "Sarah recommended the book"
 - "They are meeting tomorrow" → "Alice and Bob are meeting tomorrow"
@@ -40,6 +41,7 @@ Replaces pronouns with their actual referents from conversation context.
 Converts relative time references to specific dates and times.
 
 **Examples:**
+
 - "Yesterday" → "January 15, 2024"
 - "Last week" → "The week of January 8-14, 2024"
 - "Tomorrow" → "January 17, 2024"
@@ -50,6 +52,7 @@ Converts relative time references to specific dates and times.
 Resolves location references to specific places mentioned in context.
 
 **Examples:**
+
 - "That place" → "Starbucks on Main Street"
 - "There" → "The office conference room"
 - "Here" → "The user's home office"
@@ -59,6 +62,7 @@ Resolves location references to specific places mentioned in context.
 Links vague references to specific entities from the conversation.
 
 **Examples:**
+
 - "The project" → "The website redesign project"
 - "The meeting" → "The quarterly review meeting"
 - "The document" → "The project proposal document"
@@ -228,29 +232,6 @@ grounding_quality = {
     "overall_score": 0.86          # Overall grounding quality
 }
 ```
-
-## Best Practices
-
-### Conversation Design
-
-1. **Provide context early**: Introduce entities, people, and places clearly
-2. **Use specific names**: Avoid excessive pronoun use when clarity matters
-3. **Maintain conversation threads**: Keep related discussions in the same session
-4. **Include temporal markers**: Use specific dates when discussing events
-
-### Memory Quality
-
-1. **Review extracted memories**: Check that grounding resolved references correctly
-2. **Provide feedback**: Use memory editing to correct grounding errors
-3. **Monitor patterns**: Identify common grounding failures for improvement
-4. **Test edge cases**: Verify grounding works with complex conversations
-
-### Performance Optimization
-
-1. **Limit conversation history**: Very long conversations may impact grounding quality
-2. **Use appropriate models**: Balance accuracy vs. speed based on your needs
-3. **Monitor token usage**: Grounding requires additional context tokens
-4. **Cache frequently referenced entities**: Consistent entity names improve grounding
 
 ## Troubleshooting
 

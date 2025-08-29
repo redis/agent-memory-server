@@ -4,110 +4,7 @@ This guide covers advanced configuration patterns, performance optimization, cus
 
 ## Advanced Factory Patterns
 
-### Multi-Environment Factory
 
-Create factories that adapt to different environments:
-
-```python
-# my_vectorstores.py
-import os
-from langchain_core.embeddings import Embeddings
-from langchain_redis import Redis as LangchainRedis
-from langchain_chroma import Chroma
-from langchain_pinecone import PineconeVectorStore
-
-def create_adaptive_vectorstore(embeddings: Embeddings) -> VectorStore:
-    """Dynamically choose vectorstore based on environment."""
-
-    environment = os.getenv("ENVIRONMENT", "development")
-
-    if environment == "production":
-        # Use Pinecone for production
-        return PineconeVectorStore(
-            index_name=os.getenv("PINECONE_INDEX_NAME"),
-            embedding=embeddings,
-            api_key=os.getenv("PINECONE_API_KEY"),
-            environment=os.getenv("PINECONE_ENVIRONMENT")
-        )
-    elif environment == "staging":
-        # Use Redis for staging
-        return LangchainRedis(
-            redis_url=os.getenv("REDIS_URL"),
-            index_name="staging_memories",
-            embeddings=embeddings
-        )
-    else:
-        # Use Chroma for development
-        return Chroma(
-            persist_directory="./dev_chroma_data",
-            collection_name="dev_memories",
-            embedding_function=embeddings
-        )
-```
-
-### High-Availability Factory
-
-Create factories with resilience and failover capabilities:
-
-```python
-# resilient_factory.py
-import os
-from langchain_core.embeddings import Embeddings
-from langchain_core.vectorstores import VectorStore
-
-def create_resilient_vectorstore(embeddings: Embeddings) -> VectorStore:
-    """Create vectorstore with built-in resilience patterns."""
-
-    # Try multiple backends in order of preference
-    backend_preferences = [
-        ("redis", _create_redis_backend),
-        ("chroma", _create_chroma_backend),
-        ("memory", _create_memory_backend)  # Fallback to in-memory
-    ]
-
-    last_error = None
-    for backend_name, factory_func in backend_preferences:
-        try:
-            vectorstore = factory_func(embeddings)
-            print(f"Successfully initialized {backend_name} vectorstore")
-            return vectorstore
-        except Exception as e:
-            print(f"Failed to initialize {backend_name}: {e}")
-            last_error = e
-            continue
-
-    raise Exception(f"All vectorstore backends failed. Last error: {last_error}")
-
-def _create_redis_backend(embeddings: Embeddings) -> VectorStore:
-    """Try Redis with connection validation."""
-    from langchain_redis import Redis as LangchainRedis
-
-    vectorstore = LangchainRedis(
-        redis_url=os.getenv("REDIS_URL", "redis://localhost:6379"),
-        index_name="resilient_memories",
-        embeddings=embeddings
-    )
-
-    # Validate connection
-    vectorstore.client.ping()
-    return vectorstore
-
-def _create_chroma_backend(embeddings: Embeddings) -> VectorStore:
-    """Fallback to Chroma."""
-    from langchain_chroma import Chroma
-
-    return Chroma(
-        persist_directory=os.getenv("BACKUP_PERSIST_DIR", "./backup_chroma"),
-        collection_name="backup_memories",
-        embedding_function=embeddings
-    )
-
-def _create_memory_backend(embeddings: Embeddings) -> VectorStore:
-    """Final fallback to in-memory store."""
-    from langchain_core.vectorstores import InMemoryVectorStore
-
-    return InMemoryVectorStore(embeddings)
-```
 
 ### Multi-Backend Hybrid Factory
 
@@ -616,17 +513,17 @@ class VectorStoreMigrator:
         return await self.import_memories(memories, batch_size)
 
 # Usage example
-async def migrate_redis_to_pinecone():
-    """Example: Migrate from Redis to Pinecone."""
+async def migrate_pinecone_to_redis():
+    """Example: Migrate from Pinecone to Redis."""
 
-    # Source (Redis)
+    # Source (Pinecone)
     source_client = MemoryAPIClient(
-        base_url="http://localhost:8000",  # Current Redis setup
+        base_url="http://localhost:8000",  # Current Pinecone setup
     )
 
-    # Target (Pinecone) - Temporarily switch backend
+    # Target (Redis) - New Redis-based setup
     target_client = MemoryAPIClient(
-        base_url="http://localhost:8001",  # New Pinecone setup
+        base_url="http://localhost:8001",  # New Redis setup
     )
 
     migrator = VectorStoreMigrator(source_client, target_client)
@@ -637,7 +534,7 @@ async def migrate_redis_to_pinecone():
 
     # Option 2: File-based migration (safer for large datasets)
     await migrator.export_to_file("memory_export.json")
-    # ... Stop old server, start new server with Pinecone backend ...
+    # ... Stop old server, start new server with Redis backend ...
     imported = await migrator.import_from_file("memory_export.json")
     print(f"Imported {imported} memories from file")
 ```
