@@ -100,7 +100,7 @@ nav:
     - Advanced Vector Store Config: vector-store-advanced.md
     - Contextual Grounding: contextual-grounding.md
 
-  - API Interfaces:
+  - API Reference:
     - REST API: api.md
     - MCP Server: mcp.md
     - CLI Reference: cli.md

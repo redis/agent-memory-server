@@ -57,6 +57,8 @@ results = await client.search_long_term_memory(
 )
 ```
 
+> **Note**: While you can call client functions directly as shown above, using **MCP or SDK-provided tool calls** is recommended for AI agents as it provides better integration, automatic context management, and follows AI-native patterns. See **[Memory Patterns](https://redis.github.io/agent-memory-server/memory-patterns/)** for guidance on when to use each approach.
+
 ### 3. MCP Integration
 
 ```bash
@@ -73,13 +75,13 @@ uv run agent-memory mcp --mode sse --port 9000
 
 ### Key Documentation Sections:
 
-- **[Quick Start Guide](docs/quick-start.md)** - Get up and running in minutes
-- **[Python SDK](docs/python-sdk.md)** - Complete SDK reference with examples
-- **[Vector Store Backends](docs/vector-store-backends.md)** - Configure different vector databases
-- **[Authentication](docs/authentication.md)** - OAuth2/JWT setup for production
-- **[Memory Types](docs/memory-types.md)** - Understanding semantic vs episodic memory
-- **[API Reference](docs/api.md)** - REST API endpoints
-- **[MCP Protocol](docs/mcp.md)** - Model Context Protocol integration
+- **[Quick Start Guide](https://redis.github.io/agent-memory-server/quick-start/)** - Get up and running in minutes
+- **[Python SDK](https://redis.github.io/agent-memory-server/python-sdk/)** - Complete SDK reference with examples
+- **[Vector Store Backends](https://redis.github.io/agent-memory-server/vector-store-backends/)** - Configure different vector databases
+- **[Authentication](https://redis.github.io/agent-memory-server/authentication/)** - OAuth2/JWT setup for production
+- **[Memory Types](https://redis.github.io/agent-memory-server/memory-types/)** - Understanding semantic vs episodic memory
+- **[API Reference](https://redis.github.io/agent-memory-server/api/)** - REST API endpoints
+- **[MCP Protocol](https://redis.github.io/agent-memory-server/mcp/)** - Model Context Protocol integration
 
 ## Architecture
 

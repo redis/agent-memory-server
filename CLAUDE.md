@@ -222,7 +222,7 @@ ENABLE_TOPIC_EXTRACTION=true
 ENABLE_NER=true
 ```
 
-## API Interfaces
+## API Reference
 
 ### REST API (Port 8000)
 - Session management (`/v1/working-memory/`)

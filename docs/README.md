@@ -28,7 +28,7 @@ Understand the fundamentals:
 - **[Recency Boost](recency-boost.md)** - Time-aware memory ranking and intelligent scoring
 - **[Vector Store Backends](vector-store-backends.md)** - Alternative storage backends (Pinecone, Chroma, etc.)
 
-## 🔌 API Interfaces
+## 🔌 API Reference
 
 Choose your integration approach:
 
