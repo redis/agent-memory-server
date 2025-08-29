@@ -37,7 +37,6 @@ from agent_memory_server.llms import (
 )
 from agent_memory_server.models import (
     ExtractedMemoryRecord,
-    MemoryMessage,
     MemoryRecord,
     MemoryRecordResult,
     MemoryRecordResults,
@@ -105,9 +104,10 @@ messages and extract information that might be useful in future conversations.
 Extract two types of memories from the following message:
 1. EPISODIC: Experiences or events that have a time dimension.
    (They MUST have a time dimension to be "episodic.")
-   Example: "User mentioned they visited Paris last month" or "User had trouble with the login process"
+   Example: "User mentioned they visited Paris in August of 2025" or "User had trouble with the login process on 2025-01-15"
 
-2. SEMANTIC: User preferences, facts, or general knowledge that would be useful long-term.
+2. SEMANTIC: User preferences, facts, or general knowledge about the agent's
+   environment that might be useful long-term.
    Example: "User prefers dark mode UI" or "User works as a data scientist"
 
 For each memory, return a JSON object with the following fields:
@@ -118,7 +118,7 @@ For each memory, return a JSON object with the following fields:
 - event_date: str | null -- For episodic memories, the date/time when the event occurred (ISO 8601 format), null for semantic memories
 
 IMPORTANT RULES:
-1. Only extract information that would be genuinely useful for future interactions.
+1. Only extract information that might be genuinely useful for future interactions.
 2. Do not extract procedural knowledge or instructions.
 3. If given `user_id`, focus on user-specific information, preferences, and facts.
 4. Return an empty list if no useful memories can be extracted.
@@ -240,94 +240,15 @@ async def extract_memories_from_session_thread(
         f"Full conversation context length: {len(full_conversation)} characters"
     )
 
-    # Use the enhanced extraction prompt with contextual grounding
-    from agent_memory_server.extraction import DISCRETE_EXTRACTION_PROMPT
-
-    client = llm_client or await get_model_client(settings.generation_model)
+    # Use the new memory strategy system for extraction
+    from agent_memory_server.memory_strategies import get_memory_strategy
 
     try:
-        response = await client.create_chat_completion(
-            model=settings.generation_model,
-            prompt=DISCRETE_EXTRACTION_PROMPT.format(
-                message=full_conversation,
-                top_k_topics=settings.top_k_topics,
-                current_datetime=datetime.now().strftime(
-                    "%A, %B %d, %Y at %I:%M %p %Z"
-                ),
-            ),
-            response_format={"type": "json_object"},
-        )
+        # Get the discrete memory strategy for contextual grounding
+        strategy = get_memory_strategy("discrete")
 
-        # Extract content from response with error handling
-        try:
-            if (
-                hasattr(response, "choices")
-                and isinstance(response.choices, list)
-                and len(response.choices) > 0
-            ):
-                if hasattr(response.choices[0], "message") and hasattr(
-                    response.choices[0].message, "content"
-                ):
-                    content = response.choices[0].message.content
-                else:
-                    logger.error(
-                        f"Unexpected response structure - no message.content: {response}"
-                    )
-                    return []
-            else:
-                logger.error(
-                    f"Unexpected response structure - no choices list: {response}"
-                )
-                return []
-
-            # Parse JSON with fallback for malformed responses
-            extraction_result = _parse_extraction_response_with_fallback(
-                content, logger
-            )
-            memories_data = extraction_result.get("memories", [])
-        except (json.JSONDecodeError, AttributeError, TypeError) as e:
-            logger.error(
-                f"Failed to parse extraction response: {e}, response: {response}"
-            )
-
-            # Log the content for debugging
-            if hasattr(response, "choices") and response.choices:
-                content = getattr(response.choices[0].message, "content", "No content")
-                logger.error(
-                    f"Problematic content (first 1000 chars): {content[:1000]}"
-                )
-
-            # For test stability, retry once with a simpler prompt
-            logger.info("Attempting retry with simplified extraction")
-            try:
-                simple_response = await client.create_chat_completion(
-                    model=settings.generation_model,
-                    prompt=f"""Extract key information from this conversation and format as JSON:
-{full_conversation}
-
-Return in this exact format:
-{{"memories": [{{"type": "episodic", "text": "extracted information", "topics": ["topic1"], "entities": ["entity1"]}}]}}""",
-                    response_format={"type": "json_object"},
-                )
-
-                if (
-                    hasattr(simple_response, "choices")
-                    and simple_response.choices
-                    and hasattr(simple_response.choices[0].message, "content")
-                ):
-                    retry_content = simple_response.choices[0].message.content
-                    retry_result = json.loads(retry_content)
-                    memories_data = retry_result.get("memories", [])
-                    logger.info(
-                        f"Retry extraction succeeded with {len(memories_data)} memories"
-                    )
-                else:
-                    logger.error("Retry extraction failed - no valid response")
-                    return []
-
-            except Exception as retry_error:
-                logger.error(f"Retry extraction failed: {retry_error}")
-                return []
+        # Extract memories using the strategy
+        memories_data = await strategy.extract_memories(full_conversation)
 
         logger.info(
             f"Extracted {len(memories_data)} memories from session thread {session_id}"
@@ -1583,89 +1504,6 @@ async def promote_working_memory_to_long_term(
         )
 
     return promoted_count
-
-
-async def extract_memories_from_messages(
-    messages: list[MemoryMessage],
-    session_id: str | None = None,
-    user_id: str | None = None,
-    namespace: str | None = None,
-    llm_client: OpenAIClientWrapper | AnthropicClientWrapper | None = None,
-) -> list[MemoryRecord]:
-    """
-    Extract semantic and episodic memories from message records.
-
-    Args:
-        message_records: List of message-type memory records to extract from
-        llm_client: Optional LLM client for extraction
-
-    Returns:
-        List of extracted memory records with extracted_from field populated
-    """
-    if not messages:
-        return []
-
-    client = llm_client or await get_model_client(settings.generation_model)
-    extracted_memories = []
-
-    for message in messages:
-        try:
-            # Use LLM to extract memories from the message
-            response = await client.create_chat_completion(
-                model=settings.generation_model,
-                prompt=WORKING_MEMORY_EXTRACTION_PROMPT.format(message=message.content),
-                response_format={"type": "json_object"},
-            )
-
-            extraction_result = json.loads(response.choices[0].message.content)
-
-            if "memories" in extraction_result and extraction_result["memories"]:
-                for memory_data in extraction_result["memories"]:
-                    # Parse event_date if provided
-                    event_date = None
-                    if memory_data.get("event_date"):
-                        try:
-                            event_date_str = memory_data["event_date"]
-                            # Handle 'Z' suffix (UTC indicator)
-                            if event_date_str.endswith("Z"):
-                                event_date = datetime.fromisoformat(
-                                    event_date_str.replace("Z", "+00:00")
-                                )
-                            else:
-                                # Let fromisoformat handle other timezone formats like +05:00, -08:00, etc.
-                                event_date = datetime.fromisoformat(event_date_str)
-                        except (ValueError, TypeError) as e:
-                            logger.warning(
-                                f"Could not parse event_date '{memory_data.get('event_date')}': {e}"
-                            )
-
-                    # Create a new memory record from the extraction
-                    extracted_memory = MemoryRecord(
-                        id=str(ULID()),  # Server-generated ID
-                        text=memory_data["text"],
-                        memory_type=memory_data.get("type", "semantic"),
-                        topics=memory_data.get("topics", []),
-                        entities=memory_data.get("entities", []),
-                        extracted_from=[message.id] if message.id else [],
-                        event_date=event_date,
-                        # Inherit context from the working memory
-                        session_id=session_id,
-                        user_id=user_id,
-                        namespace=namespace,
-                        persisted_at=None,  # Will be set during promotion
-                        discrete_memory_extracted="t",
-                    )
-                    extracted_memories.append(extracted_memory)
-
-                logger.info(
-                    f"Extracted {len(extraction_result['memories'])} memories from message {message.id}"
-                )
-
-        except Exception as e:
-            logger.error(f"Error extracting memories from message {message.id}: {e}")
-            continue
-
-    return extracted_memories
 
 
 async def delete_long_term_memories(

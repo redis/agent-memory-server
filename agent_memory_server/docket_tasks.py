@@ -8,7 +8,6 @@ from docket import Docket
 
 from agent_memory_server.config import settings
 from agent_memory_server.extraction import (
-    extract_discrete_memories,
     extract_memories_with_strategy,
 )
 from agent_memory_server.long_term_memory import (
@@ -33,7 +32,6 @@ task_collection = [
     summarize_session,
     index_long_term_memories,
     compact_long_term_memories,
-    extract_discrete_memories,
     extract_memories_with_strategy,
     promote_working_memory_to_long_term,
     delete_long_term_memories,
