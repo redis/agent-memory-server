@@ -7,6 +7,7 @@ Contextual grounding is an advanced feature that ensures extracted memories cont
 When AI agents extract memories from conversations, they often contain ambiguous references that lose meaning when viewed outside the original context. Contextual grounding solves this by automatically resolving these references using the complete conversation history.
 
 **Problem Example:**
+
 ```
 Original conversation:
 User: "I met John at the coffee shop yesterday"
@@ -18,6 +19,7 @@ With grounding: "John was really helpful with the project"
 ```
 
 **Key Benefits:**
+
 - **Clear memories**: No ambiguous pronouns or references
 - **Standalone context**: Memories make sense without conversation history
 - **Better search**: More precise matching with complete information
