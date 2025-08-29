@@ -76,11 +76,11 @@ class DiscreteMemoryStrategy(BaseMemoryStrategy):
     Current date and time: {current_datetime}
 
     Extract two types of memories:
-    1. EPISODIC: Personal experiences specific to a user or agent.
-       Example: "User prefers window seats" or "User had a bad experience in Paris"
+    1. EPISODIC: Memories about specific episodes in time.
+       Example: "User had a bad experience on a flight to Paris in 2024"
 
     2. SEMANTIC: User preferences and general knowledge outside of your training data.
-       Example: "Trek discontinued the Trek 520 steel touring bike in 2023"
+       Example: "User prefers window seats when flying"
 
     CONTEXTUAL GROUNDING REQUIREMENTS:
     When extracting memories, you must resolve all contextual references to their concrete referents:
@@ -206,7 +206,9 @@ class SummaryMemoryStrategy(BaseMemoryStrategy):
         self.max_summary_length = max_summary_length
 
     SUMMARY_PROMPT = """
-    You are a conversation summarizer. Your job is to create a concise summary of the conversation that captures the key points, decisions, and important context.
+    You are a conversation summarizer. Your job is to create a concise summary
+    of the conversation that captures the key points, decisions, and important
+    context.
 
     CURRENT CONTEXT:
     Current date and time: {current_datetime}
@@ -289,7 +291,9 @@ class UserPreferencesMemoryStrategy(BaseMemoryStrategy):
     """Extract user preferences from messages."""
 
     PREFERENCES_PROMPT = """
-    You are a user preference extractor. Your job is to identify and extract user preferences, settings, likes, dislikes, and personal characteristics from conversations.
+    You are a user preference extractor. Your job is to identify and extract
+    user preferences, settings, likes, dislikes, and personal characteristics
+    from conversations.
 
     CURRENT CONTEXT:
     Current date and time: {current_datetime}
