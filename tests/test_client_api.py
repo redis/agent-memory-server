@@ -156,18 +156,19 @@ async def test_session_lifecycle(memory_test_client: MemoryAPIClient):
         response = await memory_test_client.delete_working_memory(session_id)
         assert response.status == "ok"
 
-    # Verify it's gone - should now raise MemoryNotFoundError since we return 404 when session doesn't exist
-    import pytest
-    from agent_memory_client.exceptions import MemoryNotFoundError
-
+    # Verify session is gone - API now creates empty session when none exists (backwards compatibility)
     with patch(
         "agent_memory_server.working_memory.get_working_memory"
     ) as mock_get_memory:
         mock_get_memory.return_value = None
 
-        # Should raise MemoryNotFoundError since session was deleted
-        with pytest.raises(MemoryNotFoundError):
-            await memory_test_client.get_working_memory(session_id)
+        # Should return empty session with new_session=True since session was deleted
+        result = await memory_test_client.get_working_memory(session_id)
+        assert (
+            result.new_session is True
+        )  # Should indicate this is a newly created session
+        assert len(result.messages) == 0  # Should be empty
+        assert result.session_id == session_id
 
 
 @pytest.mark.asyncio
