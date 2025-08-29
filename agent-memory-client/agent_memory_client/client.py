@@ -1124,12 +1124,11 @@ class MemoryAPIClient:
             ```
         """
         try:
-            result_obj = await self.get_or_create_working_memory(
+            created, result = await self.get_or_create_working_memory(
                 session_id=session_id,
                 namespace=namespace or self.config.default_namespace,
                 user_id=user_id,
             )
-            result = result_obj.memory
 
             # Format for LLM consumption
             message_count = len(result.messages) if result.messages else 0

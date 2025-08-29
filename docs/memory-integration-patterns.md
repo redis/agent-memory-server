@@ -258,8 +258,7 @@ class CodeDrivenAgent:
         session_id: str
     ) -> str:
         # 1. Get working memory session (creates if doesn't exist)
-        result = await self.memory_client.get_or_create_working_memory(session_id)
-        working_memory = result.memory
+        created, working_memory = await self.memory_client.get_or_create_working_memory(session_id)
 
         # 2. Search for relevant context using session ID
         context_search = await self.memory_client.memory_prompt(
@@ -367,8 +366,7 @@ results = await asyncio.gather(*search_tasks)
 async def get_enriched_context(user_query: str, user_id: str, session_id: str):
     """Get context that includes both working memory and relevant long-term memories"""
     # First, get the working memory session (creates if doesn't exist)
-    result = await client.get_or_create_working_memory(session_id)
-    working_memory = result.memory
+    created, working_memory = await client.get_or_create_working_memory(session_id)
 
     # Then use memory_prompt with session ID
     return await client.memory_prompt(
@@ -524,8 +522,7 @@ class AutoLearningAgent:
         """Process conversation with automatic learning"""
 
         # 1. Get working memory session (creates if doesn't exist)
-        result = await self.memory_client.get_or_create_working_memory(session_id)
-        working_memory = result.memory
+        created, working_memory = await self.memory_client.get_or_create_working_memory(session_id)
 
         # 2. Get existing context for better responses
         context = await self.memory_client.memory_prompt(
@@ -674,8 +671,7 @@ class HybridMemoryAgent:
 
     async def chat(self, user_message: str, user_id: str, session_id: str) -> str:
         # 1. Get working memory session (creates if doesn't exist)
-        result = await self.memory_client.get_or_create_working_memory(session_id)
-        working_memory = result.memory
+        created, working_memory = await self.memory_client.get_or_create_working_memory(session_id)
 
         # 2. Code-driven: Get relevant context
         context = await self.memory_client.memory_prompt(
