@@ -62,7 +62,7 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/redis/redis-memory-server
     - icon: fontawesome/brands/docker
-      link: https://hub.docker.com/r/andrewbrookins510/agent-memory-server
+      link: https://hub.docker.com/r/redislabs/agent-memory-server
 
   version:
     provider: mike

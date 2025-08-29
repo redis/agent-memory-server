@@ -28,7 +28,7 @@ Merging a PR to the main branch will trigger building and pushing a new image
 to Docker Hub based on the commits in main (including the version number).
 Currently, that image pushes to a test project:
 
-https://hub.docker.com/r/andrewbrookins510/agent-memory-server
+https://hub.docker.com/r/redislabs/agent-memory-server
 
 
 ## Releasing Agent Memory Client
