@@ -30,13 +30,6 @@ Transform your AI agents from goldfish 🐠 into elephants 🐘 with Redis-power
 
     [SDK Documentation →](python-sdk.md)
 
--   ✨ **New Features**
-
-    ---
-
-    Advanced features: configurable memory strategies, query optimization, memory editing, and more
-
-    [Memory Strategies →](memory-strategies.md)
 
 </div>
 
