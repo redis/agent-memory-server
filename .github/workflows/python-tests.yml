@@ -105,8 +105,8 @@ jobs:
         platforms: linux/amd64,linux/arm64
         push: true
         tags: |
-          andrewbrookins510/agent-memory-server:latest
-          andrewbrookins510/agent-memory-server:${{ steps.version.outputs.version }}
+          redislabs/agent-memory-server:latest
+          redislabs/agent-memory-server:${{ steps.version.outputs.version }}
           ghcr.io/${{ github.repository }}:latest
           ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
         cache-from: type=gha

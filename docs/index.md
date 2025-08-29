@@ -191,7 +191,7 @@ Jump into the Developer Guide for memory patterns and integration strategies.
 ## Community & Support
 
 - **💻 Source Code**: [GitHub Repository](https://github.com/redis/agent-memory-server)
-- **🐳 Docker Images**: [Docker Hub](https://hub.docker.com/r/andrewbrookins510/agent-memory-server)
+- **🐳 Docker Images**: [Docker Hub](https://hub.docker.com/r/redislabs/agent-memory-server)
 - **🐛 Issues**: [Report Issues](https://github.com/redis/agent-memory-server/issues)
 - **📖 Examples**: [Complete Examples](https://github.com/redis/agent-memory-server/tree/main/examples)
 
