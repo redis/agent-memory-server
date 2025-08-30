@@ -335,12 +335,12 @@ conversation = {
 await client.set_working_memory("session-123", conversation)
 
 # Retrieve or create working memory
-result = await client.get_or_create_working_memory("session-123")
-if result.created:
+created, memory = await client.get_or_create_working_memory("session-123")
+if created:
     print("Created new session")
 else:
     print("Found existing session")
-print(f"Session has {len(result.memory.messages)} messages")
+print(f"Session has {len(memory.messages)} messages")
 ```
 
 ## Memory-Enhanced Conversations

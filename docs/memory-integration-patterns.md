@@ -59,29 +59,40 @@ if response.choices[0].message.tool_calls:
 
 ```python
 class LLMMemoryAgent:
-    def __init__(self, memory_url: str, session_id: str, user_id: str):
+    def __init__(self, memory_url: str, session_id: str, user_id: str, model_name: str = "gpt-4o"):
         self.memory_client = MemoryAPIClient(base_url=memory_url)
         self.openai_client = openai.AsyncOpenAI()
         self.session_id = session_id
         self.user_id = user_id
-        self.conversation_history = []
+        self.model_name = model_name
 
     async def chat(self, user_message: str) -> str:
-        # Add user message to conversation
-        self.conversation_history.append({
-            "role": "user",
-            "content": user_message
-        })
+        # Get or create working memory session for conversation history
+        created, working_memory = await self.memory_client.get_or_create_working_memory(
+            session_id=self.session_id,
+            model_name=self.model_name,
+            user_id=self.user_id
+        )
 
-        # Get memory tools
+        # Get conversation context that includes relevant long-term memories
+        context = await self.memory_client.memory_prompt(
+            query=user_message,
+            session_id=self.session_id,
+            long_term_search={
+                "text": user_message,
+                "filters": {"user_id": {"eq": self.user_id}},
+                "limit": 5
+            }
+        )
+
+        # Get memory tools for the LLM
         tools = MemoryAPIClient.get_all_memory_tool_schemas()
 
-        # Generate response with memory tools
+        # Generate response with memory tools and context
         response = await self.openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant with persistent memory. Remember important user information and retrieve relevant context when needed."},
-                *self.conversation_history
+            model=self.model_name,
+            messages=context.messages + [
+                {"role": "user", "content": user_message}
             ],
             tools=tools
         )
@@ -97,10 +108,21 @@ class LLMMemoryAgent:
                 )
 
         assistant_message = response.choices[0].message.content
-        self.conversation_history.append({
-            "role": "assistant",
-            "content": assistant_message
-        })
+
+        # Store the conversation turn in working memory
+        from agent_memory_client.models import WorkingMemory, MemoryMessage
+
+        await self.memory_client.set_working_memory(
+            session_id=self.session_id,
+            working_memory=WorkingMemory(
+                session_id=self.session_id,
+                messages=[
+                    MemoryMessage(role="user", content=user_message),
+                    MemoryMessage(role="assistant", content=assistant_message)
+                ],
+                user_id=self.user_id
+            )
+        )
 
         return assistant_message
 
@@ -108,7 +130,8 @@ class LLMMemoryAgent:
 agent = LLMMemoryAgent(
     memory_url="http://localhost:8000",
     session_id="alice_chat",
-    user_id="alice"
+    user_id="alice",
+    model_name="gpt-4o"
 )
 
 # First conversation
@@ -235,8 +258,7 @@ class CodeDrivenAgent:
         session_id: str
     ) -> str:
         # 1. Get working memory session (creates if doesn't exist)
-        result = await self.memory_client.get_or_create_working_memory(session_id)
-        working_memory = result.memory
+        created, working_memory = await self.memory_client.get_or_create_working_memory(session_id)
 
         # 2. Search for relevant context using session ID
         context_search = await self.memory_client.memory_prompt(
@@ -344,8 +366,7 @@ results = await asyncio.gather(*search_tasks)
 async def get_enriched_context(user_query: str, user_id: str, session_id: str):
     """Get context that includes both working memory and relevant long-term memories"""
     # First, get the working memory session (creates if doesn't exist)
-    result = await client.get_or_create_working_memory(session_id)
-    working_memory = result.memory
+    created, working_memory = await client.get_or_create_working_memory(session_id)
 
     # Then use memory_prompt with session ID
     return await client.memory_prompt(
@@ -501,8 +522,7 @@ class AutoLearningAgent:
         """Process conversation with automatic learning"""
 
         # 1. Get working memory session (creates if doesn't exist)
-        result = await self.memory_client.get_or_create_working_memory(session_id)
-        working_memory = result.memory
+        created, working_memory = await self.memory_client.get_or_create_working_memory(session_id)
 
         # 2. Get existing context for better responses
         context = await self.memory_client.memory_prompt(
@@ -651,8 +671,7 @@ class HybridMemoryAgent:
 
     async def chat(self, user_message: str, user_id: str, session_id: str) -> str:
         # 1. Get working memory session (creates if doesn't exist)
-        result = await self.memory_client.get_or_create_working_memory(session_id)
-        working_memory = result.memory
+        created, working_memory = await self.memory_client.get_or_create_working_memory(session_id)
 
         # 2. Code-driven: Get relevant context
         context = await self.memory_client.memory_prompt(

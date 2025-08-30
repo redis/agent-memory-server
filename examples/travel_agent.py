@@ -257,12 +257,11 @@ class TravelAgent:
     async def _get_working_memory(self, session_id: str, user_id: str) -> WorkingMemory:
         """Get working memory for a session, creating it if it doesn't exist."""
         client = await self.get_client()
-        result_obj = await client.get_or_create_working_memory(
+        created, result = await client.get_or_create_working_memory(
             session_id=session_id,
             namespace=self._get_namespace(user_id),
             model_name="gpt-4o-mini",  # Controls token-based truncation
         )
-        result = result_obj.memory
         return WorkingMemory(**result.model_dump())
 
     async def _search_web(self, query: str) -> str:

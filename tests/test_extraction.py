@@ -177,6 +177,12 @@ class TestTopicExtractionIntegration:
     async def test_bertopic_integration(self):
         """Integration test for BERTopic topic extraction (skipped if not available)"""
 
+        # Check if bertopic is available
+        try:
+            import bertopic  # noqa: F401
+        except ImportError:
+            pytest.skip("bertopic not available")
+
         # Save and set topic_model_source
         original_source = settings.topic_model_source
         original_enable_topic_extraction = settings.enable_topic_extraction

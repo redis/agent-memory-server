@@ -67,9 +67,15 @@ async def memory_test_client(
     memory_app: FastAPI,
 ) -> AsyncGenerator[MemoryAPIClient, None]:
     """Create a memory client that uses the test FastAPI app."""
+    from agent_memory_client import __version__
+
     async with AsyncClient(
         transport=ASGITransport(app=memory_app),
         base_url="http://test",
+        headers={
+            "User-Agent": f"agent-memory-client/{__version__}",
+            "X-Client-Version": __version__,
+        },
     ) as http_client:
         # Create the memory client with our test http client
         config = MemoryClientConfig(
@@ -156,15 +162,18 @@ async def test_session_lifecycle(memory_test_client: MemoryAPIClient):
         response = await memory_test_client.delete_working_memory(session_id)
         assert response.status == "ok"
 
-    # Verify it's gone by mocking a 404 response
+    # Verify session is gone - new proper REST behavior returns 404 for missing sessions
     with patch(
         "agent_memory_server.working_memory.get_working_memory"
     ) as mock_get_memory:
         mock_get_memory.return_value = None
 
-        # This should not raise an error anymore since the unified API returns empty working memory instead of 404
-        session = await memory_test_client.get_working_memory(session_id)
-        assert len(session.messages) == 0  # Should return empty working memory
+        # Should raise MemoryNotFoundError (404) since session was deleted
+        import pytest
+        from agent_memory_client.exceptions import MemoryNotFoundError
+
+        with pytest.raises(MemoryNotFoundError):
+            await memory_test_client.get_working_memory(session_id)
 
 
 @pytest.mark.asyncio
