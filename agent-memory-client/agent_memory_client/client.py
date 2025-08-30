@@ -119,10 +119,16 @@ class MemoryAPIClient:
         Args:
             config: MemoryClientConfig instance with server connection details
         """
+        from . import __version__
+
         self.config = config
         self._client = httpx.AsyncClient(
             base_url=config.base_url,
             timeout=config.timeout,
+            headers={
+                "User-Agent": f"agent-memory-client/{__version__}",
+                "X-Client-Version": __version__,
+            },
         )
 
     async def close(self) -> None:
@@ -333,6 +339,29 @@ class MemoryAPIClient:
                 model_name=model_name,
                 context_window_max=context_window_max,
             )
+
+            # Check if this is an unsaved session (deprecated behavior for old clients)
+            if getattr(existing_memory, "unsaved", None) is True:
+                # This is an unsaved session - we need to create it properly
+                empty_memory = WorkingMemory(
+                    session_id=session_id,
+                    namespace=namespace or self.config.default_namespace,
+                    messages=[],
+                    memories=[],
+                    data={},
+                    user_id=user_id,
+                )
+
+                created_memory = await self.put_working_memory(
+                    session_id=session_id,
+                    memory=empty_memory,
+                    user_id=user_id,
+                    model_name=model_name,
+                    context_window_max=context_window_max,
+                )
+
+                return (True, created_memory)
+
             return (False, existing_memory)
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:

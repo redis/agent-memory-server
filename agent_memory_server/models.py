@@ -393,6 +393,10 @@ class WorkingMemoryResponse(WorkingMemory):
         default=None,
         description="True if session was created, False if existing session was found, None if not applicable",
     )
+    unsaved: bool | None = Field(
+        default=None,
+        description="True if this session data has not been persisted to Redis yet (deprecated behavior for old clients)",
+    )
 
 
 class WorkingMemoryRequest(BaseModel):
