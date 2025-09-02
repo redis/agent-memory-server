@@ -386,7 +386,6 @@ async def get_working_memory(
                 "GET /v1/working-memory/{session_id} will return 404 for missing sessions in version 1.0. "
                 "Use get_or_create_working_memory client method instead."
             )
-            new_session = True
             unsaved = True
             # Create empty working memory but DO NOT persist it
             working_mem = WorkingMemory(

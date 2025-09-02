@@ -437,8 +437,7 @@ class TestMemoryEndpoints:
         # Should return 200 with unsaved session (deprecated behavior for old clients)
         assert response.status_code == 200
         data = response.json()
-        assert data["new_session"] is True  # Session was created
-        assert data["unsaved"] is True  # But not persisted (deprecated behavior)
+        assert data["unsaved"] is True  # Not persisted (deprecated behavior)
         assert len(data["messages"]) == 0  # Empty session
         assert len(data["memories"]) == 0
 
