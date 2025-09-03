@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 import pytest
 from langchain_core.embeddings import Embeddings
 
+from agent_memory_server.config import ModelConfig, ModelProvider
 from agent_memory_server.vectorstore_factory import (
     _import_and_call_factory,
     create_embeddings,
@@ -89,8 +90,13 @@ class TestEmbeddingsCreation:
     def test_create_openai_embeddings(self, mock_settings):
         """Test OpenAI embeddings creation."""
 
-        # Configure mock settings
-        mock_settings.embedding_model_config = {"provider": "openai"}
+        # Configure mock settings with ModelConfig object
+        mock_settings.embedding_model_config = ModelConfig(
+            provider=ModelProvider.OPENAI,
+            name="text-embedding-3-small",
+            max_tokens=8191,
+            embedding_dimensions=1536,
+        )
         mock_settings.embedding_model = "text-embedding-3-small"
         mock_settings.openai_api_key = "test-key"
 
@@ -107,7 +113,10 @@ class TestEmbeddingsCreation:
     def test_create_embeddings_unsupported_provider(self, mock_settings):
         """Test embeddings creation with unsupported provider."""
 
-        mock_settings.embedding_model_config = {"provider": "unsupported"}
+        # Create a mock model config with unsupported provider
+        mock_config = Mock()
+        mock_config.provider = "unsupported"  # Set directly as string, bypassing enum validation
+        mock_settings.embedding_model_config = mock_config
 
         with pytest.raises(ValueError, match="Unsupported embedding provider"):
             create_embeddings()

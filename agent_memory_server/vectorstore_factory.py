@@ -46,15 +46,8 @@ def create_embeddings() -> Embeddings:
         An Embeddings instance
     """
     embedding_config = settings.embedding_model_config
-    if embedding_config:
-        # Handle both dict (for tests with mocked config) and ModelConfig (actual config)
-        provider = (
-            embedding_config.get("provider", "openai") 
-            if hasattr(embedding_config, 'get') 
-            else embedding_config.provider
-        )
-    else:
-        provider = "openai"
+    # Only support ModelConfig objects
+    provider = embedding_config.provider if embedding_config else "openai"
 
     if provider == "openai":
         try:
