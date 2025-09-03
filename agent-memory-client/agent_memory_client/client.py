@@ -5,6 +5,7 @@ This module provides a standalone client for the REST API of the Agent Memory Se
 """
 
 import asyncio
+import logging  # noqa: F401
 import re
 from collections.abc import AsyncIterator, Sequence
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
@@ -323,11 +324,11 @@ class MemoryAPIClient:
             )
 
             if created:
-                print("Created new session")
+                logging.info("Created new session")
             else:
-                print("Found existing session")
+                logging.info("Found existing session")
 
-            print(f"Session has {len(memory.messages)} messages")
+            logging.info(f"Session has {len(memory.messages)} messages")
             ```
         """
         try:
@@ -638,7 +639,7 @@ class MemoryAPIClient:
             ]
 
             response = await client.create_long_term_memory(memories)
-            print(f"Stored memories: {response.status}")
+            logging.info(f"Stored memories: {response.status}")
             ```
         """
         # Apply default namespace and ensure IDs are present
@@ -792,9 +793,9 @@ class MemoryAPIClient:
                 distance_threshold=0.3
             )
 
-            print(f"Found {results.total} memories")
+            logging.info(f"Found {results.total} memories")
             for memory in results.memories:
-                print(f"- {memory.text[:100]}... (distance: {memory.dist})")
+                logging.info(f"- {memory.text[:100]}... (distance: {memory.dist})")
             ```
         """
         # Convert dictionary filters to their proper filter objects if needed
@@ -944,9 +945,9 @@ class MemoryAPIClient:
                 min_relevance=0.7
             )
 
-            print(result["summary"])  # "Found 2 relevant memories for: user preferences about UI themes"
+            logging.info(result["summary"])  # "Found 2 relevant memories for: user preferences about UI themes"
             for memory in result["memories"]:
-                print(f"- {memory['text']} (score: {memory['relevance_score']})")
+                logging.info(f"- {memory['text']} (score: {memory['relevance_score']})")
             ```
 
         LLM Framework Integration:
@@ -1147,9 +1148,9 @@ class MemoryAPIClient:
                 session_id="current_session"
             )
 
-            print(memory_state["summary"])  # Human-readable summary
-            print(f"Messages: {memory_state['message_count']}")
-            print(f"Memories: {len(memory_state['memories'])}")
+            logging.info(memory_state["summary"])  # Human-readable summary
+            logging.info(f"Messages: {memory_state['message_count']}")
+            logging.info(f"Memories: {len(memory_state['memories'])}")
             ```
         """
         try:
@@ -1227,13 +1228,13 @@ class MemoryAPIClient:
             )
 
             if memory_state["created"]:
-                print("Created new session")
+                logging.info("Created new session")
             else:
-                print("Found existing session")
+                logging.info("Found existing session")
 
-            print(memory_state["summary"])  # Human-readable summary
-            print(f"Messages: {memory_state['message_count']}")
-            print(f"Memories: {len(memory_state['memories'])}")
+            logging.info(memory_state["summary"])  # Human-readable summary
+            logging.info(f"Messages: {memory_state['message_count']}")
+            logging.info(f"Memories: {len(memory_state['memories'])}")
             ```
         """
         try:
@@ -1325,7 +1326,7 @@ class MemoryAPIClient:
                 entities=["vegetarian", "restaurants"]
             )
 
-            print(result["summary"])  # "Successfully stored semantic memory"
+            logging.info(result["summary"])  # "Successfully stored semantic memory"
             ```
         """
         try:
@@ -1399,7 +1400,7 @@ class MemoryAPIClient:
                 }
             )
 
-            print(result["summary"])  # "Successfully updated 3 data entries"
+            logging.info(result["summary"])  # "Successfully updated 3 data entries"
             ```
         """
         try:
@@ -1974,9 +1975,9 @@ class MemoryAPIClient:
             )
 
             if result["success"]:
-                print(result["formatted_response"])
+                logging.info(result["formatted_response"])
             else:
-                print(f"Error: {result['error']}")
+                logging.error(f"Error: {result['error']}")
             ```
         """
         try:
@@ -2030,7 +2031,7 @@ class MemoryAPIClient:
 
             for result in results:
                 if result["success"]:
-                    print(f"{result['function_name']}: {result['formatted_response']}")
+                    logging.info(f"{result['function_name']}: {result['formatted_response']}")
             ```
         """
         results = []
@@ -2088,9 +2089,9 @@ class MemoryAPIClient:
                     )
 
                     if result["success"]:
-                        print(result["formatted_response"])
+                        logging.info(result["formatted_response"])
                     else:
-                        print(f"Error: {result['error']}")
+                        logging.error(f"Error: {result['error']}")
             ```
         """
         import json
@@ -2378,7 +2379,7 @@ class MemoryAPIClient:
             results = await client.resolve_function_calls(calls, "session123")
             for result in results:
                 if result["success"]:
-                    print(f"{result['function_name']}: {result['formatted_response']}")
+                    logging.info(f"{result['function_name']}: {result['formatted_response']}")
             ```
         """
         results = []
