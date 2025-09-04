@@ -434,11 +434,28 @@ class TestMemoryEndpoints:
         response = await client.get(
             f"/v1/working-memory/{session_id}?namespace=test-namespace&user_id=test-user"
         )
+        # Should return 200 with unsaved session (deprecated behavior for old clients)
         assert response.status_code == 200
-
-        # Should return empty working memory after deletion
         data = response.json()
-        assert len(data["messages"]) == 0
+        assert data["unsaved"] is True  # Not persisted (deprecated behavior)
+        assert len(data["messages"]) == 0  # Empty session
+        assert len(data["memories"]) == 0
+
+    @pytest.mark.asyncio
+    async def test_get_nonexistent_session_with_new_client_returns_404(self, client):
+        """Test that new clients (with version header) get 404 for missing sessions"""
+        # Simulate new client by sending version header
+        headers = {"X-Client-Version": "0.12.0"}
+
+        response = await client.get(
+            "/v1/working-memory/nonexistent-session?namespace=test-namespace&user_id=test-user",
+            headers=headers,
+        )
+
+        # Should return 404 for proper REST behavior
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found" in data["detail"].lower()
 
 
 @pytest.mark.requires_api_keys

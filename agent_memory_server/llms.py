@@ -1,183 +1,21 @@
 import json
 import logging
 import os
-from enum import Enum
 from typing import Any
 
 import anthropic
 import numpy as np
 from openai import AsyncOpenAI
-from pydantic import BaseModel
 
-from agent_memory_server.config import settings
+from agent_memory_server.config import (
+    MODEL_CONFIGS,
+    ModelConfig,
+    ModelProvider,
+    settings,
+)
 
 
 logger = logging.getLogger(__name__)
-
-
-class ModelProvider(str, Enum):
-    """Type of model provider"""
-
-    OPENAI = "openai"
-    ANTHROPIC = "anthropic"
-
-
-class ModelConfig(BaseModel):
-    """Configuration for a model"""
-
-    provider: ModelProvider
-    name: str
-    max_tokens: int
-    embedding_dimensions: int = 1536  # Default for OpenAI ada-002
-
-
-# Model configurations
-MODEL_CONFIGS = {
-    # OpenAI Models
-    "gpt-3.5-turbo": ModelConfig(
-        provider=ModelProvider.OPENAI,
-        name="gpt-3.5-turbo",
-        max_tokens=4096,
-        embedding_dimensions=1536,
-    ),
-    "gpt-3.5-turbo-16k": ModelConfig(
-        provider=ModelProvider.OPENAI,
-        name="gpt-3.5-turbo-16k",
-        max_tokens=16384,
-        embedding_dimensions=1536,
-    ),
-    "gpt-4": ModelConfig(
-        provider=ModelProvider.OPENAI,
-        name="gpt-4",
-        max_tokens=8192,
-        embedding_dimensions=1536,
-    ),
-    "gpt-4-32k": ModelConfig(
-        provider=ModelProvider.OPENAI,
-        name="gpt-4-32k",
-        max_tokens=32768,
-        embedding_dimensions=1536,
-    ),
-    "gpt-4o": ModelConfig(
-        provider=ModelProvider.OPENAI,
-        name="gpt-4o",
-        max_tokens=128000,
-        embedding_dimensions=1536,
-    ),
-    "gpt-4o-mini": ModelConfig(
-        provider=ModelProvider.OPENAI,
-        name="gpt-4o-mini",
-        max_tokens=128000,
-        embedding_dimensions=1536,
-    ),
-    # Newer reasoning models
-    "o1": ModelConfig(
-        provider=ModelProvider.OPENAI,
-        name="o1",
-        max_tokens=200000,
-        embedding_dimensions=1536,
-    ),
-    "o1-mini": ModelConfig(
-        provider=ModelProvider.OPENAI,
-        name="o1-mini",
-        max_tokens=128000,
-        embedding_dimensions=1536,
-    ),
-    "o3-mini": ModelConfig(
-        provider=ModelProvider.OPENAI,
-        name="o3-mini",
-        max_tokens=200000,
-        embedding_dimensions=1536,
-    ),
-    # Embedding models
-    "text-embedding-ada-002": ModelConfig(
-        provider=ModelProvider.OPENAI,
-        name="text-embedding-ada-002",
-        max_tokens=8191,
-        embedding_dimensions=1536,
-    ),
-    "text-embedding-3-small": ModelConfig(
-        provider=ModelProvider.OPENAI,
-        name="text-embedding-3-small",
-        max_tokens=8191,
-        embedding_dimensions=1536,
-    ),
-    "text-embedding-3-large": ModelConfig(
-        provider=ModelProvider.OPENAI,
-        name="text-embedding-3-large",
-        max_tokens=8191,
-        embedding_dimensions=3072,
-    ),
-    # Anthropic Models
-    "claude-3-opus-20240229": ModelConfig(
-        provider=ModelProvider.ANTHROPIC,
-        name="claude-3-opus-20240229",
-        max_tokens=200000,
-        embedding_dimensions=1536,
-    ),
-    "claude-3-sonnet-20240229": ModelConfig(
-        provider=ModelProvider.ANTHROPIC,
-        name="claude-3-sonnet-20240229",
-        max_tokens=200000,
-        embedding_dimensions=1536,
-    ),
-    "claude-3-haiku-20240307": ModelConfig(
-        provider=ModelProvider.ANTHROPIC,
-        name="claude-3-haiku-20240307",
-        max_tokens=200000,
-        embedding_dimensions=1536,
-    ),
-    "claude-3-5-sonnet-20240620": ModelConfig(
-        provider=ModelProvider.ANTHROPIC,
-        name="claude-3-5-sonnet-20240620",
-        max_tokens=200000,
-        embedding_dimensions=1536,
-    ),
-    # Latest Anthropic Models
-    "claude-3-7-sonnet-20250219": ModelConfig(
-        provider=ModelProvider.ANTHROPIC,
-        name="claude-3-7-sonnet-20250219",
-        max_tokens=200000,
-        embedding_dimensions=1536,
-    ),
-    "claude-3-5-sonnet-20241022": ModelConfig(
-        provider=ModelProvider.ANTHROPIC,
-        name="claude-3-5-sonnet-20241022",
-        max_tokens=200000,
-        embedding_dimensions=1536,
-    ),
-    "claude-3-5-haiku-20241022": ModelConfig(
-        provider=ModelProvider.ANTHROPIC,
-        name="claude-3-5-haiku-20241022",
-        max_tokens=200000,
-        embedding_dimensions=1536,
-    ),
-    # Convenience aliases
-    "claude-3-7-sonnet-latest": ModelConfig(
-        provider=ModelProvider.ANTHROPIC,
-        name="claude-3-7-sonnet-20250219",
-        max_tokens=200000,
-        embedding_dimensions=1536,
-    ),
-    "claude-3-5-sonnet-latest": ModelConfig(
-        provider=ModelProvider.ANTHROPIC,
-        name="claude-3-5-sonnet-20241022",
-        max_tokens=200000,
-        embedding_dimensions=1536,
-    ),
-    "claude-3-5-haiku-latest": ModelConfig(
-        provider=ModelProvider.ANTHROPIC,
-        name="claude-3-5-haiku-20241022",
-        max_tokens=200000,
-        embedding_dimensions=1536,
-    ),
-    "claude-3-opus-latest": ModelConfig(
-        provider=ModelProvider.ANTHROPIC,
-        name="claude-3-opus-20240229",
-        max_tokens=200000,
-        embedding_dimensions=1536,
-    ),
-}
 
 
 def get_model_config(model_name: str) -> ModelConfig:

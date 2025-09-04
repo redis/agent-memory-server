@@ -1,49 +1,178 @@
 import os
+from enum import Enum
 from typing import Any, Literal
 
 import yaml
 from dotenv import load_dotenv
+from pydantic import BaseModel
 from pydantic_settings import BaseSettings
 
 
 load_dotenv()
 
 
+class ModelProvider(str, Enum):
+    """Type of model provider"""
+
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+
+
+class ModelConfig(BaseModel):
+    """Configuration for a model"""
+
+    provider: ModelProvider
+    name: str
+    max_tokens: int
+    embedding_dimensions: int = 1536  # Default for OpenAI ada-002
+
+
 # Model configuration mapping
 MODEL_CONFIGS = {
-    "gpt-4o": {"provider": "openai", "embedding_dimensions": None},
-    "gpt-4o-mini": {"provider": "openai", "embedding_dimensions": None},
-    "gpt-4": {"provider": "openai", "embedding_dimensions": None},
-    "gpt-3.5-turbo": {"provider": "openai", "embedding_dimensions": None},
-    "text-embedding-3-small": {"provider": "openai", "embedding_dimensions": 1536},
-    "text-embedding-3-large": {"provider": "openai", "embedding_dimensions": 3072},
-    "text-embedding-ada-002": {"provider": "openai", "embedding_dimensions": 1536},
-    "claude-3-opus-20240229": {"provider": "anthropic", "embedding_dimensions": None},
-    "claude-3-sonnet-20240229": {"provider": "anthropic", "embedding_dimensions": None},
-    "claude-3-haiku-20240307": {"provider": "anthropic", "embedding_dimensions": None},
-    "claude-3-5-sonnet-20240620": {
-        "provider": "anthropic",
-        "embedding_dimensions": None,
-    },
-    "claude-3-5-sonnet-20241022": {
-        "provider": "anthropic",
-        "embedding_dimensions": None,
-    },
-    "claude-3-5-haiku-20241022": {
-        "provider": "anthropic",
-        "embedding_dimensions": None,
-    },
-    "claude-3-7-sonnet-20250219": {
-        "provider": "anthropic",
-        "embedding_dimensions": None,
-    },
-    "claude-3-7-sonnet-latest": {"provider": "anthropic", "embedding_dimensions": None},
-    "claude-3-5-sonnet-latest": {"provider": "anthropic", "embedding_dimensions": None},
-    "claude-3-5-haiku-latest": {"provider": "anthropic", "embedding_dimensions": None},
-    "claude-3-opus-latest": {"provider": "anthropic", "embedding_dimensions": None},
-    "o1": {"provider": "openai", "embedding_dimensions": None},
-    "o1-mini": {"provider": "openai", "embedding_dimensions": None},
-    "o3-mini": {"provider": "openai", "embedding_dimensions": None},
+    # OpenAI Models
+    "gpt-3.5-turbo": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="gpt-3.5-turbo",
+        max_tokens=4096,
+        embedding_dimensions=1536,
+    ),
+    "gpt-3.5-turbo-16k": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="gpt-3.5-turbo-16k",
+        max_tokens=16384,
+        embedding_dimensions=1536,
+    ),
+    "gpt-4": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="gpt-4",
+        max_tokens=8192,
+        embedding_dimensions=1536,
+    ),
+    "gpt-4-32k": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="gpt-4-32k",
+        max_tokens=32768,
+        embedding_dimensions=1536,
+    ),
+    "gpt-4o": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="gpt-4o",
+        max_tokens=128000,
+        embedding_dimensions=1536,
+    ),
+    "gpt-4o-mini": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="gpt-4o-mini",
+        max_tokens=128000,
+        embedding_dimensions=1536,
+    ),
+    # Newer reasoning models
+    "o1": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="o1",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    "o1-mini": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="o1-mini",
+        max_tokens=128000,
+        embedding_dimensions=1536,
+    ),
+    "o3-mini": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="o3-mini",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    # Embedding models
+    "text-embedding-ada-002": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="text-embedding-ada-002",
+        max_tokens=8191,
+        embedding_dimensions=1536,
+    ),
+    "text-embedding-3-small": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="text-embedding-3-small",
+        max_tokens=8191,
+        embedding_dimensions=1536,
+    ),
+    "text-embedding-3-large": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="text-embedding-3-large",
+        max_tokens=8191,
+        embedding_dimensions=3072,
+    ),
+    # Anthropic Models
+    "claude-3-opus-20240229": ModelConfig(
+        provider=ModelProvider.ANTHROPIC,
+        name="claude-3-opus-20240229",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    "claude-3-sonnet-20240229": ModelConfig(
+        provider=ModelProvider.ANTHROPIC,
+        name="claude-3-sonnet-20240229",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    "claude-3-haiku-20240307": ModelConfig(
+        provider=ModelProvider.ANTHROPIC,
+        name="claude-3-haiku-20240307",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    "claude-3-5-sonnet-20240620": ModelConfig(
+        provider=ModelProvider.ANTHROPIC,
+        name="claude-3-5-sonnet-20240620",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    # Latest Anthropic Models
+    "claude-3-7-sonnet-20250219": ModelConfig(
+        provider=ModelProvider.ANTHROPIC,
+        name="claude-3-7-sonnet-20250219",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    "claude-3-5-sonnet-20241022": ModelConfig(
+        provider=ModelProvider.ANTHROPIC,
+        name="claude-3-5-sonnet-20241022",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    "claude-3-5-haiku-20241022": ModelConfig(
+        provider=ModelProvider.ANTHROPIC,
+        name="claude-3-5-haiku-20241022",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    # Convenience aliases
+    "claude-3-7-sonnet-latest": ModelConfig(
+        provider=ModelProvider.ANTHROPIC,
+        name="claude-3-7-sonnet-20250219",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    "claude-3-5-sonnet-latest": ModelConfig(
+        provider=ModelProvider.ANTHROPIC,
+        name="claude-3-5-sonnet-20241022",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    "claude-3-5-haiku-latest": ModelConfig(
+        provider=ModelProvider.ANTHROPIC,
+        name="claude-3-5-haiku-20241022",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    "claude-3-opus-latest": ModelConfig(
+        provider=ModelProvider.ANTHROPIC,
+        name="claude-3-opus-20240229",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
 }
 
 
@@ -167,14 +296,14 @@ Optimized query:"""
         extra = "ignore"  # Ignore extra environment variables
 
     @property
-    def generation_model_config(self) -> dict[str, Any]:
+    def generation_model_config(self) -> ModelConfig | None:
         """Get configuration for the generation model."""
-        return MODEL_CONFIGS.get(self.generation_model, {})
+        return MODEL_CONFIGS.get(self.generation_model)
 
     @property
-    def embedding_model_config(self) -> dict[str, Any]:
+    def embedding_model_config(self) -> ModelConfig | None:
         """Get configuration for the embedding model."""
-        return MODEL_CONFIGS.get(self.embedding_model, {})
+        return MODEL_CONFIGS.get(self.embedding_model)
 
     def load_yaml_config(self, config_path: str) -> dict[str, Any]:
         """Load configuration from YAML file."""

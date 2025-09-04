@@ -1,7 +1,8 @@
+import re
 from typing import Any
 
 import tiktoken
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from mcp.server.fastmcp.prompts import base
 from mcp.types import TextContent
 
@@ -36,6 +37,31 @@ from agent_memory_server.utils.redis import get_redis_conn
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+def parse_client_version(client_version: str | None) -> tuple[int, int, int] | None:
+    """Parse client version string into tuple (major, minor, patch)"""
+    if not client_version:
+        return None
+
+    # Extract version from format like "0.12.0"
+    match = re.match(r"(\d+)\.(\d+)\.(\d+)", client_version)
+    if not match:
+        return None
+
+    return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+
+
+def is_old_client(client_version: str | None) -> bool:
+    """Check if client version is older than 0.12.0 (needs deprecated behavior)"""
+    parsed = parse_client_version(client_version)
+    if not parsed:
+        # No version header means very old client
+        return True
+
+    major, minor, patch = parsed
+    # Version 0.12.0 is when we introduced proper REST behavior
+    return (major, minor, patch) < (0, 12, 0)
 
 
 @router.post("/v1/long-term-memory/forget")
@@ -320,6 +346,7 @@ async def get_working_memory(
     namespace: str | None = None,
     model_name: ModelNameLiteral | None = None,
     context_window_max: int | None = None,
+    x_client_version: str | None = Header(None, alias="X-Client-Version"),
     current_user: UserInfo = Depends(get_current_user),
 ):
     """
@@ -347,15 +374,30 @@ async def get_working_memory(
         user_id=user_id,
     )
 
+    # Handle missing sessions based on client version
+    new_session = False
+    unsaved = None
+
     if not working_mem:
-        # Create empty working memory if none exists
-        working_mem = WorkingMemory(
-            messages=[],
-            memories=[],
-            session_id=session_id,
-            namespace=namespace,
-            user_id=user_id,
-        )
+        if is_old_client(x_client_version):
+            # Deprecated behavior: return empty session with unsaved=True (don't persist)
+            logger.warning(
+                f"Client version {x_client_version or 'unknown'} using deprecated behavior. "
+                "GET /v1/working-memory/{session_id} will return 404 for missing sessions in version 1.0. "
+                "Use get_or_create_working_memory client method instead."
+            )
+            unsaved = True
+            # Create empty working memory but DO NOT persist it
+            working_mem = WorkingMemory(
+                session_id=session_id,
+                namespace=namespace,
+                user_id=user_id,
+            )
+        else:
+            # Proper REST behavior: return 404 for missing sessions
+            raise HTTPException(
+                status_code=404, detail=f"Session {session_id} not found"
+            )
 
     # Apply token-based truncation if we have messages and model info
     if working_mem.messages and (model_name or context_window_max):
@@ -383,12 +425,14 @@ async def get_working_memory(
         )
     )
 
-    # Return WorkingMemoryResponse with both percentage values
+    # Return WorkingMemoryResponse with percentage values, new_session flag, and unsaved flag
     working_mem_data = working_mem.model_dump()
     working_mem_data["context_percentage_total_used"] = total_percentage
     working_mem_data["context_percentage_until_summarization"] = (
         until_summarization_percentage
     )
+    working_mem_data["new_session"] = new_session
+    working_mem_data["unsaved"] = unsaved
     return WorkingMemoryResponse(**working_mem_data)
 
 
@@ -420,6 +464,8 @@ async def put_working_memory(
         Updated working memory (potentially with summary if tokens were condensed)
     """
     redis = await get_redis_conn()
+
+    # PUT semantics: we simply replace whatever exists (or create if it doesn't exist)
 
     # Ensure session_id matches
     memory.session_id = session_id
@@ -477,7 +523,7 @@ async def put_working_memory(
         )
     )
 
-    # Return WorkingMemoryResponse with both percentage values
+    # Return WorkingMemoryResponse with percentage values (no new_session for PUT)
     updated_memory_data = updated_memory.model_dump()
     updated_memory_data["context_percentage_total_used"] = total_percentage
     updated_memory_data["context_percentage_until_summarization"] = (

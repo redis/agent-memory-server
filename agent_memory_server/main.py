@@ -8,10 +8,9 @@ from fastapi import FastAPI
 from agent_memory_server import __version__
 from agent_memory_server.api import router as memory_router
 from agent_memory_server.auth import verify_auth_config
-from agent_memory_server.config import settings
+from agent_memory_server.config import MODEL_CONFIGS, ModelProvider, settings
 from agent_memory_server.docket_tasks import register_tasks
 from agent_memory_server.healthcheck import router as health_router
-from agent_memory_server.llms import MODEL_CONFIGS, ModelProvider
 from agent_memory_server.logging import get_logger
 from agent_memory_server.utils.redis import (
     _redis_pool as connection_pool,
