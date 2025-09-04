@@ -115,7 +115,9 @@ class TestEmbeddingsCreation:
 
         # Create a mock model config with unsupported provider
         mock_config = Mock()
-        mock_config.provider = "unsupported"  # Set directly as string, bypassing enum validation
+        mock_config.provider = (
+            "unsupported"  # Set directly as string, bypassing enum validation
+        )
         mock_settings.embedding_model_config = mock_config
 
         with pytest.raises(ValueError, match="Unsupported embedding provider"):
