@@ -57,7 +57,7 @@ results = await client.search_long_term_memory(
 )
 ```
 
-> **Note**: While you can call client functions directly as shown above, using **MCP or SDK-provided tool calls** is recommended for AI agents as it provides better integration, automatic context management, and follows AI-native patterns. See **[Memory Patterns](https://redis.github.io/agent-memory-server/memory-patterns/)** for guidance on when to use each approach.
+> **Note**: While you can call client functions directly as shown above, using **MCP or SDK-provided tool calls** is recommended for AI agents as it provides better integration, automatic context management, and follows AI-native patterns. See **[Memory Integration Patterns](https://redis.github.io/agent-memory-server/memory-patterns/)** for guidance on when to use each approach.
 
 ### 3. MCP Integration
 
