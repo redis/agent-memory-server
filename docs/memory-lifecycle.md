@@ -9,7 +9,7 @@ Memory lifecycle in the system follows these stages:
 1. **Creation** - Memories are created in working memory or directly as long-term memories
 2. **Promotion** - Working memories are automatically promoted to long-term storage
 3. **Access** - Memories are tracked for access patterns and recency
-4. **Aging** - Memories accumulate age and inactivity metrics  
+4. **Aging** - Memories accumulate age and inactivity metrics
 5. **Forgetting** - Memories are deleted by background server processes based on configuration
 6. **Compaction** - Background processes optimize storage and indexes
 
@@ -113,7 +113,7 @@ Forgetting behavior is controlled entirely through server-side environment varia
 # Enable/disable automatic forgetting
 FORGETTING_ENABLED=true
 
-# How often to run the forgetting process (in minutes)  
+# How often to run the forgetting process (in minutes)
 FORGETTING_EVERY_MINUTES=60
 
 # Maximum age before memories are eligible for deletion
@@ -133,7 +133,7 @@ The system supports these automated forgetting strategies:
 #### 1. Age-Based Deletion
 Memories older than `FORGETTING_MAX_AGE_DAYS` are eligible for deletion.
 
-#### 2. Inactivity-Based Deletion  
+#### 2. Inactivity-Based Deletion
 Memories not accessed within `FORGETTING_MAX_INACTIVE_DAYS` are eligible for deletion.
 
 #### 3. Combined Age + Inactivity
@@ -153,7 +153,7 @@ from agent_memory_client import MemoryAPIClient
 client = MemoryAPIClient(base_url="http://localhost:8000")
 
 # Delete specific long-term memories by ID
-memory_ids = ["memory-id-1", "memory-id-2"] 
+memory_ids = ["memory-id-1", "memory-id-2"]
 await client.delete_long_term_memories(memory_ids)
 
 # Delete working memory for a session
@@ -165,7 +165,7 @@ await client.delete_working_memory("session-id")
 # Find memories to potentially clean up
 old_memories = await client.search_long_term_memory(
     text="",
-    user_id="user-123", 
+    user_id="user-123",
     created_before=datetime.now() - timedelta(days=90),
     limit=100
 )
@@ -182,7 +182,7 @@ await client.delete_long_term_memories(memory_ids)
 The server uses **Docket** (a Redis-based task queue) to manage background operations including:
 
 - **Periodic Forgetting**: `periodic_forget_long_term_memories` task runs based on `FORGETTING_EVERY_MINUTES`
-- **Memory Compaction**: Optimization and deduplication processes  
+- **Memory Compaction**: Optimization and deduplication processes
 - **Index Rebuilding**: Maintaining search index performance
 
 ### Task Worker Setup
@@ -213,7 +213,7 @@ async def monitor_memory_usage():
 
 **Note**: Background forgetting processes operate independently to maintain consistent server resource management.
 
-## Client-Side Memory Management  
+## Client-Side Memory Management
 
 Clients can perform manual memory management operations alongside automatic background processes:
 
@@ -223,7 +223,7 @@ Clients can perform manual memory management operations alongside automatic back
 ```python
 async def cleanup_old_sessions(client: MemoryAPIClient, days_old: int = 30):
     """Delete all memories from old sessions"""
-    
+
     cutoff_date = datetime.now() - timedelta(days=days_old)
 
     # Find old memories
@@ -233,7 +233,7 @@ async def cleanup_old_sessions(client: MemoryAPIClient, days_old: int = 30):
         limit=5000  # Process in batches
     )
 
-    # Delete in batches of 100 
+    # Delete in batches of 100
     memory_ids = [mem.id for mem in old_memories.memories]
     batch_size = 100
 
@@ -283,7 +283,7 @@ await client.delete_working_memory("session-123")
 The system automatically runs compaction tasks as background processes. These are server-controlled and include:
 
 - Memory deduplication and merging
-- Search index optimization  
+- Search index optimization
 - Storage cleanup
 
 Compaction frequency is controlled by the server configuration:
@@ -306,7 +306,7 @@ Complete server configuration for memory lifecycle management:
 FORGETTING_ENABLED=false                   # Disabled by default
 FORGETTING_EVERY_MINUTES=60               # Check every hour
 FORGETTING_MAX_AGE_DAYS=90.0              # Age threshold (days)
-FORGETTING_MAX_INACTIVE_DAYS=30.0         # Inactivity threshold (days)  
+FORGETTING_MAX_INACTIVE_DAYS=30.0         # Inactivity threshold (days)
 FORGETTING_BUDGET_KEEP_TOP_N=10000        # Budget-based limit
 
 # Compaction Configuration
@@ -369,12 +369,12 @@ async def get_user_preference(client, user_id: str, preference_key: str):
         user_id=user_id,
         limit=1
     )
-    
+
     if memories.memories:
         return parse_preference(memories.memories[0].text)
     else:
         return get_default_preference(preference_key)
-        
+
 # Bad: Assuming specific memories will always exist
 # Hypothetical: get_memory_by_id() does not exist in the real API
 ```
@@ -384,18 +384,18 @@ async def get_user_preference(client, user_id: str, preference_key: str):
 # Good: Explicit cleanup when needed
 async def handle_user_data_deletion(client: MemoryAPIClient, user_id: str):
     """Handle user's right to be forgotten request"""
-    
+
     # Find all user memories
     all_memories = await client.search_long_term_memory(
         text="",
         user_id=user_id,
         limit=10000  # Large limit to get all
     )
-    
+
     # Delete in batches
     memory_ids = [mem.id for mem in all_memories.memories]
     batch_size = 100
-    
+
     for i in range(0, len(memory_ids), batch_size):
         batch = memory_ids[i:i + batch_size]
         await client.delete_long_term_memories(batch)
