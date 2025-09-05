@@ -1,4 +1,4 @@
-# Memory Patterns
+# Memory Integration Patterns
 
 The most common question developers have is: *"How do I actually get memories into and out of my LLM?"* Redis Agent Memory Server provides three distinct patterns for integrating memory with your AI applications, each optimized for different use cases and levels of control.
 
