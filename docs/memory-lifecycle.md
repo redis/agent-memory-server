@@ -15,7 +15,7 @@ Memory lifecycle in the system follows these stages:
 
 ## Key Architectural Principle
 
-**⚠️ Important**: Memory forgetting is controlled entirely by the **server**, not the client. Clients cannot directly trigger forgetting operations or set forgetting policies. All memory cleanup happens automatically through background processes based on server configuration.
+Memory forgetting operates through **server-controlled background processes**. The system automatically manages memory cleanup based on server configuration, ensuring consistent resource management and optimal performance.
 
 ## Memory Creation Patterns
 
@@ -103,7 +103,7 @@ await client.create_long_term_memories([
 
 ### How Forgetting Works
 
-Memory forgetting is an **automatic background process** running on the server. Clients have no direct control over when or how memories are deleted. The system uses a background task scheduler (Docket) that periodically evaluates and deletes memories based on server configuration.
+Memory forgetting operates as an **automatic background process** using Docket (a Redis-based task scheduler). The system periodically evaluates and deletes memories based on server configuration thresholds and policies.
 
 ### Server Configuration
 
@@ -128,7 +128,7 @@ FORGETTING_BUDGET_KEEP_TOP_N=10000
 
 ### Forgetting Policies
 
-The server supports these forgetting strategies:
+The system supports these automated forgetting strategies:
 
 #### 1. Age-Based Deletion
 Memories older than `FORGETTING_MAX_AGE_DAYS` are eligible for deletion.
@@ -144,7 +144,7 @@ When `FORGETTING_BUDGET_KEEP_TOP_N` is set, only the most recently accessed N me
 
 ### Client Capabilities
 
-While clients cannot control forgetting policies, they can:
+Clients can perform direct memory management operations:
 
 #### Delete Specific Memories
 ```python
@@ -211,11 +211,11 @@ async def monitor_memory_usage():
     pass
 ```
 
-**Note**: Clients cannot directly monitor or control background forgetting processes. This is by design to maintain server autonomy over resource management.
+**Note**: Background forgetting processes operate independently to maintain consistent server resource management.
 
 ## Client-Side Memory Management  
 
-While clients cannot control automatic forgetting, they can perform manual cleanup operations:
+Clients can perform manual memory management operations alongside automatic background processes:
 
 ### Bulk Memory Deletion
 
@@ -239,7 +239,7 @@ async def cleanup_old_sessions(client: MemoryAPIClient, days_old: int = 30):
 
     for i in range(0, len(memory_ids), batch_size):
         batch_ids = memory_ids[i:i + batch_size]
-        await client.delete_long_term_memories(batch_ids)  # Correct method name
+        await client.delete_long_term_memories(batch_ids)
         print(f"Deleted batch {i//batch_size + 1}")
 ```
 
@@ -261,7 +261,7 @@ async def cleanup_by_topic(client: MemoryAPIClient,
         # Delete them
         memory_ids = [mem.id for mem in topic_memories.memories]
         if memory_ids:
-            await client.delete_long_term_memories(memory_ids)  # Correct method name
+            await client.delete_long_term_memories(memory_ids)
             print(f"Deleted {len(memory_ids)} memories with topic '{topic}'")
 ```
 
@@ -274,7 +274,7 @@ Working memory has automatic TTL (1 hour by default) but can be manually managed
 await client.delete_working_memory("session-123")
 ```
 
-**Note**: Unlike the old documentation, there are no APIs for listing active sessions or batch working memory cleanup. Working memory cleanup is primarily handled by Redis TTL.
+**Note**: Working memory cleanup is primarily handled by Redis TTL with configurable session timeouts.
 
 ## Memory Compaction
 
@@ -293,7 +293,7 @@ Compaction frequency is controlled by the server configuration:
 COMPACTION_EVERY_MINUTES=10  # Default: every 10 minutes
 ```
 
-**Important**: Clients cannot directly trigger compaction operations. This is handled automatically by background tasks.
+Compaction runs automatically through background tasks, ensuring optimal storage and search performance.
 
 ## Server Administration
 
@@ -376,7 +376,7 @@ async def get_user_preference(client, user_id: str, preference_key: str):
         return get_default_preference(preference_key)
         
 # Bad: Assuming specific memories will always exist
-# user_pref_memory = await client.get_memory_by_id("pref-123")  # May fail
+# Hypothetical: get_memory_by_id() does not exist in the real API
 ```
 
 #### Explicit Cleanup
@@ -403,10 +403,10 @@ async def handle_user_data_deletion(client: MemoryAPIClient, user_id: str):
 
 ## Summary
 
-The key architectural principle is **server autonomy**: the server controls when and how memories are forgotten through background processes. Clients can only:
+The system provides **automated memory lifecycle management** through server-controlled background processes. Clients can:
 
 1. **Delete specific memories** by ID using `delete_long_term_memories()`
 2. **Delete working memory sessions** using `delete_working_memory()`
 3. **Search and identify** memories for manual cleanup
 
-All automatic lifecycle management (forgetting, compaction, optimization) happens server-side based on configuration and background task scheduling. This design ensures consistent resource management and prevents clients from interfering with server performance optimization.
+Automatic lifecycle management (forgetting, compaction, optimization) operates server-side based on configuration and background task scheduling. This design ensures consistent resource management and optimal server performance.
