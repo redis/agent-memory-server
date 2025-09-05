@@ -1,6 +1,6 @@
 # Memory Lifecycle Management
 
-Redis Agent Memory Server provides sophisticated memory lifecycle management to prevent unlimited growth and maintain optimal performance. This includes automatic forgetting policies, manual cleanup operations, and memory compaction strategies.
+Redis Agent Memory Server provides sophisticated memory lifecycle management to prevent unlimited growth and maintain optimal performance. This includes automatic background forgetting processes, memory compaction strategies, and server-controlled cleanup operations.
 
 ## Overview
 
@@ -10,8 +10,12 @@ Memory lifecycle in the system follows these stages:
 2. **Promotion** - Working memories are automatically promoted to long-term storage
 3. **Access** - Memories are tracked for access patterns and recency
 4. **Aging** - Memories accumulate age and inactivity metrics
-5. **Forgetting** - Memories are deleted based on configurable policies
+5. **Forgetting** - Memories are deleted by background server processes based on configuration
 6. **Compaction** - Background processes optimize storage and indexes
+
+## Key Architectural Principle
+
+Memory forgetting operates through **server-controlled background processes**. The system automatically manages memory cleanup based on server configuration, ensuring consistent resource management and optimal performance.
 
 ## Memory Creation Patterns
 
@@ -97,196 +101,125 @@ await client.create_long_term_memories([
 
 ## Memory Forgetting
 
+### How Forgetting Works
+
+Memory forgetting operates as an **automatic background process** using Docket (a Redis-based task scheduler). The system periodically evaluates and deletes memories based on server configuration thresholds and policies.
+
+### Server Configuration
+
+Forgetting behavior is controlled entirely through server-side environment variables and configuration:
+
+```bash
+# Enable/disable automatic forgetting
+FORGETTING_ENABLED=true
+
+# How often to run the forgetting process (in minutes)
+FORGETTING_EVERY_MINUTES=60
+
+# Maximum age before memories are eligible for deletion
+FORGETTING_MAX_AGE_DAYS=90.0
+
+# Maximum inactive period before memories are eligible for deletion
+FORGETTING_MAX_INACTIVE_DAYS=30.0
+
+# Keep only the top N most recently accessed memories
+FORGETTING_BUDGET_KEEP_TOP_N=10000
+```
+
 ### Forgetting Policies
 
-The system supports multiple forgetting strategies that can be combined:
+The system supports these automated forgetting strategies:
 
-#### 1. Age-Based Forgetting (TTL)
-Removes memories older than a specified age:
+#### 1. Age-Based Deletion
+Memories older than `FORGETTING_MAX_AGE_DAYS` are eligible for deletion.
 
+#### 2. Inactivity-Based Deletion
+Memories not accessed within `FORGETTING_MAX_INACTIVE_DAYS` are eligible for deletion.
+
+#### 3. Combined Age + Inactivity
+When both thresholds are set, memories must be both old AND inactive to be deleted, unless they exceed a "hard age limit" (calculated as `max_age_days * hard_age_multiplier`).
+
+#### 4. Budget-Based Cleanup
+When `FORGETTING_BUDGET_KEEP_TOP_N` is set, only the most recently accessed N memories are kept, regardless of age.
+
+### Client Capabilities
+
+Clients can perform direct memory management operations:
+
+#### Delete Specific Memories
 ```python
 from agent_memory_client import MemoryAPIClient
 
 client = MemoryAPIClient(base_url="http://localhost:8000")
 
-# Delete memories older than 30 days
-await client.forget_memories(policy={
-    "max_age_days": 30.0
-})
+# Delete specific long-term memories by ID
+memory_ids = ["memory-id-1", "memory-id-2"]
+await client.delete_long_term_memories(memory_ids)
+
+# Delete working memory for a session
+await client.delete_working_memory("session-id")
 ```
 
-#### 2. Inactivity-Based Forgetting
-Removes memories that haven't been accessed recently:
-
+#### Search and Manual Cleanup
 ```python
-# Delete memories not accessed in 14 days
-await client.forget_memories(policy={
-    "max_inactive_days": 14.0
-})
-```
-
-#### 3. Combined Age + Inactivity Policy
-Uses both age and inactivity with smart prioritization:
-
-```python
-# Combined policy: old AND inactive, or extremely old
-await client.forget_memories(policy={
-    "max_age_days": 30.0,           # Consider for deletion after 30 days
-    "max_inactive_days": 7.0,       # If also inactive for 7 days
-    "hard_age_multiplier": 12.0     # Force delete after 360 days (30 * 12)
-})
-```
-
-**How Combined Policy Works:**
-- Memories are deleted if they are both old (>30 days) AND inactive (>7 days)
-- Memories are force-deleted if extremely old (>360 days) regardless of activity
-- Recently accessed old memories are preserved unless extremely old
-
-#### 4. Budget-Based Forgetting
-Keep only the N most recently accessed memories:
-
-```python
-# Keep only top 1000 most recent memories
-await client.forget_memories(policy={
-    "budget": 1000
-})
-```
-
-#### 5. Memory Type Filtering
-Apply forgetting policies only to specific memory types:
-
-```python
-# Only forget episodic memories older than 7 days
-await client.forget_memories(policy={
-    "max_age_days": 7.0,
-    "memory_type_allowlist": ["episodic"]
-})
-```
-
-### Advanced Forgetting Examples
-
-#### Tiered Forgetting Strategy
-```python
-class TieredMemoryManager:
-    def __init__(self, client: MemoryAPIClient):
-        self.client = client
-
-    async def apply_tiered_forgetting(self, user_id: str):
-        """Apply different policies for different memory types"""
-
-        # Aggressive cleanup for episodic memories (events/conversations)
-        await self.client.forget_memories(policy={
-            "max_age_days": 30.0,
-            "max_inactive_days": 7.0,
-            "memory_type_allowlist": ["episodic"]
-        }, user_id=user_id)
-
-        # Conservative cleanup for semantic memories (facts/preferences)
-        await self.client.forget_memories(policy={
-            "max_age_days": 365.0,  # Keep facts for a full year
-            "max_inactive_days": 90.0,
-            "memory_type_allowlist": ["semantic"]
-        }, user_id=user_id)
-
-        # Budget-based cleanup to prevent unlimited growth
-        await self.client.forget_memories(policy={
-            "budget": 5000  # Keep top 5000 across all types
-        }, user_id=user_id)
-```
-
-#### Contextual Forgetting
-```python
-async def forget_by_context(client: MemoryAPIClient, user_id: str):
-    """Forget memories from specific contexts or sessions"""
-
-    # Forget old conversation sessions
-    old_sessions = await client.search_long_term_memory(
-        text="",
-        user_id=user_id,
-        created_before=datetime.now() - timedelta(days=30),
-        limit=1000
-    )
-
-    session_ids = {mem.session_id for mem in old_sessions.memories
-                   if mem.session_id and mem.memory_type == "episodic"}
-
-    for session_id in session_ids:
-        await client.forget_memories(
-            policy={"max_age_days": 1.0},  # Delete immediately
-            user_id=user_id,
-            session_id=session_id
-        )
-```
-
-### Protecting Important Memories
-
-#### Memory Pinning
-Prevent specific memories from being deleted:
-
-```python
-# Pin important memories by ID
-protected_ids = ["memory-id-1", "memory-id-2", "memory-id-3"]
-
-await client.forget_memories(
-    policy={"max_age_days": 30.0},
-    pinned_ids=protected_ids  # These won't be deleted
+# Find memories to potentially clean up
+old_memories = await client.search_long_term_memory(
+    text="",
+    user_id="user-123",
+    created_before=datetime.now() - timedelta(days=90),
+    limit=100
 )
+
+# Manually delete specific memories if needed
+memory_ids = [mem.id for mem in old_memories.memories]
+await client.delete_long_term_memories(memory_ids)
 ```
 
-#### Creating Protected Memory Types
-```python
-# Store critical user preferences with pinning
-await client.create_long_term_memories([{
-    "text": "User is allergic to peanuts - CRITICAL SAFETY INFORMATION",
-    "memory_type": "semantic",
-    "topics": ["health", "allergy", "safety"],
-    "pinned": True,  # Mark as protected
-    "user_id": "user-123"
-}])
-```
+## Background Task System
 
-## Automatic Forgetting
+### How Background Processing Works
 
-### Configuration
+The server uses **Docket** (a Redis-based task queue) to manage background operations including:
 
-Enable automatic periodic forgetting via environment variables:
+- **Periodic Forgetting**: `periodic_forget_long_term_memories` task runs based on `FORGETTING_EVERY_MINUTES`
+- **Memory Compaction**: Optimization and deduplication processes
+- **Index Rebuilding**: Maintaining search index performance
+
+### Task Worker Setup
+
+Background tasks require a separate task worker process:
 
 ```bash
-# Enable automatic forgetting
-FORGETTING_ENABLED=true
+# Start the background task worker
+uv run agent-memory task-worker
 
-# Run forgetting every 4 hours (240 minutes)
-FORGETTING_EVERY_MINUTES=240
-
-# Automatic policy settings
-FORGETTING_MAX_AGE_DAYS=90.0
-FORGETTING_MAX_INACTIVE_DAYS=30.0
-FORGETTING_BUDGET_KEEP_TOP_N=10000
+# Or with Docker
+docker-compose up  # Includes task worker
 ```
 
-### Monitoring Automatic Forgetting
+Without a running task worker, automatic forgetting will not occur regardless of configuration settings.
+
+### Monitoring Background Tasks
+
+Administrators can monitor forgetting activity through:
 
 ```python
-# Check forgetting status and history
-async def monitor_forgetting(client: MemoryAPIClient):
-    # Get current memory counts
-    stats = await client.get_memory_statistics()
-    print(f"Total memories: {stats.total_count}")
-    print(f"Last compaction: {stats.last_compaction}")
-
-    # Search for recent forgetting activity
-    recent_deletions = await client.search_long_term_memory(
-        text="forgetting deletion cleanup",
-        created_after=datetime.now() - timedelta(hours=24),
-        limit=10
-    )
+# Example: Check memory growth over time
+async def monitor_memory_usage():
+    # This would typically be implemented as part of server monitoring
+    # Clients cannot directly access forgetting statistics
+    pass
 ```
 
-## Manual Memory Management
+**Note**: Background forgetting processes operate independently to maintain consistent server resource management.
 
-### Bulk Memory Operations
+## Client-Side Memory Management
 
-#### Delete by Criteria
+Clients can perform manual memory management operations alongside automatic background processes:
+
+### Bulk Memory Deletion
+
+#### Delete by Search Criteria
 ```python
 async def cleanup_old_sessions(client: MemoryAPIClient, days_old: int = 30):
     """Delete all memories from old sessions"""
@@ -306,7 +239,7 @@ async def cleanup_old_sessions(client: MemoryAPIClient, days_old: int = 30):
 
     for i in range(0, len(memory_ids), batch_size):
         batch_ids = memory_ids[i:i + batch_size]
-        await client.delete_memories(batch_ids)
+        await client.delete_long_term_memories(batch_ids)
         print(f"Deleted batch {i//batch_size + 1}")
 ```
 
@@ -328,7 +261,7 @@ async def cleanup_by_topic(client: MemoryAPIClient,
         # Delete them
         memory_ids = [mem.id for mem in topic_memories.memories]
         if memory_ids:
-            await client.delete_memories(memory_ids)
+            await client.delete_long_term_memories(memory_ids)
             print(f"Deleted {len(memory_ids)} memories with topic '{topic}'")
 ```
 
@@ -339,277 +272,141 @@ Working memory has automatic TTL (1 hour by default) but can be manually managed
 ```python
 # Delete specific working memory session
 await client.delete_working_memory("session-123")
-
-# Clean up old working memory sessions (if TTL disabled)
-async def cleanup_working_memory(client: MemoryAPIClient):
-    # Get all active sessions
-    active_sessions = await client.get_active_sessions()
-
-    # Delete sessions older than 2 hours
-    cutoff = datetime.now() - timedelta(hours=2)
-
-    for session in active_sessions:
-        if session.last_activity < cutoff:
-            await client.delete_working_memory(session.session_id)
 ```
+
+**Note**: Working memory cleanup is primarily handled by Redis TTL with configurable session timeouts.
 
 ## Memory Compaction
 
 ### Background Compaction
 
-The system automatically runs compaction tasks (configurable, default every 10 minutes) to:
+The system automatically runs compaction tasks as background processes. These are server-controlled and include:
 
-- Merge similar memories
-- Update embeddings for improved accuracy
-- Rebuild search indexes
-- Clean up fragmented storage
+- Memory deduplication and merging
+- Search index optimization
+- Storage cleanup
 
-```python
-# Trigger manual compaction
-await client.compact_memories(
-    namespace="production",
-    user_id="user-123"
-)
-
-# Schedule compaction for later
-await client.schedule_compaction(
-    run_at=datetime.now() + timedelta(hours=1),
-    full_rebuild=False
-)
-```
-
-#### Configuring Compaction Schedule
-
-The frequency of automatic compaction can be configured:
+Compaction frequency is controlled by the server configuration:
 
 ```bash
 # Environment variable (minutes)
-COMPACTION_EVERY_MINUTES=15
-
-# Or in configuration file
-compaction_every_minutes: 15
+COMPACTION_EVERY_MINUTES=10  # Default: every 10 minutes
 ```
 
-### Compaction Strategies
+Compaction runs automatically through background tasks, ensuring optimal storage and search performance.
 
-#### Similarity-Based Merging
-```python
-# Configure automatic merging of similar memories
-compaction_config = {
-    "similarity_threshold": 0.95,  # Very similar memories
-    "merge_strategy": "combine",   # or "keep_newest", "keep_oldest"
-    "preserve_metadata": True
-}
+## Server Administration
 
-await client.compact_memories(
-    user_id="user-123",
-    config=compaction_config
-)
+### Configuration Reference
+
+Complete server configuration for memory lifecycle management:
+
+```bash
+# Forgetting Configuration
+FORGETTING_ENABLED=false                   # Disabled by default
+FORGETTING_EVERY_MINUTES=60               # Check every hour
+FORGETTING_MAX_AGE_DAYS=90.0              # Age threshold (days)
+FORGETTING_MAX_INACTIVE_DAYS=30.0         # Inactivity threshold (days)
+FORGETTING_BUDGET_KEEP_TOP_N=10000        # Budget-based limit
+
+# Compaction Configuration
+COMPACTION_EVERY_MINUTES=10               # Compaction frequency
+
+# Working Memory TTL (handled by Redis)
+# Configured in Redis or through server settings
 ```
 
-## Performance Optimization
+### Deployment Considerations
 
-### Memory Usage Monitoring
+#### Production Setup
+```bash
+# Recommended production settings
+FORGETTING_ENABLED=true
+FORGETTING_EVERY_MINUTES=240              # Every 4 hours
+FORGETTING_MAX_AGE_DAYS=365.0             # 1 year retention
+FORGETTING_MAX_INACTIVE_DAYS=90.0         # 3 months inactivity
+FORGETTING_BUDGET_KEEP_TOP_N=50000        # Reasonable limit
 
-```python
-class MemoryMonitor:
-    def __init__(self, client: MemoryAPIClient):
-        self.client = client
-
-    async def get_usage_report(self, user_id: str = None) -> dict:
-        """Generate memory usage report"""
-
-        # Get overall statistics
-        stats = await self.client.get_memory_statistics(user_id=user_id)
-
-        # Analyze by memory type
-        type_breakdown = {}
-        for memory_type in ["semantic", "episodic"]:
-            type_memories = await self.client.search_long_term_memory(
-                text="",
-                memory_type=memory_type,
-                user_id=user_id,
-                limit=0  # Just get count
-            )
-            type_breakdown[memory_type] = type_memories.total_count
-
-        # Analyze by age
-        age_breakdown = {}
-        for days in [1, 7, 30, 90, 365]:
-            cutoff = datetime.now() - timedelta(days=days)
-            recent_memories = await self.client.search_long_term_memory(
-                text="",
-                created_after=cutoff,
-                user_id=user_id,
-                limit=0
-            )
-            age_breakdown[f"last_{days}_days"] = recent_memories.total_count
-
-        return {
-            "total_memories": stats.total_count,
-            "storage_size_mb": stats.storage_size_mb,
-            "by_type": type_breakdown,
-            "by_age": age_breakdown,
-            "last_compaction": stats.last_compaction,
-            "recommendations": self._get_recommendations(stats, type_breakdown)
-        }
-
-    def _get_recommendations(self, stats: dict, type_breakdown: dict) -> list[str]:
-        """Generate optimization recommendations"""
-        recommendations = []
-
-        if stats.total_count > 50000:
-            recommendations.append("Consider enabling automatic forgetting")
-
-        if type_breakdown.get("episodic", 0) > type_breakdown.get("semantic", 0) * 2:
-            recommendations.append("High episodic memory ratio - consider shorter TTL")
-
-        if stats.storage_size_mb > 1000:
-            recommendations.append("Large storage size - run memory compaction")
-
-        return recommendations
+# Ensure task worker is running
+docker-compose up -d task-worker
 ```
 
-### Optimization Strategies
-
-#### 1. Proactive Forgetting
-```python
-async def proactive_memory_management(client: MemoryAPIClient, user_id: str):
-    """Implement proactive memory management strategy"""
-
-    monitor = MemoryMonitor(client)
-    report = await monitor.get_usage_report(user_id)
-
-    # Apply recommendations
-    if report["total_memories"] > 10000:
-        # Aggressive cleanup for large memory stores
-        await client.forget_memories(policy={
-            "max_age_days": 60.0,
-            "max_inactive_days": 14.0,
-            "budget": 8000
-        }, user_id=user_id)
-
-    elif report["total_memories"] > 5000:
-        # Moderate cleanup
-        await client.forget_memories(policy={
-            "max_age_days": 90.0,
-            "max_inactive_days": 30.0
-        }, user_id=user_id)
-
-    # Run compaction if storage is large
-    if report["storage_size_mb"] > 500:
-        await client.compact_memories(user_id=user_id)
-```
-
-#### 2. Scheduled Maintenance
-```python
-import asyncio
-from datetime import time
-
-async def scheduled_maintenance(client: MemoryAPIClient):
-    """Run daily maintenance at 2 AM"""
-
-    while True:
-        now = datetime.now()
-        # Schedule for 2 AM next day
-        tomorrow_2am = now.replace(hour=2, minute=0, second=0, microsecond=0)
-        if now.hour >= 2:
-            tomorrow_2am += timedelta(days=1)
-
-        # Wait until 2 AM
-        wait_seconds = (tomorrow_2am - now).total_seconds()
-        await asyncio.sleep(wait_seconds)
-
-        # Run maintenance
-        print("Starting daily memory maintenance...")
-
-        # 1. Apply forgetting policies
-        await client.forget_memories(policy={
-            "max_age_days": 90.0,
-            "max_inactive_days": 30.0
-        })
-
-        # 2. Compact memories
-        await client.compact_memories()
-
-        # 3. Rebuild indexes if needed
-        await client.rebuild_indexes()
-
-        print("Daily memory maintenance complete")
+#### Development Setup
+```bash
+# Development/testing settings
+FORGETTING_ENABLED=false                   # Disable for testing
+COMPACTION_EVERY_MINUTES=60               # Less frequent
 ```
 
 ## Best Practices
 
-### 1. Policy Design
-- **Start Conservative**: Begin with longer retention periods and adjust based on usage
-- **Layer Policies**: Combine multiple strategies (age + inactivity + budget)
-- **Protect Critical Data**: Pin important memories or exclude them from policies
-- **Monitor Impact**: Track deletion rates and user experience
+### 1. Server Configuration
+- **Start with forgetting disabled** in new deployments to understand memory usage patterns
+- **Enable gradually** with conservative thresholds
+- **Monitor memory growth** before enabling aggressive policies
+- **Always run task workers** in production
 
-### 2. Performance Considerations
-- **Batch Operations**: Delete memories in batches to avoid overwhelming the system
-- **Off-Peak Scheduling**: Run major cleanup during low-usage hours
-- **Gradual Rollout**: Implement new policies gradually with dry-run testing
-- **Index Maintenance**: Regular compaction maintains search performance
+### 2. Client Design
+- **Don't rely on specific retention periods** - memories may be deleted by server policies
+- **Use explicit deletion** for memories that must be removed immediately
+- **Design for eventual consistency** - recently deleted memories might still appear briefly in searches
 
-### 3. User Experience
-- **Transparency**: Inform users about data retention policies
-- **Control**: Allow users to protect important memories
-- **Graceful Degradation**: Ensure forgetting doesn't break ongoing conversations
-- **Recovery Options**: Consider soft-delete with recovery periods
+### 3. Operational Considerations
+- **Monitor task worker health** - forgetting stops if workers are down
+- **Plan for storage growth** - configure budgets based on hardware capacity
+- **Consider backup strategies** - automatic forgetting is permanent
+- **Test policies in staging** before production deployment
 
-### 4. Compliance and Privacy
-- **Right to be Forgotten**: Implement complete user data deletion
-- **Data Minimization**: Only retain necessary information
-- **Audit Trails**: Log forgetting operations for compliance
-- **Consent Management**: Respect user privacy preferences
+### 4. Client Application Patterns
 
-## Configuration Reference
-
-### Environment Variables
-
-```bash
-# Automatic Forgetting
-FORGETTING_ENABLED=true                    # Enable automatic forgetting
-FORGETTING_EVERY_MINUTES=240               # Run every 4 hours
-FORGETTING_MAX_AGE_DAYS=90.0              # Delete after 90 days
-FORGETTING_MAX_INACTIVE_DAYS=30.0         # Delete if inactive 30 days
-FORGETTING_BUDGET_KEEP_TOP_N=10000        # Keep top 10k memories
-
-# Working Memory TTL
-WORKING_MEMORY_TTL_MINUTES=60             # Working memory expires in 1 hour
-
-# Compaction Settings
-AUTO_COMPACTION_ENABLED=true              # Enable automatic compaction
-COMPACTION_SIMILARITY_THRESHOLD=0.95      # Merge very similar memories
-```
-
-### Policy Configuration Examples
-
+#### Robust Memory Usage
 ```python
-# Conservative policy for personal assistant
-PERSONAL_ASSISTANT_POLICY = {
-    "max_age_days": 365.0,        # Keep for 1 year
-    "max_inactive_days": 90.0,    # Delete if unused for 3 months
-    "budget": 20000,              # Maximum 20k memories
-    "memory_type_allowlist": ["episodic"],  # Only clean conversations
-    "hard_age_multiplier": 2.0    # Force delete after 2 years
-}
+# Good: Don't assume memories persist indefinitely
+async def get_user_preference(client, user_id: str, preference_key: str):
+    """Get user preference with fallback to default"""
+    memories = await client.search_long_term_memory(
+        text=f"user preference {preference_key}",
+        user_id=user_id,
+        limit=1
+    )
 
-# Aggressive policy for high-volume systems
-HIGH_VOLUME_POLICY = {
-    "max_age_days": 30.0,         # Keep for 1 month
-    "max_inactive_days": 7.0,     # Delete if unused for 1 week
-    "budget": 5000,               # Maximum 5k memories
-    "hard_age_multiplier": 6.0    # Force delete after 6 months
-}
+    if memories.memories:
+        return parse_preference(memories.memories[0].text)
+    else:
+        return get_default_preference(preference_key)
 
-# Selective policy for different content types
-CONTENT_AWARE_POLICY = {
-    "max_age_days": 60.0,
-    "memory_type_allowlist": ["episodic"],
-    "topic_exclusions": ["important", "pinned", "user_preference"]
-}
+# Bad: Assuming specific memories will always exist
+# Hypothetical: get_memory_by_id() does not exist in the real API
 ```
 
-Memory lifecycle management is crucial for maintaining system performance and managing storage costs while preserving valuable user context. The flexible policy system allows you to balance retention needs with resource constraints, ensuring your AI applications remain fast and relevant over time.
+#### Explicit Cleanup
+```python
+# Good: Explicit cleanup when needed
+async def handle_user_data_deletion(client: MemoryAPIClient, user_id: str):
+    """Handle user's right to be forgotten request"""
+
+    # Find all user memories
+    all_memories = await client.search_long_term_memory(
+        text="",
+        user_id=user_id,
+        limit=10000  # Large limit to get all
+    )
+
+    # Delete in batches
+    memory_ids = [mem.id for mem in all_memories.memories]
+    batch_size = 100
+
+    for i in range(0, len(memory_ids), batch_size):
+        batch = memory_ids[i:i + batch_size]
+        await client.delete_long_term_memories(batch)
+```
+
+## Summary
+
+The system provides **automated memory lifecycle management** through server-controlled background processes. Clients can:
+
+1. **Delete specific memories** by ID using `delete_long_term_memories()`
+2. **Delete working memory sessions** using `delete_working_memory()`
+3. **Search and identify** memories for manual cleanup
+
+Automatic lifecycle management (forgetting, compaction, optimization) operates server-side based on configuration and background task scheduling. This design ensures consistent resource management and optimal server performance.
