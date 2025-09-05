@@ -3,7 +3,7 @@ site_description: Give your AI agents persistent memory and context that gets sm
 site_url: https://redis.github.io/agent-memory-server
 repo_url: https://github.com/redis/agent-memory-server
 repo_name: redis/agent-memory-server
-exit_uri: blob/main/docs
+edit_uri: blob/main/docs
 
 docs_dir: docs
 exclude_docs: |
