@@ -886,6 +886,19 @@ async def memory_prompt(
 
         logger.debug(f"Found working memory: {working_mem}")
 
+        # Create empty working memory if session doesn't exist
+        if not working_mem:
+            working_mem = WorkingMemory(
+                session_id=params.session.session_id,
+                namespace=params.session.namespace,
+                user_id=params.session.user_id,
+                messages=[],
+                memories=[],
+            )
+            logger.debug(
+                f"Created empty working memory for session: {params.session.session_id}"
+            )
+
         if working_mem:
             if working_mem.context:
                 # TODO: Weird to use MCP types here?

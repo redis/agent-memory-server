@@ -28,8 +28,8 @@ pip install agent-memory-client
 pip install uv
 
 # Clone the repository to run the server locally
-git clone https://github.com/redis/redis-memory-server.git
-cd redis-memory-server
+git clone https://github.com/redis/agent-memory-server.git
+cd agent-memory-server
 
 # Install server dependencies
 uv sync
@@ -290,7 +290,7 @@ Add to your Claude Desktop config:
       "command": "uv",
       "args": [
         "--directory",
-        "/path/to/redis-memory-server",
+        "/path/to/agent-memory-server",
         "run",
         "agent-memory",
         "mcp",
