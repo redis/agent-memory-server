@@ -14,7 +14,7 @@ from testcontainers.compose import DockerCompose
 
 from agent_memory_server.api import router as memory_router
 from agent_memory_server.config import settings
-from agent_memory_server.dependencies import DocketBackgroundTasks, get_background_tasks
+from agent_memory_server.dependencies import HybridBackgroundTasks, get_background_tasks
 from agent_memory_server.healthcheck import router as health_router
 from agent_memory_server.llms import OpenAIClientWrapper
 from agent_memory_server.models import (
@@ -390,8 +390,8 @@ def pytest_collection_modifyitems(
 
 @pytest.fixture()
 def mock_background_tasks():
-    """Create a mock DocketBackgroundTasks instance"""
-    return mock.Mock(name="DocketBackgroundTasks", spec=DocketBackgroundTasks)
+    """Create a mock HybridBackgroundTasks instance"""
+    return mock.Mock(name="HybridBackgroundTasks", spec=HybridBackgroundTasks)
 
 
 @pytest.fixture()

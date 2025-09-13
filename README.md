@@ -24,8 +24,8 @@ uv install --all-extras
 # Start Redis
 docker-compose up redis
 
-# Start the server
-uv run agent-memory api
+# Start the server (development mode)
+uv run agent-memory api --no-worker
 ```
 
 ### 2. Python SDK
@@ -62,11 +62,11 @@ results = await client.search_long_term_memory(
 ### 3. MCP Integration
 
 ```bash
-# Start MCP server
+# Start MCP server (stdio mode - recommended for Claude Desktop)
 uv run agent-memory mcp
 
-# Or with SSE mode
-uv run agent-memory mcp --mode sse --port 9000
+# Or with SSE mode (development mode)
+uv run agent-memory mcp --mode sse --port 9000 --no-worker
 ```
 
 ## Documentation
@@ -121,10 +121,29 @@ docker-compose up
 
 ## Production Deployment
 
+For production environments, use Docket workers for better reliability and scale:
+
+```bash
+# Start the API server (production mode)
+uv run agent-memory api
+
+# Start MCP server (production mode - SSE)
+uv run agent-memory mcp --mode sse --port 9000
+
+# Start background workers (required for production)
+uv run agent-memory task-worker --concurrency 10
+```
+
+**Production features:**
 - **Authentication**: OAuth2/JWT with multiple providers (Auth0, AWS Cognito, etc.)
 - **Redis**: Requires Redis with RediSearch module (RedisStack recommended)
-- **Scaling**: Supports Redis clustering and background task processing
+- **Background Processing**: Docket workers handle memory indexing, summarization, and compaction
+- **Scaling**: Supports Redis clustering and horizontal worker scaling
 - **Monitoring**: Structured logging and health checks included
+
+**Development vs Production:**
+- **Development**: Use `--no-worker` flags for quick setup, tasks run inline
+- **Production**: Use separate worker processes for better performance and reliability
 
 ## License
 

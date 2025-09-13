@@ -27,11 +27,16 @@ agent-memory api [OPTIONS]
 - `--port INTEGER`: Port to run the server on. (Default: value from `settings.port`, usually 8000)
 - `--host TEXT`: Host to run the server on. (Default: "0.0.0.0")
 - `--reload`: Enable auto-reload for development.
+- `--no-worker`: Use FastAPI background tasks instead of Docket workers. Ideal for development and testing.
 
-Example:
+**Examples:**
 
 ```bash
-agent-memory api --port 8080 --reload
+# Development mode (no separate worker needed)
+agent-memory api --port 8080 --reload --no-worker
+
+# Production mode (requires separate worker process)
+agent-memory api --port 8080
 ```
 
 ### `mcp`
@@ -45,19 +50,23 @@ agent-memory mcp [OPTIONS]
 **Options:**
 
 - `--port INTEGER`: Port to run the MCP server on. (Default: value from `settings.mcp_port`, usually 9000)
-- `--sse`: Run the MCP server in Server-Sent Events (SSE) mode. If not provided, it runs in stdio mode.
+- `--mode [stdio|sse]`: Run the MCP server in stdio or SSE mode. (Default: stdio)
+- `--no-worker`: Use FastAPI background tasks instead of Docket workers. Ideal for development and testing.
 
-Example (SSE mode):
-
-```bash
-agent-memory mcp --port 9001 --sse
-```
-
-Example (stdio mode):
+**Examples:**
 
 ```bash
-agent-memory mcp --port 9001
+# Stdio mode (recommended for Claude Desktop) - automatically uses --no-worker
+agent-memory mcp
+
+# SSE mode for development (no separate worker needed)
+agent-memory mcp --mode sse --port 9001 --no-worker
+
+# SSE mode for production (requires separate worker process)
+agent-memory mcp --mode sse --port 9001
 ```
+
+**Note:** Stdio mode automatically disables Docket workers as they're not needed when Claude Desktop manages the process lifecycle.
 
 ### `schedule-task`
 

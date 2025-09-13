@@ -77,11 +77,8 @@ EOF
 Start the REST API server:
 
 ```bash
-# Start the API server (runs on port 8000)
-uv run agent-memory api
-
-# In another terminal, start the task worker for background processing
-uv run agent-memory task-worker
+# Start the API server in development mode (runs on port 8000)
+uv run agent-memory api --no-worker
 ```
 
 Your server is now running at `http://localhost:8000`!
@@ -309,8 +306,8 @@ Now Claude can use memory tools directly in conversations!
 For web-based MCP clients, you can use SSE mode, but this requires manually starting the server:
 
 ```bash
-# Only needed for SSE mode
-uv run agent-memory mcp --mode sse --port 9000
+# Only needed for SSE mode (development)
+uv run agent-memory mcp --mode sse --port 9000 --no-worker
 ```
 
 **Recommendation**: Use stdio mode with Claude Desktop as it's much simpler to set up.
@@ -347,14 +344,159 @@ Now that you have the basics working, explore these advanced features:
 
 ### 🔒 **Production Setup**
 - Enable authentication (OAuth2/JWT or token-based)
-- Configure background tasks and memory compaction
-- See [Authentication Guide](authentication.md) and [Configuration Guide](configuration.md)
+- Use Docket workers for better performance and reliability
+- See [Production Deployment](#production-deployment) below
 
 ### 🚀 **Advanced Features**
 - **Query Optimization**: Improve search accuracy with configurable models
 - **Contextual Grounding**: Resolve pronouns and references in extracted memories
 - **Recency Boost**: Time-aware memory ranking
 - **Vector Store Backends**: Use different storage backends (Pinecone, Chroma, etc.)
+
+## Production Deployment
+
+The examples above use `--no-worker` for development convenience. For production environments, you should use Docket workers for better reliability, scalability, and performance.
+
+### Why Use Workers in Production?
+
+**Development mode (`--no-worker`):**
+- ✅ Quick setup, no extra processes needed
+- ✅ Perfect for testing and development
+- ❌ Tasks run inline, blocking API responses
+- ❌ No task retry or failure handling
+- ❌ Cannot scale background processing
+
+**Production mode (with Docket workers):**
+- ✅ Non-blocking API responses
+- ✅ Automatic task retry and failure handling
+- ✅ Horizontal scaling of background workers
+- ✅ Better resource utilization
+- ✅ Monitoring and observability
+
+### Production Setup Steps
+
+1. **Start the API server (without --no-worker):**
+
+```bash
+# Production API server
+uv run agent-memory api --port 8000
+```
+
+2. **Start background workers:**
+
+```bash
+# Start worker processes (scale as needed)
+uv run agent-memory task-worker --concurrency 10
+
+# Or start multiple workers for better parallelism
+uv run agent-memory task-worker --concurrency 5 &
+uv run agent-memory task-worker --concurrency 5 &
+```
+
+3. **Start MCP server (if using SSE mode):**
+
+```bash
+# Production MCP server (stdio mode doesn't need changes)
+uv run agent-memory mcp --mode sse --port 9000
+```
+
+4. **Enable authentication:**
+
+```bash
+# Set up authentication (see Authentication Guide)
+export DISABLE_AUTH=false
+export OAUTH2_ISSUER_URL=https://your-auth-provider.com
+export OAUTH2_AUDIENCE=your-api-audience
+```
+
+### Background Tasks Handled by Workers
+
+Workers process these tasks asynchronously:
+
+- **Memory Indexing**: Vector embedding generation and storage
+- **Conversation Summarization**: When working memory exceeds size limits
+- **Topic Extraction**: Automatic topic detection from memories
+- **Entity Recognition**: Named entity extraction from text
+- **Memory Compaction**: Deduplication and cleanup of similar memories
+- **Long-term Promotion**: Moving working memories to persistent storage
+
+### Docker Compose Production Example
+
+For production deployment with Docker:
+
+```yaml
+version: '3.8'
+services:
+  redis:
+    image: redis/redis-stack:latest
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DISABLE_AUTH=false
+      - OAUTH2_ISSUER_URL=${OAUTH2_ISSUER_URL}
+      - OAUTH2_AUDIENCE=${OAUTH2_AUDIENCE}
+    command: uv run agent-memory api
+    depends_on:
+      - redis
+
+  worker:
+    build: .
+    environment:
+      - REDIS_URL=redis://redis:6379
+    command: uv run agent-memory task-worker --concurrency 10
+    depends_on:
+      - redis
+    deploy:
+      replicas: 2  # Scale workers as needed
+
+  mcp:
+    build: .
+    ports:
+      - "9000:9000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+    command: uv run agent-memory mcp --mode sse --port 9000
+    depends_on:
+      - redis
+
+volumes:
+  redis_data:
+```
+
+### Monitoring Production Workers
+
+Monitor worker health and performance:
+
+```bash
+# Check worker logs
+docker-compose logs worker
+
+# Monitor Redis task queues
+redis-cli -h localhost -p 6379
+> XLEN memory-server:stream  # Check queue length
+> XINFO GROUPS memory-server:stream  # Check consumer groups
+```
+
+### When to Use Each Mode
+
+| Use Case | Mode | Command |
+|----------|------|---------|
+| **Quick testing** | Development | `uv run agent-memory api --no-worker` |
+| **Local development** | Development | `uv run agent-memory api --no-worker` |
+| **Production API** | Production | `uv run agent-memory api` + workers |
+| **High-scale deployment** | Production | `uv run agent-memory api` + multiple workers |
+| **Claude Desktop MCP** | Either | `uv run agent-memory mcp` (stdio mode) |
+| **Web MCP clients** | Either | `uv run agent-memory mcp --mode sse [--no-worker]` |
+
+**Recommendation**: Start with `--no-worker` for development, then graduate to worker-based deployment for production.
 
 ## Common Issues
 
@@ -371,8 +513,9 @@ Now that you have the basics working, explore these advanced features:
 - If still failing, try: `uv add redisvl>=0.6.0`
 
 **"Background tasks not processing"**
-- Make sure the task worker is running: `uv run agent-memory task-worker`
-- Check logs for worker errors
+- If using `--no-worker`: Tasks run inline, check API server logs
+- If using workers: Make sure task worker is running: `uv run agent-memory task-worker`
+- Check worker logs for errors and ensure Redis is accessible
 
 ## Get Help
 

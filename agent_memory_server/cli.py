@@ -82,11 +82,19 @@ def migrate_memories():
 @click.option("--port", default=settings.port, help="Port to run the server on")
 @click.option("--host", default="0.0.0.0", help="Host to run the server on")
 @click.option("--reload", is_flag=True, help="Enable auto-reload")
-def api(port: int, host: str, reload: bool):
+@click.option(
+    "--no-worker", is_flag=True, help="Use FastAPI background tasks instead of Docket"
+)
+def api(port: int, host: str, reload: bool, no_worker: bool):
     """Run the REST API server."""
     from agent_memory_server.main import on_start_logger
 
     configure_logging()
+
+    # Set use_docket based on the --no-worker flag
+    if no_worker:
+        settings.use_docket = False
+
     on_start_logger(port)
     uvicorn.run(
         "agent_memory_server.main:app",
@@ -104,7 +112,10 @@ def api(port: int, host: str, reload: bool):
     help="Run the MCP server in SSE or stdio mode",
     type=click.Choice(["stdio", "sse"]),
 )
-def mcp(port: int, mode: str):
+@click.option(
+    "--no-worker", is_flag=True, help="Use FastAPI background tasks instead of Docket"
+)
+def mcp(port: int, mode: str, no_worker: bool):
     """Run the MCP server."""
     import asyncio
 
@@ -123,14 +134,19 @@ def mcp(port: int, mode: str):
     async def setup_and_run():
         # Redis setup is handled by the MCP app before it starts
 
+        # Set use_docket based on mode and --no-worker flag
+        if mode == "stdio":
+            # Don't run a task worker in stdio mode by default
+            settings.use_docket = False
+        elif no_worker:
+            # Use --no-worker flag for SSE mode
+            settings.use_docket = False
+
         # Run the MCP server
         if mode == "sse":
             logger.info(f"Starting MCP server on port {port}\n")
             await mcp_app.run_sse_async()
         elif mode == "stdio":
-            # Don't run a task worker in stdio mode.
-            # TODO: Make configurable with a CLI flag?
-            settings.use_docket = False
             await mcp_app.run_stdio_async()
         else:
             raise ValueError(f"Invalid mode: {mode}")

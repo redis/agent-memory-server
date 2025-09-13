@@ -90,14 +90,34 @@ class TestMigrateMemories:
 class TestApiCommand:
     """Tests for the api command."""
 
+    def setup_method(self):
+        """Store original use_docket setting."""
+        from agent_memory_server.config import settings
+
+        self.original_use_docket = settings.use_docket
+
+    def teardown_method(self):
+        """Restore original use_docket setting."""
+        from agent_memory_server.config import settings
+
+        settings.use_docket = self.original_use_docket
+
     @patch("agent_memory_server.cli.uvicorn.run")
     @patch("agent_memory_server.main.on_start_logger")
     def test_api_command_defaults(self, mock_on_start_logger, mock_uvicorn_run):
         """Test api command with default parameters."""
+        from agent_memory_server.config import settings
+
+        # Set initial state
+        settings.use_docket = True
+
         runner = CliRunner()
         result = runner.invoke(api)
 
         assert result.exit_code == 0
+        # Should not change use_docket when --no-worker is not specified
+        assert settings.use_docket is True
+
         mock_on_start_logger.assert_called_once()
         mock_uvicorn_run.assert_called_once_with(
             "agent_memory_server.main:app",
@@ -124,9 +144,86 @@ class TestApiCommand:
             reload=True,
         )
 
+    @patch("agent_memory_server.cli.uvicorn.run")
+    @patch("agent_memory_server.main.on_start_logger")
+    def test_api_command_with_no_worker_flag(
+        self, mock_on_start_logger, mock_uvicorn_run
+    ):
+        """Test api command with --no-worker flag."""
+        from agent_memory_server.config import settings
+
+        # Set initial state
+        settings.use_docket = True
+
+        runner = CliRunner()
+        result = runner.invoke(api, ["--no-worker"])
+
+        assert result.exit_code == 0
+        # Should set use_docket to False when --no-worker is specified
+        assert settings.use_docket is False
+
+        mock_on_start_logger.assert_called_once()
+        mock_uvicorn_run.assert_called_once_with(
+            "agent_memory_server.main:app",
+            host="0.0.0.0",
+            port=8000,
+            reload=False,
+        )
+
+    @patch("agent_memory_server.cli.uvicorn.run")
+    @patch("agent_memory_server.main.on_start_logger")
+    def test_api_command_with_combined_options(
+        self, mock_on_start_logger, mock_uvicorn_run
+    ):
+        """Test api command with --no-worker and other options."""
+        from agent_memory_server.config import settings
+
+        # Set initial state
+        settings.use_docket = True
+
+        runner = CliRunner()
+        result = runner.invoke(
+            api, ["--port", "9999", "--host", "127.0.0.1", "--reload", "--no-worker"]
+        )
+
+        assert result.exit_code == 0
+        # Should set use_docket to False
+        assert settings.use_docket is False
+
+        mock_on_start_logger.assert_called_once_with(9999)
+        mock_uvicorn_run.assert_called_once_with(
+            "agent_memory_server.main:app",
+            host="127.0.0.1",
+            port=9999,
+            reload=True,
+        )
+
+    def test_api_command_help_includes_no_worker(self):
+        """Test that API command help includes --no-worker option."""
+        runner = CliRunner()
+        result = runner.invoke(api, ["--help"])
+
+        assert result.exit_code == 0
+        assert "--no-worker" in result.output
+        assert "Use FastAPI background tasks instead of Docket" in result.output
+
 
 class TestMcpCommand:
     """Tests for the mcp command."""
+
+    def setup_method(self):
+        """Store original settings."""
+        from agent_memory_server.config import settings
+
+        self.original_use_docket = settings.use_docket
+        self.original_mcp_port = settings.mcp_port
+
+    def teardown_method(self):
+        """Restore original settings."""
+        from agent_memory_server.config import settings
+
+        settings.use_docket = self.original_use_docket
+        settings.mcp_port = self.original_mcp_port
 
     @patch("agent_memory_server.cli.settings")
     @patch("agent_memory_server.mcp.mcp_app")
@@ -175,6 +272,129 @@ class TestMcpCommand:
         assert result.exit_code == 0
         mock_mcp_app.run_stdio_async.assert_called_once()
         mock_configure_mcp_logging.assert_called_once()
+
+    @patch("agent_memory_server.cli.configure_mcp_logging")
+    @patch("agent_memory_server.mcp.mcp_app")
+    def test_mcp_command_stdio_mode_defaults_to_no_worker(
+        self, mock_mcp_app, mock_configure_mcp_logging
+    ):
+        """Test that stdio mode defaults to use_docket=False."""
+        from agent_memory_server.config import settings
+
+        # Set initial state
+        settings.use_docket = True
+
+        mock_mcp_app.run_stdio_async = AsyncMock()
+
+        runner = CliRunner()
+        result = runner.invoke(mcp, ["--mode", "stdio"])
+
+        assert result.exit_code == 0
+        # stdio mode should set use_docket to False by default
+        assert settings.use_docket is False
+        mock_mcp_app.run_stdio_async.assert_called_once()
+
+    @patch("agent_memory_server.cli.configure_logging")
+    @patch("agent_memory_server.mcp.mcp_app")
+    def test_mcp_command_sse_mode_preserves_docket(
+        self, mock_mcp_app, mock_configure_logging
+    ):
+        """Test that SSE mode preserves use_docket=True by default."""
+        from agent_memory_server.config import settings
+
+        # Set initial state
+        settings.use_docket = True
+
+        mock_mcp_app.run_sse_async = AsyncMock()
+
+        runner = CliRunner()
+        result = runner.invoke(mcp, ["--mode", "sse"])
+
+        assert result.exit_code == 0
+        # SSE mode should keep use_docket as True by default
+        assert settings.use_docket is True
+        mock_mcp_app.run_sse_async.assert_called_once()
+
+    @patch("agent_memory_server.cli.configure_logging")
+    @patch("agent_memory_server.mcp.mcp_app")
+    def test_mcp_command_sse_mode_with_no_worker_flag(
+        self, mock_mcp_app, mock_configure_logging
+    ):
+        """Test that SSE mode with --no-worker flag sets use_docket=False."""
+        from agent_memory_server.config import settings
+
+        # Set initial state
+        settings.use_docket = True
+
+        mock_mcp_app.run_sse_async = AsyncMock()
+
+        runner = CliRunner()
+        result = runner.invoke(mcp, ["--mode", "sse", "--no-worker"])
+
+        assert result.exit_code == 0
+        # SSE mode with --no-worker should set use_docket to False
+        assert settings.use_docket is False
+        mock_mcp_app.run_sse_async.assert_called_once()
+
+    @patch("agent_memory_server.cli.configure_mcp_logging")
+    @patch("agent_memory_server.mcp.mcp_app")
+    def test_mcp_command_stdio_mode_with_no_worker_flag(
+        self, mock_mcp_app, mock_configure_mcp_logging
+    ):
+        """Test that stdio mode with --no-worker flag still sets use_docket=False."""
+        from agent_memory_server.config import settings
+
+        # Set initial state
+        settings.use_docket = True
+
+        mock_mcp_app.run_stdio_async = AsyncMock()
+
+        runner = CliRunner()
+        result = runner.invoke(mcp, ["--mode", "stdio", "--no-worker"])
+
+        assert result.exit_code == 0
+        # stdio mode should set use_docket to False regardless of --no-worker flag
+        assert settings.use_docket is False
+        mock_mcp_app.run_stdio_async.assert_called_once()
+
+    @patch("agent_memory_server.cli.configure_logging")
+    @patch("agent_memory_server.mcp.mcp_app")
+    def test_mcp_command_port_setting_update(
+        self, mock_mcp_app, mock_configure_logging
+    ):
+        """Test that MCP command updates the port setting correctly."""
+        from agent_memory_server.config import settings
+
+        original_port = settings.mcp_port
+        mock_mcp_app.run_sse_async = AsyncMock()
+
+        runner = CliRunner()
+        result = runner.invoke(mcp, ["--port", "7777", "--mode", "sse"])
+
+        assert result.exit_code == 0
+        # Port should be updated in settings
+        assert settings.mcp_port == 7777
+        assert settings.mcp_port != original_port
+
+    def test_mcp_command_help_includes_no_worker(self):
+        """Test that MCP command help includes --no-worker option."""
+        runner = CliRunner()
+        result = runner.invoke(mcp, ["--help"])
+
+        assert result.exit_code == 0
+        assert "--no-worker" in result.output
+        assert "Use FastAPI background tasks instead of Docket" in result.output
+
+    def test_mcp_command_mode_choices(self):
+        """Test that MCP command only accepts valid mode choices."""
+        runner = CliRunner()
+        result = runner.invoke(mcp, ["--mode", "invalid"])
+
+        assert result.exit_code != 0
+        assert (
+            "Invalid value for '--mode'" in result.output
+            or "invalid_value" in result.output.lower()
+        )
 
 
 class TestScheduleTask:
