@@ -21,34 +21,32 @@ class HybridBackgroundTasks(BackgroundTasks):
         if settings.use_docket:
             logger.info("Scheduling task through Docket")
 
-            # Create a wrapper that will handle Docket scheduling in a thread
-            def docket_wrapper():
-                """Wrapper function that schedules the task through Docket"""
+            # Import Docket here to avoid import issues in tests
+            from docket import Docket
 
-                def run_in_thread():
-                    """Run the async Docket operations in a separate thread"""
-                    import asyncio
+            # Schedule task directly in Docket without using FastAPI background tasks
+            # This runs in a thread to avoid event loop conflicts
+            def run_in_thread():
+                """Run the async Docket operations in a separate thread"""
+                import asyncio
 
-                    from docket import Docket
+                async def schedule_task():
+                    async with Docket(
+                        name=settings.docket_name,
+                        url=settings.redis_url,
+                    ) as docket:
+                        # Schedule task in Docket's queue
+                        await docket.add(func)(*args, **kwargs)
 
-                    async def schedule_task():
-                        async with Docket(
-                            name=settings.docket_name,
-                            url=settings.redis_url,
-                        ) as docket:
-                            # Schedule task in Docket's queue
-                            await docket.add(func)(*args, **kwargs)
+                # Run in a new event loop in this thread
+                asyncio.run(schedule_task())
 
-                    # Run in a new event loop in this thread
-                    asyncio.run(schedule_task())
+            # Execute in a thread pool to avoid event loop conflicts
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(run_in_thread)
+                future.result()  # Wait for completion
 
-                # Execute in a thread pool to avoid event loop conflicts
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(run_in_thread)
-                    future.result()  # Wait for completion
-
-            # Add the wrapper to FastAPI background tasks
-            super().add_task(docket_wrapper)
+            # When using Docket, we don't add anything to FastAPI background tasks
         else:
             logger.info("Using FastAPI background tasks")
             # Use FastAPI's background tasks directly
