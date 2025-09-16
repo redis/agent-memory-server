@@ -507,7 +507,7 @@ async def put_working_memory(
         updated_memory.memories or updated_memory.messages
     ):
         # Promote structured memories from working memory to long-term storage
-        await background_tasks.add_task(
+        background_tasks.add_task(
             long_term_memory.promote_working_memory_to_long_term,
             session_id=session_id,
             user_id=updated_memory.user_id,
@@ -596,7 +596,7 @@ async def create_long_term_memory(
         # Clear any client-provided persisted_at value
         memory.persisted_at = None
 
-    await background_tasks.add_task(
+    background_tasks.add_task(
         long_term_memory.index_long_term_memories,
         memories=payload.memories,
     )
@@ -732,7 +732,7 @@ async def search_long_term_memory(
         ids = [m.id for m in ranked if m.id]
         if ids:
             background_tasks = get_background_tasks()
-            await background_tasks.add_task(long_term_memory.update_last_accessed, ids)
+            background_tasks.add_task(long_term_memory.update_last_accessed, ids)
 
         raw_results.memories = ranked
         return raw_results
