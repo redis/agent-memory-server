@@ -1,5 +1,6 @@
 """Tests for the dependencies module, particularly HybridBackgroundTasks."""
 
+import asyncio
 from unittest.mock import Mock, patch
 
 import pytest
@@ -24,8 +25,7 @@ class TestHybridBackgroundTasks:
         """Restore original use_docket setting."""
         settings.use_docket = self.original_use_docket
 
-    @pytest.mark.asyncio
-    async def test_add_task_with_fastapi_background_tasks(self):
+    def test_add_task_with_fastapi_background_tasks(self):
         """Test that tasks are added to FastAPI background tasks when use_docket=False."""
         settings.use_docket = False
 
@@ -35,7 +35,7 @@ class TestHybridBackgroundTasks:
             return f"test_func called with {arg1}, {arg2}"
 
         # Add task
-        await bg_tasks.add_task(test_func, "hello", arg2="world")
+        bg_tasks.add_task(test_func, "hello", arg2="world")
 
         # Verify task was added to FastAPI background tasks
         assert len(bg_tasks.tasks) == 1
@@ -71,8 +71,14 @@ class TestHybridBackgroundTasks:
             async def test_func(arg1, arg2=None):
                 return f"test_func called with {arg1}, {arg2}"
 
-            # Add task
-            await bg_tasks.add_task(test_func, "hello", arg2="world")
+            # Add task - this should schedule directly in Docket
+            bg_tasks.add_task(test_func, "hello", arg2="world")
+
+            # Give the async task a moment to complete
+            await asyncio.sleep(0.1)
+
+            # When use_docket=True, tasks should NOT be added to FastAPI background tasks
+            assert len(bg_tasks.tasks) == 0
 
             # Verify Docket was used
             mock_docket_class.assert_called_once_with(
@@ -81,8 +87,7 @@ class TestHybridBackgroundTasks:
             )
             mock_docket_instance.add.assert_called_once_with(test_func)
 
-    @pytest.mark.asyncio
-    async def test_add_task_logs_correctly_for_fastapi(self):
+    def test_add_task_logs_correctly_for_fastapi(self):
         """Test that FastAPI background tasks work without errors."""
         settings.use_docket = False
 
@@ -92,7 +97,7 @@ class TestHybridBackgroundTasks:
             pass
 
         # Should not raise any errors
-        await bg_tasks.add_task(test_func)
+        bg_tasks.add_task(test_func)
 
         # Verify task was added to FastAPI background tasks
         assert len(bg_tasks.tasks) == 1
@@ -122,7 +127,10 @@ class TestHybridBackgroundTasks:
                 pass
 
             # Should not raise any errors
-            await bg_tasks.add_task(test_func)
+            bg_tasks.add_task(test_func)
+
+            # Give the async task a moment to complete
+            await asyncio.sleep(0.1)
 
             # Verify Docket was called
             mock_docket_instance.add.assert_called_once_with(test_func)
@@ -178,7 +186,7 @@ class TestIntegrationWithSettings:
 
         # Test with use_docket=False
         settings.use_docket = False
-        await bg_tasks.add_task(test_func)
+        bg_tasks.add_task(test_func)
         assert len(bg_tasks.tasks) == 1
 
         # Clear tasks and test with use_docket=True
@@ -199,14 +207,18 @@ class TestIntegrationWithSettings:
 
             mock_docket_instance.add.return_value = mock_task_callable
 
-            await bg_tasks.add_task(test_func)
+            bg_tasks.add_task(test_func)
+
+            # Give the async task a moment to complete
+            await asyncio.sleep(0.1)
 
             # Should not add to FastAPI tasks when use_docket=True
             assert len(bg_tasks.tasks) == 0
             # Should have called Docket
             mock_docket_class.assert_called_once()
 
-    def test_uses_correct_docket_settings(self):
+    @pytest.mark.asyncio
+    async def test_uses_correct_docket_settings(self):
         """Test that HybridBackgroundTasks uses the correct docket name and URL from settings."""
         settings.use_docket = True
 
@@ -226,12 +238,10 @@ class TestIntegrationWithSettings:
 
             bg_tasks = HybridBackgroundTasks()
 
-            async def run_test():
-                await bg_tasks.add_task(lambda: None)
+            bg_tasks.add_task(lambda: None)
 
-            import asyncio
-
-            asyncio.run(run_test())
+            # Give the async task a moment to complete
+            await asyncio.sleep(0.1)
 
             # Verify Docket was initialized with correct settings
             mock_docket_class.assert_called_once_with(
