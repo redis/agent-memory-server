@@ -842,7 +842,7 @@ async def index_long_term_memories(
 
     # Schedule background tasks for topic/entity extraction
     for memory in processed_memories:
-        await background_tasks.add_task(extract_memory_structure, memory)
+        background_tasks.add_task(extract_memory_structure, memory)
 
     if settings.enable_discrete_memory_extraction:
         needs_extraction = [
@@ -853,7 +853,7 @@ async def index_long_term_memories(
         # Extract discrete memories from the indexed messages and persist
         # them as separate long-term memory records. This process also
         # runs deduplication if requested.
-        await background_tasks.add_task(
+        background_tasks.add_task(
             extract_memories_with_strategy,
             memories=needs_extraction,
             deduplicate=deduplicate,
