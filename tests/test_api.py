@@ -269,6 +269,169 @@ class TestMemoryEndpoints:
 
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
+    async def test_put_memory_with_context_window_max(self, client):
+        """Test PUT memory with context_window_max parameter returns context percentages"""
+        payload = {
+            "messages": [
+                {"role": "user", "content": "Hello, how are you today?"},
+                {
+                    "role": "assistant",
+                    "content": "I'm doing well, thank you for asking!",
+                },
+                {
+                    "role": "user",
+                    "content": "That's great to hear. Can you help me with something?",
+                },
+            ],
+            "memories": [],
+            "context": "",
+            "namespace": "test-namespace",
+            "session_id": "test-session",
+        }
+
+        # Test with context_window_max as query parameter
+        response = await client.put(
+            "/v1/working-memory/test-session?context_window_max=500", json=payload
+        )
+
+        assert response.status_code == 200
+
+        data = response.json()
+        # Should return context percentages when context_window_max is provided
+        assert "context_percentage_total_used" in data
+        assert "context_percentage_until_summarization" in data
+        assert data["context_percentage_total_used"] is not None
+        assert data["context_percentage_until_summarization"] is not None
+        assert isinstance(data["context_percentage_total_used"], int | float)
+        assert isinstance(data["context_percentage_until_summarization"], int | float)
+        assert 0 <= data["context_percentage_total_used"] <= 100
+        assert 0 <= data["context_percentage_until_summarization"] <= 100
+
+    @pytest.mark.requires_api_keys
+    @pytest.mark.asyncio
+    async def test_put_memory_without_model_info(self, client):
+        """Test PUT memory without model info returns null context percentages"""
+        payload = {
+            "messages": [
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Hi there"},
+            ],
+            "memories": [],
+            "context": "",
+            "namespace": "test-namespace",
+            "session_id": "test-session",
+        }
+
+        # Test without context_window_max or model_name
+        response = await client.put("/v1/working-memory/test-session", json=payload)
+
+        assert response.status_code == 200
+
+        data = response.json()
+        # Should return null context percentages when no model info is provided
+        assert "context_percentage_total_used" in data
+        assert "context_percentage_until_summarization" in data
+        assert data["context_percentage_total_used"] is None
+        assert data["context_percentage_until_summarization"] is None
+
+    @pytest.mark.requires_api_keys
+    @pytest.mark.asyncio
+    async def test_put_memory_context_percentages_with_summarization_regression(
+        self, client
+    ):
+        """
+        Regression test for bug where PUT with context_window_max returned null percentages
+        when summarization occurred.
+
+        Bug: _calculate_context_usage_percentages returned None for empty/few messages even
+        when model info was provided.
+
+        Fix: Function now returns 0.0 for empty messages when model info is provided,
+        and small percentages for few messages, representing the current session state.
+        """
+        # Create many messages that will definitely trigger summarization with context_window_max=500
+        messages = []
+        for i in range(25):
+            messages.append(
+                {
+                    "role": "user" if i % 2 == 0 else "assistant",
+                    "content": f"Message {i}: This is substantial content that uses many tokens and will trigger summarization when context window is limited to 500 tokens. "
+                    * 3,
+                }
+            )
+
+        payload = {
+            "messages": messages,
+            "memories": [],
+            "context": "",
+            "namespace": "test-namespace",
+            "session_id": "regression-test-session",
+        }
+
+        # Test with context_window_max=500 (should trigger summarization)
+        response = await client.put(
+            "/v1/working-memory/regression-test-session?context_window_max=500",
+            json=payload,
+        )
+
+        assert response.status_code == 200
+
+        data = response.json()
+
+        # Verify summarization occurred (message count should be reduced)
+        original_message_count = len(payload["messages"])
+        final_message_count = len(data["messages"])
+        assert (
+            final_message_count < original_message_count
+        ), f"Expected summarization to reduce messages from {original_message_count} to less, but got {final_message_count}"
+
+        # Verify context summary was created
+        assert (
+            data["context"] is not None
+        ), "Context should not be None after summarization"
+        assert (
+            data["context"].strip() != ""
+        ), "Context should not be empty after summarization"
+
+        # REGRESSION TEST: Context percentages should NOT be null even after summarization
+        # They should reflect the current state (post-summarization) with small percentages
+        assert "context_percentage_total_used" in data
+        assert "context_percentage_until_summarization" in data
+        assert (
+            data["context_percentage_total_used"] is not None
+        ), "BUG REGRESSION: context_percentage_total_used should not be null when context_window_max is provided"
+        assert (
+            data["context_percentage_until_summarization"] is not None
+        ), "BUG REGRESSION: context_percentage_until_summarization should not be null when context_window_max is provided"
+
+        # Verify the percentages are valid numbers
+        total_used = data["context_percentage_total_used"]
+        until_summarization = data["context_percentage_until_summarization"]
+
+        assert isinstance(
+            total_used, int | float
+        ), f"context_percentage_total_used should be a number, got {type(total_used)}"
+        assert isinstance(
+            until_summarization, int | float
+        ), f"context_percentage_until_summarization should be a number, got {type(until_summarization)}"
+        assert (
+            0 <= total_used <= 100
+        ), f"context_percentage_total_used should be 0-100, got {total_used}"
+        assert (
+            0 <= until_summarization <= 100
+        ), f"context_percentage_until_summarization should be 0-100, got {until_summarization}"
+
+        # After summarization, percentages should be reasonable (not necessarily high)
+        # They represent the current state of the session post-summarization
+        assert (
+            total_used >= 0
+        ), f"Expected non-negative total usage percentage, got {total_used}"
+        assert (
+            until_summarization >= 0
+        ), f"Expected non-negative until_summarization percentage, got {until_summarization}"
+
+    @pytest.mark.requires_api_keys
+    @pytest.mark.asyncio
     async def test_put_memory_stores_messages_in_long_term_memory(
         self, client_with_mock_background_tasks, mock_background_tasks
     ):

@@ -138,8 +138,13 @@ def _calculate_context_usage_percentages(
         - until_summarization_percentage: Percentage (0-100) until summarization triggers
         Both values are None if no model info provided
     """
-    if not messages or (not model_name and not context_window_max):
+    # Return None only when no model information is provided
+    if not model_name and not context_window_max:
         return None, None
+
+    # If no messages but model info is provided, return 0% usage
+    if not messages:
+        return 0.0, 0.0
 
     # Calculate current token usage
     current_tokens = _calculate_messages_token_count(messages)
@@ -148,11 +153,18 @@ def _calculate_context_usage_percentages(
     max_tokens = _get_effective_token_limit(model_name, context_window_max)
 
     # Calculate percentage of total context window used
+    if max_tokens <= 0:
+        return None, None
+
     total_percentage = (current_tokens / max_tokens) * 100.0
 
     # Calculate percentage until summarization threshold
     token_threshold = int(max_tokens * settings.summarization_threshold)
-    until_summarization_percentage = (current_tokens / token_threshold) * 100.0
+    if token_threshold <= 0:
+        # If threshold is 0 or negative, we're already at 100% until summarization
+        until_summarization_percentage = 100.0
+    else:
+        until_summarization_percentage = (current_tokens / token_threshold) * 100.0
 
     # Cap both at 100% for display purposes
     return min(total_percentage, 100.0), min(until_summarization_percentage, 100.0)
@@ -452,16 +464,24 @@ async def put_working_memory(
     If the token count exceeds the context window threshold, messages will be summarized
     immediately and the updated memory state returned to the client.
 
+    **Context Percentage Calculation:**
+    The response includes `context_percentage_total_used` and `context_percentage_until_summarization`
+    fields that show token usage. These fields will be `null` unless you provide either:
+    - `model_name` query parameter (e.g., `?model_name=gpt-4o-mini`)
+    - `context_window_max` query parameter (e.g., `?context_window_max=500`)
+
     Args:
         session_id: The session ID
         memory: Working memory to save
         user_id: Optional user ID for the session (overrides user_id in memory object)
         model_name: The client's LLM model name for context window determination
-        context_window_max: Direct specification of context window max tokens
+        context_window_max: Direct specification of context window max tokens (overrides model_name)
         background_tasks: DocketBackgroundTasks instance (injected automatically)
 
     Returns:
-        Updated working memory (potentially with summary if tokens were condensed)
+        Updated working memory (potentially with summary if tokens were condensed).
+        Includes context_percentage_total_used and context_percentage_until_summarization
+        if model information is provided.
     """
     redis = await get_redis_conn()
 
@@ -515,6 +535,7 @@ async def put_working_memory(
         )
 
     # Calculate context usage percentages based on the final state (after potential summarization)
+    # This represents the current state of the session
     total_percentage, until_summarization_percentage = (
         _calculate_context_usage_percentages(
             messages=updated_memory.messages,
