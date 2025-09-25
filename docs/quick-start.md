@@ -335,7 +335,7 @@ Now that you have the basics working, explore these advanced features:
 ### 🔍 **Advanced Search**
 - Try filtering by topics, entities, or time ranges
 - Experiment with recency boost and query optimization
-- See [Memory Types Guide](memory-types.md) for detailed examples
+- See [Working Memory](working-memory.md) and [Long-term Memory](long-term-memory.md) guides for detailed examples
 
 ### ✏️ **Memory Editing**
 - Update existing memories with corrections
@@ -521,7 +521,7 @@ redis-cli -h localhost -p 6379
 
 - **API Documentation**: Visit `http://localhost:8000/docs`
 - **Configuration Guide**: [Configuration](configuration.md)
-- **Memory Types**: [Memory Types Guide](memory-types.md)
+- **Memory Types**: [Working Memory](working-memory.md) and [Long-term Memory](long-term-memory.md)
 - **GitHub Issues**: Report problems or ask questions
 
 ## What's Next?
