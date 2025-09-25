@@ -877,7 +877,7 @@ async def search_long_term_memories(
     recency_params: dict | None = None,
     limit: int = 10,
     offset: int = 0,
-    optimize_query: bool = True,
+    optimize_query: bool = False,
 ) -> MemoryRecordResults:
     """
     Search for long-term memories using the pluggable VectorStore adapter.
@@ -897,7 +897,7 @@ async def search_long_term_memories(
         memory_hash: Optional memory hash filter
         limit: Maximum number of results
         offset: Offset for pagination
-        optimize_query: Whether to optimize the query for vector search using a fast model (default: True)
+        optimize_query: Whether to optimize the query for vector search using a fast model (default: False)
 
     Returns:
         MemoryRecordResults containing matching memories

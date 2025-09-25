@@ -491,27 +491,27 @@ class TestSearchEndpoint:
 
     @patch("agent_memory_server.api.long_term_memory.search_long_term_memories")
     @pytest.mark.asyncio
-    async def test_search_with_optimize_query_true(self, mock_search, client):
-        """Test search endpoint with optimize_query=True (default)."""
+    async def test_search_with_optimize_query_default(self, mock_search, client):
+        """Test search endpoint with optimize_query default (False)."""
         mock_search.return_value = MemoryRecordResultsResponse(
             total=1,
             memories=[
-                MemoryRecordResult(id="1", text="Optimized result", dist=0.1),
+                MemoryRecordResult(id="1", text="Non-optimized result", dist=0.1),
             ],
             next_offset=None,
         )
 
         payload = {"text": "tell me about my preferences"}
 
-        # Call endpoint without optimize_query parameter (should default to True)
+        # Call endpoint without optimize_query parameter (should default to False)
         response = await client.post("/v1/long-term-memory/search", json=payload)
 
         assert response.status_code == 200
 
-        # Verify search was called with optimize_query=True (default)
+        # Verify search was called with optimize_query=False (default)
         mock_search.assert_called_once()
         call_kwargs = mock_search.call_args.kwargs
-        assert call_kwargs.get("optimize_query") is True
+        assert call_kwargs.get("optimize_query") is False
 
     @patch("agent_memory_server.api.long_term_memory.search_long_term_memories")
     @pytest.mark.asyncio
@@ -847,10 +847,10 @@ class TestMemoryPromptEndpoint:
     @patch("agent_memory_server.api.long_term_memory.search_long_term_memories")
     @patch("agent_memory_server.api.working_memory.get_working_memory")
     @pytest.mark.asyncio
-    async def test_memory_prompt_with_optimize_query_default_true(
+    async def test_memory_prompt_with_optimize_query_default_false(
         self, mock_get_working_memory, mock_search, client
     ):
-        """Test memory prompt endpoint with default optimize_query=True."""
+        """Test memory prompt endpoint with default optimize_query=False."""
         # Mock working memory
         mock_get_working_memory.return_value = WorkingMemoryResponse(
             session_id="test-session",
@@ -877,15 +877,15 @@ class TestMemoryPromptEndpoint:
             "long_term_search": {"text": "preferences"},
         }
 
-        # Call endpoint without optimize_query parameter (should default to True)
+        # Call endpoint without optimize_query parameter (should default to False)
         response = await client.post("/v1/memory/prompt", json=payload)
 
         assert response.status_code == 200
 
-        # Verify search was called with optimize_query=True (default)
+        # Verify search was called with optimize_query=False (default)
         mock_search.assert_called_once()
         # The search is called indirectly through the API's search_long_term_memory function
-        # which should have optimize_query=True by default
+        # which should have optimize_query=False by default
 
     @patch("agent_memory_server.api.long_term_memory.search_long_term_memories")
     @patch("agent_memory_server.api.working_memory.get_working_memory")

@@ -606,7 +606,7 @@ async def create_long_term_memory(
 @router.post("/v1/long-term-memory/search", response_model=MemoryRecordResultsResponse)
 async def search_long_term_memory(
     payload: SearchRequest,
-    optimize_query: bool = True,
+    optimize_query: bool = False,
     current_user: UserInfo = Depends(get_current_user),
 ):
     """
@@ -614,7 +614,7 @@ async def search_long_term_memory(
 
     Args:
         payload: Search payload with filter objects for precise queries
-        optimize_query: Whether to optimize the query for vector search using a fast model (default: True)
+        optimize_query: Whether to optimize the query for vector search using a fast model (default: False)
 
     Returns:
         List of search results
@@ -832,7 +832,7 @@ async def update_long_term_memory(
 @router.post("/v1/memory/prompt", response_model=MemoryPromptResponse)
 async def memory_prompt(
     params: MemoryPromptRequest,
-    optimize_query: bool = True,
+    optimize_query: bool = False,
     current_user: UserInfo = Depends(get_current_user),
 ) -> MemoryPromptResponse:
     """
@@ -850,7 +850,7 @@ async def memory_prompt(
 
     Args:
         params: MemoryPromptRequest
-        optimize_query: Whether to optimize the query for vector search using a fast model (default: True)
+        optimize_query: Whether to optimize the query for vector search using a fast model (default: False)
 
     Returns:
         List of messages to send to an LLM, hydrated with relevant memory context
