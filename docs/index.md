@@ -168,7 +168,7 @@ Jump into the Developer Guide for memory patterns and integration strategies.
 
     Update and correct existing memories through REST API and MCP tools
 
-    [Learn More →](memory-editing.md)
+    [Learn More →](memory-lifecycle.md#memory-editing)
 
 -   🕐 **Recency Boost**
 
@@ -184,7 +184,7 @@ Jump into the Developer Guide for memory patterns and integration strategies.
 
     Configurable memory extraction: discrete facts, summaries, preferences, or custom prompts
 
-    [Learn More →](memory-strategies.md)
+    [Learn More →](memory-extraction-strategies.md)
 
 </div>
 

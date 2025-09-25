@@ -246,4 +246,4 @@ For complete configuration options, see the [Configuration Guide](configuration.
 
 - [Long-term Memory](long-term-memory.md) - Persistent, cross-session memory storage
 - [Memory Integration Patterns](memory-integration-patterns.md) - How to integrate memory with your applications
-- [Memory Strategies](memory-strategies.md) - Different approaches to memory extraction and storage
+- [Memory Extraction Strategies](memory-extraction-strategies.md) - Different approaches to memory extraction and storage

@@ -340,7 +340,7 @@ Now that you have the basics working, explore these advanced features:
 ### ✏️ **Memory Editing**
 - Update existing memories with corrections
 - Add more context to sparse memories
-- See [Memory Editing Guide](memory-editing.md)
+- See [Memory Lifecycle Guide](memory-lifecycle.md#memory-editing)
 
 ### 🔒 **Production Setup**
 - Enable authentication (OAuth2/JWT or token-based)

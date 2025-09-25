@@ -80,8 +80,7 @@ nav:
     - Memory Integration Patterns: memory-integration-patterns.md
     - Working Memory: working-memory.md
     - Long-term Memory: long-term-memory.md
-    - Memory Strategies: memory-strategies.md
-    - Memory Editing: memory-editing.md
+    - Memory Extraction Strategies: memory-extraction-strategies.md
     - Memory Lifecycle: memory-lifecycle.md
     - Vector Store Backends: vector-store-backends.md
     - Authentication: authentication.md
