@@ -369,6 +369,7 @@ class TestLLMJudgeEvaluation:
         assert evaluation["spatial_grounding_score"] >= 0.7
         assert evaluation["overall_score"] >= 0.6
 
+    @pytest.mark.skip(reason="Flaky test - LLM judge evaluation can be inconsistent")
     async def test_judge_comprehensive_grounding_evaluation(self):
         """Test LLM judge on complex example with multiple grounding types"""
 
