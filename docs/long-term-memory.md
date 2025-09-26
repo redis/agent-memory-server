@@ -1,6 +1,6 @@
 # Long-term Memory
 
-Long-term memory is **persistent**, **cross-session** storage designed for knowledge that should be retained and searchable across all interactions. It's the "knowledge base" where important facts, preferences, and experiences are stored.
+Long-term memory is **persistent**, **cross-session** storage designed for knowledge that should be retained and searchable across all interactions. It's the "knowledge base" of facts, preferences, and experiences the agent learns at runtime.
 
 ## Overview
 
@@ -150,19 +150,6 @@ Long-term memory provides powerful search features:
 }
 ```
 
-### Hybrid Search
-```json
-{
-  "text": "travel plans",
-  "filters": {
-    "namespace": {"eq": "personal"},
-    "event_date": {"gte": "2024-03-01T00:00:00Z"}
-  },
-  "include_working_memory": true,
-  "include_long_term_memory": true
-}
-```
-
 ## Deduplication and Compaction
 
 Long-term memory automatically manages duplicates through:
@@ -213,42 +200,30 @@ response = await memory_prompt({
 
 ## Memory Extraction
 
-By default, the system automatically extracts structured memories from conversations as they flow from working memory to long-term storage. This extraction process can be customized using different **memory strategies**.
+By default, the system automatically extracts structured memories from
+conversations so they flow from working memory to long-term storage. This
+happens in a background process after clients update working memory. This
+extraction process can be customized using different **memory strategies**.
 
-The extraction strategy is set in the working memory session and controls what the server extracts into long-term memory. When you give an LLM the ability to store long-term memories as a tool, the tool description includes information about the configured extraction strategy, helping the LLM understand what types of memories to create.
+The extraction strategy is set in the working memory session and controls what
+the server extracts into long-term memory. When you give an LLM the ability to
+store long-term memories as a tool, the tool description includes information
+about the configured extraction strategy, helping the LLM understand what types
+of memories to create.
 
 !!! info "Memory Strategies"
     The system supports multiple extraction strategies (discrete facts, summaries, preferences, custom prompts) that determine how conversations are processed into memories. The extraction strategy set in working memory is visible to LLMs through strategy-aware tool descriptions. See [Memory Extraction Strategies](memory-extraction-strategies.md) for complete documentation and examples.
 
-## Best Practices
-
-### Long-Term Memory Usage
-- Store user preferences and lasting facts
-- Include rich metadata (topics, entities, timestamps)
-- Use meaningful IDs for easier retrieval
-- Leverage semantic search for discovery
-
-### Memory Design
-- Use semantic memory for timeless facts
-- Use episodic memory for time-bound events
-- Include relevant topics and entities for better search
-- Design memory text for LLM consumption
-
-### Search Strategy
-- Start with semantic search for discovery
-- Add filters for precision
-- Use unified search for comprehensive results
-- Consider both working and long-term contexts
-
 ## Configuration
 
-Long-term memory behavior can be configured through environment variables:
+Some long-term memory behavior can be configured through environment variables:
 
 ```bash
 # Long-term memory settings
-LONG_TERM_MEMORY=true                    # Enable long-term memory features
-ENABLE_DISCRETE_MEMORY_EXTRACTION=true  # Extract memories from messages
-GENERATION_MODEL=gpt-4o-mini            # Model for summarization/extraction
+LONG_TERM_MEMORY=true                         # Enable long-term memory features
+ENABLE_DISCRETE_MEMORY_EXTRACTION=true        # Extract memories from messages
+INDEX_ALL_MESSAGES_IN_LONG_TERM_MEMORY=false  # Index messages in long-term memory (default: false)
+GENERATION_MODEL=gpt-4o-mini                  # Model for summarization/extraction
 
 # Vector search settings
 EMBEDDING_MODEL=text-embedding-3-small  # OpenAI embedding model

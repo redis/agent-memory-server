@@ -263,6 +263,42 @@ PUT /v1/working-memory/chat_123?ttl_seconds=3600
 - Multi-turn conversations that reference past context
 - Customer support or assistant applications
 
+## Transparent Reconstruction from Long-Term Memory
+
+When `index_all_messages_in_long_term_memory` is enabled, working memory can be transparently reconstructed from long-term storage. This allows you to use TTL expiration while still maintaining conversation continuity.
+
+**How it works:**
+1. Set `index_all_messages_in_long_term_memory=true` in configuration
+2. Messages are automatically indexed in long-term memory as they flow through working memory
+3. When working memory expires (TTL), the messages remain in long-term storage
+4. If you request a session that doesn't exist in working memory, the system automatically searches long-term memory for messages from that session and reconstructs the working memory
+
+**Example workflow:**
+```python
+# 1. Store working memory with TTL (expires after 1 hour)
+working_memory = WorkingMemory(
+    session_id="chat_123",
+    messages=[
+        MemoryMessage(role="user", content="Hello"),
+        MemoryMessage(role="assistant", content="Hi there!"),
+    ],
+    ttl_seconds=3600  # 1 hour expiration
+)
+
+# 2. Messages are automatically indexed in long-term memory
+# 3. After 1 hour, working memory expires and is deleted
+# 4. Later, when you request the session:
+
+# GET /v1/working-memory/chat_123
+# System automatically reconstructs from long-term memory
+# Returns working memory with original messages
+```
+
+This feature is perfect for applications that want to:
+- Reduce Redis memory usage with TTL expiration
+- Maintain conversation continuity across sessions
+- Automatically handle session restoration without manual intervention
+
 ## Configuration
 
 Working memory behavior can be configured through environment variables:

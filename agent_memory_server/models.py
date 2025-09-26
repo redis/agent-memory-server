@@ -185,7 +185,15 @@ class MemoryRecord(BaseModel):
 
 
 class ExtractedMemoryRecord(MemoryRecord):
-    """A memory record that has already been extracted (e.g., explicit memories from API/MCP)"""
+    """
+    A memory record that has already been extracted.
+
+    We use this to represent data payloads where we consider the memory
+    in its final state:
+      - Long-term memories that clients created explicitly through the API
+      - Memories an LLM added to working memory (using a tool) that should be
+        "promoted" from working memory to long-term storage.
+    """
 
     discrete_memory_extracted: Literal["t", "f"] = Field(
         default="t",

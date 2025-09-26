@@ -78,6 +78,9 @@ async def get_working_memory(
     """
     Get working memory for a session.
 
+    If no working memory exists but index_all_messages_in_long_term_memory is enabled,
+    attempts to reconstruct working memory from messages stored in long-term memory.
+
     Args:
         session_id: The session ID
         namespace: Optional namespace for the session
@@ -86,6 +89,8 @@ async def get_working_memory(
     Returns:
         WorkingMemory object or None if not found
     """
+    from agent_memory_server.config import settings
+
     if not redis_client:
         redis_client = await get_redis_conn()
 
@@ -101,6 +106,20 @@ async def get_working_memory(
             logger.debug(
                 f"No working memory found for parameters: {session_id}, {user_id}, {namespace}"
             )
+
+            # Try to reconstruct from long-term memory if enabled
+            if settings.index_all_messages_in_long_term_memory:
+                reconstructed = await _reconstruct_working_memory_from_long_term(
+                    session_id=session_id,
+                    user_id=user_id,
+                    namespace=namespace,
+                )
+                if reconstructed:
+                    logger.info(
+                        f"Reconstructed working memory for session {session_id} from long-term storage"
+                    )
+                    return reconstructed
+
             return None
 
         # Parse the JSON data
@@ -258,3 +277,103 @@ async def delete_working_memory(
     except Exception as e:
         logger.error(f"Error deleting working memory for session {session_id}: {e}")
         raise
+
+
+async def _reconstruct_working_memory_from_long_term(
+    session_id: str,
+    user_id: str | None = None,
+    namespace: str | None = None,
+) -> WorkingMemory | None:
+    """
+    Reconstruct working memory from messages stored in long-term memory.
+
+    This function searches for messages in long-term memory that belong to the
+    specified session and reconstructs a WorkingMemory object from them.
+
+    Args:
+        session_id: The session ID to reconstruct
+        user_id: Optional user ID filter
+        namespace: Optional namespace filter
+
+    Returns:
+        Reconstructed WorkingMemory object or None if no messages found
+    """
+    from agent_memory_server.filters import MemoryType, Namespace, SessionId, UserId
+    from agent_memory_server.long_term_memory import search_long_term_memories
+
+    try:
+        # Search for message-type memories for this session
+        session_filter = SessionId(eq=session_id)
+        user_filter = UserId(eq=user_id) if user_id else None
+        namespace_filter = Namespace(eq=namespace) if namespace else None
+        memory_type_filter = MemoryType(eq="message")
+
+        # Search with a large limit to get all messages for the session
+        # We use empty text since we're filtering by session_id and memory_type
+        results = await search_long_term_memories(
+            text="",  # Empty query since we're filtering by metadata
+            session_id=session_filter,
+            user_id=user_filter,
+            namespace=namespace_filter,
+            memory_type=memory_type_filter,
+            limit=1000,  # Large limit to get all messages
+            offset=0,
+        )
+
+        if not results.memories:
+            logger.debug(
+                f"No message memories found for session {session_id} in long-term storage"
+            )
+            return None
+
+        # Convert memory records back to messages
+        messages = []
+        for memory in results.memories:
+            # Parse the message text which should be in format "role: content"
+            text = memory.text
+            if ": " in text:
+                role, content = text.split(": ", 1)
+                message = MemoryMessage(
+                    id=memory.id,
+                    role=role.lower(),
+                    content=content,
+                    persisted_at=memory.persisted_at,  # Mark as already persisted
+                )
+                messages.append(message)
+            else:
+                logger.warning(
+                    f"Skipping malformed message memory: {memory.id} - {text}"
+                )
+
+        if not messages:
+            logger.debug(f"No valid messages found for session {session_id}")
+            return None
+
+        # Sort messages by creation time to maintain conversation order
+        messages.sort(key=lambda m: m.persisted_at or datetime.now(UTC))
+
+        # Create reconstructed working memory
+        now = datetime.now(UTC)
+        reconstructed = WorkingMemory(
+            session_id=session_id,
+            namespace=namespace,
+            user_id=user_id,
+            messages=messages,
+            memories=[],  # No structured memories in reconstruction
+            context="",  # No context in reconstruction
+            data={},  # No session data in reconstruction
+            created_at=messages[0].persisted_at or now if messages else now,
+            updated_at=now,
+            last_accessed=now,
+        )
+
+        logger.info(
+            f"Reconstructed working memory for session {session_id} with {len(messages)} messages"
+        )
+        return reconstructed
+
+    except Exception as e:
+        logger.error(
+            f"Error reconstructing working memory for session {session_id}: {e}"
+        )
+        return None
