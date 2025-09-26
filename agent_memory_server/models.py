@@ -390,6 +390,79 @@ Returns:
         return create_long_term_memories_with_strategy
 
 
+class UpdateWorkingMemory(BaseModel):
+    """Working memory update payload for PUT requests - session_id comes from URL path"""
+
+    messages: list[MemoryMessage] = Field(
+        default_factory=list,
+        description="Conversation messages (role/content pairs)",
+    )
+    memories: list[MemoryRecord | ClientMemoryRecord] = Field(
+        default_factory=list,
+        description="Structured memory records for promotion to long-term storage",
+    )
+    data: dict[str, JSONTypes] | None = Field(
+        default=None,
+        description="Arbitrary JSON data storage (key-value pairs)",
+    )
+    context: str | None = Field(
+        default=None,
+        description="Summary of past session messages if server has auto-summarized",
+    )
+    user_id: str | None = Field(
+        default=None,
+        description="Optional user ID for the working memory",
+    )
+    tokens: int = Field(
+        default=0,
+        description="Optional number of tokens in the working memory",
+    )
+    namespace: str | None = Field(
+        default=None,
+        description="Optional namespace for the working memory",
+    )
+    long_term_memory_strategy: MemoryStrategyConfig = Field(
+        default_factory=MemoryStrategyConfig,
+        description="Configuration for memory extraction strategy when promoting to long-term memory",
+    )
+
+    # TTL and timestamps
+    ttl_seconds: int | None = Field(
+        default=None,  # Persistent by default
+        description="TTL for the working memory in seconds",
+    )
+    last_accessed: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="Datetime when the working memory was last accessed",
+    )
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="Datetime when the working memory was created",
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="Datetime when the working memory was last updated",
+    )
+
+    def to_working_memory(self, session_id: str) -> "WorkingMemory":
+        """Convert to WorkingMemory by adding the session_id from URL path"""
+        return WorkingMemory(
+            session_id=session_id,
+            messages=self.messages,
+            memories=self.memories,
+            data=self.data,
+            context=self.context,
+            user_id=self.user_id,
+            tokens=self.tokens,
+            namespace=self.namespace,
+            long_term_memory_strategy=self.long_term_memory_strategy,
+            ttl_seconds=self.ttl_seconds,
+            last_accessed=self.last_accessed,
+            created_at=self.created_at,
+            updated_at=self.updated_at,
+        )
+
+
 class WorkingMemoryResponse(WorkingMemory):
     """Response containing working memory"""
 

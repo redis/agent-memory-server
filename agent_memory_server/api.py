@@ -27,6 +27,7 @@ from agent_memory_server.models import (
     SearchRequest,
     SessionListResponse,
     SystemMessage,
+    UpdateWorkingMemory,
     WorkingMemory,
     WorkingMemoryResponse,
 )
@@ -454,8 +455,7 @@ async def get_working_memory(
 @router.put("/v1/working-memory/{session_id}", response_model=WorkingMemoryResponse)
 async def put_working_memory(
     session_id: str,
-    memory: WorkingMemory,
-    user_id: str | None = None,
+    memory: UpdateWorkingMemory,
     model_name: ModelNameLiteral | None = None,
     context_window_max: int | None = None,
     background_tasks=Depends(get_background_tasks),
@@ -464,19 +464,19 @@ async def put_working_memory(
     """
     Set working memory for a session. Replaces existing working memory.
 
+    The session_id comes from the URL path, not the request body.
     If the token count exceeds the context window threshold, messages will be summarized
     immediately and the updated memory state returned to the client.
 
-    **Context Percentage Calculation:**
+    NOTE on context_percentage_* fields:
     The response includes `context_percentage_total_used` and `context_percentage_until_summarization`
     fields that show token usage. These fields will be `null` unless you provide either:
     - `model_name` query parameter (e.g., `?model_name=gpt-4o-mini`)
     - `context_window_max` query parameter (e.g., `?context_window_max=500`)
 
     Args:
-        session_id: The session ID
-        memory: Working memory to save
-        user_id: Optional user ID for the session (overrides user_id in memory object)
+        session_id: The session ID (from URL path)
+        memory: Working memory data to save (session_id not required in body)
         model_name: The client's LLM model name for context window determination
         context_window_max: Direct specification of context window max tokens (overrides model_name)
         background_tasks: DocketBackgroundTasks instance (injected automatically)
@@ -490,15 +490,11 @@ async def put_working_memory(
 
     # PUT semantics: we simply replace whatever exists (or create if it doesn't exist)
 
-    # Ensure session_id matches
-    memory.session_id = session_id
-
-    # Override user_id if provided as query parameter
-    if user_id is not None:
-        memory.user_id = user_id
+    # Convert UpdateWorkingMemory to WorkingMemory with session_id from URL path
+    working_memory_obj = memory.to_working_memory(session_id)
 
     # Validate that all long-term memories have id (if any)
-    for long_term_mem in memory.memories:
+    for long_term_mem in working_memory_obj.memories:
         if not long_term_mem.id:
             raise HTTPException(
                 status_code=400,
@@ -506,7 +502,7 @@ async def put_working_memory(
             )
 
     # Validate that all messages have non-empty content
-    for msg in memory.messages:
+    for msg in working_memory_obj.messages:
         if not msg.content or not msg.content.strip():
             raise HTTPException(
                 status_code=400,
@@ -514,10 +510,12 @@ async def put_working_memory(
             )
 
     # Handle summarization if needed (before storing) - now token-based
-    updated_memory = memory
-    if memory.messages:
+    updated_memory = working_memory_obj
+    if working_memory_obj.messages:
         updated_memory = await _summarize_working_memory(
-            memory, model_name=model_name, context_window_max=context_window_max
+            working_memory_obj,
+            model_name=model_name,
+            context_window_max=context_window_max,
         )
 
     await working_memory.set_working_memory(
@@ -530,6 +528,9 @@ async def put_working_memory(
         updated_memory.memories or updated_memory.messages
     ):
         # Promote structured memories from working memory to long-term storage
+        # TODO: Evaluate if this is an optimal way to pass around user ID. We
+        # need it to construct the key to get the working memory session from
+        # this task, if the session was saved with a user ID to begin with.
         background_tasks.add_task(
             long_term_memory.promote_working_memory_to_long_term,
             session_id=session_id,
