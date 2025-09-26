@@ -89,6 +89,6 @@ class RecencyAggregationQuery(AggregationQuery):
         self.limit(offset, limit)
         return self
 
-    # Compatibility helper for tests that inspect the built query
     def build_args(self) -> list:
+        """Build the query arguments for Redis search."""
         return super().build_args()

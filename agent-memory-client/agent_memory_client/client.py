@@ -885,14 +885,6 @@ class MemoryAPIClient:
             )
             response.raise_for_status()
             data = response.json()
-            # Some tests may stub json() as an async function; handle awaitable
-            try:
-                import inspect
-
-                if inspect.isawaitable(data):
-                    data = await data
-            except Exception:
-                pass
             return MemoryRecordResults(**data)
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)

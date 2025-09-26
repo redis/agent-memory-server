@@ -933,8 +933,7 @@ async def search_long_term_memories(
     )
 
     # If an optimized query with a strict distance threshold returns no results,
-    # retry once with the original query to preserve recall. Skip this retry when
-    # the adapter is a unittest mock to avoid altering test expectations.
+    # retry once with the original query to preserve recall.
     try:
         if (
             optimized_applied
@@ -942,34 +941,24 @@ async def search_long_term_memories(
             and results.total == 0
             and search_query != text
         ):
-            # Detect unittest.mock objects without importing globally
-            is_mock = False
-            try:
-                from unittest.mock import Mock  # type: ignore
-
-                is_mock = isinstance(getattr(adapter, "search_memories", None), Mock)
-            except Exception:
-                is_mock = False
-
-            if not is_mock:
-                results = await adapter.search_memories(
-                    query=text,
-                    session_id=session_id,
-                    user_id=user_id,
-                    namespace=namespace,
-                    created_at=created_at,
-                    last_accessed=last_accessed,
-                    topics=topics,
-                    entities=entities,
-                    memory_type=memory_type,
-                    event_date=event_date,
-                    memory_hash=memory_hash,
-                    distance_threshold=distance_threshold,
-                    server_side_recency=server_side_recency,
-                    recency_params=recency_params,
-                    limit=limit,
-                    offset=offset,
-                )
+            results = await adapter.search_memories(
+                query=text,
+                session_id=session_id,
+                user_id=user_id,
+                namespace=namespace,
+                created_at=created_at,
+                last_accessed=last_accessed,
+                topics=topics,
+                entities=entities,
+                memory_type=memory_type,
+                event_date=event_date,
+                memory_hash=memory_hash,
+                distance_threshold=distance_threshold,
+                server_side_recency=server_side_recency,
+                recency_params=recency_params,
+                limit=limit,
+                offset=offset,
+            )
     except Exception:
         # Best-effort fallback; return the original results on any error
         pass

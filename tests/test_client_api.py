@@ -652,9 +652,11 @@ async def test_memory_prompt_with_optimize_query_default_false(
         )
 
         # Verify search was called with optimize_query=False (default)
-        mock_search.assert_called_once()
-        call_kwargs = mock_search.call_args.kwargs
-        assert call_kwargs.get("optimize_query") is False
+        # May be called multiple times due to soft-filter fallback
+        assert mock_search.call_count >= 1
+        # Check that all calls use optimize_query=False
+        for call in mock_search.call_args_list:
+            assert call.kwargs.get("optimize_query") is False
         assert result is not None
 
 
@@ -678,7 +680,9 @@ async def test_memory_prompt_with_optimize_query_false_explicit(
         )
 
         # Verify search was called with optimize_query=False
-        mock_search.assert_called_once()
-        call_kwargs = mock_search.call_args.kwargs
-        assert call_kwargs.get("optimize_query") is False
+        # May be called multiple times due to soft-filter fallback
+        assert mock_search.call_count >= 1
+        # Check that all calls use optimize_query=False
+        for call in mock_search.call_args_list:
+            assert call.kwargs.get("optimize_query") is False
         assert result is not None

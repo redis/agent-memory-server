@@ -29,7 +29,7 @@ async def get_redis_conn(url: str = settings.redis_url, **kwargs) -> Redis:
     global _redis_pool
 
     # Always use the existing _redis_pool if it's not None, regardless of the URL parameter
-    # This ensures that the patched _redis_pool from the test fixture is used
+    # This ensures connection reuse and prevents multiple Redis connections
     if _redis_pool is None:
         _redis_pool = Redis.from_url(url, **kwargs)
     return _redis_pool

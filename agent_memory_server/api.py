@@ -664,8 +664,7 @@ async def search_long_term_memory(
 
     logger.debug(f"Long-term search kwargs: {kwargs}")
 
-    # Pass text and filter objects to the search function (no redis needed for vectorstore adapter)
-    # Server-side recency rerank toggle (Redis-only path); defaults to False
+    # Server-side recency rerank toggle
     server_side_recency = (
         payload.server_side_recency
         if payload.server_side_recency is not None
@@ -679,18 +678,13 @@ async def search_long_term_memory(
     raw_results = await long_term_memory.search_long_term_memories(**kwargs)
 
     # Soft-filter fallback: if strict filters yield no results, relax filters and
-    # inject hints into the query text to guide semantic search. For memory_prompt
-    # unit tests, the underlying function is mocked; avoid triggering fallback to
-    # keep call counts stable when optimize_query behavior is being asserted.
+    # inject hints into the query text to guide semantic search.
     try:
         had_any_strict_filters = any(
             key in kwargs and kwargs[key] is not None
             for key in ("topics", "entities", "namespace", "memory_type", "event_date")
         )
-        is_mocked = "unittest.mock" in str(
-            type(long_term_memory.search_long_term_memories)
-        )
-        if raw_results.total == 0 and had_any_strict_filters and not is_mocked:
+        if raw_results.total == 0 and had_any_strict_filters:
             fallback_kwargs = dict(kwargs)
             for key in ("topics", "entities", "namespace", "memory_type", "event_date"):
                 fallback_kwargs.pop(key, None)
@@ -738,6 +732,8 @@ async def search_long_term_memory(
         logger.warning(f"Soft-filter fallback failed: {e}")
 
     # Recency-aware re-ranking of results (configurable)
+    # TODO: Why did we need to go this route instead of using recency boost at
+    # the query level?
     try:
         from datetime import UTC, datetime as _dt
 

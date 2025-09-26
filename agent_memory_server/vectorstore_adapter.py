@@ -1187,9 +1187,9 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                     redis_filter = reduce(lambda x, y: x & y, filters)
 
             # Use the same search method as search_memories but for counting
-            # We use the same query that would match the indexed content
+            # We use a generic query to match all indexed content
             search_results = await self.vectorstore.asimilarity_search(
-                query="duplicate",  # Use a query that should match test content
+                query="",  # Empty query to match all content
                 filter=redis_filter,
                 k=10000,  # Large number to get all results
             )
