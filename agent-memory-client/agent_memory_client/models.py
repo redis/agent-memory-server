@@ -5,7 +5,7 @@ This module contains essential data models needed by the client.
 For full model definitions, see the main agent_memory_server package.
 """
 
-from datetime import UTC, datetime, timezone
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal
 
@@ -58,7 +58,7 @@ class MemoryMessage(BaseModel):
         description="Unique identifier for the message (auto-generated)",
     )
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp when the message was created",
     )
     persisted_at: datetime | None = Field(
