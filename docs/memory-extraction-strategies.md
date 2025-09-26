@@ -412,7 +412,8 @@ pytest tests/test_prompt_security.py -v
 
 ## Related Documentation
 
-- **[Memory Types](memory-types.md)** - Understanding working vs long-term memory
+- **[Working Memory](working-memory.md)** - Session-scoped, ephemeral memory storage
+- **[Long-term Memory](long-term-memory.md)** - Persistent, cross-session memory storage
 - **[Security Guide](security-custom-prompts.md)** - Comprehensive security for custom strategies
 - **[Memory Lifecycle](memory-lifecycle.md)** - How memories are managed over time
 - **[API Reference](api.md)** - REST API for memory management

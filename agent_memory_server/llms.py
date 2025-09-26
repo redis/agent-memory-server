@@ -96,7 +96,7 @@ class AnthropicClientWrapper:
 
             choices = [{"message": {"content": content}}]
 
-            # Handle both object and dictionary usage formats for testing
+            # Handle both object and dictionary usage formats from API responses
             input_tokens = output_tokens = 0
             if hasattr(response, "usage"):
                 if isinstance(response.usage, dict):
@@ -180,7 +180,7 @@ class OpenAIClientWrapper:
             )
 
             # Convert to unified format
-            # Handle both object and dictionary usage formats for testing
+            # Handle both object and dictionary usage formats from API responses
             total_tokens = 0
             if hasattr(response, "usage"):
                 if isinstance(response.usage, dict):

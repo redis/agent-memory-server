@@ -24,7 +24,7 @@ Understand the fundamentals:
 
 - **[Query Optimization](query-optimization.md)** - AI-powered query refinement for better search accuracy
 - **[Contextual Grounding](contextual-grounding.md)** - Resolve pronouns and references in extracted memories
-- **[Memory Editing](memory-editing.md)** - Update, correct, and enrich existing memories
+- **[Memory Editing](memory-lifecycle.md#memory-editing)** - Update, correct, and enrich existing memories
 - **[Recency Boost](recency-boost.md)** - Time-aware memory ranking and intelligent scoring
 - **[Vector Store Backends](vector-store-backends.md)** - Alternative storage backends (Pinecone, Chroma, etc.)
 
@@ -68,7 +68,7 @@ For contributors and advanced users:
 ### By Interface Preference
 
 **REST API users** → [API Documentation](api.md) → [Authentication](authentication.md)
-**MCP/Claude users** → [MCP Server](mcp.md) → [Memory Editing](memory-editing.md)
+**MCP/Claude users** → [MCP Server](mcp.md) → [Memory Editing](memory-lifecycle.md#memory-editing)
 **CLI management** → [CLI Reference](cli.md) → [Configuration](configuration.md)
 
 ## Feature Cross-Reference
@@ -76,7 +76,7 @@ For contributors and advanced users:
 | Feature | REST API | MCP Server | CLI | Documentation |
 |---------|----------|------------|-----|---------------|
 | **Memory Search** | ✅ `/v1/long-term-memory/search` | ✅ `search_long_term_memory` | ❌ | [REST API](api.md), [MCP](mcp.md) |
-| **Memory Editing** | ✅ `PATCH /v1/long-term-memory/{id}` | ✅ `edit_long_term_memory` | ❌ | [Memory Editing](memory-editing.md) |
+| **Memory Editing** | ✅ `PATCH /v1/long-term-memory/{id}` | ✅ `edit_long_term_memory` | ❌ | [Memory Editing](memory-lifecycle.md#memory-editing) |
 | **Query Optimization** | ✅ `optimize_query` param | ✅ `optimize_query` param | ❌ | [Query Optimization](query-optimization.md) |
 | **Recency Boost** | ✅ Default enabled | ✅ Available | ❌ | [Recency Boost](recency-boost.md) |
 | **Authentication** | ✅ JWT/Token | ✅ Inherited | ✅ Token management | [Authentication](authentication.md) |

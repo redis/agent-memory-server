@@ -885,14 +885,6 @@ class MemoryAPIClient:
             )
             response.raise_for_status()
             data = response.json()
-            # Some tests may stub json() as an async function; handle awaitable
-            try:
-                import inspect
-
-                if inspect.isawaitable(data):
-                    data = await data
-            except Exception:
-                pass
             return MemoryRecordResults(**data)
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
@@ -2757,7 +2749,7 @@ class MemoryAPIClient:
         context_window_max: int | None = None,
         long_term_search: dict[str, Any] | None = None,
         user_id: str | None = None,
-        optimize_query: bool = True,
+        optimize_query: bool = False,
     ) -> dict[str, Any]:
         """
         Hydrate a user query with memory context and return a prompt ready to send to an LLM.
@@ -2861,7 +2853,7 @@ class MemoryAPIClient:
         memory_type: dict[str, Any] | None = None,
         limit: int = 10,
         offset: int = 0,
-        optimize_query: bool = True,
+        optimize_query: bool = False,
     ) -> dict[str, Any]:
         """
         Hydrate a user query with long-term memory context using filters.

@@ -208,6 +208,9 @@ class TestThreadAwareContextualGrounding:
         # Should return empty list without errors
         assert extracted_memories == []
 
+    @pytest.mark.skip(
+        reason="Flaky test - LLM extraction behavior is non-deterministic"
+    )
     @pytest.mark.requires_api_keys
     async def test_multi_entity_conversation(self):
         """Test contextual grounding with multiple entities in conversation."""

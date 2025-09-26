@@ -100,6 +100,7 @@ working_memory = WorkingMemory(
     messages=[
         MemoryMessage(role="user", content="Hello!"),
         MemoryMessage(role="assistant", content="Hi there! How can I help?")
+        # created_at timestamps are automatically set for proper chronological ordering
     ],
     namespace="chat-app"
 )
