@@ -697,6 +697,70 @@ class TestMemoryEndpoints:
         data = response.json()
         assert "not found" in data["detail"].lower()
 
+    @pytest.mark.asyncio
+    async def test_get_working_memory_with_recent_messages_limit(
+        self, client, async_redis_client
+    ):
+        """Test GET working memory with recent_messages_limit parameter"""
+        session_id = "test-api-limit"
+        user_id = "test-user"
+        namespace = "test"
+
+        # Create working memory with many messages
+        messages = []
+        for i in range(8):
+            messages.append(
+                {
+                    "id": f"msg-{i}",
+                    "role": "user" if i % 2 == 0 else "assistant",
+                    "content": f"API Message {i}",
+                }
+            )
+
+        data = {
+            "session_id": session_id,
+            "messages": messages,
+            "context": "Test context",
+            "namespace": namespace,
+            "user_id": user_id,
+            "memories": [],
+            "data": {"test": "value"},
+        }
+
+        # Store working memory
+        response = await client.put(f"/v1/working-memory/{session_id}", json=data)
+        assert response.status_code == 200
+
+        # Test: Get with recent_messages_limit=3
+        response = await client.get(
+            f"/v1/working-memory/{session_id}?namespace={namespace}&user_id={user_id}&recent_messages_limit=3"
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+
+        # Should have limited messages
+        assert len(result["messages"]) == 3
+
+        # Should get the last 3 messages (messages 5, 6, 7)
+        assert result["messages"][0]["content"] == "API Message 5"
+        assert result["messages"][1]["content"] == "API Message 6"
+        assert result["messages"][2]["content"] == "API Message 7"
+
+        # Other data should be preserved
+        assert result["context"] == "Test context"
+        assert result["data"] == {"test": "value"}
+        assert result["session_id"] == session_id
+
+        # Test: Get without limit (should get all messages)
+        response = await client.get(
+            f"/v1/working-memory/{session_id}?namespace={namespace}&user_id={user_id}"
+        )
+
+        assert response.status_code == 200
+        result = response.json()
+        assert len(result["messages"]) == 8  # All messages
+
 
 @pytest.mark.requires_api_keys
 class TestSearchEndpoint:

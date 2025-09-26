@@ -87,6 +87,10 @@ class MemoryMessage(BaseModel):
         default_factory=lambda: str(ULID()),
         description="Unique identifier for the message (auto-generated if not provided)",
     )
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="Timestamp when the message was created",
+    )
     persisted_at: datetime | None = Field(
         default=None,
         description="Server-assigned timestamp when message was persisted to long-term storage",

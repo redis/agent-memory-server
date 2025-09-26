@@ -74,6 +74,7 @@ async def get_working_memory(
     user_id: str | None = None,
     namespace: str | None = None,
     redis_client: Redis | None = None,
+    recent_messages_limit: int | None = None,
 ) -> WorkingMemory | None:
     """
     Get working memory for a session.
@@ -85,6 +86,7 @@ async def get_working_memory(
         session_id: The session ID
         namespace: Optional namespace for the session
         redis_client: Optional Redis client
+        recent_messages_limit: Optional limit on number of recent messages to return
 
     Returns:
         WorkingMemory object or None if not found
@@ -113,6 +115,7 @@ async def get_working_memory(
                     session_id=session_id,
                     user_id=user_id,
                     namespace=namespace,
+                    recent_messages_limit=recent_messages_limit,
                 )
                 if reconstructed:
                     logger.info(
@@ -136,6 +139,13 @@ async def get_working_memory(
         for message_data in working_memory_data.get("messages", []):
             message = MemoryMessage(**message_data)
             messages.append(message)
+
+        # Apply recent messages limit if specified (in-memory slice)
+        if recent_messages_limit is not None and recent_messages_limit > 0:
+            # Sort messages by created_at timestamp to ensure proper chronological order
+            messages.sort(key=lambda m: m.created_at)
+            # Get the most recent N messages
+            messages = messages[-recent_messages_limit:]
 
         # Handle memory strategy configuration
         strategy_data = working_memory_data.get("long_term_memory_strategy")
@@ -283,6 +293,7 @@ async def _reconstruct_working_memory_from_long_term(
     session_id: str,
     user_id: str | None = None,
     namespace: str | None = None,
+    recent_messages_limit: int | None = None,
 ) -> WorkingMemory | None:
     """
     Reconstruct working memory from messages stored in long-term memory.
@@ -294,6 +305,7 @@ async def _reconstruct_working_memory_from_long_term(
         session_id: The session ID to reconstruct
         user_id: Optional user ID filter
         namespace: Optional namespace filter
+        recent_messages_limit: Optional limit on number of recent messages to return
 
     Returns:
         Reconstructed WorkingMemory object or None if no messages found
@@ -308,15 +320,16 @@ async def _reconstruct_working_memory_from_long_term(
         namespace_filter = Namespace(eq=namespace) if namespace else None
         memory_type_filter = MemoryType(eq="message")
 
-        # Search with a large limit to get all messages for the session
+        # Search for messages with appropriate limit
         # We use empty text since we're filtering by session_id and memory_type
+        search_limit = recent_messages_limit if recent_messages_limit else 1000
         results = await search_long_term_memories(
             text="",  # Empty query since we're filtering by metadata
             session_id=session_filter,
             user_id=user_filter,
             namespace=namespace_filter,
             memory_type=memory_type_filter,
-            limit=1000,  # Large limit to get all messages
+            limit=search_limit,
             offset=0,
         )
 
@@ -337,6 +350,7 @@ async def _reconstruct_working_memory_from_long_term(
                     id=memory.id,
                     role=role.lower(),
                     content=content,
+                    created_at=memory.created_at,  # Use the original creation time
                     persisted_at=memory.persisted_at,  # Mark as already persisted
                 )
                 messages.append(message)
@@ -349,8 +363,15 @@ async def _reconstruct_working_memory_from_long_term(
             logger.debug(f"No valid messages found for session {session_id}")
             return None
 
-        # Sort messages by creation time to maintain conversation order
-        messages.sort(key=lambda m: m.persisted_at or datetime.now(UTC))
+        # Sort messages by creation time to maintain conversation order (most recent first for API response)
+        messages.sort(key=lambda m: m.created_at, reverse=True)
+
+        # If we have a limit, take only the most recent N messages
+        if recent_messages_limit and len(messages) > recent_messages_limit:
+            messages = messages[:recent_messages_limit]
+
+        # Reverse back to chronological order for working memory (oldest first)
+        messages.reverse()
 
         # Create reconstructed working memory
         now = datetime.now(UTC)

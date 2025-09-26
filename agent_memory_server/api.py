@@ -358,6 +358,7 @@ async def get_working_memory(
     namespace: str | None = None,
     model_name: ModelNameLiteral | None = None,
     context_window_max: int | None = None,
+    recent_messages_limit: int | None = None,
     x_client_version: str | None = Header(None, alias="X-Client-Version"),
     current_user: UserInfo = Depends(get_current_user),
 ):
@@ -373,6 +374,7 @@ async def get_working_memory(
         namespace: The namespace to use for the session
         model_name: The client's LLM model name (will determine context window size if provided)
         context_window_max: Direct specification of the context window max tokens (overrides model_name)
+        recent_messages_limit: Maximum number of recent messages to return (most recent first)
 
     Returns:
         Working memory containing messages, context, and structured memory records
@@ -384,6 +386,7 @@ async def get_working_memory(
         namespace=namespace,
         redis_client=redis,
         user_id=user_id,
+        recent_messages_limit=recent_messages_limit,
     )
 
     # Handle missing sessions based on client version
