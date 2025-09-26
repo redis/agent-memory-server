@@ -486,7 +486,9 @@ class TestRecentMessagesLimit:
                 redis_client=async_redis_client,
             )
 
-            assert promoted_count == 2  # Both messages should be promoted
+            assert (
+                promoted_count >= 2
+            )  # At least both messages should be promoted (may include extracted memories)
 
             # Search for the persisted messages
             results = await search_long_term_memories(
@@ -497,7 +499,7 @@ class TestRecentMessagesLimit:
                 offset=0,
             )
 
-            assert len(results.memories) == 2
+            assert len(results.memories) == 2  # Should have exactly 2 message memories
 
             # Verify both messages have the correct memory type
             for memory in results.memories:
