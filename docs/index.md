@@ -90,7 +90,7 @@ print(f"Found: {results.memories[0].text}")
 !!! info "Working Memory (Session-scoped)"
     - Current conversation state and context
     - Automatic summarization when conversations get long
-    - TTL-based expiration (1 hour default)
+    - Durable by default, optional TTL expiration
 
 !!! success "Long-Term Memory (Persistent)"
     - User preferences, facts, and important information

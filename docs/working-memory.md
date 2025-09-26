@@ -1,15 +1,15 @@
 # Working Memory
 
-Working memory is **session-scoped**, **ephemeral** storage designed for active conversation state and temporary data. It's the "scratch pad" where an AI agent keeps track of the current conversation context.
+Working memory is **session-scoped**, **durable** storage designed for active conversation state and session data. It's the "scratch pad" where an AI agent keeps track of the current conversation context for a particular session.
 
 ## Overview
 
-Working memory provides temporary storage that automatically expires and is isolated per session. It's optimized for storing active conversation state, temporary facts, and structured memories that may later be promoted to long-term storage.
+Working memory provides durable storage for a single conversation session. It's optimized for storing active conversation state, session-specific data, and structured memories that may later be promoted to long-term storage. By default, working memory persists to maintain conversation history, but you can set TTL expiration if your application doesn't need persistent conversation history.
 
 | Feature | Details |
 |---------|---------|
 | **Scope** | Session-scoped |
-| **Lifespan** | TTL-based (1 hour default) |
+| **Lifespan** | Durable by default, optional TTL |
 | **Storage** | Redis key-value with JSON |
 | **Search** | Simple text matching |
 | **Capacity** | Limited by window size |
@@ -20,7 +20,8 @@ Working memory provides temporary storage that automatically expires and is isol
 ## Characteristics
 
 - **Session Scoped**: Each session has its own isolated working memory
-- **TTL-Based**: Automatically expires (default: 1 hour)
+- **Durable by Default**: Persists conversation history unless TTL is explicitly set
+- **Optional TTL**: Can be configured to expire if conversation history isn't needed
 - **Window Management**: Automatically summarizes when message count exceeds limits
 - **Mixed Content**: Stores both conversation messages and structured memory records
 - **No Indexing**: Simple JSON storage in Redis
@@ -53,10 +54,10 @@ working_memory = WorkingMemory(
 )
 ```
 
-### 2. Temporary Structured Data
+### 2. Session-Specific Structured Data
 
 ```python
-# Store temporary facts during conversation (using data field)
+# Store session-specific facts during conversation (using data field)
 working_memory = WorkingMemory(
     session_id="chat_123",
     data={
@@ -73,7 +74,7 @@ working_memory = WorkingMemory(
 ### 3. Session-Specific Settings
 
 ```python
-# Store ephemeral configuration
+# Store session-specific configuration
 working_memory = WorkingMemory(
     session_id="chat_123",
     data={
@@ -104,8 +105,8 @@ working_memory = WorkingMemory(
 ```
 
 > **🔑 Key Distinction**:
-> - Use `data` field for **temporary** facts that stay only in the session
-> - Use `memories` field for **permanent** facts that should be promoted to long-term storage
+> - Use `data` field for **session-specific** facts that stay only in the session
+> - Use `memories` field for **important** facts that should be promoted to long-term storage
 > - Anything in the `memories` field will automatically become persistent and searchable across all future sessions
 
 ## API Endpoints
@@ -114,8 +115,8 @@ working_memory = WorkingMemory(
 # Get working memory for a session
 GET /v1/working-memory/{session_id}?namespace=demo&model_name=gpt-4o
 
-# Set working memory (replaces existing)
-PUT /v1/working-memory/{session_id}
+# Set working memory (replaces existing, with optional TTL)
+PUT /v1/working-memory/{session_id}?ttl_seconds=3600
 
 # Delete working memory
 DELETE /v1/working-memory/{session_id}?namespace=demo
@@ -215,16 +216,52 @@ working_memory = WorkingMemory(
 ## Best Practices
 
 ### Working Memory Usage
-- Keep conversation state and temporary data
-- Use for session-specific configuration
-- Store structured memories that might become long-term
-- Let automatic promotion handle persistence
+- Keep conversation state and session-specific data
+- Use for session-specific configuration and context
+- Store structured memories that should become long-term
+- Set TTL only if conversation history doesn't need to persist
+- Let automatic promotion handle long-term memory persistence
 
 ### Memory Design
-- Use `data` field for temporary facts that stay only in the session
-- Use `memories` field for permanent facts that should be promoted to long-term storage
+- Use `data` field for session-specific facts that stay only in the session
+- Use `memories` field for important facts that should be promoted to long-term storage
 - Design memory text for LLM consumption
 - Include relevant topics and entities for better search
+
+## TTL and Persistence
+
+Working memory is **durable by default** to preserve conversation history. However, you can configure TTL (time-to-live) expiration if your application doesn't need persistent conversation history:
+
+```python
+# Durable working memory (default behavior)
+working_memory = WorkingMemory(
+    session_id="chat_123",
+    messages=[...],
+    # No TTL - memory persists until explicitly deleted
+)
+
+# Working memory with TTL expiration
+working_memory = WorkingMemory(
+    session_id="chat_123",
+    messages=[...],
+    ttl_seconds=3600  # Expires after 1 hour
+)
+```
+
+```http
+# Set working memory with TTL via REST API
+PUT /v1/working-memory/chat_123?ttl_seconds=3600
+```
+
+**When to use TTL:**
+- Temporary chat sessions that don't need history
+- Privacy-sensitive applications requiring automatic cleanup
+- Resource-constrained environments
+
+**When to keep durable (default):**
+- Applications that need conversation history
+- Multi-turn conversations that reference past context
+- Customer support or assistant applications
 
 ## Configuration
 

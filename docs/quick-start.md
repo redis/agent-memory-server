@@ -318,8 +318,8 @@ You've just worked with both types of memory:
 
 ### Working Memory
 - **Scope**: Session-specific
-- **Lifetime**: 1 hour (configurable TTL)
-- **Use case**: Active conversation state
+- **Lifetime**: Durable by default, optional TTL
+- **Use case**: Active conversation state and session data
 - **Auto-promotion**: Structured memories automatically move to long-term storage
 
 ### Long-Term Memory

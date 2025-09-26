@@ -215,8 +215,10 @@ response = await memory_prompt({
 
 By default, the system automatically extracts structured memories from conversations as they flow from working memory to long-term storage. This extraction process can be customized using different **memory strategies**.
 
+The extraction strategy is set in the working memory session and controls what the server extracts into long-term memory. When you give an LLM the ability to store long-term memories as a tool, the tool description includes information about the configured extraction strategy, helping the LLM understand what types of memories to create.
+
 !!! info "Memory Strategies"
-    The system supports multiple extraction strategies (discrete facts, summaries, preferences, custom prompts) that determine how conversations are processed into memories. See [Memory Extraction Strategies](memory-extraction-strategies.md) for complete documentation and examples.
+    The system supports multiple extraction strategies (discrete facts, summaries, preferences, custom prompts) that determine how conversations are processed into memories. The extraction strategy set in working memory is visible to LLMs through strategy-aware tool descriptions. See [Memory Extraction Strategies](memory-extraction-strategies.md) for complete documentation and examples.
 
 ## Best Practices
 
@@ -257,7 +259,7 @@ For complete configuration options, see the [Configuration Guide](configuration.
 
 ## Related Documentation
 
-- [Working Memory](working-memory.md) - Session-scoped, ephemeral memory storage
+- [Working Memory](working-memory.md) - Session-scoped memory storage for conversations
 - [Memory Integration Patterns](memory-integration-patterns.md) - How to integrate memory with your applications
 - [Memory Extraction Strategies](memory-extraction-strategies.md) - Different approaches to memory extraction and storage
 - [Vector Store Backends](vector-store-backends.md) - Configuring different vector storage backends
