@@ -17,7 +17,12 @@ import httpx
 from pydantic import BaseModel
 from ulid import ULID
 
-from .exceptions import MemoryClientError, MemoryServerError, MemoryValidationError
+from .exceptions import (
+    MemoryClientError,
+    MemoryNotFoundError,
+    MemoryServerError,
+    MemoryValidationError,
+)
 from .filters import (
     CreatedAt,
     Entities,
@@ -364,8 +369,15 @@ class MemoryAPIClient:
                 return (True, created_memory)
 
             return (False, existing_memory)
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
+        except (httpx.HTTPStatusError, MemoryNotFoundError) as e:
+            # Handle both HTTPStatusError and MemoryNotFoundError for 404s
+            is_404 = False
+            if isinstance(e, httpx.HTTPStatusError):
+                is_404 = e.response.status_code == 404
+            elif isinstance(e, MemoryNotFoundError):
+                is_404 = True
+
+            if is_404:
                 # Session doesn't exist, create it
                 empty_memory = WorkingMemory(
                     session_id=session_id,

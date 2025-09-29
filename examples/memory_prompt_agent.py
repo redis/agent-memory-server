@@ -111,6 +111,13 @@ class MemoryPromptAgent:
     ) -> None:
         """Add a message to working memory."""
         client = await self.get_client()
+        # Ensure working memory exists before appending messages
+        await client.get_or_create_working_memory(
+            session_id=session_id,
+            namespace=self._get_namespace(user_id),
+            model_name="gpt-4o-mini",
+            user_id=user_id,
+        )
         await client.append_messages_to_working_memory(
             session_id=session_id,
             messages=[{"role": role, "content": content}],
