@@ -7,7 +7,7 @@ pagination utilities, validation, and enhanced convenience methods.
 
 import asyncio
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
@@ -310,7 +310,7 @@ class TestRecencyConfig:
     async def test_recency_config_descriptive_parameters(self, enhanced_test_client):
         """Test that RecencyConfig descriptive parameters are properly sent to API."""
         with patch.object(enhanced_test_client._client, "post") as mock_post:
-            mock_response = AsyncMock()
+            mock_response = Mock()
             mock_response.raise_for_status.return_value = None
             mock_response.json.return_value = MemoryRecordResults(
                 total=0, memories=[], next_offset=None
