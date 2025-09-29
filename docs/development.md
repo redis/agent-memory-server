@@ -24,11 +24,27 @@ uv run pytest
 
 ## Releasing Agent Memory Server
 
-Merging a PR to the main branch will trigger building and pushing a new image
-to Docker Hub based on the commits in main (including the version number).
-Currently, that image pushes to a test project:
+Releases are triggered manually via GitHub Actions workflow dispatch.
 
-https://hub.docker.com/r/redislabs/agent-memory-server
+### Steps to Release
+
+1. Update the version in `agent_memory_server/__init__.py`
+2. Commit and push the version change to main
+3. Go to GitHub Actions → "Release Docker Images" workflow
+4. Click "Run workflow"
+5. Choose options:
+   - **Version**: Leave empty to use version from `__init__.py`, or specify a custom version
+   - **Push latest tag**: Check to also tag as `latest` (recommended for stable releases)
+6. Click "Run workflow"
+
+This will:
+- Build Docker images for linux/amd64 and linux/arm64
+- Push to Docker Hub: `redislabs/agent-memory-server:<version>`
+- Push to GitHub Container Registry: `ghcr.io/redis/agent-memory-server:<version>`
+- Optionally tag as `latest` on both registries
+- Create a GitHub release with the version tag
+
+Docker Hub: https://hub.docker.com/r/redislabs/agent-memory-server
 
 
 ## Releasing Agent Memory Client
