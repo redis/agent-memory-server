@@ -1469,8 +1469,8 @@ class MemoryAPIClient:
                         },
                         "memory_type": {
                             "type": "string",
-                            "enum": ["episodic", "semantic", "message"],
-                            "description": "Type of memory: 'episodic' (events/experiences), 'semantic' (facts/preferences), 'message' (conversation snippets)",
+                            "enum": ["episodic", "semantic"],
+                            "description": "Type of memory: 'episodic' (events/experiences), 'semantic' (facts/preferences)",
                         },
                         "topics": {
                             "type": "array",
@@ -1587,8 +1587,8 @@ class MemoryAPIClient:
                         },
                         "memory_type": {
                             "type": "string",
-                            "enum": ["episodic", "semantic", "message"],
-                            "description": "Updated memory type: 'episodic' (events/experiences), 'semantic' (facts/preferences), 'message' (conversation snippets)",
+                            "enum": ["episodic", "semantic"],
+                            "description": "Updated memory type: 'episodic' (events/experiences), 'semantic' (facts/preferences)",
                         },
                         "namespace": {
                             "type": "string",
@@ -1645,8 +1645,8 @@ class MemoryAPIClient:
                                     },
                                     "memory_type": {
                                         "type": "string",
-                                        "enum": ["episodic", "semantic", "message"],
-                                        "description": "Type of memory: 'episodic' (events/experiences), 'semantic' (facts/preferences), 'message' (conversation snippets)",
+                                        "enum": ["episodic", "semantic"],
+                                        "description": "Type of memory: 'episodic' (events/experiences), 'semantic' (facts/preferences)",
                                     },
                                     "topics": {
                                         "type": "array",

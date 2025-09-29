@@ -498,6 +498,96 @@ class TestToolSchemaGeneration:
         )
         assert anthropic_schema["input_schema"]["required"] == ["param1"]
 
+    def test_create_long_term_memory_tool_schema(self):
+        """Test create_long_term_memory tool schema in OpenAI format."""
+        schema = MemoryAPIClient.create_long_term_memory_tool_schema()
+
+        assert schema["type"] == "function"
+        assert schema["function"]["name"] == "create_long_term_memory"
+        assert "description" in schema["function"]
+        assert "parameters" in schema["function"]
+
+        params = schema["function"]["parameters"]
+        assert params["type"] == "object"
+        assert "memories" in params["properties"]
+        assert "memories" in params["required"]
+
+        # Check memory_type enum does NOT include "message"
+        memory_items = params["properties"]["memories"]["items"]
+        memory_type_prop = memory_items["properties"]["memory_type"]
+        assert memory_type_prop["enum"] == ["episodic", "semantic"]
+        assert "message" not in memory_type_prop["enum"]
+
+    def test_edit_long_term_memory_tool_schema(self):
+        """Test edit_long_term_memory tool schema in OpenAI format."""
+        schema = MemoryAPIClient.edit_long_term_memory_tool_schema()
+
+        assert schema["type"] == "function"
+        assert schema["function"]["name"] == "edit_long_term_memory"
+        assert "description" in schema["function"]
+        assert "parameters" in schema["function"]
+
+        params = schema["function"]["parameters"]
+        assert params["type"] == "object"
+        assert "memory_id" in params["properties"]
+        assert "memory_id" in params["required"]
+
+        # Check memory_type enum does NOT include "message"
+        memory_type_prop = params["properties"]["memory_type"]
+        assert memory_type_prop["enum"] == ["episodic", "semantic"]
+        assert "message" not in memory_type_prop["enum"]
+
+    def test_delete_long_term_memories_tool_schema(self):
+        """Test delete_long_term_memories tool schema in OpenAI format."""
+        schema = MemoryAPIClient.delete_long_term_memories_tool_schema()
+
+        assert schema["type"] == "function"
+        assert schema["function"]["name"] == "delete_long_term_memories"
+        assert "description" in schema["function"]
+        assert "parameters" in schema["function"]
+
+        params = schema["function"]["parameters"]
+        assert params["type"] == "object"
+        assert "memory_ids" in params["properties"]
+        assert "memory_ids" in params["required"]
+
+    def test_add_memory_tool_schema_excludes_message_type(self):
+        """Test that add_memory_to_working_memory schema excludes 'message' type."""
+        schema = MemoryAPIClient.get_add_memory_tool_schema()
+
+        params = schema["function"]["parameters"]
+        memory_type_prop = params["properties"]["memory_type"]
+
+        # Verify only episodic and semantic are allowed
+        assert memory_type_prop["enum"] == ["episodic", "semantic"]
+        assert "message" not in memory_type_prop["enum"]
+
+    def test_all_tool_schemas_exclude_message_type(self):
+        """Test that all tool schemas with memory_type exclude 'message'."""
+        # Get all schemas
+        all_schemas = MemoryAPIClient.get_all_memory_tool_schemas()
+
+        # Check each schema that has memory_type parameter
+        for schema in all_schemas:
+            function_name = schema["function"]["name"]
+            params = schema["function"]["parameters"]
+
+            # Check if this schema has memory_type in properties
+            if "memory_type" in params["properties"]:
+                memory_type_prop = params["properties"]["memory_type"]
+                assert "message" not in memory_type_prop.get(
+                    "enum", []
+                ), f"Tool {function_name} should not expose 'message' memory type"
+
+            # Check nested properties (like in create_long_term_memory)
+            if "memories" in params["properties"]:
+                items = params["properties"]["memories"].get("items", {})
+                if "properties" in items and "memory_type" in items["properties"]:
+                    memory_type_prop = items["properties"]["memory_type"]
+                    assert (
+                        "message" not in memory_type_prop.get("enum", [])
+                    ), f"Tool {function_name} should not expose 'message' memory type in nested properties"
+
 
 class TestToolCallErrorHandling:
     """Tests for tool call error handling and edge cases."""
