@@ -563,9 +563,20 @@ class TestToolSchemaGeneration:
         assert "message" not in memory_type_prop["enum"]
 
     def test_all_tool_schemas_exclude_message_type(self):
-        """Test that all tool schemas with memory_type exclude 'message'."""
+        """Test that creation/editing tool schemas exclude 'message' type.
+
+        Note: search_memory CAN include 'message' in its filter enum since it's for
+        searching/reading existing memories, not creating new ones.
+        """
         # Get all schemas
         all_schemas = MemoryAPIClient.get_all_memory_tool_schemas()
+
+        # Tools that should NOT expose message type (creation/editing tools)
+        restricted_tools = {
+            "add_memory_to_working_memory",
+            "create_long_term_memory",
+            "edit_long_term_memory",
+        }
 
         # Check each schema that has memory_type parameter
         for schema in all_schemas:
@@ -575,18 +586,20 @@ class TestToolSchemaGeneration:
             # Check if this schema has memory_type in properties
             if "memory_type" in params["properties"]:
                 memory_type_prop = params["properties"]["memory_type"]
-                assert "message" not in memory_type_prop.get(
-                    "enum", []
-                ), f"Tool {function_name} should not expose 'message' memory type"
+                if function_name in restricted_tools:
+                    assert (
+                        "message" not in memory_type_prop.get("enum", [])
+                    ), f"Creation/editing tool {function_name} should not expose 'message' memory type"
 
             # Check nested properties (like in create_long_term_memory)
             if "memories" in params["properties"]:
                 items = params["properties"]["memories"].get("items", {})
                 if "properties" in items and "memory_type" in items["properties"]:
                     memory_type_prop = items["properties"]["memory_type"]
-                    assert (
-                        "message" not in memory_type_prop.get("enum", [])
-                    ), f"Tool {function_name} should not expose 'message' memory type in nested properties"
+                    if function_name in restricted_tools:
+                        assert (
+                            "message" not in memory_type_prop.get("enum", [])
+                        ), f"Creation/editing tool {function_name} should not expose 'message' memory type in nested properties"
 
 
 class TestToolCallErrorHandling:
