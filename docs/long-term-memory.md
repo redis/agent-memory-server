@@ -198,21 +198,70 @@ response = await memory_prompt({
 # - User's query as final message
 ```
 
-## Memory Extraction
+## Creating Long-Term Memories
 
-By default, the system automatically extracts structured memories from
-conversations so they flow from working memory to long-term storage. This
-happens in a background process after clients update working memory. This
-extraction process can be customized using different **memory strategies**.
+There are two main ways to create long-term memories:
 
-The extraction strategy is set in the working memory session and controls what
-the server extracts into long-term memory. When you give an LLM the ability to
-store long-term memories as a tool, the tool description includes information
-about the configured extraction strategy, helping the LLM understand what types
-of memories to create.
+### 1. Automatic Promotion from Working Memory
 
-!!! info "Memory Strategies"
-    The system supports multiple extraction strategies (discrete facts, summaries, preferences, custom prompts) that determine how conversations are processed into memories. The extraction strategy set in working memory is visible to LLMs through strategy-aware tool descriptions. See [Memory Extraction Strategies](memory-extraction-strategies.md) for complete documentation and examples.
+The most common approach is to let the system automatically promote memories from working memory to long-term storage. This handles extraction strategies, background processing, and batch optimization.
+
+!!! info "Working Memory Integration"
+    For automatic memory promotion from conversations, see the [Working Memory documentation](working-memory.md). This covers extraction strategies, background processing, and how to configure the memory server to automatically create long-term memories from conversation content.
+
+### 2. Manual Creation via API
+
+For immediate storage of important facts, you can create long-term memories directly using the API or LLM tools.
+
+#### Direct API Calls
+
+```python
+# Create memories directly via Python client
+await client.create_long_term_memories([
+    {
+        "text": "User prefers dark mode interfaces",
+        "memory_type": "semantic",
+        "topics": ["preferences", "ui"],
+        "entities": ["dark mode"],
+        "user_id": "user_123"
+    },
+    {
+        "text": "User completed Python certification on January 15, 2024",
+        "memory_type": "episodic",
+        "event_date": "2024-01-15T10:00:00Z",
+        "topics": ["education", "certification"],
+        "entities": ["Python certification"],
+        "user_id": "user_123"
+    }
+])
+```
+
+#### LLM Tool Usage (Eager Creation)
+
+Your LLM can use the `create_long_term_memory` tool for immediate storage:
+
+```python
+# LLM tool call for eager memory creation
+tools = [client.create_long_term_memory_tool_schema()]
+
+# LLM can call:
+# create_long_term_memory(
+#     memories=[
+#         {
+#             "text": "User works as a software engineer at TechCorp",
+#             "memory_type": "semantic",
+#             "topics": ["career", "work"],
+#             "entities": ["software engineer", "TechCorp"]
+#         }
+#     ]
+# )
+```
+
+This approach is ideal when:
+- You need memories to be immediately searchable
+- You're processing batch data or imports
+- You want to bypass working memory entirely
+- You have structured data that doesn't need extraction
 
 ## Configuration
 

@@ -214,13 +214,14 @@ async def chat_with_memory(message: str, session_id: str):
 
 The SDK provides these tools for LLM integration:
 
-1. **`eagerly_create_long_term_memory`** - Eagerly create a long-term memory by making an API request
-2. **`lazily_create_long_term_memory`** - Lazily create a long-term memory by adding it to working memory (does not require an immediate network request; does require saving working memory afterward)
-3. **`search_long_term_memory`** - Search with semantic similarity
-4. **`edit_memory`** - Update existing memories
-5. **`delete_memory`** - Remove memories
-6. **`set_working_memory`** - Update or create a working memory session
-7. **`get_or_create_working_memory`** - Retrieve or create a working memory session
+1. **`create_long_term_memory`** - Eagerly create long-term memories by making an API request
+2. **`add_memory_to_working_memory`** - Lazily create memories by adding them to working memory (promoted to long-term storage later)
+3. **`search_memory`** - Search with semantic similarity across long-term memories
+4. **`edit_long_term_memory`** - Update existing long-term memories
+5. **`delete_long_term_memories`** - Remove long-term memories
+6. **`get_or_create_working_memory`** - Retrieve or create a working memory session
+7. **`update_working_memory_data`** - Update session-specific data in working memory
+8. **`get_current_datetime`** - Get current UTC datetime for grounding relative time expressions
 
 **Note:** The following tool names have been deprecated for clarity:
 - `create_long_term_memories` (deprecated) → use `eagerly_create_long_term_memory`

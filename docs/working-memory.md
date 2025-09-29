@@ -4,7 +4,7 @@ Working memory is **session-scoped**, **durable** storage designed for active co
 
 ## Overview
 
-Working memory provides durable storage for a single conversation session. It's optimized for storing active conversation state, session-specific data, and structured memories that may later be promoted to long-term storage. By default, working memory persists to maintain conversation history, but you can set TTL expiration if your application doesn't need persistent conversation history.
+Working memory provides durable storage for a single conversation session. It's optimized for storing conversation messages, session-specific data, and structured memories that may later be promoted to long-term storage. By default, working memory persists to maintain conversation history, but you can set TTL expiration if your application doesn't need persistent conversation history.
 
 | Feature | Details |
 |---------|---------|
@@ -39,25 +39,36 @@ Working memory contains:
 
 ## When to Use Working Memory
 
-### 1. Active Conversation State
+### 1. Conversation Messages
+
+The primary use of working memory is storing conversation messages to maintain context across turns:
 
 ```python
 import ulid
 
-# Store current conversation messages
+# Store conversation messages for context continuity
 working_memory = WorkingMemory(
     session_id="chat_123",
     messages=[
-        MemoryMessage(role="user", content="What's the weather like?", id=ulid.ULID()),
-        MemoryMessage(role="assistant", content="I'll check that for you...", id=ulid.ULID())
+        MemoryMessage(role="user", content="I'm planning a trip to Paris next month", id=ulid.ULID()),
+        MemoryMessage(role="assistant", content="That sounds exciting! What type of activities are you interested in?", id=ulid.ULID()),
+        MemoryMessage(role="user", content="I love museums and good food", id=ulid.ULID())
     ]
 )
+
+# On the next turn, the assistant can access this context:
+# - User is planning a Paris trip
+# - Trip is next month
+# - User likes museums and food
+# This enables coherent, context-aware responses
 ```
 
-### 2. Session-Specific Structured Data
+### 2. Session-Specific Data
+
+Use the `data` field for temporary session information that doesn't need to persist across conversations:
 
 ```python
-# Store session-specific facts during conversation (using data field)
+# Store session-specific facts and configuration
 working_memory = WorkingMemory(
     session_id="chat_123",
     data={
@@ -66,29 +77,18 @@ working_memory = WorkingMemory(
             "travel_month": "next month",
             "planning_stage": "initial"
         },
-        "conversation_context": "travel planning"
-    }
-)
-```
-
-### 3. Session-Specific Settings
-
-```python
-# Store session-specific configuration
-working_memory = WorkingMemory(
-    session_id="chat_123",
-    data={
         "user_preferences": {"temperature_unit": "celsius"},
-        "conversation_mode": "casual",
-        "current_task": "trip_planning"
+        "conversation_mode": "casual"
     }
 )
 ```
 
-### 4. Promoting Memories to Long-Term Storage
+### 3. Structured Memories for Long-Term Storage
+
+Use the `memories` field for important facts that should be remembered across all future conversations:
 
 ```python
-# Memories in working memory are automatically promoted to long-term storage
+# Important facts that should persist beyond this session
 working_memory = WorkingMemory(
     session_id="chat_123",
     memories=[
@@ -101,13 +101,72 @@ working_memory = WorkingMemory(
         )
     ]
 )
-# This memory will become permanent in long-term storage
+# This memory will be automatically promoted to long-term storage
 ```
 
 > **🔑 Key Distinction**:
 > - Use `data` field for **session-specific** facts that stay only in the session
 > - Use `memories` field for **important** facts that should be promoted to long-term storage
 > - Anything in the `memories` field will automatically become persistent and searchable across all future sessions
+
+## Producing Long-Term Memories from Working Memory
+
+Working memory can automatically extract and promote memories to long-term storage using different strategies. This is one of the most powerful features of the memory server - it can intelligently analyze conversation content and create persistent memories without manual intervention.
+
+### Memory Server Extracts in the Background
+
+By default, the memory server automatically analyzes working memory content and extracts meaningful memories in the background. This is ideal when you want the memory server to handle all LLM operations internally.
+
+```python
+# Configure automatic extraction strategy
+working_memory = WorkingMemory(
+    session_id="chat_123",
+    long_term_memory_strategy=MemoryStrategyConfig(
+        extraction_strategy="thread_aware",  # Analyzes conversation threads
+        custom_prompt="Extract key facts about user preferences and important events",
+        enable_topic_extraction=True,
+        enable_entity_extraction=True
+    ),
+    messages=[
+        MemoryMessage(role="user", content="I'm a software engineer at TechCorp"),
+        MemoryMessage(role="assistant", content="That's great! What technologies do you work with?"),
+        MemoryMessage(role="user", content="Mainly Python and React for web applications")
+    ]
+)
+
+# The server will automatically extract memories like:
+# - "User is a software engineer at TechCorp"
+# - "User works with Python and React for web applications"
+```
+
+### Your LLM Extracts (Client-Side)
+
+If you prefer to manage all LLM activity in your application, you can have your LLM extract memories client-side and add them to working memory. This gives you full control over the extraction process and LLM usage.
+
+```python
+# Your LLM can use tools to lazily add memories to working memory
+# These will be promoted to long-term storage when the session is processed
+
+# Using the add_memory_to_working_memory tool (lazy approach)
+tools = [client.get_add_memory_tool_schema()]
+
+# Your LLM can call this tool to add memories:
+# add_memory_to_working_memory(
+#     session_id="chat_123",
+#     memory={
+#         "text": "User prefers Python for backend development",
+#         "memory_type": "semantic",
+#         "topics": ["programming", "preferences"]
+#     }
+# )
+```
+
+The Python SDK includes tools that allow your LLM to create memories either lazily (added to working memory for later promotion) or eagerly (created directly in long-term storage):
+
+- **Lazy approach**: `add_memory_to_working_memory` - adds memories to working memory for batch promotion
+- **Eager approach**: `create_long_term_memory` - creates memories directly in long-term storage
+
+See the [Long-Term Memory documentation](long-term-memory.md) for details on eager creation.
 
 ## API Endpoints
 
@@ -131,60 +190,7 @@ When structured memories in working memory are stored, they are automatically pr
 3. Memories are indexed in long-term storage with vector embeddings
 4. Working memory is updated with `persisted_at` timestamps
 
-## Three Ways to Create Long-Term Memories
 
-Long-term memories are typically created by LLMs (either yours or the memory server's) based on conversations. There are three pathways:
-
-### 1. 🤖 **Automatic Extraction from Conversations**
-The server automatically extracts memories from conversation messages using an LLM in the background:
-
-```python
-# Server analyzes messages and creates memories automatically
-working_memory = WorkingMemory(
-    session_id="chat_123",
-    messages=[
-        {"role": "user", "content": "I love Italian food, especially carbonara"},
-        {"role": "assistant", "content": "Great! I'll remember your preference for Italian cuisine."}
-    ]
-    # Server will extract: "User enjoys Italian food, particularly carbonara pasta"
-)
-```
-
-### 2. ⚡ **LLM-Identified Memories via Working Memory** (Performance Optimization)
-Your LLM can pre-identify memories and add them to working memory for batch storage:
-
-```python
-# LLM identifies important facts and adds to memories field
-working_memory = WorkingMemory(
-    session_id="chat_123",
-    memories=[
-        MemoryRecord(
-            text="User prefers morning meetings and dislikes calls after 4 PM",
-            memory_type="semantic",
-            topics=["preferences", "scheduling"],
-            entities=["morning meetings", "4 PM"]
-        )
-    ]
-    # Automatically promoted to long-term storage when saving working memory
-)
-```
-
-### 3. 🎯 **Direct Long-Term Memory Creation**
-Create memories directly via API or LLM tool calls:
-
-```python
-# Direct API call or LLM using create_long_term_memory tool
-await client.create_long_term_memories([
-    {
-        "text": "User works as a software engineer at TechCorp",
-        "memory_type": "semantic",
-        "topics": ["career", "work"],
-        "entities": ["software engineer", "TechCorp"]
-    }
-])
-```
-
-> **💡 LLM-Driven Design**: The system is designed for LLMs to make memory decisions. Your LLM can use memory tools to search existing memories, decide what's important to remember, and choose the most efficient storage method.
 
 ## Memory Lifecycle
 
