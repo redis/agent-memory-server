@@ -1163,7 +1163,71 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         user_id: str | None = None,
         session_id: str | None = None,
     ) -> int:
-        """Count memories using the same approach as search_memories for consistency."""
+        """Count memories using Redis FT.SEARCH for efficiency."""
+        try:
+            # Get the RedisVL index for direct Redis operations
+            index = self._get_vectorstore_index()
+            if index is None:
+                logger.warning(
+                    "RedisVL index not available, falling back to vector search"
+                )
+                # Fallback to vector search approach
+                return await self._count_memories_fallback(
+                    namespace, user_id, session_id
+                )
+
+            # Build filter expression
+            filters = []
+            if namespace:
+                namespace_filter = Namespace(eq=namespace).to_filter()
+                filters.append(namespace_filter)
+            if user_id:
+                user_filter = UserId(eq=user_id).to_filter()
+                filters.append(user_filter)
+            if session_id:
+                session_filter = SessionId(eq=session_id).to_filter()
+                filters.append(session_filter)
+
+            # Combine filters with AND logic
+            redis_filter = None
+            if filters:
+                if len(filters) == 1:
+                    redis_filter = filters[0]
+                else:
+                    redis_filter = reduce(lambda x, y: x & y, filters)
+
+            # Use Redis FT.SEARCH with LIMIT 0 0 to get count only
+            from redisvl.query import FilterQuery
+
+            if redis_filter is not None:
+                # Use FilterQuery for non-vector search
+                query = FilterQuery(filter_expression=redis_filter, num_results=0)
+            else:
+                # Match all documents
+                query = FilterQuery(filter_expression="*", num_results=0)
+
+            # Execute the query to get count
+            if hasattr(index, "asearch"):
+                results = await index.asearch(query)
+            else:
+                results = index.search(query)
+
+            return results.total
+
+        except Exception as e:
+            logger.warning(
+                f"Error counting memories with Redis search, falling back: {e}"
+            )
+            # Fallback to vector search approach
+            return await self._count_memories_fallback(namespace, user_id, session_id)
+
+    async def _count_memories_fallback(
+        self,
+        namespace: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+    ) -> int:
+        """Fallback method for counting memories using vector search."""
         try:
             # Use the same filter approach as search_memories
             filters = []
@@ -1186,10 +1250,9 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                 else:
                     redis_filter = reduce(lambda x, y: x & y, filters)
 
-            # Use the same search method as search_memories but for counting
-            # We use a generic query to match all indexed content
+            # Use a simple text query that should match most content
             search_results = await self.vectorstore.asimilarity_search(
-                query="",  # Empty query to match all content
+                query="memory",  # Simple query that should match content
                 filter=redis_filter,
                 k=10000,  # Large number to get all results
             )

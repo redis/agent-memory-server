@@ -1031,8 +1031,19 @@ class TestSearchQueryOptimization:
         """Test that all search parameters are passed correctly to the adapter."""
         # Mock the vectorstore adapter
         mock_adapter = AsyncMock()
+        # Return some results to avoid fallback behavior when distance_threshold is set
         mock_adapter.search_memories.return_value = MemoryRecordResults(
-            total=0, memories=[]
+            total=1,
+            memories=[
+                MemoryRecordResult(
+                    id="test-id",
+                    text="test memory",
+                    session_id="test-session",
+                    user_id="test-user",
+                    namespace="test-namespace",
+                    dist=0.1,  # Required field for MemoryRecordResult
+                )
+            ],
         )
         mock_get_adapter.return_value = mock_adapter
 
