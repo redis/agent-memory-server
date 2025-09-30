@@ -309,7 +309,8 @@ uv run pytest tests/test_memory_strategies.py tests/test_prompt_security.py
 
 ## Related Documentation
 
-- [Memory Types](memory-types.md) - Understanding different memory strategies
+- [Working Memory](working-memory.md) - Session-scoped memory storage
+- [Long-term Memory](long-term-memory.md) - Persistent memory storage
 - [Authentication](authentication.md) - Securing API access
 - [Configuration](configuration.md) - System configuration options
 - [Development Guide](development.md) - Development and testing practices

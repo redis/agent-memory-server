@@ -580,8 +580,8 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
         event_date: EventDate | None = None,
         memory_hash: MemoryHash | None = None,
         id: Id | None = None,
-        distance_threshold: float | None = None,
         discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
+        distance_threshold: float | None = None,
         server_side_recency: bool | None = None,
         recency_params: dict | None = None,
         limit: int = 10,
@@ -1186,10 +1186,9 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                 else:
                     redis_filter = reduce(lambda x, y: x & y, filters)
 
-            # Use the same search method as search_memories but for counting
-            # We use the same query that would match the indexed content
+            # Use empty query to match all content with the vector search interface
             search_results = await self.vectorstore.asimilarity_search(
-                query="duplicate",  # Use a query that should match test content
+                query="",  # Empty query to match all content
                 filter=redis_filter,
                 k=10000,  # Large number to get all results
             )

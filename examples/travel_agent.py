@@ -296,6 +296,12 @@ class TravelAgent:
 
         # Get the memory client and save updated working memory
         client = await self.get_client()
+        # Ensure working memory exists before appending messages
+        await client.get_or_create_working_memory(
+            session_id=session_id,
+            namespace=self._get_namespace(user_id),
+            model_name="gpt-4o-mini",
+        )
         await client.append_messages_to_working_memory(
             session_id=session_id,
             messages=new_message,

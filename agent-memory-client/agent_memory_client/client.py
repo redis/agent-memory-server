@@ -17,7 +17,12 @@ import httpx
 from pydantic import BaseModel
 from ulid import ULID
 
-from .exceptions import MemoryClientError, MemoryServerError, MemoryValidationError
+from .exceptions import (
+    MemoryClientError,
+    MemoryNotFoundError,
+    MemoryServerError,
+    MemoryValidationError,
+)
 from .filters import (
     CreatedAt,
     Entities,
@@ -364,8 +369,15 @@ class MemoryAPIClient:
                 return (True, created_memory)
 
             return (False, existing_memory)
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
+        except (httpx.HTTPStatusError, MemoryNotFoundError) as e:
+            # Handle both HTTPStatusError and MemoryNotFoundError for 404s
+            is_404 = False
+            if isinstance(e, httpx.HTTPStatusError):
+                is_404 = e.response.status_code == 404
+            elif isinstance(e, MemoryNotFoundError):
+                is_404 = True
+
+            if is_404:
                 # Session doesn't exist, create it
                 empty_memory = WorkingMemory(
                     session_id=session_id,
@@ -885,14 +897,6 @@ class MemoryAPIClient:
             )
             response.raise_for_status()
             data = response.json()
-            # Some tests may stub json() as an async function; handle awaitable
-            try:
-                import inspect
-
-                if inspect.isawaitable(data):
-                    data = await data
-            except Exception:
-                pass
             return MemoryRecordResults(**data)
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
@@ -1477,8 +1481,8 @@ class MemoryAPIClient:
                         },
                         "memory_type": {
                             "type": "string",
-                            "enum": ["episodic", "semantic", "message"],
-                            "description": "Type of memory: 'episodic' (events/experiences), 'semantic' (facts/preferences), 'message' (conversation snippets)",
+                            "enum": ["episodic", "semantic"],
+                            "description": "Type of memory: 'episodic' (events/experiences), 'semantic' (facts/preferences)",
                         },
                         "topics": {
                             "type": "array",
@@ -1595,8 +1599,8 @@ class MemoryAPIClient:
                         },
                         "memory_type": {
                             "type": "string",
-                            "enum": ["episodic", "semantic", "message"],
-                            "description": "Updated memory type: 'episodic' (events/experiences), 'semantic' (facts/preferences), 'message' (conversation snippets)",
+                            "enum": ["episodic", "semantic"],
+                            "description": "Updated memory type: 'episodic' (events/experiences), 'semantic' (facts/preferences)",
                         },
                         "namespace": {
                             "type": "string",
@@ -1616,6 +1620,67 @@ class MemoryAPIClient:
                         },
                     },
                     "required": ["memory_id"],
+                },
+            },
+        }
+
+    @classmethod
+    def create_long_term_memory_tool_schema(cls) -> dict[str, Any]:
+        """
+        Get OpenAI-compatible tool schema for creating long-term memories directly.
+
+        Returns:
+            Tool schema dictionary compatible with OpenAI tool calling format
+        """
+        return {
+            "type": "function",
+            "function": {
+                "name": "create_long_term_memory",
+                "description": (
+                    "Create long-term memories directly for immediate storage and retrieval. "
+                    "Use this for important information that should be permanently stored without going through working memory. "
+                    "This is the 'eager' approach - memories are created immediately in long-term storage. "
+                    "Examples: User preferences, important facts, key events that need to be searchable right away. "
+                    "For episodic memories, include event_date in ISO format."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "memories": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "text": {
+                                        "type": "string",
+                                        "description": "The memory content to store",
+                                    },
+                                    "memory_type": {
+                                        "type": "string",
+                                        "enum": ["episodic", "semantic"],
+                                        "description": "Type of memory: 'episodic' (events/experiences), 'semantic' (facts/preferences)",
+                                    },
+                                    "topics": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "Optional topics for categorization",
+                                    },
+                                    "entities": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "Optional entities mentioned in the memory",
+                                    },
+                                    "event_date": {
+                                        "type": "string",
+                                        "description": "Optional event date for episodic memories (ISO 8601 format: '2024-01-15T14:30:00Z')",
+                                    },
+                                },
+                                "required": ["text", "memory_type"],
+                            },
+                            "description": "List of memories to create",
+                        },
+                    },
+                    "required": ["memories"],
                 },
             },
         }
@@ -1674,6 +1739,7 @@ class MemoryAPIClient:
             cls.get_add_memory_tool_schema(),
             cls.get_update_memory_data_tool_schema(),
             cls.get_long_term_memory_tool_schema(),
+            cls.create_long_term_memory_tool_schema(),
             cls.edit_long_term_memory_tool_schema(),
             cls.delete_long_term_memories_tool_schema(),
             cls.get_current_datetime_tool_schema(),
@@ -1706,6 +1772,7 @@ class MemoryAPIClient:
             cls.get_add_memory_tool_schema_anthropic(),
             cls.get_update_memory_data_tool_schema_anthropic(),
             cls.get_long_term_memory_tool_schema_anthropic(),
+            cls.create_long_term_memory_tool_schema_anthropic(),
             cls.edit_long_term_memory_tool_schema_anthropic(),
             cls.delete_long_term_memories_tool_schema_anthropic(),
             cls.get_current_datetime_tool_schema_anthropic(),
@@ -1762,6 +1829,12 @@ class MemoryAPIClient:
     def get_long_term_memory_tool_schema_anthropic(cls) -> dict[str, Any]:
         """Get long-term memory tool schema in Anthropic format."""
         openai_schema = cls.get_long_term_memory_tool_schema()
+        return cls._convert_openai_to_anthropic_schema(openai_schema)
+
+    @classmethod
+    def create_long_term_memory_tool_schema_anthropic(cls) -> dict[str, Any]:
+        """Get create long-term memory tool schema in Anthropic format."""
+        openai_schema = cls.create_long_term_memory_tool_schema()
         return cls._convert_openai_to_anthropic_schema(openai_schema)
 
     @classmethod
@@ -2143,6 +2216,11 @@ class MemoryAPIClient:
             elif function_name == "get_long_term_memory":
                 result = await self._resolve_get_long_term_memory(args)
 
+            elif function_name == "create_long_term_memory":
+                result = await self._resolve_create_long_term_memory(
+                    args, effective_namespace, user_id
+                )
+
             elif function_name == "edit_long_term_memory":
                 result = await self._resolve_edit_long_term_memory(args)
 
@@ -2286,6 +2364,40 @@ class MemoryAPIClient:
 
         result = await self.get_long_term_memory(memory_id=memory_id)
         return {"memory": result}
+
+    async def _resolve_create_long_term_memory(
+        self, args: dict[str, Any], namespace: str | None, user_id: str | None = None
+    ) -> dict[str, Any]:
+        """Resolve create_long_term_memory function call."""
+        memories_data = args.get("memories")
+        if not memories_data:
+            raise ValueError(
+                "memories parameter is required for create_long_term_memory"
+            )
+
+        # Convert dict memories to ClientMemoryRecord objects
+        from .models import ClientMemoryRecord, MemoryTypeEnum
+
+        memories = []
+        for memory_data in memories_data:
+            # Apply defaults
+            if namespace and "namespace" not in memory_data:
+                memory_data["namespace"] = namespace
+            if user_id and "user_id" not in memory_data:
+                memory_data["user_id"] = user_id
+
+            # Convert memory_type string to enum if needed
+            if "memory_type" in memory_data:
+                memory_data["memory_type"] = MemoryTypeEnum(memory_data["memory_type"])
+
+            memory = ClientMemoryRecord(**memory_data)
+            memories.append(memory)
+
+        result = await self.create_long_term_memory(memories)
+        return {
+            "status": result.status,
+            "message": f"Created {len(memories)} memories successfully",
+        }
 
     async def _resolve_edit_long_term_memory(
         self, args: dict[str, Any]
@@ -2757,7 +2869,7 @@ class MemoryAPIClient:
         context_window_max: int | None = None,
         long_term_search: dict[str, Any] | None = None,
         user_id: str | None = None,
-        optimize_query: bool = True,
+        optimize_query: bool = False,
     ) -> dict[str, Any]:
         """
         Hydrate a user query with memory context and return a prompt ready to send to an LLM.
@@ -2861,7 +2973,7 @@ class MemoryAPIClient:
         memory_type: dict[str, Any] | None = None,
         limit: int = 10,
         offset: int = 0,
-        optimize_query: bool = True,
+        optimize_query: bool = False,
     ) -> dict[str, Any]:
         """
         Hydrate a user query with long-term memory context using filters.

@@ -42,7 +42,7 @@ Query optimization is controlled by several settings that can be configured via 
 
 ```bash
 # Enable/disable query optimization (default based on interface)
-# REST API: enabled by default (optimize_query=true)
+# REST API: disabled by default (optimize_query=false)
 # MCP Server: disabled by default (optimize_query=false)
 
 # Models for query optimization (can be different from generation model)
@@ -77,7 +77,7 @@ GENERATION_MODEL=gpt-4o
 Query optimization can be controlled per request using the `optimize_query` query parameter:
 
 ```bash
-# Search with optimization (default: true)
+# Search with optimization (default: false)
 curl -X POST "http://localhost:8000/v1/long-term-memory/search" \
   -H "Content-Type: application/json" \
   -d '{
@@ -134,7 +134,7 @@ from agent_memory_client import MemoryAPIClient
 
 client = MemoryAPIClient(base_url="http://localhost:8000")
 
-# Search with optimization (REST API default)
+# Search with optimization (explicitly enabled)
 results = await client.search_long_term_memory(
     text="what do I like to eat",
     limit=5
@@ -154,7 +154,7 @@ Different interfaces have different default behaviors for query optimization:
 
 | Interface | Default | Rationale |
 |-----------|---------|-----------|
-| **REST API** | `optimize_query=True` | Web applications benefit from improved search accuracy |
+| **REST API** | `optimize_query=False` | Consistent behavior across all interfaces |
 | **MCP Server** | `optimize_query=False` | AI agents may prefer direct control over queries |
 | **Client Library** | Follows API defaults | Inherits from underlying interface |
 
@@ -323,7 +323,7 @@ app.include_router(router)
 @app.post("/custom-search")
 async def custom_search(
     query: str,
-    optimize: bool = Query(True, alias="optimize_query")
+    optimize: bool = Query(False, alias="optimize_query")
 ):
     # Custom search with configurable optimization
     results = await search_long_term_memories(

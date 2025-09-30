@@ -875,11 +875,21 @@ async def set_working_memory(
 @mcp_app.tool()
 async def get_working_memory(
     session_id: str,
+    recent_messages_limit: int | None = None,
 ) -> WorkingMemory:
     """
     Get working memory for a session. This works like the GET /sessions/{id}/memory API endpoint.
+
+    Args:
+        session_id: The session ID to retrieve working memory for
+        recent_messages_limit: Optional limit on number of recent messages to return (most recent first)
+
+    Returns:
+        Working memory containing messages, context, and structured memory records
     """
-    return await core_get_working_memory(session_id=session_id)
+    return await core_get_working_memory(
+        session_id=session_id, recent_messages_limit=recent_messages_limit
+    )
 
 
 @mcp_app.tool()

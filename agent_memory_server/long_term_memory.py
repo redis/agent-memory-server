@@ -877,7 +877,7 @@ async def search_long_term_memories(
     recency_params: dict | None = None,
     limit: int = 10,
     offset: int = 0,
-    optimize_query: bool = True,
+    optimize_query: bool = False,
 ) -> MemoryRecordResults:
     """
     Search for long-term memories using the pluggable VectorStore adapter.
@@ -897,7 +897,7 @@ async def search_long_term_memories(
         memory_hash: Optional memory hash filter
         limit: Maximum number of results
         offset: Offset for pagination
-        optimize_query: Whether to optimize the query for vector search using a fast model (default: True)
+        optimize_query: Whether to optimize the query for vector search using a fast model (default: False)
 
     Returns:
         MemoryRecordResults containing matching memories
@@ -933,8 +933,7 @@ async def search_long_term_memories(
     )
 
     # If an optimized query with a strict distance threshold returns no results,
-    # retry once with the original query to preserve recall. Skip this retry when
-    # the adapter is a unittest mock to avoid altering test expectations.
+    # retry once with the original query to preserve recall.
     try:
         if (
             optimized_applied
@@ -942,34 +941,24 @@ async def search_long_term_memories(
             and results.total == 0
             and search_query != text
         ):
-            # Detect unittest.mock objects without importing globally
-            is_mock = False
-            try:
-                from unittest.mock import Mock  # type: ignore
-
-                is_mock = isinstance(getattr(adapter, "search_memories", None), Mock)
-            except Exception:
-                is_mock = False
-
-            if not is_mock:
-                results = await adapter.search_memories(
-                    query=text,
-                    session_id=session_id,
-                    user_id=user_id,
-                    namespace=namespace,
-                    created_at=created_at,
-                    last_accessed=last_accessed,
-                    topics=topics,
-                    entities=entities,
-                    memory_type=memory_type,
-                    event_date=event_date,
-                    memory_hash=memory_hash,
-                    distance_threshold=distance_threshold,
-                    server_side_recency=server_side_recency,
-                    recency_params=recency_params,
-                    limit=limit,
-                    offset=offset,
-                )
+            results = await adapter.search_memories(
+                query=text,
+                session_id=session_id,
+                user_id=user_id,
+                namespace=namespace,
+                created_at=created_at,
+                last_accessed=last_accessed,
+                topics=topics,
+                entities=entities,
+                memory_type=memory_type,
+                event_date=event_date,
+                memory_hash=memory_hash,
+                distance_threshold=distance_threshold,
+                server_side_recency=server_side_recency,
+                recency_params=recency_params,
+                limit=limit,
+                offset=offset,
+            )
     except Exception:
         # Best-effort fallback; return the original results on any error
         pass
@@ -1314,24 +1303,7 @@ async def promote_working_memory_to_long_term(
         logger.debug(f"No working memory found for session {session_id}")
         return 0
 
-    # Find memories with no persisted_at (eligible for promotion)
-    unpersisted_memories = [
-        memory
-        for memory in current_working_memory.memories
-        if memory.persisted_at is None
-    ]
-
-    # Find unpersisted messages (similar to unpersisted memories)
-    if settings.index_all_messages_in_long_term_memory:
-        unpersisted_messages = [
-            msg for msg in current_working_memory.messages if msg.persisted_at is None
-        ]
-    else:
-        unpersisted_messages = []
-
-    logger.info(
-        f"Promoting {len(unpersisted_memories)} memories and {len(unpersisted_messages)} messages from session {session_id}"
-    )
+    logger.info("Promoting memories to long-term storage...")
 
     promoted_count = 0
     updated_memories = []
@@ -1344,6 +1316,7 @@ async def promote_working_memory_to_long_term(
         if message.discrete_memory_extracted == "f"
     ]
 
+    extracted_memories = []
     if settings.enable_discrete_memory_extraction and unextracted_messages:
         # Check if we should run thread-aware extraction (debounced)
         if await should_extract_session_thread(session_id, redis):
@@ -1362,9 +1335,16 @@ async def promote_working_memory_to_long_term(
 
         else:
             logger.info(f"Skipping extraction for session {session_id} - debounced")
-            extracted_memories = []
 
-    for memory in current_working_memory.memories:
+    # Combine existing memories with newly extracted memories for processing
+    all_memories_to_process = list(current_working_memory.memories)
+    if extracted_memories:
+        logger.info(
+            f"Adding {len(extracted_memories)} extracted memories for promotion"
+        )
+        all_memories_to_process.extend(extracted_memories)
+
+    for memory in all_memories_to_process:
         if memory.persisted_at is None:
             # This memory needs to be promoted
 
@@ -1404,13 +1384,6 @@ async def promote_working_memory_to_long_term(
             # This memory is already persisted, keep as-is
             updated_memories.append(memory)
 
-    # Add extracted memories to working memory for future promotion
-    if extracted_memories:
-        logger.info(
-            f"Adding {len(extracted_memories)} extracted memories to working memory"
-        )
-        updated_memories.extend(extracted_memories)
-
     count_persisted_messages = 0
     message_records_to_index = []
 
@@ -1436,6 +1409,8 @@ async def promote_working_memory_to_long_term(
                     namespace=namespace,
                     user_id=current_working_memory.user_id,
                     persisted_at=None,
+                    created_at=msg.created_at,
+                    memory_type=MemoryTypeEnum.MESSAGE,
                 )
 
                 # Apply same deduplication logic as structured memories
@@ -1449,12 +1424,7 @@ async def promote_working_memory_to_long_term(
                 current_memory.persisted_at = datetime.now(UTC)
 
                 # Set extraction strategy configuration from working memory
-                current_memory.extraction_strategy = (
-                    current_working_memory.long_term_memory_strategy.strategy
-                )
-                current_memory.extraction_strategy_config = (
-                    current_working_memory.long_term_memory_strategy.config
-                )
+                current_memory.extraction_strategy = "message"
 
                 # Collect memory record for batch indexing
                 message_records_to_index.append(current_memory)
@@ -1464,9 +1434,13 @@ async def promote_working_memory_to_long_term(
                 promoted_count += 1
 
                 if was_overwrite:
-                    logger.info(f"Overwrote existing message with id {msg.id}")
+                    logger.info(
+                        f"Overwrote existing long-term message memory with ID {msg.id}"
+                    )
                 else:
-                    logger.info(f"Promoted new message with id {msg.id}")
+                    logger.info(
+                        f"Promoted new long-term message memory with ID {msg.id}"
+                    )
 
             updated_messages.append(msg)
 
@@ -1482,8 +1456,20 @@ async def promote_working_memory_to_long_term(
         count_persisted_messages = 0
         updated_messages = current_working_memory.messages
 
+    # Check if any messages were marked as extracted
+    messages_marked_extracted = (
+        settings.enable_discrete_memory_extraction
+        and unextracted_messages
+        and await should_extract_session_thread(session_id, redis)
+    )
+
     # Update working memory with the new persisted_at timestamps and extracted memories
-    if promoted_count > 0 or extracted_memories or count_persisted_messages > 0:
+    if (
+        promoted_count > 0
+        or extracted_memories
+        or count_persisted_messages > 0
+        or messages_marked_extracted
+    ):
         updated_working_memory = current_working_memory.model_copy()
         updated_working_memory.memories = updated_memories
         updated_working_memory.messages = updated_messages

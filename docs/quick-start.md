@@ -318,8 +318,8 @@ You've just worked with both types of memory:
 
 ### Working Memory
 - **Scope**: Session-specific
-- **Lifetime**: 1 hour (configurable TTL)
-- **Use case**: Active conversation state
+- **Lifetime**: Durable by default, optional TTL
+- **Use case**: Active conversation state and session data
 - **Auto-promotion**: Structured memories automatically move to long-term storage
 
 ### Long-Term Memory
@@ -335,12 +335,12 @@ Now that you have the basics working, explore these advanced features:
 ### 🔍 **Advanced Search**
 - Try filtering by topics, entities, or time ranges
 - Experiment with recency boost and query optimization
-- See [Memory Types Guide](memory-types.md) for detailed examples
+- See [Working Memory](working-memory.md) and [Long-term Memory](long-term-memory.md) guides for detailed examples
 
 ### ✏️ **Memory Editing**
 - Update existing memories with corrections
 - Add more context to sparse memories
-- See [Memory Editing Guide](memory-editing.md)
+- See [Memory Lifecycle Guide](memory-lifecycle.md#memory-editing)
 
 ### 🔒 **Production Setup**
 - Enable authentication (OAuth2/JWT or token-based)
@@ -521,7 +521,7 @@ redis-cli -h localhost -p 6379
 
 - **API Documentation**: Visit `http://localhost:8000/docs`
 - **Configuration Guide**: [Configuration](configuration.md)
-- **Memory Types**: [Memory Types Guide](memory-types.md)
+- **Memory Types**: [Working Memory](working-memory.md) and [Long-term Memory](long-term-memory.md)
 - **GitHub Issues**: Report problems or ask questions
 
 ## What's Next?

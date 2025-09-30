@@ -90,7 +90,7 @@ print(f"Found: {results.memories[0].text}")
 !!! info "Working Memory (Session-scoped)"
     - Current conversation state and context
     - Automatic summarization when conversations get long
-    - TTL-based expiration (1 hour default)
+    - Durable by default, optional TTL expiration
 
 !!! success "Long-Term Memory (Persistent)"
     - User preferences, facts, and important information
@@ -168,7 +168,7 @@ Jump into the Developer Guide for memory patterns and integration strategies.
 
     Update and correct existing memories through REST API and MCP tools
 
-    [Learn More →](memory-editing.md)
+    [Learn More →](memory-lifecycle.md#memory-editing)
 
 -   🕐 **Recency Boost**
 
@@ -184,7 +184,7 @@ Jump into the Developer Guide for memory patterns and integration strategies.
 
     Configurable memory extraction: discrete facts, summaries, preferences, or custom prompts
 
-    [Learn More →](memory-strategies.md)
+    [Learn More →](memory-extraction-strategies.md)
 
 </div>
 

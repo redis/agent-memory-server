@@ -78,9 +78,11 @@ nav:
 
   - Developer Guide:
     - Memory Integration Patterns: memory-integration-patterns.md
-    - Memory Strategies: memory-strategies.md
-    - Memory Editing: memory-editing.md
+    - Working Memory: working-memory.md
+    - Long-term Memory: long-term-memory.md
+    - Memory Extraction Strategies: memory-extraction-strategies.md
     - Memory Lifecycle: memory-lifecycle.md
+    - Vector Store Backends: vector-store-backends.md
     - Authentication: authentication.md
     - Security: security-custom-prompts.md
 
@@ -90,10 +92,6 @@ nav:
 
   - Examples:
     - Agent Examples: agent-examples.md
-
-  - Core Concepts:
-    - Memory Types: memory-types.md
-    - Vector Store Backends: vector-store-backends.md
 
   - Advanced Topics:
     - Query Optimization: query-optimization.md

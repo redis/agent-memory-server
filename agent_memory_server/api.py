@@ -27,6 +27,7 @@ from agent_memory_server.models import (
     SearchRequest,
     SessionListResponse,
     SystemMessage,
+    UpdateWorkingMemory,
     WorkingMemory,
     WorkingMemoryResponse,
 )
@@ -138,8 +139,13 @@ def _calculate_context_usage_percentages(
         - until_summarization_percentage: Percentage (0-100) until summarization triggers
         Both values are None if no model info provided
     """
-    if not messages or (not model_name and not context_window_max):
+    # Return None only when no model information is provided
+    if not model_name and not context_window_max:
         return None, None
+
+    # If no messages but model info is provided, return 0% usage
+    if not messages:
+        return 0.0, 0.0
 
     # Calculate current token usage
     current_tokens = _calculate_messages_token_count(messages)
@@ -148,11 +154,18 @@ def _calculate_context_usage_percentages(
     max_tokens = _get_effective_token_limit(model_name, context_window_max)
 
     # Calculate percentage of total context window used
+    if max_tokens <= 0:
+        return None, None
+
     total_percentage = (current_tokens / max_tokens) * 100.0
 
     # Calculate percentage until summarization threshold
     token_threshold = int(max_tokens * settings.summarization_threshold)
-    until_summarization_percentage = (current_tokens / token_threshold) * 100.0
+    if token_threshold <= 0:
+        # If threshold is 0 or negative, we're already at 100% until summarization
+        until_summarization_percentage = 100.0
+    else:
+        until_summarization_percentage = (current_tokens / token_threshold) * 100.0
 
     # Cap both at 100% for display purposes
     return min(total_percentage, 100.0), min(until_summarization_percentage, 100.0)
@@ -346,6 +359,7 @@ async def get_working_memory(
     namespace: str | None = None,
     model_name: ModelNameLiteral | None = None,
     context_window_max: int | None = None,
+    recent_messages_limit: int | None = None,
     x_client_version: str | None = Header(None, alias="X-Client-Version"),
     current_user: UserInfo = Depends(get_current_user),
 ):
@@ -361,6 +375,7 @@ async def get_working_memory(
         namespace: The namespace to use for the session
         model_name: The client's LLM model name (will determine context window size if provided)
         context_window_max: Direct specification of the context window max tokens (overrides model_name)
+        recent_messages_limit: Maximum number of recent messages to return (most recent first)
 
     Returns:
         Working memory containing messages, context, and structured memory records
@@ -372,6 +387,7 @@ async def get_working_memory(
         namespace=namespace,
         redis_client=redis,
         user_id=user_id,
+        recent_messages_limit=recent_messages_limit,
     )
 
     # Handle missing sessions based on client version
@@ -439,8 +455,7 @@ async def get_working_memory(
 @router.put("/v1/working-memory/{session_id}", response_model=WorkingMemoryResponse)
 async def put_working_memory(
     session_id: str,
-    memory: WorkingMemory,
-    user_id: str | None = None,
+    memory: UpdateWorkingMemory,
     model_name: ModelNameLiteral | None = None,
     context_window_max: int | None = None,
     background_tasks=Depends(get_background_tasks),
@@ -449,33 +464,37 @@ async def put_working_memory(
     """
     Set working memory for a session. Replaces existing working memory.
 
+    The session_id comes from the URL path, not the request body.
     If the token count exceeds the context window threshold, messages will be summarized
     immediately and the updated memory state returned to the client.
 
+    NOTE on context_percentage_* fields:
+    The response includes `context_percentage_total_used` and `context_percentage_until_summarization`
+    fields that show token usage. These fields will be `null` unless you provide either:
+    - `model_name` query parameter (e.g., `?model_name=gpt-4o-mini`)
+    - `context_window_max` query parameter (e.g., `?context_window_max=500`)
+
     Args:
-        session_id: The session ID
-        memory: Working memory to save
-        user_id: Optional user ID for the session (overrides user_id in memory object)
+        session_id: The session ID (from URL path)
+        memory: Working memory data to save (session_id not required in body)
         model_name: The client's LLM model name for context window determination
-        context_window_max: Direct specification of context window max tokens
+        context_window_max: Direct specification of context window max tokens (overrides model_name)
         background_tasks: DocketBackgroundTasks instance (injected automatically)
 
     Returns:
-        Updated working memory (potentially with summary if tokens were condensed)
+        Updated working memory (potentially with summary if tokens were condensed).
+        Includes context_percentage_total_used and context_percentage_until_summarization
+        if model information is provided.
     """
     redis = await get_redis_conn()
 
     # PUT semantics: we simply replace whatever exists (or create if it doesn't exist)
 
-    # Ensure session_id matches
-    memory.session_id = session_id
-
-    # Override user_id if provided as query parameter
-    if user_id is not None:
-        memory.user_id = user_id
+    # Convert UpdateWorkingMemory to WorkingMemory with session_id from URL path
+    working_memory_obj = memory.to_working_memory(session_id)
 
     # Validate that all long-term memories have id (if any)
-    for long_term_mem in memory.memories:
+    for long_term_mem in working_memory_obj.memories:
         if not long_term_mem.id:
             raise HTTPException(
                 status_code=400,
@@ -483,7 +502,7 @@ async def put_working_memory(
             )
 
     # Validate that all messages have non-empty content
-    for msg in memory.messages:
+    for msg in working_memory_obj.messages:
         if not msg.content or not msg.content.strip():
             raise HTTPException(
                 status_code=400,
@@ -491,10 +510,12 @@ async def put_working_memory(
             )
 
     # Handle summarization if needed (before storing) - now token-based
-    updated_memory = memory
-    if memory.messages:
+    updated_memory = working_memory_obj
+    if working_memory_obj.messages:
         updated_memory = await _summarize_working_memory(
-            memory, model_name=model_name, context_window_max=context_window_max
+            working_memory_obj,
+            model_name=model_name,
+            context_window_max=context_window_max,
         )
 
     await working_memory.set_working_memory(
@@ -507,6 +528,9 @@ async def put_working_memory(
         updated_memory.memories or updated_memory.messages
     ):
         # Promote structured memories from working memory to long-term storage
+        # TODO: Evaluate if this is an optimal way to pass around user ID. We
+        # need it to construct the key to get the working memory session from
+        # this task, if the session was saved with a user ID to begin with.
         background_tasks.add_task(
             long_term_memory.promote_working_memory_to_long_term,
             session_id=session_id,
@@ -515,6 +539,7 @@ async def put_working_memory(
         )
 
     # Calculate context usage percentages based on the final state (after potential summarization)
+    # This represents the current state of the session
     total_percentage, until_summarization_percentage = (
         _calculate_context_usage_percentages(
             messages=updated_memory.messages,
@@ -606,7 +631,7 @@ async def create_long_term_memory(
 @router.post("/v1/long-term-memory/search", response_model=MemoryRecordResultsResponse)
 async def search_long_term_memory(
     payload: SearchRequest,
-    optimize_query: bool = True,
+    optimize_query: bool = False,
     current_user: UserInfo = Depends(get_current_user),
 ):
     """
@@ -614,7 +639,7 @@ async def search_long_term_memory(
 
     Args:
         payload: Search payload with filter objects for precise queries
-        optimize_query: Whether to optimize the query for vector search using a fast model (default: True)
+        optimize_query: Whether to optimize the query for vector search using a fast model (default: False)
 
     Returns:
         List of search results
@@ -639,8 +664,7 @@ async def search_long_term_memory(
 
     logger.debug(f"Long-term search kwargs: {kwargs}")
 
-    # Pass text and filter objects to the search function (no redis needed for vectorstore adapter)
-    # Server-side recency rerank toggle (Redis-only path); defaults to False
+    # Server-side recency rerank toggle
     server_side_recency = (
         payload.server_side_recency
         if payload.server_side_recency is not None
@@ -654,18 +678,13 @@ async def search_long_term_memory(
     raw_results = await long_term_memory.search_long_term_memories(**kwargs)
 
     # Soft-filter fallback: if strict filters yield no results, relax filters and
-    # inject hints into the query text to guide semantic search. For memory_prompt
-    # unit tests, the underlying function is mocked; avoid triggering fallback to
-    # keep call counts stable when optimize_query behavior is being asserted.
+    # inject hints into the query text to guide semantic search.
     try:
         had_any_strict_filters = any(
             key in kwargs and kwargs[key] is not None
             for key in ("topics", "entities", "namespace", "memory_type", "event_date")
         )
-        is_mocked = "unittest.mock" in str(
-            type(long_term_memory.search_long_term_memories)
-        )
-        if raw_results.total == 0 and had_any_strict_filters and not is_mocked:
+        if raw_results.total == 0 and had_any_strict_filters:
             fallback_kwargs = dict(kwargs)
             for key in ("topics", "entities", "namespace", "memory_type", "event_date"):
                 fallback_kwargs.pop(key, None)
@@ -713,6 +732,8 @@ async def search_long_term_memory(
         logger.warning(f"Soft-filter fallback failed: {e}")
 
     # Recency-aware re-ranking of results (configurable)
+    # TODO: Why did we need to go this route instead of using recency boost at
+    # the query level?
     try:
         from datetime import UTC, datetime as _dt
 
@@ -832,7 +853,7 @@ async def update_long_term_memory(
 @router.post("/v1/memory/prompt", response_model=MemoryPromptResponse)
 async def memory_prompt(
     params: MemoryPromptRequest,
-    optimize_query: bool = True,
+    optimize_query: bool = False,
     current_user: UserInfo = Depends(get_current_user),
 ) -> MemoryPromptResponse:
     """
@@ -850,7 +871,7 @@ async def memory_prompt(
 
     Args:
         params: MemoryPromptRequest
-        optimize_query: Whether to optimize the query for vector search using a fast model (default: True)
+        optimize_query: Whether to optimize the query for vector search using a fast model (default: False)
 
     Returns:
         List of messages to send to an LLM, hydrated with relevant memory context
