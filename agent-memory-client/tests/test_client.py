@@ -702,6 +702,60 @@ class TestErrorHandling:
         # Should not raise
         enhanced_test_client.validate_memory_record(memory)
 
+    @pytest.mark.asyncio
+    async def test_get_or_create_handles_404_correctly(self, enhanced_test_client):
+        """Test that get_or_create_working_memory properly handles 404 errors.
+
+        This test verifies the fix for a bug where _handle_http_error would raise
+        MemoryNotFoundError, but then the code would re-raise the original
+        HTTPStatusError, preventing get_or_create_working_memory from catching
+        the MemoryNotFoundError and creating a new session.
+        """
+
+        session_id = "nonexistent-session"
+
+        # Mock get_working_memory to raise MemoryNotFoundError (simulating 404)
+        async def mock_get_working_memory(*args, **kwargs):
+            # Simulate what happens when the server returns 404
+            response = Mock()
+            response.status_code = 404
+            response.url = f"http://test/v1/working-memory/{session_id}"
+            raise httpx.HTTPStatusError(
+                "404 Not Found", request=Mock(), response=response
+            )
+
+        # Mock put_working_memory to return a created session
+        async def mock_put_working_memory(*args, **kwargs):
+            return WorkingMemoryResponse(
+                session_id=session_id,
+                messages=[],
+                memories=[],
+                data={},
+                context=None,
+                user_id=None,
+            )
+
+        with (
+            patch.object(
+                enhanced_test_client,
+                "get_working_memory",
+                side_effect=mock_get_working_memory,
+            ),
+            patch.object(
+                enhanced_test_client,
+                "put_working_memory",
+                side_effect=mock_put_working_memory,
+            ),
+        ):
+            # This should NOT raise an exception - it should create a new session
+            created, memory = await enhanced_test_client.get_or_create_working_memory(
+                session_id=session_id
+            )
+
+            # Verify that a new session was created
+            assert created is True
+            assert memory.session_id == session_id
+
 
 class TestContextUsagePercentage:
     """Tests for context usage percentage functionality."""

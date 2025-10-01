@@ -176,7 +176,6 @@ class MemoryAPIClient:
             return HealthCheckResponse(**response.json())
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def list_sessions(
         self,
@@ -215,7 +214,6 @@ class MemoryAPIClient:
             return SessionListResponse(**response.json())
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def get_working_memory(
         self,
@@ -291,7 +289,6 @@ class MemoryAPIClient:
             return WorkingMemoryResponse(**response_data)
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def get_or_create_working_memory(
         self,
@@ -454,7 +451,6 @@ class MemoryAPIClient:
             return WorkingMemoryResponse(**response.json())
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def delete_working_memory(
         self, session_id: str, namespace: str | None = None, user_id: str | None = None
@@ -487,7 +483,6 @@ class MemoryAPIClient:
             return AckResponse(**response.json())
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def set_working_memory_data(
         self,
@@ -678,7 +673,6 @@ class MemoryAPIClient:
             return AckResponse(**response.json())
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def delete_long_term_memories(self, memory_ids: Sequence[str]) -> AckResponse:
         """
@@ -701,7 +695,6 @@ class MemoryAPIClient:
             return AckResponse(**response.json())
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def get_long_term_memory(self, memory_id: str) -> MemoryRecord:
         """
@@ -722,7 +715,6 @@ class MemoryAPIClient:
             return MemoryRecord(**response.json())
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def edit_long_term_memory(
         self, memory_id: str, updates: dict[str, Any]
@@ -749,7 +741,6 @@ class MemoryAPIClient:
             return MemoryRecord(**response.json())
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def search_long_term_memory(
         self,
@@ -900,7 +891,6 @@ class MemoryAPIClient:
             return MemoryRecordResults(**data)
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     # === LLM Tool Integration ===
 
@@ -2957,7 +2947,6 @@ class MemoryAPIClient:
             return {"response": result}
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def hydrate_memory_prompt(
         self,
