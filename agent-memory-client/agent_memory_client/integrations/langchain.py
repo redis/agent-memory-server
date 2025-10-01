@@ -46,12 +46,16 @@ if TYPE_CHECKING:
     from agent_memory_client import MemoryAPIClient
 
 try:
-    from langchain_core.tools import StructuredTool
+    from langchain_core.tools import StructuredTool  # type: ignore  # noqa: F401
 
     LANGCHAIN_AVAILABLE = True
 except ImportError:
     LANGCHAIN_AVAILABLE = False
-    StructuredTool = None  # type: ignore[misc,assignment]
+
+    class StructuredTool:  # type: ignore[no-redef]
+        """Placeholder for when LangChain is not installed."""
+
+        pass
 
 
 def _check_langchain_available() -> None:

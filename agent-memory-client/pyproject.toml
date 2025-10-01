@@ -100,3 +100,7 @@ strict_equality = true
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = "agent_memory_client.integrations.langchain"
+warn_unused_ignores = false
