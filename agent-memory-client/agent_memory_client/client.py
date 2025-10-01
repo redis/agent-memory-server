@@ -8,7 +8,7 @@ import asyncio
 import logging  # noqa: F401
 import re
 from collections.abc import AsyncIterator, Sequence
-from typing import TYPE_CHECKING, Any, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, TypedDict
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -149,8 +149,11 @@ class MemoryAPIClient:
         """Close the client when exiting the context manager."""
         await self.close()
 
-    def _handle_http_error(self, response: httpx.Response) -> None:
-        """Handle HTTP errors and convert to appropriate exceptions."""
+    def _handle_http_error(self, response: httpx.Response) -> NoReturn:
+        """Handle HTTP errors and convert to appropriate exceptions.
+
+        This method always raises an exception and never returns normally.
+        """
         if response.status_code == 404:
             from .exceptions import MemoryNotFoundError
 
@@ -162,6 +165,10 @@ class MemoryAPIClient:
             except Exception:
                 message = f"HTTP {response.status_code}: {response.text}"
             raise MemoryServerError(message, response.status_code)
+        # This should never be reached, but mypy needs to know this never returns
+        raise MemoryServerError(
+            f"Unexpected status code: {response.status_code}", response.status_code
+        )
 
     async def health_check(self) -> HealthCheckResponse:
         """
@@ -176,7 +183,6 @@ class MemoryAPIClient:
             return HealthCheckResponse(**response.json())
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def list_sessions(
         self,
@@ -215,7 +221,6 @@ class MemoryAPIClient:
             return SessionListResponse(**response.json())
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def get_working_memory(
         self,
@@ -291,7 +296,6 @@ class MemoryAPIClient:
             return WorkingMemoryResponse(**response_data)
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def get_or_create_working_memory(
         self,
@@ -454,7 +458,6 @@ class MemoryAPIClient:
             return WorkingMemoryResponse(**response.json())
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def delete_working_memory(
         self, session_id: str, namespace: str | None = None, user_id: str | None = None
@@ -487,7 +490,6 @@ class MemoryAPIClient:
             return AckResponse(**response.json())
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def set_working_memory_data(
         self,
@@ -678,7 +680,6 @@ class MemoryAPIClient:
             return AckResponse(**response.json())
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def delete_long_term_memories(self, memory_ids: Sequence[str]) -> AckResponse:
         """
@@ -701,7 +702,6 @@ class MemoryAPIClient:
             return AckResponse(**response.json())
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def get_long_term_memory(self, memory_id: str) -> MemoryRecord:
         """
@@ -722,7 +722,6 @@ class MemoryAPIClient:
             return MemoryRecord(**response.json())
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def edit_long_term_memory(
         self, memory_id: str, updates: dict[str, Any]
@@ -749,7 +748,6 @@ class MemoryAPIClient:
             return MemoryRecord(**response.json())
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def search_long_term_memory(
         self,
@@ -900,7 +898,6 @@ class MemoryAPIClient:
             return MemoryRecordResults(**data)
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     # === LLM Tool Integration ===
 
@@ -2957,7 +2954,6 @@ class MemoryAPIClient:
             return {"response": result}
         except httpx.HTTPStatusError as e:
             self._handle_http_error(e.response)
-            raise
 
     async def hydrate_memory_prompt(
         self,
