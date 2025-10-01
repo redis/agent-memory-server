@@ -204,7 +204,7 @@ def get_memory_tools(
             func=config["func"],
             name=config["name"],
             description=config["description"],
-            coroutine=config["func"],  # Same function works for both sync and async
+            coroutine=config["func"],  # All our functions are async
         )
         langchain_tools.append(langchain_tool)
 

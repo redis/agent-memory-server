@@ -222,8 +222,14 @@ memory_tools = get_memory_tools(
 # Define custom tools
 @tool
 async def calculate(expression: str) -> str:
-    """Evaluate a mathematical expression."""
-    return str(eval(expression))
+    """Evaluate a simple mathematical expression safely."""
+    import ast
+    # Use ast.literal_eval for safe evaluation of simple expressions
+    try:
+        result = ast.literal_eval(expression)
+        return str(result)
+    except (ValueError, SyntaxError):
+        return "Error: Invalid expression"
 
 @tool
 async def get_weather(city: str) -> str:

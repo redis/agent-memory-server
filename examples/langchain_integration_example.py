@@ -186,9 +186,35 @@ async def custom_agent_example():
 
     @tool
     async def calculate(expression: str) -> str:
-        """Evaluate a mathematical expression."""
+        """Evaluate a simple mathematical expression (numbers and basic operators only)."""
+        import ast
+        import operator
+
+        # Safe evaluation using AST - only allows basic math operations
+        allowed_operators = {
+            ast.Add: operator.add,
+            ast.Sub: operator.sub,
+            ast.Mult: operator.mul,
+            ast.Div: operator.truediv,
+            ast.Pow: operator.pow,
+        }
+
         try:
-            result = eval(expression)  # Note: Use safely in production!
+
+            def eval_node(node: ast.AST) -> float:
+                if isinstance(node, ast.Constant):
+                    return float(node.value)
+                if isinstance(node, ast.BinOp):
+                    op = allowed_operators.get(type(node.op))
+                    if op is None:
+                        raise ValueError(f"Unsupported operator: {type(node.op)}")
+                    return op(eval_node(node.left), eval_node(node.right))
+                if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+                    return -eval_node(node.operand)
+                raise ValueError(f"Unsupported expression: {type(node)}")
+
+            tree = ast.parse(expression, mode="eval")
+            result = eval_node(tree.body)
             return f"Result: {result}"
         except Exception as e:
             return f"Error: {str(e)}"
