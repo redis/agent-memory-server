@@ -5,6 +5,7 @@ A Python client library for the [Agent Memory Server](https://github.com/redis-d
 ## Features
 
 - **Complete API Coverage**: Full support for all Agent Memory Server endpoints
+- **LangChain Integration**: Automatic tool conversion - no manual wrapping needed!
 - **Memory Lifecycle Management**: Explicit control over working → long-term memory promotion
 - **Batch Operations**: Efficient bulk operations with built-in rate limiting
 - **Auto-Pagination**: Seamless iteration over large result sets
@@ -16,7 +17,11 @@ A Python client library for the [Agent Memory Server](https://github.com/redis-d
 ## Installation
 
 ```bash
+# Basic installation
 pip install agent-memory-client
+
+# With LangChain integration
+pip install agent-memory-client langchain-core
 ```
 
 ## Quick Start
@@ -66,6 +71,57 @@ async def main():
 # Run the example
 asyncio.run(main())
 ```
+
+## LangChain Integration
+
+**No manual tool wrapping needed!** The client provides automatic conversion to LangChain-compatible tools:
+
+```python
+from agent_memory_client import create_memory_client
+from agent_memory_client.integrations.langchain import get_memory_tools
+from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_openai import ChatOpenAI
+
+async def create_memory_agent():
+    # Initialize memory client
+    memory_client = await create_memory_client("http://localhost:8000")
+
+    # Get LangChain-compatible tools (automatic conversion!)
+    tools = get_memory_tools(
+        memory_client=memory_client,
+        session_id="my_session",
+        user_id="alice"
+    )
+
+    # Create agent with memory tools
+    llm = ChatOpenAI(model="gpt-4o")
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are a helpful assistant with persistent memory."),
+        ("human", "{input}"),
+        MessagesPlaceholder("agent_scratchpad"),
+    ])
+
+    agent = create_tool_calling_agent(llm, tools, prompt)
+    executor = AgentExecutor(agent=agent, tools=tools)
+
+    # Use the agent
+    result = await executor.ainvoke({
+        "input": "Remember that I love pizza"
+    })
+
+    return executor
+
+# No @tool decorators needed - everything is automatic!
+```
+
+**Benefits:**
+- ✅ No manual `@tool` decorator wrapping
+- ✅ Automatic type conversion and validation
+- ✅ Session and user context automatically injected
+- ✅ Works seamlessly with LangChain agents
+
+See the [LangChain Integration Guide](https://redis.github.io/agent-memory-server/langchain-integration/) for more details.
 
 ## Core API
 
