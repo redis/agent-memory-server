@@ -338,4 +338,4 @@ except ValueError as e:
 - [Memory Integration Patterns](memory-integration-patterns.md) - Overview of different integration approaches
 - [Python SDK](python-sdk.md) - Direct SDK usage without LangChain
 - [Agent Examples](agent-examples.md) - More agent implementation examples
-- [LangChain Integration Example](../examples/langchain_integration_example.py) - Complete working example
+- [LangChain Integration Example](https://github.com/redis/agent-memory-server/blob/main/examples/langchain_integration_example.py) - Complete working example

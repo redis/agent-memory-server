@@ -51,7 +51,7 @@ try:
     LANGCHAIN_AVAILABLE = True
 except ImportError:
     LANGCHAIN_AVAILABLE = False
-    StructuredTool = None  # type: ignore
+    StructuredTool = None  # type: ignore[misc,assignment]
 
 
 def _check_langchain_available() -> None:
@@ -215,7 +215,7 @@ get_memory_tools_langchain = get_memory_tools
 # These create the actual async functions that LangChain will call
 
 
-def _create_search_memory_func(client: MemoryAPIClient):
+def _create_search_memory_func(client: MemoryAPIClient) -> Any:
     """Create search_memory function."""
 
     async def search_memory(
@@ -237,7 +237,7 @@ def _create_search_memory_func(client: MemoryAPIClient):
             min_relevance=min_relevance,
             user_id=user_id,
         )
-        return result.get("summary", str(result))
+        return str(result.get("summary", str(result)))
 
     return search_memory
 
@@ -247,7 +247,7 @@ def _create_get_working_memory_func(
     session_id: str,
     namespace: str | None,
     user_id: str | None,
-):
+) -> Any:
     """Create get_or_create_working_memory function."""
 
     async def get_or_create_working_memory() -> str:
@@ -257,7 +257,7 @@ def _create_get_working_memory_func(
             namespace=namespace,
             user_id=user_id,
         )
-        return result.get("summary", str(result))
+        return str(result.get("summary", str(result)))
 
     return get_or_create_working_memory
 
@@ -267,7 +267,7 @@ def _create_add_memory_func(
     session_id: str,
     namespace: str | None,
     user_id: str | None,
-):
+) -> Any:
     """Create add_memory_to_working_memory function."""
 
     async def add_memory_to_working_memory(
@@ -286,7 +286,7 @@ def _create_add_memory_func(
             namespace=namespace,
             user_id=user_id,
         )
-        return result.get("summary", str(result))
+        return str(result.get("summary", str(result)))
 
     return add_memory_to_working_memory
 
@@ -296,7 +296,7 @@ def _create_update_memory_data_func(
     session_id: str,
     namespace: str | None,
     user_id: str | None,
-):
+) -> Any:
     """Create update_working_memory_data function."""
 
     async def update_working_memory_data(
@@ -311,12 +311,12 @@ def _create_update_memory_data_func(
             namespace=namespace,
             user_id=user_id,
         )
-        return result.get("summary", str(result))
+        return str(result.get("summary", str(result)))
 
     return update_working_memory_data
 
 
-def _create_get_long_term_memory_func(client: MemoryAPIClient):
+def _create_get_long_term_memory_func(client: MemoryAPIClient) -> Any:
     """Create get_long_term_memory function."""
 
     async def get_long_term_memory(memory_id: str) -> str:
@@ -327,7 +327,7 @@ def _create_get_long_term_memory_func(client: MemoryAPIClient):
             session_id="",  # Not needed for long-term memory retrieval
         )
         if result["success"]:
-            return result["formatted_response"]
+            return str(result["formatted_response"])
         else:
             return f"Error: {result.get('error', 'Unknown error')}"
 
@@ -338,7 +338,7 @@ def _create_create_long_term_memory_func(
     client: MemoryAPIClient,
     namespace: str | None,
     user_id: str | None,
-):
+) -> Any:
     """Create create_long_term_memory function."""
 
     async def create_long_term_memory(memories: list[dict[str, Any]]) -> str:
@@ -351,14 +351,14 @@ def _create_create_long_term_memory_func(
             user_id=user_id,
         )
         if result["success"]:
-            return result["formatted_response"]
+            return str(result["formatted_response"])
         else:
             return f"Error: {result.get('error', 'Unknown error')}"
 
     return create_long_term_memory
 
 
-def _create_edit_long_term_memory_func(client: MemoryAPIClient):
+def _create_edit_long_term_memory_func(client: MemoryAPIClient) -> Any:
     """Create edit_long_term_memory function."""
 
     async def edit_long_term_memory(
@@ -389,14 +389,14 @@ def _create_edit_long_term_memory_func(client: MemoryAPIClient):
             session_id="",  # Not needed for long-term memory editing
         )
         if result["success"]:
-            return result["formatted_response"]
+            return str(result["formatted_response"])
         else:
             return f"Error: {result.get('error', 'Unknown error')}"
 
     return edit_long_term_memory
 
 
-def _create_delete_long_term_memories_func(client: MemoryAPIClient):
+def _create_delete_long_term_memories_func(client: MemoryAPIClient) -> Any:
     """Create delete_long_term_memories function."""
 
     async def delete_long_term_memories(memory_ids: list[str]) -> str:
@@ -407,14 +407,14 @@ def _create_delete_long_term_memories_func(client: MemoryAPIClient):
             session_id="",  # Not needed for long-term memory deletion
         )
         if result["success"]:
-            return result["formatted_response"]
+            return str(result["formatted_response"])
         else:
             return f"Error: {result.get('error', 'Unknown error')}"
 
     return delete_long_term_memories
 
 
-def _create_get_current_datetime_func(client: MemoryAPIClient):
+def _create_get_current_datetime_func(client: MemoryAPIClient) -> Any:
     """Create get_current_datetime function."""
 
     async def get_current_datetime() -> str:
@@ -425,7 +425,7 @@ def _create_get_current_datetime_func(client: MemoryAPIClient):
             session_id="",  # Not needed for datetime
         )
         if result["success"]:
-            return result["formatted_response"]
+            return str(result["formatted_response"])
         else:
             return f"Error: {result.get('error', 'Unknown error')}"
 
