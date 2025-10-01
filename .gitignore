@@ -234,3 +234,4 @@ libs/redis/docs/.Trash*
 .ai
 .claude
 TASK_MEMORY.md
+*.code-workspace
