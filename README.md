@@ -33,6 +33,9 @@ uv run agent-memory api --no-worker
 ```bash
 # Install the client
 pip install agent-memory-client
+
+# For LangChain integration
+pip install agent-memory-client langchain-core
 ```
 
 ```python
@@ -57,6 +60,28 @@ results = await client.search_long_term_memory(
 )
 ```
 
+#### LangChain Integration (No Manual Wrapping!)
+
+```python
+from agent_memory_client import create_memory_client
+from agent_memory_client.integrations.langchain import get_memory_tools
+from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain_openai import ChatOpenAI
+
+# Get LangChain-compatible tools automatically
+memory_client = await create_memory_client("http://localhost:8000")
+tools = get_memory_tools(
+    memory_client=memory_client,
+    session_id="my_session",
+    user_id="alice"
+)
+
+# Use with LangChain agents - no manual @tool wrapping needed!
+llm = ChatOpenAI(model="gpt-4o")
+agent = create_tool_calling_agent(llm, tools, prompt)
+executor = AgentExecutor(agent=agent, tools=tools)
+```
+
 > **Note**: While you can call client functions directly as shown above, using **MCP or SDK-provided tool calls** is recommended for AI agents as it provides better integration, automatic context management, and follows AI-native patterns. See **[Memory Integration Patterns](https://redis.github.io/agent-memory-server/memory-integration-patterns/)** for guidance on when to use each approach.
 
 ### 3. MCP Integration
@@ -77,6 +102,7 @@ uv run agent-memory mcp --mode sse --port 9000 --no-worker
 
 - **[Quick Start Guide](https://redis.github.io/agent-memory-server/quick-start/)** - Get up and running in minutes
 - **[Python SDK](https://redis.github.io/agent-memory-server/python-sdk/)** - Complete SDK reference with examples
+- **[LangChain Integration](https://redis.github.io/agent-memory-server/langchain-integration/)** - Automatic tool conversion for LangChain
 - **[Vector Store Backends](https://redis.github.io/agent-memory-server/vector-store-backends/)** - Configure different vector databases
 - **[Authentication](https://redis.github.io/agent-memory-server/authentication/)** - OAuth2/JWT setup for production
 - **[Memory Types](https://redis.github.io/agent-memory-server/memory-types/)** - Understanding semantic vs episodic memory
