@@ -8,7 +8,7 @@ import asyncio
 import logging  # noqa: F401
 import re
 from collections.abc import AsyncIterator, Sequence
-from typing import TYPE_CHECKING, Any, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, TypedDict
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -149,8 +149,11 @@ class MemoryAPIClient:
         """Close the client when exiting the context manager."""
         await self.close()
 
-    def _handle_http_error(self, response: httpx.Response) -> None:
-        """Handle HTTP errors and convert to appropriate exceptions."""
+    def _handle_http_error(self, response: httpx.Response) -> NoReturn:
+        """Handle HTTP errors and convert to appropriate exceptions.
+
+        This method always raises an exception and never returns normally.
+        """
         if response.status_code == 404:
             from .exceptions import MemoryNotFoundError
 
@@ -162,6 +165,10 @@ class MemoryAPIClient:
             except Exception:
                 message = f"HTTP {response.status_code}: {response.text}"
             raise MemoryServerError(message, response.status_code)
+        # This should never be reached, but mypy needs to know this never returns
+        raise MemoryServerError(
+            f"Unexpected status code: {response.status_code}", response.status_code
+        )
 
     async def health_check(self) -> HealthCheckResponse:
         """
