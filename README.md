@@ -30,6 +30,8 @@ uv run agent-memory api --no-worker
 
 ### 2. Python SDK
 
+Allowing the server to extract memories from working memory is easiest. However, you can also manually create memories:
+
 ```bash
 # Install the client
 pip install agent-memory-client
@@ -60,7 +62,12 @@ results = await client.search_long_term_memory(
 )
 ```
 
-#### LangChain Integration (No Manual Wrapping!)
+> **Note**: While you can call client functions directly as shown above, using **MCP or SDK-provided tool calls** is recommended for AI agents as it provides better integration, automatic context management, and follows AI-native patterns. For the best performance, you can add messages to working memory and allow the server to extract memories in the background. See **[Memory Integration Patterns](https://redis.github.io/agent-memory-server/memory-integration-patterns/)** for guidance on when to use each approach.
+
+
+#### LangChain Integration
+
+For LangChain users, the SDK provides automatic conversion of memory client tools to LangChain-compatible tools, eliminating the need for manual wrapping with `@tool` decorators.
 
 ```python
 from agent_memory_client import create_memory_client
@@ -92,8 +99,6 @@ executor = AgentExecutor(agent=agent, tools=tools)
 result = await executor.ainvoke({"input": "Remember that I love pizza"})
 ```
 
-> **Note**: While you can call client functions directly as shown above, using **MCP or SDK-provided tool calls** is recommended for AI agents as it provides better integration, automatic context management, and follows AI-native patterns. See **[Memory Integration Patterns](https://redis.github.io/agent-memory-server/memory-integration-patterns/)** for guidance on when to use each approach.
-
 ### 3. MCP Integration
 
 ```bash
@@ -124,9 +129,9 @@ uv run agent-memory mcp --mode sse --port 9000 --no-worker
 ```
 Working Memory (Session-scoped)  →  Long-term Memory (Persistent)
     ↓                                      ↓
-- Messages                          - Semantic search
-- Context                          - Topic modeling
-- Structured memories              - Entity recognition
+- Messages                         - Semantic search
+- Structured memories              - Topic modeling
+- Summary of past messages         - Entity recognition
 - Metadata                         - Deduplication
 ```
 
@@ -172,7 +177,7 @@ uv run agent-memory task-worker --concurrency 10
 
 **Production features:**
 - **Authentication**: OAuth2/JWT with multiple providers (Auth0, AWS Cognito, etc.)
-- **Redis**: Requires Redis with RediSearch module (RedisStack recommended)
+- **Redis**: Requires Redis 8 or Redis with RediSearch module (RedisStack recommended)
 - **Background Processing**: Docket workers handle memory indexing, summarization, and compaction
 - **Scaling**: Supports Redis clustering and horizontal worker scaling
 - **Monitoring**: Structured logging and health checks included
