@@ -72,17 +72,17 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-    - name: Create GitHub Release
+    - name: Create GitHub Release Draft
       uses: actions/create-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: v${{ steps.version.outputs.version }}
-        release_name: Release v${{ steps.version.outputs.version }}
+        tag_name: server/v${{ steps.version.outputs.version }}
+        release_name: ${{ steps.version.outputs.version }} (Draft)
         body: |
           Docker images published:
           - `redislabs/agent-memory-server:${{ steps.version.outputs.version }}`
           - `ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}`
           ${{ inputs.push_latest && format('- `redislabs/agent-memory-server:latest`{0}- `ghcr.io/{1}:latest`', '\n          ', github.repository) || '' }}
-        draft: false
-        prerelease: false
+        draft: true
+        prerelease: true
