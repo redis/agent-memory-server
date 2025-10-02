@@ -66,6 +66,7 @@ results = await client.search_long_term_memory(
 from agent_memory_client import create_memory_client
 from agent_memory_client.integrations.langchain import get_memory_tools
 from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import ChatOpenAI
 
 # Get LangChain-compatible tools automatically
@@ -76,10 +77,19 @@ tools = get_memory_tools(
     user_id="alice"
 )
 
-# Use with LangChain agents - no manual @tool wrapping needed!
+# Create prompt and agent
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a helpful assistant with memory."),
+    ("human", "{input}"),
+    MessagesPlaceholder("agent_scratchpad"),
+])
+
 llm = ChatOpenAI(model="gpt-4o")
 agent = create_tool_calling_agent(llm, tools, prompt)
 executor = AgentExecutor(agent=agent, tools=tools)
+
+# Use the agent
+result = await executor.ainvoke({"input": "Remember that I love pizza"})
 ```
 
 > **Note**: While you can call client functions directly as shown above, using **MCP or SDK-provided tool calls** is recommended for AI agents as it provides better integration, automatic context management, and follows AI-native patterns. See **[Memory Integration Patterns](https://redis.github.io/agent-memory-server/memory-integration-patterns/)** for guidance on when to use each approach.
