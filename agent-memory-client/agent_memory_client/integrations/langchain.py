@@ -158,7 +158,7 @@ def get_memory_tools(
         },
         "create_long_term_memory": {
             "name": "create_long_term_memory",
-            "description": "Create long-term memories directly for immediate storage and retrieval. Use this for important information that should be permanently stored without going through working memory.",
+            "description": "Create long-term memories directly for immediate storage and retrieval. Use this for important information that should be permanently stored without going through working memory. You can pass a single memory object or a list of memory objects. Each memory needs: text (string), memory_type ('episodic' or 'semantic'), and optionally topics (list), entities (list), event_date (ISO string).",
             "func": _create_create_long_term_memory_func(
                 memory_client, namespace, user_id
             ),
@@ -345,8 +345,18 @@ def _create_create_long_term_memory_func(
 ) -> Any:
     """Create create_long_term_memory function."""
 
-    async def create_long_term_memory(memories: list[dict[str, Any]]) -> str:
-        """Create long-term memories directly for immediate storage."""
+    async def create_long_term_memory(
+        memories: list[dict[str, Any]] | dict[str, Any],
+    ) -> str:
+        """Create long-term memories directly for immediate storage.
+
+        Accepts either a single memory object or a list of memory objects.
+        Each memory should have: text, memory_type, and optionally topics, entities, event_date.
+        """
+        # Handle single memory object - wrap it in a list
+        if isinstance(memories, dict):
+            memories = [memories]
+
         result = await client.resolve_function_call(
             function_name="create_long_term_memory",
             function_arguments={"memories": memories},

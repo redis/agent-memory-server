@@ -246,6 +246,42 @@ class TestLangChainIntegration:
         assert len(call_kwargs["function_arguments"]["memories"]) == 2
 
     @pytest.mark.skipif(not _langchain_available(), reason="LangChain not installed")
+    @pytest.mark.asyncio
+    async def test_create_long_term_memory_accepts_single_object(self):
+        """Test that create_long_term_memory accepts a single memory object (not just array)."""
+        from agent_memory_client.integrations.langchain import get_memory_tools
+
+        client = _create_mock_client()
+        client.resolve_function_call = AsyncMock(
+            return_value={
+                "success": True,
+                "formatted_response": "Created 1 long-term memory",
+            }
+        )
+
+        tools = get_memory_tools(
+            memory_client=client,
+            session_id="test_session",
+            user_id="test_user",
+            tools=["create_long_term_memory"],
+        )
+
+        create_tool = tools[0]
+
+        # Execute with single object (what LLMs often do)
+        single_memory = {"text": "User loves pizza", "memory_type": "semantic"}
+        result = await create_tool.ainvoke({"memories": single_memory})
+
+        assert "Created 1 long-term memory" in result
+
+        # Verify it was converted to an array
+        call_args = client.resolve_function_call.call_args
+        memories_arg = call_args.kwargs["function_arguments"]["memories"]
+        assert isinstance(memories_arg, list)
+        assert len(memories_arg) == 1
+        assert memories_arg[0] == single_memory
+
+    @pytest.mark.skipif(not _langchain_available(), reason="LangChain not installed")
     def test_tool_has_correct_schema(self):
         """Test that generated tools have correct schemas."""
         from agent_memory_client.integrations.langchain import get_memory_tools
