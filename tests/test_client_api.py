@@ -499,10 +499,10 @@ async def test_memory_prompt_integration(memory_test_client: MemoryAPIClient):
 
 
 @pytest.mark.asyncio
-async def test_search_long_term_memory_with_optimize_query_default_true(
+async def test_search_long_term_memory_with_optimize_query_default_false(
     memory_test_client: MemoryAPIClient,
 ):
-    """Test that client search_long_term_memory uses optimize_query=True by default."""
+    """Test that client search_long_term_memory uses optimize_query=False by default."""
     with patch(
         "agent_memory_server.long_term_memory.search_long_term_memories"
     ) as mock_search:
@@ -519,15 +519,15 @@ async def test_search_long_term_memory_with_optimize_query_default_true(
             next_offset=None,
         )
 
-        # Call search without optimize_query parameter (should default to True)
+        # Call search without optimize_query parameter (should default to False)
         results = await memory_test_client.search_long_term_memory(
             text="tell me about my preferences"
         )
 
-        # Verify search was called with optimize_query=True (default)
+        # Verify search was called with optimize_query=False (default)
         mock_search.assert_called_once()
         call_kwargs = mock_search.call_args.kwargs
-        assert call_kwargs.get("optimize_query") is True
+        assert call_kwargs.get("optimize_query") is False
 
         # Verify results
         assert results.total == 1
@@ -535,10 +535,10 @@ async def test_search_long_term_memory_with_optimize_query_default_true(
 
 
 @pytest.mark.asyncio
-async def test_search_long_term_memory_with_optimize_query_false_explicit(
+async def test_search_long_term_memory_with_optimize_query_true_explicit(
     memory_test_client: MemoryAPIClient,
 ):
-    """Test that client search_long_term_memory can use optimize_query=False when explicitly set."""
+    """Test that client search_long_term_memory can use optimize_query=True when explicitly set."""
     with patch(
         "agent_memory_server.long_term_memory.search_long_term_memories"
     ) as mock_search:
@@ -555,15 +555,15 @@ async def test_search_long_term_memory_with_optimize_query_false_explicit(
             next_offset=None,
         )
 
-        # Call search with explicit optimize_query=False
+        # Call search with explicit optimize_query=True
         await memory_test_client.search_long_term_memory(
-            text="tell me about my preferences", optimize_query=False
+            text="tell me about my preferences", optimize_query=True
         )
 
-        # Verify search was called with optimize_query=False
+        # Verify search was called with optimize_query=True
         mock_search.assert_called_once()
         call_kwargs = mock_search.call_args.kwargs
-        assert call_kwargs.get("optimize_query") is False
+        assert call_kwargs.get("optimize_query") is True
 
 
 @pytest.mark.asyncio

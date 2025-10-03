@@ -764,7 +764,7 @@ class MemoryAPIClient:
         recency: RecencyConfig | None = None,
         limit: int = 10,
         offset: int = 0,
-        optimize_query: bool = True,
+        optimize_query: bool = False,
     ) -> MemoryRecordResults:
         """
         Search long-term memories using semantic search and filters.
