@@ -5,7 +5,7 @@ A Python client for the Agent Memory Server REST API providing comprehensive
 memory management capabilities for AI agents and applications.
 """
 
-__version__ = "0.12.6"
+__version__ = "0.12.7"
 
 from .client import MemoryAPIClient, MemoryClientConfig, create_memory_client
 from .exceptions import (

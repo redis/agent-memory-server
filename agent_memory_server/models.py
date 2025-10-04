@@ -526,6 +526,10 @@ class CreateMemoryRecordRequest(BaseModel):
     """Payload for creating memory records"""
 
     memories: list[ExtractedMemoryRecord]
+    deduplicate: bool = Field(
+        default=True,
+        description="Whether to deduplicate memories before indexing",
+    )
 
 
 class GetSessionsQuery(BaseModel):

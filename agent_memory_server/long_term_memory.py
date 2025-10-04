@@ -431,7 +431,7 @@ async def compact_long_term_memories(
     session_id: str | None = None,
     llm_client: OpenAIClientWrapper | AnthropicClientWrapper | None = None,
     redis_client: Redis | None = None,
-    vector_distance_threshold: float = 0.12,
+    vector_distance_threshold: float = 0.2,
     compact_hash_duplicates: bool = True,
     compact_semantic_duplicates: bool = True,
     perpetual: Perpetual = Perpetual(
@@ -1173,7 +1173,7 @@ async def deduplicate_by_semantic_search(
     namespace: str | None = None,
     user_id: str | None = None,
     session_id: str | None = None,
-    vector_distance_threshold: float = 0.12,
+    vector_distance_threshold: float = 0.2,
 ) -> tuple[MemoryRecord | None, bool]:
     """
     Check if a memory has semantic duplicates and merge if found.

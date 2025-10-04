@@ -14,7 +14,7 @@ from testcontainers.compose import DockerCompose
 
 from agent_memory_server.api import router as memory_router
 from agent_memory_server.config import settings
-from agent_memory_server.dependencies import HybridBackgroundTasks, get_background_tasks
+from agent_memory_server.dependencies import HybridBackgroundTasks
 from agent_memory_server.healthcheck import router as health_router
 from agent_memory_server.llms import OpenAIClientWrapper
 from agent_memory_server.models import (
@@ -407,8 +407,8 @@ def app(use_test_redis_connection):
 
 
 @pytest.fixture()
-def app_with_mock_background_tasks(use_test_redis_connection, mock_background_tasks):
-    """Create a test FastAPI app with routers"""
+def app_with_mock_background_tasks(use_test_redis_connection):
+    """Create a test FastAPI app with routers and mocked background tasks"""
     app = FastAPI()
 
     # Include routers
@@ -423,7 +423,6 @@ def app_with_mock_background_tasks(use_test_redis_connection, mock_background_ta
     from agent_memory_server.utils.redis import get_redis_conn
 
     app.dependency_overrides[get_redis_conn] = mock_get_redis_conn
-    app.dependency_overrides[get_background_tasks] = lambda: mock_background_tasks
 
     return app
 
@@ -447,9 +446,27 @@ async def client(app):
 
 
 @pytest.fixture()
-async def client_with_mock_background_tasks(app_with_mock_background_tasks):
-    async with AsyncClient(
-        transport=ASGITransport(app=app_with_mock_background_tasks),
-        base_url="http://test",
-    ) as client:
-        yield client
+async def client_with_mock_background_tasks(
+    app_with_mock_background_tasks, mock_background_tasks
+):
+    """Client with mocked background tasks - patches the HybridBackgroundTasks class"""
+    # Patch the HybridBackgroundTasks class to return our mock
+    # We need to patch it in multiple places since FastAPI creates instances directly
+    patches = [
+        mock.patch(
+            "agent_memory_server.api.HybridBackgroundTasks",
+            return_value=mock_background_tasks,
+        ),
+        mock.patch(
+            "agent_memory_server.dependencies.HybridBackgroundTasks",
+            return_value=mock_background_tasks,
+        ),
+        mock.patch("fastapi.BackgroundTasks", return_value=mock_background_tasks),
+    ]
+
+    with patches[0], patches[1], patches[2]:
+        async with AsyncClient(
+            transport=ASGITransport(app=app_with_mock_background_tasks),
+            base_url="http://test",
+        ) as client:
+            yield client

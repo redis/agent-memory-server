@@ -9,7 +9,7 @@ from mcp.types import TextContent
 from agent_memory_server import long_term_memory, working_memory
 from agent_memory_server.auth import UserInfo, get_current_user
 from agent_memory_server.config import settings
-from agent_memory_server.dependencies import get_background_tasks
+from agent_memory_server.dependencies import HybridBackgroundTasks
 from agent_memory_server.filters import SessionId, UserId
 from agent_memory_server.llms import get_model_client, get_model_config
 from agent_memory_server.logging import get_logger
@@ -456,9 +456,9 @@ async def get_working_memory(
 async def put_working_memory(
     session_id: str,
     memory: UpdateWorkingMemory,
+    background_tasks: HybridBackgroundTasks,
     model_name: ModelNameLiteral | None = None,
     context_window_max: int | None = None,
-    background_tasks=Depends(get_background_tasks),
     current_user: UserInfo = Depends(get_current_user),
 ):
     """
@@ -593,7 +593,7 @@ async def delete_working_memory(
 @router.post("/v1/long-term-memory/", response_model=AckResponse)
 async def create_long_term_memory(
     payload: CreateMemoryRecordRequest,
-    background_tasks=Depends(get_background_tasks),
+    background_tasks: HybridBackgroundTasks,
     current_user: UserInfo = Depends(get_current_user),
 ):
     """
@@ -609,9 +609,9 @@ async def create_long_term_memory(
     if not settings.long_term_memory:
         raise HTTPException(status_code=400, detail="Long-term memory is disabled")
 
-    # Validate and process memories according to Stage 2 requirements
+    # Validate and process memories
     for memory in payload.memories:
-        # Enforce that id is required on memory sent from clients
+        # Enforce that ID is required on memory sent from clients
         if not memory.id:
             raise HTTPException(
                 status_code=400, detail="id is required for all memory records"
@@ -624,6 +624,7 @@ async def create_long_term_memory(
     background_tasks.add_task(
         long_term_memory.index_long_term_memories,
         memories=payload.memories,
+        deduplicate=payload.deduplicate,
     )
     return AckResponse(status="ok")
 
@@ -631,6 +632,7 @@ async def create_long_term_memory(
 @router.post("/v1/long-term-memory/search", response_model=MemoryRecordResultsResponse)
 async def search_long_term_memory(
     payload: SearchRequest,
+    background_tasks: HybridBackgroundTasks,
     optimize_query: bool = False,
     current_user: UserInfo = Depends(get_current_user),
 ):
@@ -752,7 +754,6 @@ async def search_long_term_memory(
         # Update last_accessed in background with rate limiting
         ids = [m.id for m in ranked if m.id]
         if ids:
-            background_tasks = get_background_tasks()
             background_tasks.add_task(long_term_memory.update_last_accessed, ids)
 
         raw_results.memories = ranked
@@ -853,6 +854,7 @@ async def update_long_term_memory(
 @router.post("/v1/memory/prompt", response_model=MemoryPromptResponse)
 async def memory_prompt(
     params: MemoryPromptRequest,
+    background_tasks: HybridBackgroundTasks,
     optimize_query: bool = False,
     current_user: UserInfo = Depends(get_current_user),
 ) -> MemoryPromptResponse:
@@ -992,6 +994,7 @@ async def memory_prompt(
         logger.debug(f"[memory_prompt] Search payload: {search_payload}")
         long_term_memories = await search_long_term_memory(
             search_payload,
+            background_tasks,
             optimize_query=optimize_query,
         )
 

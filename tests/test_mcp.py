@@ -232,7 +232,7 @@ class TestMCP:
         captured_params = {}
 
         async def mock_core_memory_prompt(
-            params: MemoryPromptRequest, optimize_query: bool = False
+            params: MemoryPromptRequest, background_tasks, optimize_query: bool = False
         ):
             captured_params["query"] = params.query
             captured_params["session"] = params.session

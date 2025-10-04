@@ -4,9 +4,6 @@ import numpy as np
 import pytest
 
 from agent_memory_server.config import Settings
-from agent_memory_server.long_term_memory import (
-    promote_working_memory_to_long_term,
-)
 from agent_memory_server.models import (
     MemoryMessage,
     MemoryRecordResult,
@@ -509,11 +506,8 @@ class TestMemoryEndpoints:
 
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
-    async def test_put_memory_stores_messages_in_long_term_memory(
-        self, client_with_mock_background_tasks, mock_background_tasks
-    ):
+    async def test_put_memory_stores_messages_in_long_term_memory(self, client):
         """Test the put_memory endpoint"""
-        client = client_with_mock_background_tasks
         payload = {
             "messages": [
                 {"role": "user", "content": "Hello"},
@@ -526,7 +520,13 @@ class TestMemoryEndpoints:
         }
         mock_settings = Settings(long_term_memory=True)
 
-        with patch("agent_memory_server.api.settings", mock_settings):
+        # Mock the promote function to verify it's called
+        with (
+            patch("agent_memory_server.api.settings", mock_settings),
+            patch(
+                "agent_memory_server.api.long_term_memory.promote_working_memory_to_long_term"
+            ) as mock_promote,
+        ):
             response = await client.put("/v1/working-memory/test-session", json=payload)
 
         assert response.status_code == 200
@@ -537,22 +537,15 @@ class TestMemoryEndpoints:
         assert "context" in data
         assert data["context"] == "Previous context"
 
-        # Check that background tasks were called
-        assert mock_background_tasks.add_task.call_count == 1
-
-        # Check that the last call was for long-term memory promotion
-        assert (
-            mock_background_tasks.add_task.call_args_list[-1][0][0]
-            == promote_working_memory_to_long_term
-        )
+        # Check that the promotion function was called as a background task
+        # In --no-worker mode, it runs inline, so it should have been called
+        assert mock_promote.call_count == 1
+        assert mock_promote.call_args[1]["session_id"] == "test-session"
 
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
-    async def test_put_memory_with_structured_memories_triggers_promotion(
-        self, client_with_mock_background_tasks, mock_background_tasks
-    ):
+    async def test_put_memory_with_structured_memories_triggers_promotion(self, client):
         """Test that structured memories trigger background promotion task"""
-        client = client_with_mock_background_tasks
         payload = {
             "messages": [],
             "memories": [
@@ -569,7 +562,13 @@ class TestMemoryEndpoints:
         }
         mock_settings = Settings(long_term_memory=True)
 
-        with patch("agent_memory_server.api.settings", mock_settings):
+        # Mock the promote function to verify it's called
+        with (
+            patch("agent_memory_server.api.settings", mock_settings),
+            patch(
+                "agent_memory_server.api.long_term_memory.promote_working_memory_to_long_term"
+            ) as mock_promote,
+        ):
             response = await client.put("/v1/working-memory/test-session", json=payload)
 
         assert response.status_code == 200
@@ -579,20 +578,11 @@ class TestMemoryEndpoints:
         assert len(data["memories"]) == 1
         assert data["memories"][0]["text"] == "User prefers dark mode"
 
-        # Check that promotion background task was called
-        assert mock_background_tasks.add_task.call_count == 1
-
-        # Check that it was the promotion task, not indexing
-        assert (
-            mock_background_tasks.add_task.call_args_list[0][0][0]
-            == promote_working_memory_to_long_term
-        )
-
-        # Check the arguments passed to the promotion task
-        task_call = mock_background_tasks.add_task.call_args_list[0]
-        task_kwargs = task_call[1]
-        assert task_kwargs["session_id"] == "test-session"
-        assert task_kwargs["namespace"] == "test-namespace"
+        # Check that the promotion function was called as a background task
+        # In --no-worker mode, it runs inline, so it should have been called
+        assert mock_promote.call_count == 1
+        assert mock_promote.call_args[1]["session_id"] == "test-session"
+        assert mock_promote.call_args[1]["namespace"] == "test-namespace"
 
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio

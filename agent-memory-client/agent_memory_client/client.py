@@ -618,13 +618,16 @@ class MemoryAPIClient:
         return await self.put_working_memory(session_id, working_memory)
 
     async def create_long_term_memory(
-        self, memories: Sequence[ClientMemoryRecord | MemoryRecord]
+        self,
+        memories: Sequence[ClientMemoryRecord | MemoryRecord],
+        deduplicate: bool = True,
     ) -> AckResponse:
         """
         Create long-term memories for later retrieval.
 
         Args:
             memories: List of MemoryRecord objects to store
+            deduplicate: Whether to deduplicate memories before indexing (default: True)
 
         Returns:
             AckResponse indicating success
@@ -668,7 +671,10 @@ class MemoryAPIClient:
                 memory.id = str(ULID())
 
         payload = {
-            "memories": [m.model_dump(exclude_none=True, mode="json") for m in memories]
+            "memories": [
+                m.model_dump(exclude_none=True, mode="json") for m in memories
+            ],
+            "deduplicate": deduplicate,
         }
 
         try:

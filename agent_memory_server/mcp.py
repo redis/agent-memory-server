@@ -689,8 +689,14 @@ async def memory_prompt(
     if search_payload is not None:
         _params["long_term_search"] = search_payload
 
+    # Create a background tasks instance for the MCP call
+    from agent_memory_server.dependencies import HybridBackgroundTasks
+
+    background_tasks = HybridBackgroundTasks()
+
     return await core_memory_prompt(
         params=MemoryPromptRequest(query=query, **_params),
+        background_tasks=background_tasks,
         optimize_query=optimize_query,
     )
 

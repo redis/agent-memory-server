@@ -61,7 +61,20 @@ def get_background_tasks() -> HybridBackgroundTasks:
     """
     Dependency function that returns a HybridBackgroundTasks instance.
 
-    This is used by API endpoints to inject a consistent background tasks object.
+    NOTE: This function is deprecated. Use HybridBackgroundTasks directly as a type
+    annotation in your endpoint instead of Depends(get_background_tasks).
+
+    Example:
+        # Old way (deprecated):
+        async def endpoint(background_tasks=Depends(get_background_tasks)):
+            ...
+
+        # New way (correct):
+        async def endpoint(background_tasks: HybridBackgroundTasks):
+            ...
+
+    FastAPI will automatically inject the correct instance when you use
+    HybridBackgroundTasks as a type annotation.
     """
     logger.info("Getting background tasks class")
     return HybridBackgroundTasks()
