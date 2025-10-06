@@ -26,6 +26,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    # Uses default CMD from Dockerfile (--no-worker for development)
 
   mcp:
     build:

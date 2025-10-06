@@ -16,6 +16,56 @@ A memory layer for AI agents using Redis as the vector database.
 
 ### 1. Installation
 
+#### Using Docker
+
+Pre-built Docker images are available from:
+- **Docker Hub**: [redislabs/agent-memory-server](https://hub.docker.com/r/redislabs/agent-memory-server)
+- **GitHub Packages**: [ghcr.io/redis/agent-memory-server](https://github.com/redis/agent-memory-server/pkgs/container/agent-memory-server)
+
+**Quick Start (Development Mode)**:
+```bash
+# Start with docker-compose (includes Redis, API, MCP, and worker)
+docker-compose up
+
+# Or run just the API server (requires separate Redis)
+docker run -p 8000:8000 \
+  -e REDIS_URL=redis://your-redis:6379 \
+  -e OPENAI_API_KEY=your-key \
+  redislabs/agent-memory-server:latest
+```
+
+The default image runs in development mode (`--no-worker`), which is perfect for testing and development.
+
+**Production Deployment**:
+
+For production, run separate containers for the API and background workers:
+
+```bash
+# API Server (without background worker)
+docker run -p 8000:8000 \
+  -e REDIS_URL=redis://your-redis:6379 \
+  -e OPENAI_API_KEY=your-key \
+  -e DISABLE_AUTH=false \
+  redislabs/agent-memory-server:latest \
+  agent-memory api --host 0.0.0.0 --port 8000
+
+# Background Worker (separate container)
+docker run \
+  -e REDIS_URL=redis://your-redis:6379 \
+  -e OPENAI_API_KEY=your-key \
+  redislabs/agent-memory-server:latest \
+  agent-memory task-worker --concurrency 10
+
+# MCP Server (if needed)
+docker run -p 9000:9000 \
+  -e REDIS_URL=redis://your-redis:6379 \
+  -e OPENAI_API_KEY=your-key \
+  redislabs/agent-memory-server:latest \
+  agent-memory mcp --mode sse --port 9000
+```
+
+#### From Source
+
 ```bash
 # Install dependencies
 pip install uv
@@ -159,33 +209,6 @@ uv run ruff check
 # Start development stack
 docker-compose up
 ```
-
-## Production Deployment
-
-For production environments, use Docket workers for better reliability and scale:
-
-```bash
-# Start the API server (production mode)
-uv run agent-memory api
-
-# Start MCP server (production mode - SSE)
-uv run agent-memory mcp --mode sse --port 9000
-
-# Start background workers (required for production)
-uv run agent-memory task-worker --concurrency 10
-```
-
-**Production features:**
-- **Authentication**: OAuth2/JWT with multiple providers (Auth0, AWS Cognito, etc.)
-- **Redis**: Requires Redis 8 or Redis with RediSearch module (RedisStack recommended)
-- **Background Processing**: Docket workers handle memory indexing, summarization, and compaction
-- **Scaling**: Supports Redis clustering and horizontal worker scaling
-- **Monitoring**: Structured logging and health checks included
-
-**Development vs Production:**
-- **Development**: Use `--no-worker` flags for quick setup, tasks run inline
-- **Production**: Use separate worker processes for better performance and reliability
-
 ## License
 
 Apache License 2.0 - see [LICENSE](LICENSE) file for details.

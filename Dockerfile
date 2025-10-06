@@ -1,5 +1,13 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
+# OCI labels for Docker Hub and container registries
+LABEL org.opencontainers.image.title="Redis Agent Memory Server"
+LABEL org.opencontainers.image.description="A memory layer for AI agents using Redis as the vector database. Provides REST API and MCP server interfaces with semantic search, topic extraction, and conversation summarization."
+LABEL org.opencontainers.image.url="https://github.com/redis/agent-memory-server"
+LABEL org.opencontainers.image.source="https://github.com/redis/agent-memory-server"
+LABEL org.opencontainers.image.documentation="https://redis.github.io/agent-memory-server/"
+LABEL org.opencontainers.image.vendor="Redis"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 WORKDIR /app
 
@@ -33,7 +41,14 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/v1/health || exit 1
 
-# Disable auth by default. Can be overridden with environment variable.
+# Disable auth by default for easier local development.
+# Override with DISABLE_AUTH=false in production.
 ENV DISABLE_AUTH=true
 
-CMD ["agent-memory", "api", "--host", "0.0.0.0", "--port", "8000"]
+# Default to development mode (no separate worker needed).
+# For production, override the command to remove --no-worker and run a separate task-worker container.
+# Examples:
+#   Development: docker run -p 8000:8000 redislabs/agent-memory-server
+#   Production API: docker run -p 8000:8000 redislabs/agent-memory-server agent-memory api --host 0.0.0.0 --port 8000
+#   Production Worker: docker run redislabs/agent-memory-server agent-memory task-worker --concurrency 10
+CMD ["agent-memory", "api", "--host", "0.0.0.0", "--port", "8000", "--no-worker"]
