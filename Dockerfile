@@ -32,7 +32,14 @@ ADD . /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
+# Create non-root user for security
+RUN groupadd -r agentmemory && useradd -r -g agentmemory agentmemory && \
+    chown -R agentmemory:agentmemory /app
+
 ENV PATH="/app/.venv/bin:$PATH"
+
+# Switch to non-root user
+USER agentmemory
 
 ENTRYPOINT []
 
