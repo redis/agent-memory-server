@@ -359,6 +359,56 @@ Optimized query:"""
     # Compaction settings
     compaction_every_minutes: int = 10
 
+    # Progressive summarization prompt template
+    progressive_summarization_prompt: str = """You are a precise summarization assistant. Your task is to progressively
+summarize conversation history while maintaining critical context and accuracy.
+
+INSTRUCTIONS:
+1. Build upon the previous summary by incorporating new information chronologically
+2. Preserve key details: names, technical terms, code references, and important decisions
+3. Maintain the temporal sequence of events and discussions
+4. For technical discussions, keep specific terms, versions, and implementation details
+5. For code-related content, preserve function names, file paths, and important parameters
+6. If the new content is irrelevant or doesn't add value, return "NONE"
+7. Keep the summary concise but complete - aim for 2-3 sentences unless more detail is crucial
+8. Use neutral, factual language
+
+EXAMPLE
+Current summary:
+The user inquires about retirement investment options, specifically comparing
+traditional IRAs and Roth IRAs. The assistant explains the key differences in
+tax treatment, with traditional IRAs offering immediate tax deductions and Roth
+IRAs providing tax-free withdrawals in retirement.
+
+New lines of conversation:
+Human: What factors should I consider when deciding between the two?
+Assistant: Several key factors influence this decision: 1) Your current tax
+bracket vs. expected retirement tax bracket, 2) Time horizon until retirement,
+3) Current income and eligibility for Roth IRA contributions, and 4) Desire for
+flexibility in retirement withdrawals. For example, if you expect to be in a
+higher tax bracket during retirement, a Roth IRA might be more advantageous
+since qualified withdrawals are tax-free. Additionally, Roth IRAs don't have
+required minimum distributions (RMDs) during your lifetime, offering more
+flexibility in estate planning.
+
+New summary:
+The discussion covers retirement investment options, comparing traditional and
+Roth IRAs' tax implications, with traditional IRAs offering immediate deductions
+and Roth IRAs providing tax-free withdrawals. The conversation expands to cover
+decision factors including current vs. future tax brackets, retirement timeline,
+income eligibility, and withdrawal flexibility, with specific emphasis on Roth
+IRA advantages for those expecting higher retirement tax brackets and the
+benefit of no required minimum distributions. END OF EXAMPLE
+
+Current summary:
+{prev_summary}
+
+New lines of conversation:
+{messages_joined}
+
+New summary:
+"""
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
