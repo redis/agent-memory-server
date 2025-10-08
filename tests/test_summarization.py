@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from agent_memory_server.config import settings
 from agent_memory_server.summarization import (
     _incremental_summary,
     summarize_session,
@@ -224,3 +225,43 @@ class TestSummarizeSession:
         assert pipeline_mock.hmset.call_count == 0
         assert pipeline_mock.ltrim.call_count == 0
         assert pipeline_mock.execute.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_configurable_summarization_prompt(self, mock_openai_client):
+        """Test that the summarization prompt can be configured"""
+        model = "gpt-3.5-turbo"
+        context = "Previous context"
+        messages = ["User: Hello", "Assistant: Hi there"]
+
+        # Create a custom prompt template
+        custom_prompt = "Custom prompt: {prev_summary} | {messages_joined}"
+
+        mock_response = MagicMock()
+        mock_choices = MagicMock()
+        mock_choices.message = MagicMock()
+        mock_choices.message.content = "Custom summary"
+        mock_response.choices = [mock_choices]
+        mock_response.total_tokens = 100
+
+        mock_openai_client.create_chat_completion.return_value = mock_response
+
+        # Temporarily override the prompt setting
+        original_prompt = settings.progressive_summarization_prompt
+        try:
+            settings.progressive_summarization_prompt = custom_prompt
+
+            summary, tokens_used = await _incremental_summary(
+                model, mock_openai_client, context, messages
+            )
+
+            assert summary == "Custom summary"
+            assert tokens_used == 100
+
+            # Verify the custom prompt was used
+            mock_openai_client.create_chat_completion.assert_called_once()
+            args = mock_openai_client.create_chat_completion.call_args[0]
+            assert "Custom prompt:" in args[1]
+            assert "Previous context" in args[1]
+        finally:
+            # Restore original prompt
+            settings.progressive_summarization_prompt = original_prompt
