@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -408,6 +408,21 @@ New lines of conversation:
 
 New summary:
 """
+
+    @field_validator("progressive_summarization_prompt")
+    @classmethod
+    def validate_progressive_summarization_prompt(cls, v: str) -> str:
+        """Validate that the progressive summarization prompt contains required placeholders."""
+        required_vars = ["prev_summary", "messages_joined"]
+        missing_vars = [var for var in required_vars if f"{{{var}}}" not in v]
+
+        if missing_vars:
+            raise ValueError(
+                f"progressive_summarization_prompt must contain the following placeholders: "
+                f"{', '.join(f'{{{var}}}' for var in missing_vars)}"
+            )
+
+        return v
 
     class Config:
         env_file = ".env"

@@ -2,8 +2,9 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
-from agent_memory_server.config import settings
+from agent_memory_server.config import Settings, settings
 from agent_memory_server.summarization import (
     _incremental_summary,
     summarize_session,
@@ -175,7 +176,7 @@ class TestSummarizeSession:
     @pytest.mark.asyncio
     @patch("agent_memory_server.summarization._incremental_summary")
     async def test_handle_summarization_no_messages(
-        self, mock_summarization, mock_openai_client, mock_async_redis_client
+        self, mock_summarization, mock_async_redis_client
     ):
         """Test summarize_session when no messages need summarization"""
         session_id = "test-session"
@@ -265,3 +266,37 @@ class TestSummarizeSession:
         finally:
             # Restore original prompt
             settings.progressive_summarization_prompt = original_prompt
+
+    def test_prompt_validation_missing_prev_summary(self):
+        """Test that validation fails when {prev_summary} is missing"""
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(
+                progressive_summarization_prompt="Template with {messages_joined} only"
+            )
+
+        assert "prev_summary" in str(exc_info.value)
+
+    def test_prompt_validation_missing_messages_joined(self):
+        """Test that validation fails when {messages_joined} is missing"""
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(
+                progressive_summarization_prompt="Template with {prev_summary} only"
+            )
+
+        assert "messages_joined" in str(exc_info.value)
+
+    def test_prompt_validation_missing_both_variables(self):
+        """Test that validation fails when both required variables are missing"""
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(progressive_summarization_prompt="Template with no variables")
+
+        error_str = str(exc_info.value)
+        assert "prev_summary" in error_str
+        assert "messages_joined" in error_str
+
+    def test_prompt_validation_with_both_variables(self):
+        """Test that validation passes when both variables are present"""
+        custom_prompt = "Summary: {prev_summary} Messages: {messages_joined}"
+        config = Settings(progressive_summarization_prompt=custom_prompt)
+
+        assert config.progressive_summarization_prompt == custom_prompt
