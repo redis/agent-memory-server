@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal
 
+from agent_memory_client.models import ClientMemoryRecord
 from mcp.server.fastmcp.prompts import base
 from mcp.types import AudioContent, EmbeddedResource, ImageContent, TextContent
 from pydantic import BaseModel, Field
@@ -206,15 +207,6 @@ class ExtractedMemoryRecord(MemoryRecord):
     memory_type: MemoryTypeEnum = Field(
         default=MemoryTypeEnum.SEMANTIC,
         description="Type of memory",
-    )
-
-
-class ClientMemoryRecord(MemoryRecord):
-    """A memory record with a client-provided ID"""
-
-    id: str = Field(
-        default_factory=lambda: str(ULID()),
-        description="Client-provided ID for deduplication and overwrites",
     )
 
 

@@ -1,4 +1,6 @@
 services:
+  # This API service uses --no-worker to run without a worker. When it starts
+  # background tasks, they run immediately in the API process.
   api:
     build:
       context: .
@@ -26,6 +28,41 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    # Uses default CMD from Dockerfile (--no-worker for development)
+
+  # For testing a production-like setup, you can run this API and the
+  # task-worker container. This API container does NOT use --no-worker, so when
+  # it starts background work, the task-worker will process those tasks.
+  api-for-task-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - PORT=8000
+      # Add your API keys here or use a .env file
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Optional configurations with defaults
+      - LONG_TERM_MEMORY=True
+      - GENERATION_MODEL=gpt-4o-mini
+      - EMBEDDING_MODEL=text-embedding-3-small
+      - ENABLE_TOPIC_EXTRACTION=True
+      - ENABLE_NER=True
+    depends_on:
+      - redis
+    volumes:
+      - ./agent_memory_server:/app/agent_memory_server
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/v1/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    command: ["agent-memory", "api", "--host", "0.0.0.0", "--port", "8000"]
+
+
 
   mcp:
     build:
@@ -41,7 +78,7 @@ services:
       - "9050:9000"
     depends_on:
       - redis
-    command: ["uv", "run", "agent-memory", "mcp", "--mode", "sse"]
+    command: ["agent-memory", "mcp", "--mode", "sse"]
 
   task-worker:
     build:
@@ -55,7 +92,7 @@ services:
       # Optional configurations with defaults
     depends_on:
       - redis
-    command: ["uv", "run", "agent-memory", "task-worker"]
+    command: ["agent-memory", "task-worker"]
     volumes:
       - ./agent_memory_server:/app/agent_memory_server
     restart: unless-stopped
