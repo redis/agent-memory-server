@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from redis.asyncio import Redis
+from redis.exceptions import ResponseError
 from redisvl.index import AsyncSearchIndex
 
 from agent_memory_server.config import settings
@@ -60,7 +61,21 @@ async def ensure_search_index_exists(
         if isinstance(adapter, RedisVectorStoreAdapter):
             index = adapter.vectorstore.index
             if index is not None:
-                index.create(overwrite=True)
+                try:
+                    index.create(overwrite=True)
+                except ResponseError as e:
+                    # Index already exists is not an error condition
+                    error_msg = str(e)
+                    if "Index already exists" in error_msg:
+                        logger.info(
+                            f"Index '{index.name}' already exists, skipping creation"
+                        )
+                    elif "no such index" in error_msg:
+                        # Index doesn't exist yet, create it without overwrite
+                        logger.info(f"Index '{index.name}' does not exist, creating it")
+                        index.create(overwrite=False)
+                    else:
+                        raise
         else:
             logger.warning(
                 "Overwriting the search index is only supported for RedisVectorStoreAdapter. "
