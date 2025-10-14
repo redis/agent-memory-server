@@ -158,14 +158,11 @@ class FastMCP(_FastMCPBase):
         return await super().call_tool(name, arguments)
 
     async def run_sse_async(self):
-        """Ensure Redis search index exists before starting SSE server."""
-        from agent_memory_server.utils.redis import (
-            ensure_search_index_exists,
-            get_redis_conn,
-        )
+        """Start SSE server. Index will be created automatically when needed."""
+        from agent_memory_server.utils.redis import get_redis_conn
 
-        redis = await get_redis_conn()
-        await ensure_search_index_exists(redis)
+        # Initialize Redis connection
+        await get_redis_conn()
 
         # Run the SSE server using our custom implementation
         import uvicorn
@@ -176,14 +173,11 @@ class FastMCP(_FastMCPBase):
         ).serve()
 
     async def run_stdio_async(self):
-        """Ensure Redis search index exists before starting STDIO MCP server."""
-        from agent_memory_server.utils.redis import (
-            ensure_search_index_exists,
-            get_redis_conn,
-        )
+        """Start STDIO MCP server. Index will be created automatically when needed."""
+        from agent_memory_server.utils.redis import get_redis_conn
 
-        redis = await get_redis_conn()
-        await ensure_search_index_exists(redis)
+        # Initialize Redis connection
+        await get_redis_conn()
         return await super().run_stdio_async()
 
 

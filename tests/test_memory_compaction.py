@@ -126,10 +126,7 @@ async def test_hash_deduplication_integration(
     # Clear all data to ensure clean test environment
     await async_redis_client.flushdb()
 
-    # Ensure index exists after flush
-    from agent_memory_server.utils.redis import ensure_search_index_exists
-
-    await ensure_search_index_exists(async_redis_client)
+    # Index will be created automatically when we add memories
 
     # Stub merge to return first memory unchanged
     async def dummy_merge(memories, llm_client=None):
@@ -229,10 +226,7 @@ async def test_semantic_deduplication_integration(
     # Clear all data to ensure clean test environment
     await async_redis_client.flushdb()
 
-    # Ensure index exists after flush
-    from agent_memory_server.utils.redis import ensure_search_index_exists
-
-    await ensure_search_index_exists(async_redis_client)
+    # Index will be created automatically when we add memories
 
     # Stub merge to return first memory
     async def dummy_merge(memories, llm_client=None):
@@ -308,10 +302,7 @@ async def test_full_compaction_integration(
     # Clear all data to ensure clean test environment
     await async_redis_client.flushdb()
 
-    # Ensure index exists after flush
-    from agent_memory_server.utils.redis import ensure_search_index_exists
-
-    await ensure_search_index_exists(async_redis_client)
+    # Index will be created automatically when we add memories
 
     async def dummy_merge(memories, llm_client=None):
         memory = memories[0]
