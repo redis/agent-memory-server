@@ -158,10 +158,9 @@ class FastMCP(_FastMCPBase):
         return await super().call_tool(name, arguments)
 
     async def run_sse_async(self):
-        """Start SSE server. Index will be created automatically when needed."""
+        """Start SSE server."""
         from agent_memory_server.utils.redis import get_redis_conn
 
-        # Initialize Redis connection
         await get_redis_conn()
 
         # Run the SSE server using our custom implementation
@@ -173,10 +172,9 @@ class FastMCP(_FastMCPBase):
         ).serve()
 
     async def run_stdio_async(self):
-        """Start STDIO MCP server. Index will be created automatically when needed."""
+        """Start STDIO MCP server."""
         from agent_memory_server.utils.redis import get_redis_conn
 
-        # Initialize Redis connection
         await get_redis_conn()
         return await super().run_stdio_async()
 

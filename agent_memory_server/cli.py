@@ -215,7 +215,6 @@ def schedule_task(task_path: str, args: list[str]):
             sys.exit(1)
 
     async def setup_and_run_task():
-        # Initialize Redis connection
         await get_redis_conn()
 
         # Import the task function
@@ -284,8 +283,6 @@ def task_worker(concurrency: int, redelivery_timeout: int):
                 raise
 
     async def _run_worker():
-        # Ensure Redis stream/consumer group exists before starting worker
-        # Index will be created automatically when needed
         await _ensure_stream_and_group()
         await get_redis_conn()
         await Worker.run(

@@ -611,9 +611,6 @@ async def compact_long_term_memories(
         index_name = Keys.search_index_name()
         logger.info(f"Using index '{index_name}' for semantic duplicate compaction.")
 
-        # Index will be created automatically when we add memories if it doesn't exist
-        # No need to check or create it explicitly
-
         # Get all memories using the vector store adapter
         try:
             # Convert filters to adapter format

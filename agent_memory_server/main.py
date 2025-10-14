@@ -75,7 +75,6 @@ async def lifespan(app: FastAPI):
         )
 
     # Set up Redis connection if long-term memory is enabled
-    # The VectorStore adapter will create the index automatically when needed
     if settings.long_term_memory:
         await get_redis_conn()
 
