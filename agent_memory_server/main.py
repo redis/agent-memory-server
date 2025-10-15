@@ -14,7 +14,6 @@ from agent_memory_server.healthcheck import router as health_router
 from agent_memory_server.logging import get_logger
 from agent_memory_server.utils.redis import (
     _redis_pool as connection_pool,
-    ensure_search_index_exists,
     get_redis_conn,
 )
 
@@ -75,29 +74,9 @@ async def lifespan(app: FastAPI):
             "Long-term memory requires OpenAI for embeddings, but OpenAI API key is not set"
         )
 
-    # Set up RediSearch index if long-term memory is enabled
+    # Set up Redis connection if long-term memory is enabled
     if settings.long_term_memory:
-        redis = await get_redis_conn()
-
-        # Get embedding dimensions from model config
-        embedding_model_config = MODEL_CONFIGS.get(settings.embedding_model)
-        vector_dimensions = (
-            str(embedding_model_config.embedding_dimensions)
-            if embedding_model_config
-            else "1536"
-        )
-        distance_metric = "COSINE"
-
-        try:
-            await ensure_search_index_exists(
-                redis,
-                index_name=settings.redisvl_index_name,
-                vector_dimensions=vector_dimensions,
-                distance_metric=distance_metric,
-            )
-        except Exception as e:
-            logger.error(f"Failed to ensure RediSearch index: {e}")
-            raise
+        await get_redis_conn()
 
     # Initialize Docket for background tasks if enabled
     if settings.use_docket:

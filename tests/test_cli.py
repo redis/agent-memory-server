@@ -36,21 +36,30 @@ class TestVersion:
 class TestRebuildIndex:
     """Tests for the rebuild_index command."""
 
-    @patch("agent_memory_server.cli.ensure_search_index_exists")
-    @patch("agent_memory_server.cli.get_redis_conn")
-    def test_rebuild_index_command(self, mock_get_redis_conn, mock_ensure_index):
+    @patch("agent_memory_server.vectorstore_factory.get_vectorstore_adapter")
+    def test_rebuild_index_command(self, mock_get_adapter):
         """Test rebuild_index command execution."""
-        # Use AsyncMock which returns completed awaitables
-        mock_redis = Mock()
-        mock_get_redis_conn.return_value = mock_redis
-        mock_ensure_index.return_value = None
+        from agent_memory_server.vectorstore_adapter import RedisVectorStoreAdapter
+
+        # Create a mock adapter with a mock index
+        mock_index = Mock()
+        mock_index.name = "test_index"
+        mock_index.create = Mock()
+
+        mock_vectorstore = Mock()
+        mock_vectorstore.index = mock_index
+
+        mock_adapter = Mock(spec=RedisVectorStoreAdapter)
+        mock_adapter.vectorstore = mock_vectorstore
+
+        mock_get_adapter.return_value = mock_adapter
 
         runner = CliRunner()
         result = runner.invoke(rebuild_index)
 
         assert result.exit_code == 0
-        mock_get_redis_conn.assert_called_once()
-        mock_ensure_index.assert_called_once_with(mock_redis, overwrite=True)
+        mock_get_adapter.assert_called_once()
+        mock_index.create.assert_called_once_with(overwrite=True)
 
 
 class TestMigrateMemories:
@@ -440,7 +449,6 @@ class TestScheduleTask:
 class TestTaskWorker:
     """Tests for the task_worker command."""
 
-    @patch("agent_memory_server.cli.ensure_search_index_exists")
     @patch("agent_memory_server.cli.get_redis_conn")
     @patch("docket.Worker.run")
     @patch("agent_memory_server.cli.settings")
@@ -449,7 +457,6 @@ class TestTaskWorker:
         mock_settings,
         mock_worker_run,
         mock_get_redis_conn,
-        mock_ensure_index,
         redis_url,
     ):
         """Test successful task worker start."""
@@ -460,7 +467,6 @@ class TestTaskWorker:
         mock_worker_run.return_value = None
         mock_redis = AsyncMock()
         mock_get_redis_conn.return_value = mock_redis
-        mock_ensure_index.return_value = None
 
         runner = CliRunner()
         result = runner.invoke(
@@ -481,7 +487,6 @@ class TestTaskWorker:
         assert result.exit_code == 1
         assert "Docket is disabled in settings" in result.output
 
-    @patch("agent_memory_server.cli.ensure_search_index_exists")
     @patch("agent_memory_server.cli.get_redis_conn")
     @patch("docket.Worker.run")
     @patch("agent_memory_server.cli.settings")
@@ -490,7 +495,6 @@ class TestTaskWorker:
         mock_settings,
         mock_worker_run,
         mock_get_redis_conn,
-        mock_ensure_index,
         redis_url,
     ):
         """Test task worker with default parameters."""
@@ -501,7 +505,6 @@ class TestTaskWorker:
         mock_worker_run.return_value = None
         mock_redis = AsyncMock()
         mock_get_redis_conn.return_value = mock_redis
-        mock_ensure_index.return_value = None
 
         runner = CliRunner()
         result = runner.invoke(task_worker)

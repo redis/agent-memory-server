@@ -21,7 +21,7 @@ from agent_memory_server.migrations import (
     migrate_add_memory_hashes_1,
     migrate_add_memory_type_3,
 )
-from agent_memory_server.utils.redis import ensure_search_index_exists, get_redis_conn
+from agent_memory_server.utils.redis import get_redis_conn
 
 
 logger = get_logger(__name__)
@@ -46,11 +46,26 @@ def rebuild_index():
     """Rebuild the search index."""
     import asyncio
 
+    from agent_memory_server.vectorstore_adapter import RedisVectorStoreAdapter
+    from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
+
     configure_logging()
 
     async def setup_and_run():
-        redis = await get_redis_conn()
-        await ensure_search_index_exists(redis, overwrite=True)
+        # Get the vectorstore adapter
+        adapter = await get_vectorstore_adapter()
+
+        # Only Redis adapter supports index rebuilding
+        if isinstance(adapter, RedisVectorStoreAdapter):
+            index = adapter.vectorstore.index
+            logger.info(f"Dropping and recreating index '{index.name}'")
+            index.create(overwrite=True)
+            logger.info("Index rebuilt successfully")
+        else:
+            logger.error(
+                "Index rebuilding is only supported for Redis vectorstore. "
+                "Current vectorstore does not support this operation."
+            )
 
     asyncio.run(setup_and_run())
 
@@ -200,8 +215,7 @@ def schedule_task(task_path: str, args: list[str]):
             sys.exit(1)
 
     async def setup_and_run_task():
-        redis = await get_redis_conn()
-        await ensure_search_index_exists(redis)
+        await get_redis_conn()
 
         # Import the task function
         module_path, function_name = task_path.rsplit(".", 1)
@@ -269,14 +283,8 @@ def task_worker(concurrency: int, redelivery_timeout: int):
                 raise
 
     async def _run_worker():
-        # Ensure Redis stream/consumer group and search index exist before starting worker
         await _ensure_stream_and_group()
-        try:
-            redis = await get_redis_conn()
-            # Don't overwrite if an index already exists; just ensure it's present
-            await ensure_search_index_exists(redis, overwrite=False)
-        except Exception as e:
-            logger.warning(f"Failed to ensure search index exists: {e}")
+        await get_redis_conn()
         await Worker.run(
             docket_name=settings.docket_name,
             url=settings.redis_url,

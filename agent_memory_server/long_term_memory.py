@@ -49,10 +49,7 @@ from agent_memory_server.utils.recency import (
     rerank_with_recency,
     update_memory_hash_if_text_changed,
 )
-from agent_memory_server.utils.redis import (
-    ensure_search_index_exists,
-    get_redis_conn,
-)
+from agent_memory_server.utils.redis import get_redis_conn
 from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
 
 
@@ -613,19 +610,6 @@ async def compact_long_term_memories(
         # Get the correct index name
         index_name = Keys.search_index_name()
         logger.info(f"Using index '{index_name}' for semantic duplicate compaction.")
-
-        # Check if the index exists before proceeding
-        try:
-            await redis_client.execute_command(f"FT.INFO {index_name}")
-        except Exception as info_e:
-            if "unknown index name" in str(info_e).lower():
-                logger.info(f"Search index {index_name} doesn't exist, creating it")
-                # Ensure 'get_search_index' is called with the correct name to create it if needed
-                await ensure_search_index_exists(redis_client, index_name=index_name)
-            else:
-                logger.warning(
-                    f"Error checking index '{index_name}': {info_e} - attempting to proceed."
-                )
 
         # Get all memories using the vector store adapter
         try:

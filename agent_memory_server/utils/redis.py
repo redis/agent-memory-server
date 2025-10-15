@@ -4,16 +4,12 @@ import logging
 from typing import Any
 
 from redis.asyncio import Redis
-from redisvl.index import AsyncSearchIndex
 
 from agent_memory_server.config import settings
-from agent_memory_server.vectorstore_adapter import RedisVectorStoreAdapter
-from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
 
 
 logger = logging.getLogger(__name__)
 _redis_pool: Redis | None = None
-_index: AsyncSearchIndex | None = None
 
 
 async def get_redis_conn(url: str = settings.redis_url, **kwargs) -> Redis:
@@ -33,39 +29,6 @@ async def get_redis_conn(url: str = settings.redis_url, **kwargs) -> Redis:
     if _redis_pool is None:
         _redis_pool = Redis.from_url(url, **kwargs)
     return _redis_pool
-
-
-async def ensure_search_index_exists(
-    redis: Redis,
-    index_name: str = settings.redisvl_index_name,
-    vector_dimensions: str = settings.redisvl_vector_dimensions,
-    distance_metric: str = settings.redisvl_distance_metric,
-    overwrite: bool = True,
-) -> None:
-    """
-    Ensure that the async search index exists, create it if it doesn't.
-    This function is deprecated and only exists for compatibility.
-    The VectorStore adapter now handles index creation automatically.
-
-    Args:
-        redis: A Redis client instance
-        vector_dimensions: Dimensions of the embedding vectors
-        distance_metric: Distance metric to use (default: COSINE)
-        index_name: The name of the index
-    """
-    # If this is Redis, creating the adapter will create the index.
-    adapter = await get_vectorstore_adapter()
-
-    if overwrite:
-        if isinstance(adapter, RedisVectorStoreAdapter):
-            index = adapter.vectorstore.index
-            if index is not None:
-                index.create(overwrite=True)
-        else:
-            logger.warning(
-                "Overwriting the search index is only supported for RedisVectorStoreAdapter. "
-                "Consult your vector store's documentation to learn how to recreate the index."
-            )
 
 
 def safe_get(doc: Any, key: str, default: Any | None = None) -> Any:
