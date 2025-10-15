@@ -48,6 +48,17 @@ class MemoryTypeEnum(str, Enum):
     MESSAGE = "message"
 
 
+class MemoryStrategyConfig(BaseModel):
+    """Configuration for memory extraction strategy."""
+
+    strategy: Literal["discrete", "summary", "preferences", "custom"] = Field(
+        default="discrete", description="Type of memory extraction strategy to use"
+    )
+    config: dict[str, Any] = Field(
+        default_factory=dict, description="Strategy-specific configuration options"
+    )
+
+
 class MemoryMessage(BaseModel):
     """A message in the memory system"""
 
@@ -197,6 +208,10 @@ class WorkingMemory(BaseModel):
     namespace: str | None = Field(
         default=None,
         description="Optional namespace for the working memory",
+    )
+    long_term_memory_strategy: MemoryStrategyConfig = Field(
+        default_factory=MemoryStrategyConfig,
+        description="Configuration for memory extraction strategy when promoting to long-term memory",
     )
 
     # TTL and timestamps

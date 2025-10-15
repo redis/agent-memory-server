@@ -118,14 +118,12 @@ Working memory can automatically extract and promote memories to long-term stora
 By default, the memory server automatically analyzes working memory content and extracts meaningful memories in the background. This is ideal when you want the memory server to handle all LLM operations internally.
 
 ```python
-# Configure automatic extraction strategy
+# Configure automatic extraction strategy - use "summary" to create conversation summaries
 working_memory = WorkingMemory(
     session_id="chat_123",
     long_term_memory_strategy=MemoryStrategyConfig(
-        extraction_strategy="thread_aware",  # Analyzes conversation threads
-        custom_prompt="Extract key facts about user preferences and important events",
-        enable_topic_extraction=True,
-        enable_entity_extraction=True
+        strategy="summary",  # Creates conversation summaries
+        config={"max_summary_length": 500}
     ),
     messages=[
         MemoryMessage(role="user", content="I'm a software engineer at TechCorp"),
@@ -134,9 +132,32 @@ working_memory = WorkingMemory(
     ]
 )
 
-# The server will automatically extract memories like:
+# The server will automatically extract a summary like:
+# - "User is a software engineer at TechCorp who works with Python and React for web applications"
+
+# Or use "discrete" strategy (default) to extract individual facts:
+working_memory = WorkingMemory(
+    session_id="chat_123",
+    long_term_memory_strategy=MemoryStrategyConfig(
+        strategy="discrete",  # Extracts individual semantic and episodic facts
+        config={}
+    ),
+    messages=[...]
+)
+
+# The discrete strategy will extract separate memories like:
 # - "User is a software engineer at TechCorp"
 # - "User works with Python and React for web applications"
+
+# Or use "custom" strategy with your own extraction prompt:
+working_memory = WorkingMemory(
+    session_id="chat_123",
+    long_term_memory_strategy=MemoryStrategyConfig(
+        strategy="custom",
+        config={"custom_prompt": "Extract key facts about user preferences and important events"}
+    ),
+    messages=[...]
+)
 ```
 
 ### Your LLM Extracts (Client-Side)

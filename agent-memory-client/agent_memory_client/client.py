@@ -40,6 +40,7 @@ from .models import (
     MemoryMessage,
     MemoryRecord,
     MemoryRecordResults,
+    MemoryStrategyConfig,
     MemoryTypeEnum,
     ModelNameLiteral,
     RecencyConfig,
@@ -304,6 +305,7 @@ class MemoryAPIClient:
         namespace: str | None = None,
         model_name: ModelNameLiteral | None = None,
         context_window_max: int | None = None,
+        long_term_memory_strategy: MemoryStrategyConfig | None = None,
     ) -> tuple[bool, WorkingMemory]:
         """
         Get working memory for a session, creating it if it doesn't exist.
@@ -318,6 +320,8 @@ class MemoryAPIClient:
             namespace: Optional namespace for the session
             model_name: Optional model name to determine context window size
             context_window_max: Optional direct specification of context window tokens
+            long_term_memory_strategy: Optional strategy configuration for memory extraction
+                when promoting to long-term memory
 
         Returns:
             Tuple of (created: bool, memory: WorkingMemory)
@@ -338,6 +342,16 @@ class MemoryAPIClient:
                 logging.info("Found existing session")
 
             logging.info(f"Session has {len(memory.messages)} messages")
+
+            # With custom memory extraction strategy
+            created, memory = await client.get_or_create_working_memory(
+                session_id="chat_session_456",
+                user_id="user_789",
+                long_term_memory_strategy=MemoryStrategyConfig(
+                    strategy="summary",
+                    config={"max_summary_length": 500}
+                )
+            )
             ```
         """
         try:
@@ -390,6 +404,8 @@ class MemoryAPIClient:
                     memories=[],
                     data={},
                     user_id=user_id,
+                    long_term_memory_strategy=long_term_memory_strategy
+                    or MemoryStrategyConfig(),
                 )
 
                 created_memory = await self.put_working_memory(
@@ -1211,6 +1227,7 @@ class MemoryAPIClient:
         session_id: str,
         namespace: str | None = None,
         user_id: str | None = None,
+        long_term_memory_strategy: MemoryStrategyConfig | None = None,
     ) -> dict[str, Any]:
         """
         Get or create working memory state formatted for LLM consumption.
@@ -1223,6 +1240,8 @@ class MemoryAPIClient:
             session_id: The session ID to get or create memory for
             namespace: Optional namespace for the session
             user_id: Optional user ID for the session
+            long_term_memory_strategy: Optional strategy configuration for memory extraction
+                when promoting to long-term memory
 
         Returns:
             Dict with formatted working memory information and creation status
@@ -1242,6 +1261,15 @@ class MemoryAPIClient:
             logging.info(memory_state["summary"])  # Human-readable summary
             logging.info(f"Messages: {memory_state['message_count']}")
             logging.info(f"Memories: {len(memory_state['memories'])}")
+
+            # With custom memory extraction strategy
+            memory_state = await client.get_or_create_working_memory_tool(
+                session_id="current_session",
+                long_term_memory_strategy=MemoryStrategyConfig(
+                    strategy="preferences",
+                    config={}
+                )
+            )
             ```
         """
         try:
@@ -1249,6 +1277,7 @@ class MemoryAPIClient:
                 session_id=session_id,
                 namespace=namespace or self.config.default_namespace,
                 user_id=user_id,
+                long_term_memory_strategy=long_term_memory_strategy,
             )
 
             # Format for LLM consumption
