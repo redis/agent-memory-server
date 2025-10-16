@@ -37,6 +37,7 @@ from agent_memory_server.models import (
     MemoryPromptResponse,
     MemoryRecord,
     MemoryRecordResults,
+    MemoryStrategyConfig,
     MemoryTypeEnum,
     ModelNameLiteral,
     SearchRequest,
@@ -703,6 +704,7 @@ async def set_working_memory(
     namespace: str | None = settings.default_mcp_namespace,
     user_id: str | None = settings.default_mcp_user_id,
     ttl_seconds: int = 3600,
+    long_term_memory_strategy: MemoryStrategyConfig | None = None,
 ) -> WorkingMemoryResponse:
     """
     Set working memory for a session. This works like the PUT /sessions/{id}/memory API endpoint.
@@ -795,6 +797,12 @@ async def set_working_memory(
         namespace: Optional namespace for scoping
         user_id: Optional user ID
         ttl_seconds: TTL for the working memory (default 1 hour)
+        long_term_memory_strategy: Optional strategy configuration for memory extraction
+            when promoting to long-term memory. Examples:
+            - MemoryStrategyConfig(strategy="discrete", config={})  # Default
+            - MemoryStrategyConfig(strategy="summary", config={"max_summary_length": 500})
+            - MemoryStrategyConfig(strategy="preferences", config={})
+            - MemoryStrategyConfig(strategy="custom", config={"custom_prompt": "..."})
 
     Returns:
         Updated working memory response (may include summarization if window exceeded)
@@ -847,9 +855,10 @@ async def set_working_memory(
 
             processed_messages.append(processed_message)
 
-    # Create the working memory object
-    working_memory_obj = WorkingMemory(
-        session_id=session_id,
+    # Create the UpdateWorkingMemory object (without session_id, which comes from URL path)
+    from agent_memory_server.models import UpdateWorkingMemory
+
+    update_memory_obj = UpdateWorkingMemory(
         namespace=namespace,
         memories=processed_memories,
         messages=processed_messages,
@@ -857,12 +866,13 @@ async def set_working_memory(
         data=data or {},
         user_id=user_id,
         ttl_seconds=ttl_seconds,
+        long_term_memory_strategy=long_term_memory_strategy or MemoryStrategyConfig(),
     )
 
     # Update working memory via the API - this handles summarization and background promotion
     result = await core_put_working_memory(
         session_id=session_id,
-        memory=working_memory_obj,
+        memory=update_memory_obj,
         background_tasks=get_background_tasks(),
     )
 
