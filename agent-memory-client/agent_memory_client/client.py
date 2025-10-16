@@ -343,7 +343,7 @@ class MemoryAPIClient:
 
             logging.info(f"Session has {len(memory.messages)} messages")
 
-            # With custom memory extraction strategy
+            # With memory extraction strategy options
             created, memory = await client.get_or_create_working_memory(
                 session_id="chat_session_456",
                 user_id="user_789",
@@ -1262,12 +1262,11 @@ class MemoryAPIClient:
             logging.info(f"Messages: {memory_state['message_count']}")
             logging.info(f"Memories: {len(memory_state['memories'])}")
 
-            # With custom memory extraction strategy
+            # With memory extraction strategy options
             memory_state = await client.get_or_create_working_memory_tool(
                 session_id="current_session",
                 long_term_memory_strategy=MemoryStrategyConfig(
                     strategy="preferences",
-                    config={}
                 )
             )
             ```
