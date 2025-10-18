@@ -170,7 +170,7 @@ uv run agent-memory mcp --mode sse --port 9000 --no-worker
 - **[LangChain Integration](https://redis.github.io/agent-memory-server/langchain-integration/)** - Automatic tool conversion for LangChain
 - **[Vector Store Backends](https://redis.github.io/agent-memory-server/vector-store-backends/)** - Configure different vector databases
 - **[Authentication](https://redis.github.io/agent-memory-server/authentication/)** - OAuth2/JWT setup for production
-- **[Memory Types](https://redis.github.io/agent-memory-server/memory-types/)** - Understanding semantic vs episodic memory
+- **[Memory Types](https://redis.github.io/agent-memory-server/long-term-memory/?h=episodic#memory-types)** - Understanding semantic vs episodic memory
 - **[API Reference](https://redis.github.io/agent-memory-server/api/)** - REST API endpoints
 - **[MCP Protocol](https://redis.github.io/agent-memory-server/mcp/)** - Model Context Protocol integration
 
