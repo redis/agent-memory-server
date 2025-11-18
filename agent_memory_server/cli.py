@@ -501,24 +501,44 @@ def show(token_hash: str, output_format: str):
             matching_hashes = [h for h in token_hashes if h.startswith(token_hash)]
 
             if not matching_hashes:
-                if output_format == "text":
+                if output_format == "json":
+                    click.echo(
+                        json.dumps({"error": f"No token found matching '{token_hash}'"})
+                    )
+                    sys.exit(1)
+                else:
                     click.echo(f"No token found matching '{token_hash}'")
-                return None
+                    sys.exit(1)
             if len(matching_hashes) > 1:
-                if output_format == "text":
+                if output_format == "json":
+                    click.echo(
+                        json.dumps(
+                            {
+                                "error": f"Multiple tokens match '{token_hash}'",
+                                "matches": [
+                                    f"{h[:8]}...{h[-8:]}" for h in matching_hashes
+                                ],
+                            }
+                        )
+                    )
+                    sys.exit(1)
+                else:
                     click.echo(f"Multiple tokens match '{token_hash}':")
                     for h in matching_hashes:
                         click.echo(f"  {h[:8]}...{h[-8:]}")
-                return None
+                    sys.exit(1)
             token_hash = matching_hashes[0]
 
         key = Keys.auth_token_key(token_hash)
         token_data = await redis.get(key)
 
         if not token_data:
-            if output_format == "text":
+            if output_format == "json":
+                click.echo(json.dumps({"error": f"Token not found: {token_hash}"}))
+                sys.exit(1)
+            else:
                 click.echo(f"Token not found: {token_hash}")
-            return None
+                sys.exit(1)
 
         try:
             token_info = TokenInfo.model_validate_json(token_data)
@@ -541,13 +561,6 @@ def show(token_hash: str, output_format: str):
                 sys.exit(1)
 
     result = asyncio.run(show_token())
-
-    if result is None:
-        if output_format == "json":
-            click.echo(json.dumps({"error": "Token not found or error occurred"}))
-            sys.exit(1)
-        return
-
     token_hash, token_info, status = result
 
     if output_format == "json":
