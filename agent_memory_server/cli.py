@@ -532,7 +532,9 @@ def show(token_hash: str, output_format: str):
 
         except Exception as e:
             if output_format == "json":
-                click.echo(json.dumps({"error": f"Failed to parse token data: {str(e)}"}))
+                click.echo(
+                    json.dumps({"error": f"Failed to parse token data: {str(e)}"})
+                )
                 sys.exit(1)
             else:
                 click.echo(f"Error processing token: {e}", err=True)
