@@ -94,6 +94,52 @@ class TestTokenCLI:
         mock_redis.expire.assert_called_once()
         mock_redis.sadd.assert_called_once()
 
+    @patch("agent_memory_server.auth.generate_token")
+    @patch("agent_memory_server.cli.get_redis_conn")
+    def test_token_add_command_with_provided_token(
+        self,
+        mock_get_redis,
+        mock_generate_token,
+        mock_redis,
+        cli_runner,
+    ):
+        """Test token add command when a token is provided via --token."""
+        mock_get_redis.return_value = mock_redis
+
+        import json
+
+        provided_token = "test-token-123"
+
+        result = cli_runner.invoke(
+            token,
+            [
+                "add",
+                "--description",
+                "Test token",
+                "--expires-days",
+                "7",
+                "--token",
+                provided_token,
+                "--format",
+                "json",
+            ],
+        )
+
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert data["token"] == provided_token
+        assert data["description"] == "Test token"
+        assert data["expires_at"] is not None
+
+        # generate_token should not be called when a token is provided
+        mock_generate_token.assert_not_called()
+
+        # Verify Redis calls
+        mock_redis.set.assert_called_once()
+        mock_redis.expire.assert_called_once()
+        mock_redis.sadd.assert_called_once()
+
     @patch("agent_memory_server.cli.get_redis_conn")
     def test_token_list_command_empty(self, mock_get_redis, mock_redis, cli_runner):
         """Test token list command with no tokens."""
