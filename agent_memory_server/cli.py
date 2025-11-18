@@ -3,6 +3,7 @@ Command-line interface for agent-memory-server.
 """
 
 import importlib
+import json
 import sys
 from datetime import UTC, datetime, timedelta
 
@@ -305,7 +306,15 @@ def token():
 @token.command()
 @click.option("--description", "-d", required=True, help="Token description")
 @click.option("--expires-days", "-e", type=int, help="Token expiration in days")
-def add(description: str, expires_days: int | None):
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+    help="Output format.",
+)
+def add(description: str, expires_days: int | None, output_format: str):
     """Add a new authentication token."""
     import asyncio
 
@@ -344,20 +353,43 @@ def add(description: str, expires_days: int | None):
         list_key = Keys.auth_tokens_list_key()
         await redis.sadd(list_key, token_hash)
 
+        return token, token_info
+
+    token, token_info = asyncio.run(create_token())
+
+    if output_format == "json":
+        data = {
+            "token": token,
+            "description": token_info.description,
+            "created_at": token_info.created_at.isoformat(),
+            "expires_at": token_info.expires_at.isoformat()
+            if token_info.expires_at
+            else None,
+            "hash": token_info.token_hash,
+        }
+        click.echo(json.dumps(data))
+    else:
+        expires_at = token_info.expires_at
         click.echo("Token created successfully!")
         click.echo(f"Token: {token}")
-        click.echo(f"Description: {description}")
+        click.echo(f"Description: {token_info.description}")
         if expires_at:
             click.echo(f"Expires: {expires_at.isoformat()}")
         else:
             click.echo("Expires: Never")
         click.echo("\nWARNING: Save this token securely. It will not be shown again.")
 
-    asyncio.run(create_token())
-
 
 @token.command()
-def list():
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+    help="Output format.",
+)
+def list(output_format: str):
     """List all authentication tokens."""
     import asyncio
 
@@ -371,12 +403,16 @@ def list():
         list_key = Keys.auth_tokens_list_key()
         token_hashes = await redis.smembers(list_key)
 
-        if not token_hashes:
-            click.echo("No tokens found.")
-            return
+        tokens_data = []
 
-        click.echo("Authentication Tokens:")
-        click.echo("=" * 50)
+        if not token_hashes:
+            if output_format == "text":
+                click.echo("No tokens found.")
+            return tokens_data
+
+        if output_format == "text":
+            click.echo("Authentication Tokens:")
+            click.echo("=" * 50)
 
         for token_hash in token_hashes:
             key = Keys.auth_token_key(token_hash)
@@ -390,27 +426,57 @@ def list():
             try:
                 token_info = TokenInfo.model_validate_json(token_data)
 
-                # Mask the token hash for display
-                masked_hash = token_hash[:8] + "..." + token_hash[-8:]
+                tokens_data.append(
+                    {
+                        "hash": token_hash,
+                        "description": token_info.description,
+                        "created_at": token_info.created_at.isoformat(),
+                        "expires_at": token_info.expires_at.isoformat()
+                        if token_info.expires_at
+                        else None,
+                        "expired": bool(
+                            token_info.expires_at
+                            and datetime.now(UTC) > token_info.expires_at
+                        ),
+                    }
+                )
 
-                click.echo(f"Token: {masked_hash}")
-                click.echo(f"Description: {token_info.description}")
-                click.echo(f"Created: {token_info.created_at.isoformat()}")
-                if token_info.expires_at:
-                    click.echo(f"Expires: {token_info.expires_at.isoformat()}")
-                else:
-                    click.echo("Expires: Never")
-                click.echo("-" * 30)
+                if output_format == "text":
+                    # Mask the token hash for display
+                    masked_hash = token_hash[:8] + "..." + token_hash[-8:]
+
+                    click.echo(f"Token: {masked_hash}")
+                    click.echo(f"Description: {token_info.description}")
+                    click.echo(f"Created: {token_info.created_at.isoformat()}")
+                    if token_info.expires_at:
+                        click.echo(f"Expires: {token_info.expires_at.isoformat()}")
+                    else:
+                        click.echo("Expires: Never")
+                    click.echo("-" * 30)
 
             except Exception as e:
-                click.echo(f"Error processing token {token_hash}: {e}")
+                if output_format == "text":
+                    click.echo(f"Error processing token {token_hash}: {e}")
 
-    asyncio.run(list_tokens())
+        return tokens_data
+
+    tokens_data = asyncio.run(list_tokens())
+
+    if output_format == "json":
+        click.echo(json.dumps(tokens_data))
 
 
 @token.command()
 @click.argument("token_hash")
-def show(token_hash: str):
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+    help="Output format.",
+)
+def show(token_hash: str, output_format: str):
     """Show details for a specific token."""
     import asyncio
 
@@ -430,45 +496,69 @@ def show(token_hash: str):
             matching_hashes = [h for h in token_hashes if h.startswith(token_hash)]
 
             if not matching_hashes:
-                click.echo(f"No token found matching '{token_hash}'")
-                return
+                if output_format == "text":
+                    click.echo(f"No token found matching '{token_hash}'")
+                return None
             if len(matching_hashes) > 1:
-                click.echo(f"Multiple tokens match '{token_hash}':")
-                for h in matching_hashes:
-                    click.echo(f"  {h[:8]}...{h[-8:]}")
-                return
+                if output_format == "text":
+                    click.echo(f"Multiple tokens match '{token_hash}':")
+                    for h in matching_hashes:
+                        click.echo(f"  {h[:8]}...{h[-8:]}")
+                return None
             token_hash = matching_hashes[0]
 
         key = Keys.auth_token_key(token_hash)
         token_data = await redis.get(key)
 
         if not token_data:
-            click.echo(f"Token not found: {token_hash}")
-            return
+            if output_format == "text":
+                click.echo(f"Token not found: {token_hash}")
+            return None
 
         try:
             token_info = TokenInfo.model_validate_json(token_data)
 
-            click.echo("Token Details:")
-            click.echo("=" * 30)
-            click.echo(f"Hash: {token_hash}")
-            click.echo(f"Description: {token_info.description}")
-            click.echo(f"Created: {token_info.created_at.isoformat()}")
-            if token_info.expires_at:
-                click.echo(f"Expires: {token_info.expires_at.isoformat()}")
-                # Check if expired
-                if datetime.now(UTC) > token_info.expires_at:
-                    click.echo("Status: EXPIRED")
-                else:
-                    click.echo("Status: Active")
+            if token_info.expires_at and datetime.now(UTC) > token_info.expires_at:
+                status = "EXPIRED"
             else:
-                click.echo("Expires: Never")
-                click.echo("Status: Active")
+                status = "Active"
+
+            return token_hash, token_info, status
 
         except Exception as e:
-            click.echo(f"Error processing token: {e}")
+            if output_format == "text":
+                click.echo(f"Error processing token: {e}")
+            return None
 
-    asyncio.run(show_token())
+    result = asyncio.run(show_token())
+
+    if result is None:
+        return
+
+    token_hash, token_info, status = result
+
+    if output_format == "json":
+        data = {
+            "hash": token_hash,
+            "description": token_info.description,
+            "created_at": token_info.created_at.isoformat(),
+            "expires_at": token_info.expires_at.isoformat()
+            if token_info.expires_at
+            else None,
+            "status": status,
+        }
+        click.echo(json.dumps(data))
+    else:
+        click.echo("Token Details:")
+        click.echo("=" * 30)
+        click.echo(f"Hash: {token_hash}")
+        click.echo(f"Description: {token_info.description}")
+        click.echo(f"Created: {token_info.created_at.isoformat()}")
+        if token_info.expires_at:
+            click.echo(f"Expires: {token_info.expires_at.isoformat()}")
+        else:
+            click.echo("Expires: Never")
+        click.echo(f"Status: {status}")
 
 
 @token.command()
