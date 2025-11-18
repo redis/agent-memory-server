@@ -434,9 +434,14 @@ def list(output_format: str):
                         "expires_at": token_info.expires_at.isoformat()
                         if token_info.expires_at
                         else None,
-                        "expired": bool(
-                            token_info.expires_at
-                            and datetime.now(UTC) > token_info.expires_at
+                        "status": (
+                            "Never Expires"
+                            if not token_info.expires_at
+                            else (
+                                "EXPIRED"
+                                if datetime.now(UTC) > token_info.expires_at
+                                else "Active"
+                            )
                         ),
                     }
                 )
@@ -526,13 +531,19 @@ def show(token_hash: str, output_format: str):
             return token_hash, token_info, status
 
         except Exception as e:
-            if output_format == "text":
-                click.echo(f"Error processing token: {e}")
-            return None
+            if output_format == "json":
+                click.echo(json.dumps({"error": f"Failed to parse token data: {str(e)}"}))
+                sys.exit(1)
+            else:
+                click.echo(f"Error processing token: {e}", err=True)
+                sys.exit(1)
 
     result = asyncio.run(show_token())
 
     if result is None:
+        if output_format == "json":
+            click.echo(json.dumps({"error": "Token not found or error occurred"}))
+            sys.exit(1)
         return
 
     token_hash, token_info, status = result
