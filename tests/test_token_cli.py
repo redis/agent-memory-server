@@ -1,5 +1,6 @@
 """Integration tests for token CLI commands."""
 
+import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
@@ -66,8 +67,6 @@ class TestTokenCLI:
     ):
         """Test token add command with JSON output."""
         mock_get_redis.return_value = mock_redis
-
-        import json
 
         result = cli_runner.invoke(
             token,
@@ -139,8 +138,6 @@ class TestTokenCLI:
         """Test token list command with JSON output."""
         mock_get_redis.return_value = mock_redis
 
-        import json
-
         # Create sample token data
         token_hash = "test_hash_123456789012345678901234567890"
         token_info = TokenInfo(
@@ -193,8 +190,6 @@ class TestTokenCLI:
     ):
         """Test token show command with JSON output."""
         mock_get_redis.return_value = mock_redis
-
-        import json
 
         # Create sample token data
         token_hash = "test_hash_123456789012345678901234567890"
