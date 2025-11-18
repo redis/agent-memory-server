@@ -314,7 +314,18 @@ def token():
     show_default=True,
     help="Output format.",
 )
-def add(description: str, expires_days: int | None, output_format: str):
+@click.option(
+    "--token",
+    "provided_token",
+    type=str,
+    help="Use a pre-generated token instead of generating a new one.",
+)
+def add(
+    description: str,
+    expires_days: int | None,
+    output_format: str,
+    provided_token: str | None,
+) -> None:
     """Add a new authentication token."""
     import asyncio
 
@@ -324,9 +335,9 @@ def add(description: str, expires_days: int | None, output_format: str):
     async def create_token():
         redis = await get_redis_conn()
 
-        # Generate token
-        token = generate_token()
-        token_hash = hash_token(token)
+        # Determine token value
+        token_value = provided_token or generate_token()
+        token_hash = hash_token(token_value)
 
         # Calculate expiration
         now = datetime.now(UTC)
@@ -353,7 +364,7 @@ def add(description: str, expires_days: int | None, output_format: str):
         list_key = Keys.auth_tokens_list_key()
         await redis.sadd(list_key, token_hash)
 
-        return token, token_info
+        return token_value, token_info
 
     token, token_info = asyncio.run(create_token())
 
