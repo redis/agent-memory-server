@@ -1,5 +1,6 @@
 """Integration tests for token CLI commands."""
 
+import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
@@ -61,6 +62,85 @@ class TestTokenCLI:
         mock_redis.sadd.assert_called_once()
 
     @patch("agent_memory_server.cli.get_redis_conn")
+    def test_token_add_command_json_output(
+        self, mock_get_redis, mock_redis, cli_runner
+    ):
+        """Test token add command with JSON output."""
+        mock_get_redis.return_value = mock_redis
+
+        result = cli_runner.invoke(
+            token,
+            [
+                "add",
+                "--description",
+                "Test token",
+                "--expires-days",
+                "30",
+                "--format",
+                "json",
+            ],
+        )
+
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert data["description"] == "Test token"
+        assert data["token"]
+        assert data["hash"]
+        assert data["expires_at"] is not None
+
+        # Verify Redis calls
+        mock_redis.set.assert_called_once()
+        mock_redis.expire.assert_called_once()
+        mock_redis.sadd.assert_called_once()
+
+    @patch("agent_memory_server.auth.generate_token")
+    @patch("agent_memory_server.cli.get_redis_conn")
+    def test_token_add_command_with_provided_token(
+        self,
+        mock_get_redis,
+        mock_generate_token,
+        mock_redis,
+        cli_runner,
+    ):
+        """Test token add command when a token is provided via --token."""
+        mock_get_redis.return_value = mock_redis
+
+        import json
+
+        provided_token = "test-token-123"
+
+        result = cli_runner.invoke(
+            token,
+            [
+                "add",
+                "--description",
+                "Test token",
+                "--expires-days",
+                "7",
+                "--token",
+                provided_token,
+                "--format",
+                "json",
+            ],
+        )
+
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert data["token"] == provided_token
+        assert data["description"] == "Test token"
+        assert data["expires_at"] is not None
+
+        # generate_token should not be called when a token is provided
+        mock_generate_token.assert_not_called()
+
+        # Verify Redis calls
+        mock_redis.set.assert_called_once()
+        mock_redis.expire.assert_called_once()
+        mock_redis.sadd.assert_called_once()
+
+    @patch("agent_memory_server.cli.get_redis_conn")
     def test_token_list_command_empty(self, mock_get_redis, mock_redis, cli_runner):
         """Test token list command with no tokens."""
         mock_get_redis.return_value = mock_redis
@@ -98,6 +178,36 @@ class TestTokenCLI:
         assert "test_has...34567890" in result.output  # Masked hash
 
     @patch("agent_memory_server.cli.get_redis_conn")
+    def test_token_list_command_json_output(
+        self, mock_get_redis, mock_redis, cli_runner
+    ):
+        """Test token list command with JSON output."""
+        mock_get_redis.return_value = mock_redis
+
+        # Create sample token data
+        token_hash = "test_hash_123456789012345678901234567890"
+        token_info = TokenInfo(
+            description="Test token",
+            created_at=datetime.now(UTC),
+            expires_at=datetime.now(UTC) + timedelta(days=30),
+            token_hash=token_hash,
+        )
+
+        mock_redis.smembers.return_value = {token_hash}
+        mock_redis.get.return_value = token_info.model_dump_json()
+
+        result = cli_runner.invoke(token, ["list", "--format", "json"])
+
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert isinstance(data, list)
+        assert len(data) == 1
+        item = data[0]
+        assert item["hash"] == token_hash
+        assert item["description"] == "Test token"
+
+    @patch("agent_memory_server.cli.get_redis_conn")
     def test_token_show_command(self, mock_get_redis, mock_redis, cli_runner):
         """Test token show command."""
         mock_get_redis.return_value = mock_redis
@@ -119,6 +229,41 @@ class TestTokenCLI:
         assert "Token Details:" in result.output
         assert "Test token" in result.output
         assert "Status: Active" in result.output
+
+    @patch("agent_memory_server.cli.get_redis_conn")
+    def test_token_show_command_json_output(
+        self, mock_get_redis, mock_redis, cli_runner
+    ):
+        """Test token show command with JSON output."""
+        mock_get_redis.return_value = mock_redis
+
+        # Create sample token data
+        token_hash = "test_hash_123456789012345678901234567890"
+        token_info = TokenInfo(
+            description="Test token",
+            created_at=datetime.now(UTC),
+            expires_at=datetime.now(UTC) + timedelta(days=30),
+            token_hash=token_hash,
+        )
+
+        mock_redis.get.return_value = token_info.model_dump_json()
+
+        result = cli_runner.invoke(
+            token,
+            [
+                "show",
+                "--format",
+                "json",
+                token_hash,
+            ],
+        )
+
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert data["hash"] == token_hash
+        assert data["description"] == "Test token"
+        assert data["status"] == "Active"
 
     @patch("agent_memory_server.cli.get_redis_conn")
     def test_token_show_command_partial_hash(
@@ -149,12 +294,73 @@ class TestTokenCLI:
     def test_token_show_command_not_found(self, mock_get_redis, mock_redis, cli_runner):
         """Test token show command with non-existent token."""
         mock_get_redis.return_value = mock_redis
-        mock_redis.get.return_value = None
+        mock_redis.smembers.return_value = set()
 
         result = cli_runner.invoke(token, ["show", "nonexistent"])
 
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         assert "No token found matching" in result.output
+
+    @patch("agent_memory_server.cli.get_redis_conn")
+    def test_token_show_command_not_found_json(
+        self, mock_get_redis, mock_redis, cli_runner
+    ):
+        """Test token show command with non-existent token (JSON output)."""
+        mock_get_redis.return_value = mock_redis
+        mock_redis.smembers.return_value = set()
+
+        import json
+
+        result = cli_runner.invoke(token, ["show", "nonexistent", "--format", "json"])
+
+        assert result.exit_code == 1
+        data = json.loads(result.output)
+        assert "error" in data
+        assert "No token found matching" in data["error"]
+
+    @patch("agent_memory_server.cli.get_redis_conn")
+    def test_token_show_command_multiple_matches_json(
+        self, mock_get_redis, mock_redis, cli_runner
+    ):
+        """Test token show command with multiple matches (JSON output)."""
+        mock_get_redis.return_value = mock_redis
+
+        # Create multiple token hashes with same prefix
+        token_hashes = {
+            "test_hash_111111111111111111111111111111",
+            "test_hash_222222222222222222222222222222",
+        }
+
+        mock_redis.smembers.return_value = token_hashes
+
+        import json
+
+        result = cli_runner.invoke(token, ["show", "test_hash", "--format", "json"])
+
+        assert result.exit_code == 1
+        data = json.loads(result.output)
+        assert "error" in data
+        assert "Multiple tokens match" in data["error"]
+        assert "matches" in data
+        assert len(data["matches"]) == 2
+
+    @patch("agent_memory_server.cli.get_redis_conn")
+    def test_token_show_command_token_not_in_redis_json(
+        self, mock_get_redis, mock_redis, cli_runner
+    ):
+        """Test token show command when token not in Redis (JSON output)."""
+        mock_get_redis.return_value = mock_redis
+        mock_redis.get.return_value = None
+
+        import json
+
+        token_hash = "test_hash_123456789012345678901234567890"
+        result = cli_runner.invoke(token, ["show", token_hash, "--format", "json"])
+
+        assert result.exit_code == 1
+        data = json.loads(result.output)
+        assert "error" in data
+        assert "Token not found" in data["error"]
 
     @patch("agent_memory_server.cli.get_redis_conn")
     def test_token_remove_command_with_confirmation(
