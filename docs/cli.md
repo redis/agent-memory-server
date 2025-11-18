@@ -134,13 +134,15 @@ Manages authentication tokens for token-based authentication. The token command 
 Creates a new authentication token.
 
 ```bash
-agent-memory token add --description "DESCRIPTION" [--expires-days DAYS]
+agent-memory token add --description "DESCRIPTION" [--expires-days DAYS] [--format text|json] [--token TOKEN_VALUE]
 ```
 
 **Options:**
 
 - `--description TEXT` / `-d TEXT`: **Required**. Description for the token (e.g., "API access for service X")
 - `--expires-days INTEGER` / `-e INTEGER`: **Optional**. Number of days until token expires. If not specified, token never expires.
+- `--format [text|json]`: **Optional**. Output format. `text` (default) is human-readable; `json` is machine-readable and recommended for CI or scripting.
+- `--token TEXT`: **Optional**. Use a pre-generated token value instead of having the CLI generate one. The CLI will hash and store the token but only prints the plaintext once.
 
 **Examples:**
 
@@ -150,6 +152,12 @@ agent-memory token add --description "API access token" --expires-days 30
 
 # Create a permanent token (no expiration)
 agent-memory token add --description "Service account token"
+
+# Create a token and return JSON (for CI/scripts)
+agent-memory token add --description "CI token" --expires-days 30 --format json
+
+# Register a pre-generated token (e.g., from a secrets manager)
+agent-memory token add --description "Terraform bootstrap" --token "$MY_TOKEN" --format json
 ```
 
 **Security Note:** The generated token is displayed only once. Store it securely as it cannot be retrieved again.
@@ -159,8 +167,10 @@ agent-memory token add --description "Service account token"
 Lists all authentication tokens, showing masked token hashes, descriptions, and expiration dates.
 
 ```bash
-agent-memory token list
+agent-memory token list [--format text|json]
 ```
+
+When `--format json` is used, the command prints a JSON array of token summaries suitable for scripting and CI pipelines. The default `text` format produces human-readable output like the example below.
 
 **Example Output:**
 ```
@@ -183,8 +193,10 @@ Expires: Never
 Shows detailed information about a specific token. Supports partial hash matching for convenience.
 
 ```bash
-agent-memory token show TOKEN_HASH
+agent-memory token show TOKEN_HASH [--format text|json]
 ```
+
+When `--format json` is used, the command prints a JSON object with token details (including status) suitable for scripting and CI pipelines. The default `text` format produces human-readable output.
 
 **Arguments:**
 

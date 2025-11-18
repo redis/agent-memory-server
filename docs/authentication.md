@@ -86,6 +86,57 @@ uv run agent-memory token remove abc12345
 # Remove a token without confirmation
 uv run agent-memory token remove abc12345 --force
 ```
+### CI / Terraform token bootstrapping
+
+You can use the token CLI to bootstrap authentication tokens in CI pipelines and infrastructure-as-code tools like Terraform.
+
+The key features that make this work well are:
+
+- `--format json` on token commands (`add`, `list`, `show`) for machine-readable output
+- `--token` on `token add` to register a pre-generated secret from your CI or secrets manager
+
+#### GitHub Actions example (generate token in CI)
+
+The example below generates a short-lived token during a workflow run and exposes it via `GITHUB_ENV` for later steps:
+
+```yaml
+- name: Create agent-memory token for CI
+  run: |
+    TOKEN_JSON=$(agent-memory token add \
+      --description "CI bootstrap token" \
+      --expires-days 30 \
+      --format json)
+    echo "AGENT_MEMORY_TOKEN=$(echo "$TOKEN_JSON" | jq -r '.token')" >> "$GITHUB_ENV"
+```
+
+Later steps can use `AGENT_MEMORY_TOKEN` as the bearer token when calling the API.
+
+#### Terraform example (register a pre-generated token)
+
+If you generate tokens outside Redis Agent Memory Server (for example via a secrets manager), you can register them using `--token` so the server only ever stores a hash:
+
+```hcl
+variable "agent_memory_token" {
+  type      = string
+  sensitive = true
+}
+
+resource "null_resource" "agent_memory_token" {
+  provisioner "local-exec" {
+    command = <<EOT
+      TOKEN_JSON=$(agent-memory token add \
+        --description "Terraform bootstrap" \
+        --token "${var.agent_memory_token}" \
+        --format json)
+      echo "$TOKEN_JSON" > agent-memory-token.json
+    EOT
+  }
+}
+```
+
+In both cases, store the plaintext token in a secure secret store (GitHub Actions secrets, Terraform variables, Vault, etc.). The server will hash it before storing, and the CLI will only ever print the plaintext once.
+
+
 
 **Security Features:**
 - Tokens are hashed using bcrypt before storage
