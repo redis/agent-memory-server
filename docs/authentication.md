@@ -86,7 +86,7 @@ uv run agent-memory token remove abc12345
 # Remove a token without confirmation
 uv run agent-memory token remove abc12345 --force
 ```
-### CI / Terraform token bootstrapping
+### CI/Terraform token bootstrapping
 
 You can use the token CLI to bootstrap authentication tokens in CI pipelines and infrastructure-as-code tools like Terraform.
 
@@ -110,6 +110,21 @@ The example below generates a short-lived token during a workflow run and expose
 ```
 
 Later steps can use `AGENT_MEMORY_TOKEN` as the bearer token when calling the API.
+**JSON output format for `token add`**
+
+When you use `--format json`, `agent-memory token add` returns a JSON object with fields like:
+
+```json
+{
+  "token": "the-plaintext-token",
+  "hash": "abc12345def67890...",
+  "description": "CI bootstrap token",
+  "created_at": "2025-07-10T18:30:00.000000+00:00",
+  "expires_at": "2025-08-09T18:30:00.000000+00:00"
+}
+```
+
+You can extract any of these fields in your scripts (for example, `.token` or `.hash` with `jq`).
 
 #### Terraform example (register a pre-generated token)
 
@@ -121,12 +136,16 @@ variable "agent_memory_token" {
   sensitive = true
 }
 
-resource "null_resource" "agent_memory_token" {
+resource "terraform_data" "agent_memory_token" {
   provisioner "local-exec" {
+    environment = {
+      AGENT_MEMORY_TOKEN = var.agent_memory_token
+    }
+
     command = <<EOT
       TOKEN_JSON=$(agent-memory token add \
         --description "Terraform bootstrap" \
-        --token "${var.agent_memory_token}" \
+        --token "$AGENT_MEMORY_TOKEN" \
         --format json)
       echo "$TOKEN_JSON" > agent-memory-token.json
     EOT
@@ -134,9 +153,9 @@ resource "null_resource" "agent_memory_token" {
 }
 ```
 
-In both cases, store the plaintext token in a secure secret store (GitHub Actions secrets, Terraform variables, Vault, etc.). The server will hash it before storing, and the CLI will only ever print the plaintext once.
+For Terraform versions earlier than 1.4, you can use a `null_resource` instead of `terraform_data`.
 
-
+In both cases, store the plaintext token in a secure secret store (GitHub Actions secrets, Terraform variables, Vault, etc.). The server will hash it before storing. When the CLI generates a token (without `--token`), it displays the plaintext only once; when using `--token` with a pre-generated value, ensure you've already stored it securely.
 
 **Security Features:**
 - Tokens are hashed using bcrypt before storage

@@ -142,7 +142,7 @@ agent-memory token add --description "DESCRIPTION" [--expires-days DAYS] [--form
 - `--description TEXT` / `-d TEXT`: **Required**. Description for the token (e.g., "API access for service X")
 - `--expires-days INTEGER` / `-e INTEGER`: **Optional**. Number of days until token expires. If not specified, token never expires.
 - `--format [text|json]`: **Optional**. Output format. `text` (default) is human-readable; `json` is machine-readable and recommended for CI or scripting.
-- `--token TEXT`: **Optional**. Use a pre-generated token value instead of having the CLI generate one. The CLI will hash and store the token but only prints the plaintext once.
+- `--token TEXT`: **Optional**. Use a pre-generated token value instead of having the CLI generate one. The CLI will hash and store the provided token; make sure you've stored the plaintext securely in your secrets manager or CI system.
 
 **Examples:**
 
@@ -171,6 +171,25 @@ agent-memory token list [--format text|json]
 ```
 
 When `--format json` is used, the command prints a JSON array of token summaries suitable for scripting and CI pipelines. The default `text` format produces human-readable output like the example below.
+**JSON Output Example:**
+```json
+[
+  {
+    "hash": "abc12345def67890xyz",
+    "description": "API access token",
+    "created_at": "2025-07-10T18:30:00.000000+00:00",
+    "expires_at": "2025-08-09T18:30:00.000000+00:00",
+    "status": "Active"
+  },
+  {
+    "hash": "def09876uvw54321...",
+    "description": "Service account token",
+    "created_at": "2025-07-10T19:00:00.000000+00:00",
+    "expires_at": null,
+    "status": "Never Expires"
+  }
+]
+```
 
 **Example Output:**
 ```
@@ -197,6 +216,16 @@ agent-memory token show TOKEN_HASH [--format text|json]
 ```
 
 When `--format json` is used, the command prints a JSON object with token details (including status) suitable for scripting and CI pipelines. The default `text` format produces human-readable output.
+**JSON Output Example:**
+```json
+{
+  "hash": "abc12345def67890xyz",
+  "description": "API access token",
+  "created_at": "2025-07-10T18:30:00.000000+00:00",
+  "expires_at": "2025-08-09T18:30:00.000000+00:00",
+  "status": "Active"
+}
+```
 
 **Arguments:**
 
