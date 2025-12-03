@@ -24,13 +24,13 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize the application on startup"""
-    logger.info("Starting Redis Agent Memory Server 🤘")
+    logger.info("Starting Redis Agent Memory Server.")
 
     # Verify OAuth2/JWT authentication configuration
     try:
         verify_auth_config()
     except Exception as e:
-        logger.error(f"Authentication configuration error: {e}")
+        logger.exception(f"Authentication configuration error.")
         raise
 
     # Check if the configured models are available
@@ -59,20 +59,24 @@ async def lifespan(app: FastAPI):
                     logger.error(err_msg)
                     raise ValueError(err_msg)
             case ModelProvider.AWS_BEDROCK:
-                if settings.aws_access_key_id and settings.aws_secret_access_key:
-                    return
-                if settings.aws_session_token:
-                    return
-                err_msg = "AWS credentials are not set."
-                logger.error(err_msg)
-                raise ValueError(err_msg)
+                has_access_keys = (
+                    settings.aws_access_key_id and settings.aws_secret_access_key
+                )
+                has_session_token = settings.aws_session_token is not None
+                if not has_access_keys and not has_session_token:
+                    err_msg = "AWS credentials are not set."
+                    logger.error(err_msg)
+                    raise ValueError(err_msg)
 
     # Set up Redis connection if long-term memory is enabled
     if settings.long_term_memory:
+        logger.info(f"Attempting to connect to Redis using at {settings.redis_url}.")
         await get_redis_conn()
+        logger.info("Connected to Redis successfully.")
 
     # Initialize Docket for background tasks if enabled
     if settings.use_docket:
+        logger.info("Attempting to initialize Docket for background tasks.")
         try:
             await register_tasks()
             logger.info("Initialized Docket for background tasks")
@@ -86,7 +90,7 @@ async def lifespan(app: FastAPI):
             raise
 
     logger.info(
-        "Redis Agent Memory Server initialized",
+        "Redis Agent Memory Server initialized.",
         generation_model=settings.generation_model,
         embedding_model=settings.embedding_model,
         long_term_memory=settings.long_term_memory,
