@@ -104,7 +104,7 @@ def create_embeddings() -> Embeddings:
         try:
             from langchain_aws import BedrockEmbeddings
 
-            from agent_memory_server._aws.clients import create_bedrock_client
+            from agent_memory_server._aws.clients import create_bedrock_runtime_client
             from agent_memory_server._aws.utils import bedrock_embedding_model_exists
         except ImportError:
             err_msg: str = (
@@ -124,8 +124,10 @@ def create_embeddings() -> Embeddings:
             logger.error(err_msg)
             raise ValueError(err_msg)
 
-        bedrock_client = create_bedrock_client()
-        return BedrockEmbeddings(model_id=bedrock_model_id, client=bedrock_client)
+        # Create a bedrock-runtime client (not bedrock control plane)
+        # BedrockEmbeddings uses bedrock-runtime for actual inference
+        bedrock_runtime_client = create_bedrock_runtime_client()
+        return BedrockEmbeddings(model_id=bedrock_model_id, client=bedrock_runtime_client)
 
     else:
         raise ValueError(

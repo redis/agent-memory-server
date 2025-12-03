@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from agent_memory_server._aws.clients import create_aws_session, create_bedrock_client
+from agent_memory_server._aws.clients import create_aws_session, create_bedrock_runtime_client, create_bedrock_client
 from agent_memory_server.config import Settings
 
 
@@ -66,7 +66,84 @@ class TestCreateAwsSession:
             assert credentials.token == "test-token-2"
 
 
-class TestCreateBedrockClient:
+class TestCreateBedrockRuntimeClient:
+    """Test the create_bedrock_runtime_client function."""
+
+    def test_create_bedrock_runtime_client_with_defaults(self):
+        """Test creating a Bedrock runtime client with default session."""
+        mock_settings = Settings(
+            region_name="us-east-1",
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+            aws_session_token="test-token",
+        )
+
+        with patch("agent_memory_server._aws.clients.settings", new=mock_settings):
+            with patch(
+                "agent_memory_server._aws.clients.create_aws_session"
+            ) as mock_create_session:
+                mock_session = MagicMock()
+                mock_client = MagicMock()
+                mock_session.client.return_value = mock_client
+                mock_create_session.return_value = mock_session
+
+                result = create_bedrock_runtime_client()
+
+                mock_create_session.assert_called_once_with(region_name=None)
+                mock_session.client.assert_called_once_with(
+                    "bedrock-runtime", region_name="us-east-1"
+                )
+                assert result == mock_client
+
+    def test_create_bedrock_runtime_client_with_explicit_region(self):
+        """Test creating Bedrock runtime client with explicit region."""
+        mock_settings = Settings(
+            region_name="us-east-1",
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+            aws_session_token="test-token",
+        )
+
+        with patch("agent_memory_server._aws.clients.settings", new=mock_settings):
+            with patch(
+                "agent_memory_server._aws.clients.create_aws_session"
+            ) as mock_create_session:
+                mock_session = MagicMock()
+                mock_client = MagicMock()
+                mock_session.client.return_value = mock_client
+                mock_create_session.return_value = mock_session
+
+                result = create_bedrock_runtime_client(region_name="eu-central-1")
+
+                mock_create_session.assert_called_once_with(region_name="eu-central-1")
+                mock_session.client.assert_called_once_with(
+                    "bedrock-runtime", region_name="eu-central-1"
+                )
+                assert result == mock_client
+
+    def test_create_bedrock_runtime_client_with_existing_session(self):
+        """Test creating Bedrock runtime client with an existing session."""
+        mock_settings = Settings(
+            region_name="us-west-2",
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+            aws_session_token="test-token",
+        )
+
+        with patch("agent_memory_server._aws.clients.settings", new=mock_settings):
+            mock_session = MagicMock()
+            mock_client = MagicMock()
+            mock_session.client.return_value = mock_client
+
+            result = create_bedrock_runtime_client(session=mock_session)
+
+            mock_session.client.assert_called_once_with(
+                "bedrock-runtime", region_name="us-west-2"
+            )
+            assert result == mock_client
+
+
+class TestCreateBedrocClient:
     """Test the create_bedrock_client function."""
 
     def test_create_bedrock_client_with_defaults(self):
@@ -122,7 +199,7 @@ class TestCreateBedrockClient:
                 assert result == mock_client
 
     def test_create_bedrock_client_with_existing_session(self):
-        """Test creating Bedrock client with an existing session."""
+        """Test creating Bedrock runtime client with an existing session."""
         mock_settings = Settings(
             region_name="us-west-2",
             aws_access_key_id="test-key",

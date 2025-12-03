@@ -11,24 +11,19 @@ class TestAWSUtilities:
         # Clear the cache for this test
         bedrock_embedding_model_exists.cache_clear()
 
-        mock_paginator = MagicMock()
-        mock_paginator.paginate.return_value = [
-            {
-                "modelSummaries": [
-                    {
-                        "modelId": "amazon.titan-embed-text-v2:0",
-                        "outputModalities": ["EMBEDDING"],
-                    },
-                    {
-                        "modelId": "amazon.titan-embed-text-v1",
-                        "outputModalities": ["EMBEDDING"],
-                    },
-                ]
-            }
-        ]
-
         mock_client = MagicMock()
-        mock_client.get_paginator.return_value = mock_paginator
+        mock_client.list_foundation_models.return_value = {
+            "modelSummaries": [
+                {
+                    "modelId": "amazon.titan-embed-text-v2:0",
+                    "outputModalities": ["EMBEDDING"],
+                },
+                {
+                    "modelId": "amazon.titan-embed-text-v1",
+                    "outputModalities": ["EMBEDDING"],
+                },
+            ]
+        }
 
         with patch(
             "agent_memory_server._aws.utils.create_bedrock_client",
@@ -40,8 +35,7 @@ class TestAWSUtilities:
             )
 
         assert result is True
-        mock_client.get_paginator.assert_called_once_with("list_foundation_models")
-        mock_paginator.paginate.assert_called_once_with(byOutputModality="EMBEDDING")
+        mock_client.list_foundation_models.assert_called_once_with(byOutputModality="EMBEDDING")
 
     def test_bedrock_embedding_model_exists_not_found(self):
         """Test bedrock_embedding_model_exists returns False when model is not found."""
@@ -50,20 +44,15 @@ class TestAWSUtilities:
         # Clear the cache for this test
         bedrock_embedding_model_exists.cache_clear()
 
-        mock_paginator = MagicMock()
-        mock_paginator.paginate.return_value = [
-            {
-                "modelSummaries": [
-                    {
-                        "modelId": "amazon.titan-embed-text-v1",
-                        "outputModalities": ["EMBEDDING"],
-                    },
-                ]
-            }
-        ]
-
         mock_client = MagicMock()
-        mock_client.get_paginator.return_value = mock_paginator
+        mock_client.list_foundation_models.return_value = {
+            "modelSummaries": [
+                {
+                    "modelId": "amazon.titan-embed-text-v1",
+                    "outputModalities": ["EMBEDDING"],
+                },
+            ]
+        }
 
         with patch(
             "agent_memory_server._aws.utils.create_bedrock_client",
@@ -83,21 +72,16 @@ class TestAWSUtilities:
         # Clear the cache for this test
         bedrock_embedding_model_exists.cache_clear()
 
-        mock_paginator = MagicMock()
-        mock_paginator.paginate.return_value = [
-            {
-                "modelSummaries": [
-                    {
-                        "modelId": "cohere.embed-english-v3",
-                        "modelModality": "EMBEDDING",
-                        "outputModalities": [],  # Empty but modelModality is EMBEDDING
-                    },
-                ]
-            }
-        ]
-
         mock_client = MagicMock()
-        mock_client.get_paginator.return_value = mock_paginator
+        mock_client.list_foundation_models.return_value = {
+            "modelSummaries": [
+                {
+                    "modelId": "cohere.embed-english-v3",
+                    "modelModality": "EMBEDDING",
+                    "outputModalities": [],  # Empty but modelModality is EMBEDDING
+                },
+            ]
+        }
 
         with patch(
             "agent_memory_server._aws.utils.create_bedrock_client",
@@ -120,7 +104,7 @@ class TestAWSUtilities:
         bedrock_embedding_model_exists.cache_clear()
 
         mock_client = MagicMock()
-        mock_client.get_paginator.side_effect = ClientError(
+        mock_client.list_foundation_models.side_effect = ClientError(
             {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}},
             "ListFoundationModels",
         )
@@ -143,20 +127,15 @@ class TestAWSUtilities:
         # Clear the cache for this test
         bedrock_embedding_model_exists.cache_clear()
 
-        mock_paginator = MagicMock()
-        mock_paginator.paginate.return_value = [
-            {
-                "modelSummaries": [
-                    {
-                        "modelId": "amazon.titan-embed-text-v2:0",
-                        "outputModalities": ["EMBEDDING"],
-                    },
-                ]
-            }
-        ]
-
         mock_client = MagicMock()
-        mock_client.get_paginator.return_value = mock_paginator
+        mock_client.list_foundation_models.return_value = {
+            "modelSummaries": [
+                {
+                    "modelId": "amazon.titan-embed-text-v2:0",
+                    "outputModalities": ["EMBEDDING"],
+                },
+            ]
+        }
 
         with patch(
             "agent_memory_server._aws.utils.create_bedrock_client",

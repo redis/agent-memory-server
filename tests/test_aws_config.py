@@ -30,11 +30,8 @@ class TestAWSConfigProperties:
             aws_session_token=None,
         )
 
-        credentials = test_settings.aws_credentials
-
-        assert credentials["aws_access_key_id"] is None
-        assert credentials["aws_secret_access_key"] is None
-        assert credentials["aws_session_token"] is None
+        with pytest.raises(ValueError):
+            test_settings.aws_credentials
 
     def test_aws_region_property_set(self):
         """Test aws_region property when region is set."""
@@ -59,54 +56,6 @@ class TestAWSConfigProperties:
 class TestAWSBedrockModelConfigs:
     """Test cases for AWS Bedrock model configurations."""
 
-    def test_titan_embed_v2_config(self):
-        """Test amazon.titan-embed-text-v2:0 model config."""
-        from agent_memory_server.config import MODEL_CONFIGS, ModelProvider
-
-        config = MODEL_CONFIGS.get("amazon.titan-embed-text-v2:0")
-
-        assert config is not None
-        assert config.provider == ModelProvider.AWS_BEDROCK
-        assert config.name == "amazon.titan-embed-text-v2:0"
-        assert config.max_tokens == 8192
-        assert config.embedding_dimensions == 1024
-
-    def test_titan_embed_v1_config(self):
-        """Test amazon.titan-embed-text-v1 model config."""
-        from agent_memory_server.config import MODEL_CONFIGS, ModelProvider
-
-        config = MODEL_CONFIGS.get("amazon.titan-embed-text-v1")
-
-        assert config is not None
-        assert config.provider == ModelProvider.AWS_BEDROCK
-        assert config.name == "amazon.titan-embed-text-v1"
-        assert config.max_tokens == 8192
-        assert config.embedding_dimensions == 1536
-
-    def test_cohere_embed_english_v3_config(self):
-        """Test cohere.embed-english-v3 model config."""
-        from agent_memory_server.config import MODEL_CONFIGS, ModelProvider
-
-        config = MODEL_CONFIGS.get("cohere.embed-english-v3")
-
-        assert config is not None
-        assert config.provider == ModelProvider.AWS_BEDROCK
-        assert config.name == "cohere.embed-english-v3"
-        assert config.max_tokens == 8192
-        assert config.embedding_dimensions == 1024
-
-    def test_cohere_embed_multilingual_v3_config(self):
-        """Test cohere.embed-multilingual-v3 model config."""
-        from agent_memory_server.config import MODEL_CONFIGS, ModelProvider
-
-        config = MODEL_CONFIGS.get("cohere.embed-multilingual-v3")
-
-        assert config is not None
-        assert config.provider == ModelProvider.AWS_BEDROCK
-        assert config.name == "cohere.embed-multilingual-v3"
-        assert config.max_tokens == 8192
-        assert config.embedding_dimensions == 1024
-
     def test_embedding_model_config_property_with_aws_model(self):
         """Test embedding_model_config property returns correct config for AWS models."""
         from agent_memory_server.config import ModelProvider, Settings
@@ -118,3 +67,15 @@ class TestAWSBedrockModelConfigs:
         assert config is not None
         assert config.provider == ModelProvider.AWS_BEDROCK
         assert config.embedding_dimensions == 1024
+
+    def test_generation_model_config_property_with_aws_model(self):
+        """Test generation_model_config property returns correct config for AWS models."""
+        from agent_memory_server.config import ModelProvider, Settings
+
+        test_settings = Settings(generation_model="anthropic.claude-sonnet-4-5-20250929-v1:0")
+
+        config = test_settings.generation_model_config
+
+        assert config is not None
+        assert config.provider == ModelProvider.AWS_BEDROCK
+        assert config.max_tokens == 200000

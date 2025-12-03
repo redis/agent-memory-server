@@ -43,12 +43,31 @@ def create_bedrock_client(
             If not provided, it will be picked up from the environment.
         session (Session | None): The AWS session to use.\
             If not provided, a new session will be created based on the environment.
-
-    Returns:
-        A Bedrock client.
     """
     if session is None:
         session = create_aws_session(region_name=region_name)
     if region_name is None:
         region_name = settings.aws_region
     return session.client("bedrock", region_name=region_name)
+
+
+def create_bedrock_runtime_client(
+    region_name: str | None = None,
+    session: Session | None = None,
+) -> "BedrockClient":
+    """Create a Bedrock runtime client.
+
+    Args:
+        region_name (str | None): The AWS region to use.\
+            If not provided, it will be picked up from the environment.
+        session (Session | None): The AWS session to use.\
+            If not provided, a new session will be created based on the environment.
+
+    Returns:
+        A Bedrock runtime client.
+    """
+    if session is None:
+        session = create_aws_session(region_name=region_name)
+    if region_name is None:
+        region_name = settings.aws_region
+    return session.client("bedrock-runtime", region_name=region_name)

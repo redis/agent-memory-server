@@ -1,4 +1,5 @@
 import os
+import logging
 from enum import Enum
 from typing import Any, Literal
 
@@ -9,6 +10,9 @@ from pydantic_settings import BaseSettings
 
 
 load_dotenv()
+
+
+logger = logging.getLogger(__name__)
 
 
 class ModelProvider(str, Enum):
@@ -360,11 +364,19 @@ Optimized query:"""
         """
         Get a dictionary of AWS credentials.
         """
-        credentials: dict[str, str] = {
+        possible_credentials: dict[str, str | None] = {
             "aws_access_key_id": self.aws_access_key_id or None,
             "aws_secret_access_key": self.aws_secret_access_key or None,
             "aws_session_token": self.aws_session_token or None,
         }
+        credentials: dict[str, str] = {
+            k: v for k, v in possible_credentials.items()
+            if v is not None
+        }
+        if not credentials:
+            err_msg = "AWS credentials are not set."
+            logger.error(err_msg)
+            raise ValueError(err_msg)
         return credentials
 
     @property

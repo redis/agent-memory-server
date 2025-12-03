@@ -633,44 +633,41 @@ class TestCreateEmbeddings:
         mock_model_config = MagicMock()
         mock_model_config.provider = "aws-bedrock"
 
-        # Create mock modules for langchain_aws
-        mock_langchain_aws = MagicMock()
+        # Create mock for BedrockEmbeddings
         mock_bedrock_embeddings_class = MagicMock()
-        mock_langchain_aws.BedrockEmbeddings = mock_bedrock_embeddings_class
-
         mock_embeddings_instance = MagicMock()
         mock_bedrock_embeddings_class.return_value = mock_embeddings_instance
 
-        # Mock the _aws modules
-        mock_create_client = MagicMock()
+        # Mock the runtime client (not control plane client)
+        mock_runtime_client = MagicMock()
+        mock_create_runtime_client = MagicMock(return_value=mock_runtime_client)
         mock_model_exists = MagicMock(return_value=True)
-        mock_aws_clients = MagicMock()
-        mock_aws_utils = MagicMock()
-        mock_aws_clients.create_bedrock_client = mock_create_client
-        mock_aws_utils.bedrock_embedding_model_exists = mock_model_exists
 
         with (
             patch("agent_memory_server.vectorstore_factory.settings") as mock_settings,
-            patch.dict(
-                sys.modules,
-                {
-                    "langchain_aws": mock_langchain_aws,
-                    "agent_memory_server._aws.clients": mock_aws_clients,
-                    "agent_memory_server._aws.utils": mock_aws_utils,
-                },
+            patch(
+                "agent_memory_server._aws.clients.create_bedrock_runtime_client",
+                mock_create_runtime_client,
             ),
+            patch(
+                "agent_memory_server._aws.utils.bedrock_embedding_model_exists",
+                mock_model_exists,
+            ),
+            patch.dict(sys.modules, {"langchain_aws": MagicMock()}),
         ):
+            # Setup the langchain_aws mock properly
+            import langchain_aws
+
+            langchain_aws.BedrockEmbeddings = mock_bedrock_embeddings_class
+
             mock_settings.embedding_model_config = mock_model_config
             mock_settings.embedding_model = "amazon.titan-embed-text-v2:0"
             mock_settings.aws_region = "us-east-1"
 
-            mock_client = MagicMock()
-            mock_create_client.return_value = mock_client
-
             result = create_embeddings()
 
             assert result == mock_embeddings_instance
-            mock_create_client.assert_called_once()
+            mock_create_runtime_client.assert_called_once()
             mock_model_exists.assert_called_once_with(
                 "amazon.titan-embed-text-v2:0",
                 region_name="us-east-1",
