@@ -55,6 +55,23 @@ OPENAI_API_BASE=https://api.openai.com/v1
 ANTHROPIC_API_BASE=https://api.anthropic.com
 ```
 
+### AWS Bedrock Configuration
+```bash
+# AWS Region (required for Bedrock)
+REGION_NAME=us-east-1
+
+# AWS Credentials (optional - can use IAM roles, AWS CLI profiles, or credentials file)
+AWS_ACCESS_KEY_ID=your-access-key-id
+AWS_SECRET_ACCESS_KEY=your-secret-access-key
+AWS_SESSION_TOKEN=your-session-token  # Optional, for temporary credentials
+
+# Use a Bedrock embedding model
+EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
+REDISVL_VECTOR_DIMENSIONS=1024  # Must match the embedding model dimensions
+```
+
+For detailed AWS Bedrock setup, see [AWS Bedrock](aws-bedrock.md).
+
 ### Server Ports
 ```bash
 PORT=8000          # REST API port (default: 8000)
@@ -180,10 +197,18 @@ uv run agent-memory task-worker --concurrency 5 --redelivery-timeout 60
 - `claude-3-opus-latest` - Most capable Claude model
 - Version-specific models also supported (e.g., `claude-3-5-sonnet-20241022`)
 
-### Embedding Models (OpenAI only)
+### Embedding Models (OpenAI)
 - `text-embedding-3-small` - 1536 dimensions (recommended)
 - `text-embedding-3-large` - 3072 dimensions (higher accuracy)
 - `text-embedding-ada-002` - Legacy model (1536 dimensions)
+
+### Embedding Models (AWS Bedrock)
+- `amazon.titan-embed-text-v2:0` - 1024 dimensions (recommended)
+- `amazon.titan-embed-text-v1` - 1536 dimensions
+- `cohere.embed-english-v3` - 1024 dimensions
+- `cohere.embed-multilingual-v3` - 1024 dimensions
+
+See [AWS Bedrock](aws-bedrock.md) for detailed setup instructions.
 
 ## Configuration Examples
 

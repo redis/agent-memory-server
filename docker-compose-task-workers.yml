@@ -2,10 +2,18 @@ services:
   # For testing a production-like setup, you can run this API and the
   # task-worker container. This API container does NOT use --no-worker, so when
   # it starts background work, the task-worker will process those tasks.
+  #
+  # Build targets:
+  #   - standard (default): OpenAI/Anthropic support only
+  #   - aws: Includes AWS Bedrock embedding models support
+  #
+  # To use AWS Bedrock, set DOCKER_TARGET=aws before running docker-compose:
+  #   DOCKER_TARGET=aws docker-compose -f docker-compose-task-workers.yml up --build
   api:
     build:
       context: .
       dockerfile: Dockerfile
+      target: ${DOCKER_TARGET:-standard}
     ports:
       - "8000:8000"
     environment:
@@ -41,6 +49,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: ${DOCKER_TARGET:-standard}
     environment:
       - REDIS_URL=redis://redis:6379
       - PORT=9050
@@ -62,6 +71,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: ${DOCKER_TARGET:-standard}
     environment:
       - REDIS_URL=redis://redis:6379
       # Add your API keys here or use a .env file

@@ -1,10 +1,18 @@
 services:
   # This API service uses --no-worker to run without a worker. When it starts
   # background tasks, they run immediately in the API process.
+  #
+  # Build targets:
+  #   - standard (default): OpenAI/Anthropic support only
+  #   - aws: Includes AWS Bedrock embedding models support
+  #
+  # To use AWS Bedrock, set DOCKER_TARGET=aws before running docker-compose:
+  #   DOCKER_TARGET=aws docker-compose up --build
   api:
     build:
       context: .
       dockerfile: Dockerfile
+      target: ${DOCKER_TARGET:-standard}
     ports:
       - "8000:8000"
     environment:
@@ -39,6 +47,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: ${DOCKER_TARGET:-standard}
     environment:
       - REDIS_URL=redis://redis:6379
       - PORT=9050
@@ -60,6 +69,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: ${DOCKER_TARGET:-standard}
     environment:
       - REDIS_URL=redis://redis:6379
       # Add your API keys here or use a .env file
