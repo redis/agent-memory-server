@@ -1,10 +1,15 @@
-# AWS Bedrock Embedding Models
+# AWS Bedrock Models
 
-The Redis Agent Memory Server supports [Amazon Bedrock](https://aws.amazon.com/bedrock/) embedding models as an alternative to OpenAI embeddings. This allows you to use AWS-native embedding models while keeping your data within the AWS ecosystem.
+The Redis Agent Memory Server supports [Amazon Bedrock](https://aws.amazon.com/bedrock/) for both **embedding models** and **LLM generation models**. This allows you to use AWS-native AI models while keeping your data within the AWS ecosystem.
 
 ## Overview
 
-Amazon Bedrock provides access to several embedding models that can be used for semantic search and memory retrieval:
+Amazon Bedrock provides access to a wide variety of foundation models from leading AI providers. The Redis Agent Memory Server supports using Bedrock for:
+
+1. **Embedding Models** - For semantic search and memory retrieval
+2. **LLM Generation Models** - For memory extraction, summarization, and topic modeling
+
+### Supported Embedding Models
 
 | Model ID | Provider | Dimensions | Description |
 |----------|----------|------------|-------------|
@@ -12,6 +17,16 @@ Amazon Bedrock provides access to several embedding models that can be used for 
 | `amazon.titan-embed-text-v1` | Amazon | 1536 | Original Titan embedding model |
 | `cohere.embed-english-v3` | Cohere | 1024 | English-focused embeddings |
 | `cohere.embed-multilingual-v3` | Cohere | 1024 | Multilingual embeddings |
+
+### Pre-configured LLM Generation Models
+
+The following models are pre-configured in the codebase:
+
+| Model ID | Provider | Max Tokens | Description |
+|----------|----------|------------|-------------|
+| `anthropic.claude-sonnet-4-5-20250929-v1:0` | Anthropic | 200,000 | Claude 4.5 Sonnet |
+| `anthropic.claude-haiku-4-5-20251001-v1:0` | Anthropic | 200,000 | Claude 4.5 Haiku |
+| `anthropic.claude-opus-4-5-20251101-v1:0` | Anthropic | 200,000 | Claude 4.5 Opus |
 
 ## Installation
 
@@ -31,14 +46,20 @@ This installs:
 
 ### Environment Variables
 
-Configure the following environment variables to use Bedrock embeddings:
+Configure the following environment variables to use Bedrock models:
 
 ```bash
-# Required: Set the embedding model to a Bedrock model ID
-EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
-
 # Required: AWS region where Bedrock is available
 REGION_NAME=us-east-1
+
+# For Bedrock Embedding Models
+EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
+
+# For Bedrock LLM Generation Models (optional)
+GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
+FAST_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
+SLOW_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
+TOPIC_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
 
 # AWS Credentials (choose one method below)
 ```
@@ -158,7 +179,9 @@ For production, scope down the `Resource` to specific model ARNs:
             "Effect": "Allow",
             "Action": "bedrock:InvokeModel",
             "Resource": [
-                "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v2:0"
+                "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v2:0",
+                "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0",
+                "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0"
             ]
         },
         {
@@ -169,6 +192,8 @@ For production, scope down the `Resource` to specific model ARNs:
     ]
 }
 ```
+
+**Note**: When using Bedrock LLM models for generation tasks (memory extraction, summarization, topic modeling), ensure your IAM policy includes permissions for all the models you've configured (`GENERATION_MODEL`, `FAST_MODEL`, `SLOW_MODEL`, `TOPIC_MODEL`).
 
 ## Vector Dimensions
 
@@ -182,14 +207,12 @@ REDISVL_VECTOR_DIMENSIONS=1024
 REDISVL_VECTOR_DIMENSIONS=1536
 ```
 
-## Complete Configuration Example
+## Complete Configuration Examples
 
-Here's a complete example using Amazon Titan embeddings:
-
-### Environment Variables
+### Example 1: Bedrock Embeddings with OpenAI Generation
 
 ```bash
-# Embedding model
+# Embedding model (Bedrock)
 EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
 
 # AWS Configuration
@@ -200,20 +223,48 @@ AWS_SECRET_ACCESS_KEY=your-secret-access-key
 # Vector store dimensions (must match embedding model)
 REDISVL_VECTOR_DIMENSIONS=1024
 
+# Generation model (OpenAI)
+GENERATION_MODEL=gpt-4o
+OPENAI_API_KEY=your-openai-key
+
 # Other settings
 REDIS_URL=redis://localhost:6379
-GENERATION_MODEL=gpt-4o  # Generation still uses OpenAI/Anthropic
+```
+
+### Example 2: Full Bedrock Stack (Recommended for AWS-only deployments)
+
+```bash
+# AWS Configuration
+REGION_NAME=us-east-1
+AWS_ACCESS_KEY_ID=your-access-key-id
+AWS_SECRET_ACCESS_KEY=your-secret-access-key
+
+# Embedding model (Bedrock Titan)
+EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
+REDISVL_VECTOR_DIMENSIONS=1024
+
+# Generation models (Bedrock Claude)
+GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
+FAST_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
+SLOW_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
+TOPIC_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
+
+# Other settings
+REDIS_URL=redis://localhost:6379
 ```
 
 ### YAML Configuration
 
 ```yaml
-# config.yaml
-embedding_model: amazon.titan-embed-text-v2:0
+# config.yaml - Full Bedrock Stack
 region_name: us-east-1
+embedding_model: amazon.titan-embed-text-v2:0
 redisvl_vector_dimensions: 1024
+generation_model: anthropic.claude-sonnet-4-5-20250929-v1:0
+fast_model: anthropic.claude-haiku-4-5-20251001-v1:0
+slow_model: anthropic.claude-sonnet-4-5-20250929-v1:0
+topic_model: anthropic.claude-haiku-4-5-20251001-v1:0
 redis_url: redis://localhost:6379
-generation_model: gpt-4o
 ```
 
 ## Model Validation
@@ -242,7 +293,9 @@ Before using a Bedrock model, you must enable it in the AWS Console:
 
 ## Mixing Providers
 
-You can use Bedrock for embeddings while using OpenAI or Anthropic for text generation:
+You can mix and match providers for different use cases:
+
+### Bedrock Embeddings with OpenAI Generation
 
 ```bash
 # Embeddings via Bedrock
@@ -254,7 +307,39 @@ GENERATION_MODEL=gpt-4o
 OPENAI_API_KEY=your-openai-key
 ```
 
-This is a common pattern when you want to keep embedding data within AWS but leverage the latest generation models.
+### Full Bedrock Stack (Embeddings + Generation)
+
+```bash
+# All AWS - keep everything within your AWS environment
+REGION_NAME=us-east-1
+
+# Embeddings via Bedrock
+EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
+REDISVL_VECTOR_DIMENSIONS=1024
+
+# Generation via Bedrock Claude
+GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
+FAST_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
+SLOW_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
+TOPIC_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
+```
+
+### OpenAI Embeddings with Bedrock Generation
+
+```bash
+# Embeddings via OpenAI
+EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_API_KEY=your-openai-key
+
+# Generation via Bedrock
+REGION_NAME=us-east-1
+GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
+```
+
+This flexibility allows you to:
+- Keep all data within AWS for compliance requirements
+- Use the best model for each task
+- Optimize costs by choosing appropriate models for different operations
 
 ## Troubleshooting
 
@@ -281,6 +366,20 @@ export REGION_NAME=us-east-1
 3. Ensure the model is enabled in Bedrock console
 4. Verify your IAM permissions include `bedrock:ListFoundationModels`
 
+### "Bedrock LLM model not responding correctly"
+
+1. Verify the model ID matches exactly (including version suffix like `:0`)
+2. Check the model is enabled in your Bedrock console
+3. Verify your IAM permissions include `bedrock:InvokeModel` for the specific model
+4. Some models may have different regional availability - check AWS documentation
+
+### "Error creating chat completion with Bedrock"
+
+1. Check that the model ID is correct and the model is enabled
+2. Verify your AWS credentials have `bedrock:InvokeModel` permission
+3. Check the request isn't exceeding the model's token limits
+4. Review CloudWatch logs for detailed error messages
+
 ### Credential Errors
 
 If you see authentication errors:
@@ -289,6 +388,12 @@ If you see authentication errors:
 2. Check the credentials have the required IAM permissions
 3. If using temporary credentials, ensure they haven't expired
 4. Try running `aws sts get-caller-identity` to verify your credentials work
+
+### Model-Specific Issues
+
+**Model IDs**: Ensure you're using the Bedrock-specific model IDs (e.g., `anthropic.claude-sonnet-4-5-20250929-v1:0`) not the direct provider API model IDs.
+
+**Converse API**: The implementation uses `ChatBedrockConverse` from `langchain-aws`, which provides a unified interface for all Bedrock models via the Converse API. Model-specific formatting is handled automatically.
 
 ## Performance Considerations
 

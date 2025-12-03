@@ -1,15 +1,18 @@
 # ============================================
 # BUILDER BASE - Build tools for compilation
 # ============================================
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder-base
+FROM python:3.12-slim-bookworm AS builder-base
 
 WORKDIR /app
+
+# Copy uv binary from official image
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
 # Install build tools (only needed for compilation)
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     g++ \
@@ -20,30 +23,48 @@ RUN apt-get update && apt-get install -y \
 # ============================================
 FROM builder-base AS builder-standard
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    --mount=type=bind,source=agent-memory-client,target=agent-memory-client \
-    uv sync --frozen --no-install-project --no-dev
+# Create virtual environment explicitly
+RUN uv venv .venv
 
-ADD . /app
+# Copy dependency files first for better layer caching
+COPY pyproject.toml uv.lock ./
+COPY agent-memory-client ./agent-memory-client
+
+# Install dependencies into the venv (without the project)
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+    VIRTUAL_ENV=/app/.venv uv sync --frozen --no-install-project --no-dev
+
+# Copy source code
+COPY . /app
+
+# Install the project itself
+RUN --mount=type=cache,target=/root/.cache/uv \
+    . .venv/bin/activate && \
+    uv pip install --no-deps .
 
 # ============================================
 # BUILDER AWS - Compile AWS deps
 # ============================================
 FROM builder-base AS builder-aws
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    --mount=type=bind,source=agent-memory-client,target=agent-memory-client \
-    uv sync --frozen --no-install-project --no-dev --extra aws
+# Create virtual environment explicitly
+RUN uv venv .venv
 
-ADD . /app
+# Copy dependency files first for better layer caching
+COPY pyproject.toml uv.lock ./
+COPY agent-memory-client ./agent-memory-client
+
+# Install dependencies into the venv (without the project)
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --extra aws
+    VIRTUAL_ENV=/app/.venv uv sync --frozen --no-install-project --no-dev --extra aws
+
+# Copy source code
+COPY . /app
+
+# Install the project itself
+RUN --mount=type=cache,target=/root/.cache/uv \
+    . .venv/bin/activate && \
+    uv pip install --no-deps .
 
 # ============================================
 # RUNTIME BASE - Slim image without build tools
@@ -75,16 +96,12 @@ RUN groupadd -r agentmemory && useradd -r -g agentmemory agentmemory
 FROM runtime-base AS standard
 
 # Copy the virtual environment and app from builder
-COPY --from=builder-standard /app /app
-
-RUN chown -R agentmemory:agentmemory /app
+COPY --chown=agentmemory:agentmemory --from=builder-standard /app /app
 
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Switch to non-root user
 USER agentmemory
-
-ENTRYPOINT []
 
 EXPOSE 8000
 
@@ -109,16 +126,12 @@ CMD ["agent-memory", "api", "--host", "0.0.0.0", "--port", "8000", "--no-worker"
 FROM runtime-base AS aws
 
 # Copy the virtual environment and app from builder
-COPY --from=builder-aws /app /app
-
-RUN chown -R agentmemory:agentmemory /app
+COPY --chown=agentmemory:agentmemory --from=builder-aws /app /app
 
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Switch to non-root user
 USER agentmemory
-
-ENTRYPOINT []
 
 EXPOSE 8000
 

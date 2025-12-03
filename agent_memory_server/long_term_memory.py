@@ -31,6 +31,7 @@ from agent_memory_server.filters import (
 )
 from agent_memory_server.llms import (
     AnthropicClientWrapper,
+    BedrockClientWrapper,
     OpenAIClientWrapper,
     get_model_client,
     optimize_query_for_vector_search,
@@ -191,7 +192,7 @@ async def extract_memories_from_session_thread(
     session_id: str,
     namespace: str | None = None,
     user_id: str | None = None,
-    llm_client: OpenAIClientWrapper | AnthropicClientWrapper | None = None,
+    llm_client: OpenAIClientWrapper | AnthropicClientWrapper | BedrockClientWrapper | None = None,
 ) -> list[MemoryRecord]:
     """
     Extract memories from the entire conversation thread in working memory.
@@ -352,7 +353,7 @@ async def merge_memories_with_llm(
 
     if not llm_client:
         model_client: (
-            OpenAIClientWrapper | AnthropicClientWrapper
+            OpenAIClientWrapper | AnthropicClientWrapper | BedrockClientWrapper
         ) = await get_model_client(model_name)
     else:
         model_client = llm_client
@@ -426,7 +427,7 @@ async def compact_long_term_memories(
     namespace: str | None = None,
     user_id: str | None = None,
     session_id: str | None = None,
-    llm_client: OpenAIClientWrapper | AnthropicClientWrapper | None = None,
+    llm_client: OpenAIClientWrapper | AnthropicClientWrapper | BedrockClientWrapper | None = None,
     redis_client: Redis | None = None,
     vector_distance_threshold: float = 0.2,
     compact_hash_duplicates: bool = True,

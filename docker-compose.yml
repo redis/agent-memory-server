@@ -6,10 +6,6 @@ services:
   api:
     profiles: ["standard", ""]
     image: redislabs/agent-memory-server:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: standard
     ports:
       - "8000:8000"
     environment:
@@ -35,10 +31,6 @@ services:
   mcp:
     profiles: ["standard", ""]
     image: redislabs/agent-memory-server:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: standard
     environment:
       - REDIS_URL=redis://redis:6379
       - PORT=9050
@@ -53,10 +45,6 @@ services:
   task-worker:
     profiles: ["standard", ""]
     image: redislabs/agent-memory-server:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: standard
     environment:
       - REDIS_URL=redis://redis:6379
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -75,10 +63,6 @@ services:
   api-aws:
     profiles: ["aws"]
     image: redislabs/agent-memory-server-aws:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: aws
     ports:
       - "8000:8000"
     environment:
@@ -109,10 +93,6 @@ services:
   mcp-aws:
     profiles: ["aws"]
     image: redislabs/agent-memory-server-aws:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: aws
     environment:
       - REDIS_URL=redis://redis:6379
       - PORT=9050
@@ -132,10 +112,6 @@ services:
   task-worker-aws:
     profiles: ["aws"]
     image: redislabs/agent-memory-server-aws:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: aws
     environment:
       - REDIS_URL=redis://redis:6379
       - OPENAI_API_KEY=${OPENAI_API_KEY}

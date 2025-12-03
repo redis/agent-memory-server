@@ -125,6 +125,125 @@ class AnthropicClientWrapper:
         )
 
 
+class BedrockClientWrapper:
+    """Wrapper for AWS Bedrock client for LLM generation using ChatBedrockConverse."""
+
+    def __init__(
+        self,
+        region_name: str | None = None,
+        credentials: dict[str, str] | None = None,
+    ):
+        """Initialize the Bedrock client.
+
+        Args:
+            region_name (str | None): AWS region name. If not provided, it will be picked up from the environment.
+            credentials (dict[str, str] | None): AWS credentials. If not provided, it will be picked up from the environment.
+        """
+        self.region_name = region_name or settings.region_name
+        self.credentials = credentials or settings.aws_credentials
+        # Cache for ChatBedrockConverse instances per model
+        self._chat_models: dict = {}
+
+    def _get_chat_model(self, model_id: str):
+        """Get or create a ChatBedrockConverse instance for a model.
+
+        Args:
+            model_id: The Bedrock model ID
+
+        Returns:
+            A ChatBedrockConverse instance
+        """
+        if model_id in self._chat_models:
+            return self._chat_models[model_id]
+
+        try:
+            from langchain_aws import ChatBedrockConverse
+        except ImportError as err:
+            raise ImportError(
+                "Missing AWS-related dependencies. "
+                "Try to install with: pip install agent-memory-server[aws]."
+            ) from err
+
+        chat_model = ChatBedrockConverse(
+            model=model_id,
+            region_name=self.region_name,
+            **self.credentials,
+        )
+        self._chat_models[model_id] = chat_model
+        return chat_model
+
+    async def create_chat_completion(
+        self,
+        model: str,
+        prompt: str,
+        response_format: dict[str, str] | None = None,
+        functions: list[dict[str, Any]] | None = None,
+        function_call: dict[str, str] | None = None,
+    ) -> ChatResponse:
+        """Create a chat completion using AWS Bedrock via ChatBedrockConverse.
+
+        Args:
+            model (str): The Bedrock model ID to use
+            prompt (str): The prompt to send to the model
+            response_format (dict[str, str] | None): Optional response format (e.g., {"type": "json_object"})
+            functions (list[dict[str, Any]] | None): Optional function definitions (handled via prompt injection)
+            function_call (dict[str, str] | None): Optional function call specification
+
+        Returns:
+            ChatResponse with the model's response
+        """
+        from langchain_core.messages import HumanMessage
+
+        try:
+            chat_model = self._get_chat_model(model)
+
+            # Handle JSON response format by adding instruction to prompt
+            effective_prompt = prompt
+            if response_format and response_format.get("type") == "json_object":
+                effective_prompt = (
+                    f"{prompt}\n\nYou must respond with a valid JSON object."
+                )
+
+            if functions and function_call:
+                # Add function schema to prompt for structured output
+                schema = functions[0]["parameters"]
+                effective_prompt = f"{effective_prompt}\n\nYou must respond with a JSON object matching this schema:\n{json.dumps(schema, indent=2)}"
+
+            # Use ainvoke for async operation
+            message = HumanMessage(content=effective_prompt)
+            response = await chat_model.ainvoke([message])
+
+            # Extract content from the response
+            content = response.content if hasattr(response, "content") else ""
+
+            # Extract token usage from response metadata
+            input_tokens = 0
+            output_tokens = 0
+            if hasattr(response, "usage_metadata") and response.usage_metadata:
+                input_tokens = response.usage_metadata.get("input_tokens", 0)
+                output_tokens = response.usage_metadata.get("output_tokens", 0)
+
+            choices = [{"message": {"content": content}}]
+            usage = {"total_tokens": input_tokens + output_tokens}
+
+            return ChatResponse(choices=choices, usage=usage)
+
+        except Exception:
+            logger.exception("Error creating chat completion with Bedrock.")
+            raise
+
+    async def create_embedding(self, query_vec: list[str]) -> np.ndarray:
+        """
+        Create embeddings for the given texts.
+        Note: For embeddings, use BedrockEmbeddings from langchain-aws instead.
+        """
+        raise NotImplementedError(
+            "For Bedrock embeddings, configure EMBEDDING_MODEL with a Bedrock "
+            "embedding model ID (e.g., amazon.titan-embed-text-v2:0). "
+            "See documentation for details."
+        )
+
+
 class OpenAIClientWrapper:
     """Wrapper for OpenAI client"""
 
@@ -226,7 +345,7 @@ _model_clients = {}
 # TODO: This should take a provider as input, not model name, and cache on provider
 async def get_model_client(
     model_name: str,
-) -> OpenAIClientWrapper | AnthropicClientWrapper:
+) -> OpenAIClientWrapper | AnthropicClientWrapper | BedrockClientWrapper:
     """Get the appropriate client for a model using the factory.
 
     This is a module-level function that caches clients for reuse.
@@ -252,6 +371,11 @@ async def get_model_client(
             model = AnthropicClientWrapper(
                 api_key=settings.anthropic_api_key,
                 base_url=settings.anthropic_api_base,
+            )
+        elif model_config.provider == ModelProvider.AWS_BEDROCK:
+            model = BedrockClientWrapper(
+                region_name=settings.region_name,
+                credentials=settings.aws_credentials,
             )
 
         if model:

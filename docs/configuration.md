@@ -46,13 +46,21 @@ FAST_MODEL=gpt-4o-mini               # Quick tasks (default: gpt-4o-mini)
 # Embedding model for vector search
 EMBEDDING_MODEL=text-embedding-3-small  # OpenAI embeddings (default)
 
-# API Keys
+# API Keys (for OpenAI/Anthropic)
 OPENAI_API_KEY=your-openai-key
 ANTHROPIC_API_KEY=your-anthropic-key
 
 # Optional: Custom API endpoints
 OPENAI_API_BASE=https://api.openai.com/v1
 ANTHROPIC_API_BASE=https://api.anthropic.com
+```
+
+#### Using AWS Bedrock for Generation
+```bash
+# Set generation models to Bedrock model IDs
+GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
+FAST_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
+SLOW_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
 ```
 
 ### AWS Bedrock Configuration
@@ -196,6 +204,14 @@ uv run agent-memory task-worker --concurrency 5 --redelivery-timeout 60
 - `claude-3-5-haiku-latest` - Fast Claude 3.5 Haiku
 - `claude-3-opus-latest` - Most capable Claude model
 - Version-specific models also supported (e.g., `claude-3-5-sonnet-20241022`)
+
+### Generation Models (AWS Bedrock)
+Pre-configured models:
+- `anthropic.claude-sonnet-4-5-20250929-v1:0` - Claude 4.5 Sonnet
+- `anthropic.claude-haiku-4-5-20251001-v1:0` - Claude 4.5 Haiku (Fast)
+- `anthropic.claude-opus-4-5-20251101-v1:0` - Claude 4.5 Opus (Most capable)
+
+The implementation uses `ChatBedrockConverse` which supports any Bedrock model via the Converse API. See [AWS Bedrock](aws-bedrock.md) for setup instructions and adding custom models.
 
 ### Embedding Models (OpenAI)
 - `text-embedding-3-small` - 1536 dimensions (recommended)

@@ -7,6 +7,7 @@ from redis import WatchError
 from agent_memory_server.config import settings
 from agent_memory_server.llms import (
     AnthropicClientWrapper,
+    BedrockClientWrapper,
     OpenAIClientWrapper,
     get_model_client,
     get_model_config,
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 async def _incremental_summary(
     model: str,
-    client: OpenAIClientWrapper | AnthropicClientWrapper,
+    client: OpenAIClientWrapper | AnthropicClientWrapper | BedrockClientWrapper,
     context: str | None,
     messages: list[str],
 ) -> tuple[str, int]:

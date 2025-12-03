@@ -11,6 +11,7 @@ from agent_memory_server.config import settings
 from agent_memory_server.filters import DiscreteMemoryExtracted, MemoryType
 from agent_memory_server.llms import (
     AnthropicClientWrapper,
+    BedrockClientWrapper,
     OpenAIClientWrapper,
     get_model_client,
 )
@@ -109,7 +110,7 @@ def extract_entities(text: str) -> list[str]:
 async def extract_topics_llm(
     text: str,
     num_topics: int | None = None,
-    client: OpenAIClientWrapper | AnthropicClientWrapper | None = None,
+    client: OpenAIClientWrapper | AnthropicClientWrapper | BedrockClientWrapper | None = None,
 ) -> list[str]:
     """
     Extract topics from text using the LLM model.

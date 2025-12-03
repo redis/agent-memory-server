@@ -199,6 +199,22 @@ MODEL_CONFIGS = {
         max_tokens=8192,
         embedding_dimensions=1024,
     ),
+    # AWS Bedrock LLM Models
+    "anthropic.claude-sonnet-4-5-20250929-v1:0": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="anthropic.claude-sonnet-4-5-20250929-v1:0",
+        max_tokens=200000,
+    ),
+    "anthropic.claude-haiku-4-5-20251001-v1:0": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="anthropic.claude-haiku-4-5-20251001-v1:0",
+        max_tokens=200000,
+    ),
+    "anthropic.claude-opus-4-5-20251101-v1:0": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="anthropic.claude-opus-4-5-20251101-v1:0",
+        max_tokens=200000,
+    ),
 }
 
 
