@@ -110,7 +110,10 @@ def extract_entities(text: str) -> list[str]:
 async def extract_topics_llm(
     text: str,
     num_topics: int | None = None,
-    client: OpenAIClientWrapper | AnthropicClientWrapper | BedrockClientWrapper | None = None,
+    client: OpenAIClientWrapper
+    | AnthropicClientWrapper
+    | BedrockClientWrapper
+    | None = None,
 ) -> list[str]:
     """
     Extract topics from text using the LLM model.

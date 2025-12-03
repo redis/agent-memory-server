@@ -3,10 +3,15 @@
 This module contains utilities for creating and managing AWS clients.
 """
 
+from typing import TYPE_CHECKING
+
 from boto3 import Session
-from mypy_boto3_bedrock import BedrockClient
 
 from agent_memory_server.config import settings
+
+
+if TYPE_CHECKING:
+    from mypy_boto3_bedrock import BedrockClient
 
 
 def create_aws_session(
@@ -30,7 +35,7 @@ def create_aws_session(
 def create_bedrock_client(
     region_name: str | None = None,
     session: Session | None = None,
-) -> BedrockClient:
+) -> "BedrockClient":
     """Create a Bedrock client.
 
     Args:

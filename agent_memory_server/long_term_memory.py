@@ -192,7 +192,10 @@ async def extract_memories_from_session_thread(
     session_id: str,
     namespace: str | None = None,
     user_id: str | None = None,
-    llm_client: OpenAIClientWrapper | AnthropicClientWrapper | BedrockClientWrapper | None = None,
+    llm_client: OpenAIClientWrapper
+    | AnthropicClientWrapper
+    | BedrockClientWrapper
+    | None = None,
 ) -> list[MemoryRecord]:
     """
     Extract memories from the entire conversation thread in working memory.
@@ -427,7 +430,10 @@ async def compact_long_term_memories(
     namespace: str | None = None,
     user_id: str | None = None,
     session_id: str | None = None,
-    llm_client: OpenAIClientWrapper | AnthropicClientWrapper | BedrockClientWrapper | None = None,
+    llm_client: OpenAIClientWrapper
+    | AnthropicClientWrapper
+    | BedrockClientWrapper
+    | None = None,
     redis_client: Redis | None = None,
     vector_distance_threshold: float = 0.2,
     compact_hash_duplicates: bool = True,

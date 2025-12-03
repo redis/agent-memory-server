@@ -1,4 +1,5 @@
 from unittest.mock import MagicMock, patch
+
 from agent_memory_server._aws.clients import create_aws_session, create_bedrock_client
 from agent_memory_server.config import Settings
 
@@ -63,6 +64,7 @@ class TestCreateAwsSession:
             assert credentials.access_key == "test-key-2"
             assert credentials.secret_key == "test-secret-2"
             assert credentials.token == "test-token-2"
+
 
 class TestCreateBedrockClient:
     """Test the create_bedrock_client function."""

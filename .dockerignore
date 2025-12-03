@@ -1,0 +1,127 @@
+# ===========================================
+# Git
+# ===========================================
+.git
+.gitignore
+.gitattributes
+
+# ===========================================
+# Python
+# ===========================================
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv
+env
+ENV
+.env
+.env.*
+*.egg
+*.egg-info
+dist
+build
+eggs
+parts
+sdist
+develop-eggs
+.installed.cfg
+lib
+lib64
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ===========================================
+# Testing
+# ===========================================
+tests
+pytest.ini
+.pytest_cache
+.coverage
+.tox
+.nox
+htmlcov
+coverage.xml
+*.cover
+.hypothesis
+
+# ===========================================
+# IDE & Editors
+# ===========================================
+.idea
+.vscode
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings
+
+# ===========================================
+# Documentation
+# ===========================================
+docs
+*.md
+!README.md
+mkdocs.yml
+
+# ===========================================
+# Docker
+# ===========================================
+Dockerfile*
+docker-compose*.yml
+.docker
+
+# ===========================================
+# CI/CD
+# ===========================================
+.github
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+
+# ===========================================
+# Misc
+# ===========================================
+*.log
+*.tmp
+*.temp
+*.bak
+*.cache
+.DS_Store
+Thumbs.db
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+
+# ===========================================
+# Project specific
+# ===========================================
+manual_oauth_qa
+examples
+scripts
+_typos.toml
+CLAUDE.md
+LICENSE
+
+# ===========================================
+# Linting
+# ===========================================
+.ruff_cache
+.mypy_cache
+
+# ===========================================
+# Pre-commit
+# ===========================================
+.pre-commit-config.yaml
+.pre-commit-hooks.yaml
+
+# Note: uv.lock and pyproject.toml are REQUIRED for the build
+# Note: agent-memory-client/ is REQUIRED (workspace dependency)
+

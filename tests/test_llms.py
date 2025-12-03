@@ -164,9 +164,7 @@ class TestBedrockClientWrapper:
             mock_method.return_value = mock_chat_model
 
             client = BedrockClientWrapper()
-            result = client._get_chat_model(
-                "anthropic.claude-sonnet-4-5-20250929-v1:0"
-            )
+            result = client._get_chat_model("anthropic.claude-sonnet-4-5-20250929-v1:0")
 
             assert result == mock_chat_model
 
@@ -342,9 +340,7 @@ class TestBedrockClientWrapper:
         )
 
         mock_chat_model = MagicMock()
-        mock_chat_model.ainvoke = AsyncMock(
-            side_effect=Exception("Bedrock API error")
-        )
+        mock_chat_model.ainvoke = AsyncMock(side_effect=Exception("Bedrock API error"))
 
         with patch("agent_memory_server.llms.settings", new=mock_settings):
             client = BedrockClientWrapper()

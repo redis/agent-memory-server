@@ -513,21 +513,20 @@ def mock_vectorstore_adapter():
     with patch(
         "agent_memory_server.vectorstore_factory.get_vectorstore_adapter",
         mock_get_vectorstore_adapter,
+    ), patch(
+        "agent_memory_server.long_term_memory.get_vectorstore_adapter",
+        mock_get_vectorstore_adapter,
     ):
-        with patch(
-            "agent_memory_server.long_term_memory.get_vectorstore_adapter",
-            mock_get_vectorstore_adapter,
-        ):
-            # Also reset the global adapter to None to force re-creation
-            import agent_memory_server.vectorstore_factory
+        # Also reset the global adapter to None to force re-creation
+        import agent_memory_server.vectorstore_factory
 
-            original_adapter = agent_memory_server.vectorstore_factory._adapter
-            agent_memory_server.vectorstore_factory._adapter = None
+        original_adapter = agent_memory_server.vectorstore_factory._adapter
+        agent_memory_server.vectorstore_factory._adapter = None
 
-            yield adapter
+        yield adapter
 
-            # Restore original adapter
-            agent_memory_server.vectorstore_factory._adapter = original_adapter
+        # Restore original adapter
+        agent_memory_server.vectorstore_factory._adapter = original_adapter
 
 
 class MockEmbeddings(Embeddings):

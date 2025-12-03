@@ -29,8 +29,8 @@ async def lifespan(app: FastAPI):
     # Verify OAuth2/JWT authentication configuration
     try:
         verify_auth_config()
-    except Exception as e:
-        logger.exception(f"Authentication configuration error.")
+    except Exception:
+        logger.exception("Authentication configuration error.")
         raise
 
     # Check if the configured models are available
@@ -38,14 +38,18 @@ async def lifespan(app: FastAPI):
     embedding_model_config = MODEL_CONFIGS.get(settings.embedding_model)
 
     if not generation_model_config:
-        err_msg = f"Selected generation model {settings.generation_model} is not supported."
+        err_msg = (
+            f"Selected generation model {settings.generation_model} is not supported."
+        )
         logger.error(err_msg)
         raise ValueError(err_msg)
     if not embedding_model_config:
-        err_msg = f"Selected embedding model {settings.embedding_model} is not supported."
+        err_msg = (
+            f"Selected embedding model {settings.embedding_model} is not supported."
+        )
         logger.error(err_msg)
         raise ValueError(err_msg)
-    
+
     for model_config in [generation_model_config, embedding_model_config]:
         match model_config.provider:
             case ModelProvider.OPENAI:
