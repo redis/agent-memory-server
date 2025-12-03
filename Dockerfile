@@ -1,7 +1,54 @@
 # ============================================
-# BASE STAGE - Common setup for all variants
+# BUILDER BASE - Build tools for compilation
 # ============================================
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS base
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder-base
+
+WORKDIR /app
+
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+
+# Install build tools (only needed for compilation)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================
+# BUILDER STANDARD - Compile standard deps
+# ============================================
+FROM builder-base AS builder-standard
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    --mount=type=bind,source=agent-memory-client,target=agent-memory-client \
+    uv sync --frozen --no-install-project --no-dev
+
+ADD . /app
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+# ============================================
+# BUILDER AWS - Compile AWS deps
+# ============================================
+FROM builder-base AS builder-aws
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    --mount=type=bind,source=agent-memory-client,target=agent-memory-client \
+    uv sync --frozen --no-install-project --no-dev --extra aws
+
+ADD . /app
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --extra aws
+
+# ============================================
+# RUNTIME BASE - Slim image without build tools
+# ============================================
+FROM python:3.12-slim-bookworm AS runtime-base
 
 # OCI labels for Docker Hub and container registries
 LABEL org.opencontainers.image.title="Redis Agent Memory Server"
@@ -14,15 +61,9 @@ LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 WORKDIR /app
 
-ENV UV_COMPILE_BYTECODE=1
-ENV UV_LINK_MODE=copy
-
-# Install system dependencies including build tools
-RUN apt-get update && apt-get install -y \
+# Install only runtime dependencies (curl for healthcheck)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    build-essential \
-    gcc \
-    g++ \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security
@@ -31,17 +72,10 @@ RUN groupadd -r agentmemory && useradd -r -g agentmemory agentmemory
 # ============================================
 # STANDARD VARIANT - OpenAI/Anthropic only
 # ============================================
-FROM base AS standard
+FROM runtime-base AS standard
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    --mount=type=bind,source=agent-memory-client,target=agent-memory-client \
-    uv sync --frozen --no-install-project --no-dev
-
-ADD . /app
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+# Copy the virtual environment and app from builder
+COPY --from=builder-standard /app /app
 
 RUN chown -R agentmemory:agentmemory /app
 
@@ -72,17 +106,10 @@ CMD ["agent-memory", "api", "--host", "0.0.0.0", "--port", "8000", "--no-worker"
 # ============================================
 # AWS VARIANT - Includes AWS Bedrock support
 # ============================================
-FROM base AS aws
+FROM runtime-base AS aws
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    --mount=type=bind,source=agent-memory-client,target=agent-memory-client \
-    uv sync --frozen --no-install-project --no-dev --extra aws
-
-ADD . /app
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --extra aws
+# Copy the virtual environment and app from builder
+COPY --from=builder-aws /app /app
 
 RUN chown -R agentmemory:agentmemory /app
 

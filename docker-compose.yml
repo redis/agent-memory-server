@@ -1,32 +1,22 @@
 services:
-  # This API service uses --no-worker to run without a worker. When it starts
-  # background tasks, they run immediately in the API process.
-  #
-  # Build targets:
-  #   - standard (default): OpenAI/Anthropic support only
-  #   - aws: Includes AWS Bedrock embedding models support
-  #
-  # To use AWS Bedrock, set DOCKER_TARGET=aws before running docker-compose:
-  #   DOCKER_TARGET=aws docker-compose up --build
+  # =============================================================================
+  # STANDARD (OpenAI/Anthropic only)
+  # Usage: docker-compose up
+  # =============================================================================
   api:
+    profiles: ["standard", ""]
+    image: redislabs/agent-memory-server:latest
     build:
       context: .
       dockerfile: Dockerfile
-      target: ${DOCKER_TARGET:-standard}
+      target: standard
     ports:
       - "8000:8000"
     environment:
       - REDIS_URL=redis://redis:6379
       - PORT=8000
-      # Add your API keys here or use a .env file
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      # AWS Bedrock configuration (optional)
-      - REGION_NAME=${REGION_NAME}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
-      # Optional configurations with defaults
       - LONG_TERM_MEMORY=True
       - GENERATION_MODEL=gpt-4o-mini
       - EMBEDDING_MODEL=text-embedding-3-small
@@ -41,20 +31,94 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    # Uses default CMD from Dockerfile (--no-worker for development)
 
   mcp:
+    profiles: ["standard", ""]
+    image: redislabs/agent-memory-server:latest
     build:
       context: .
       dockerfile: Dockerfile
-      target: ${DOCKER_TARGET:-standard}
+      target: standard
     environment:
       - REDIS_URL=redis://redis:6379
       - PORT=9050
-      # Add your API keys here or use a .env file
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      # AWS Bedrock configuration (optional)
+    ports:
+      - "9050:9000"
+    depends_on:
+      - redis
+    command: ["agent-memory", "mcp", "--mode", "sse"]
+
+  task-worker:
+    profiles: ["standard", ""]
+    image: redislabs/agent-memory-server:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: standard
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    depends_on:
+      - redis
+    command: ["agent-memory", "task-worker"]
+    volumes:
+      - ./agent_memory_server:/app/agent_memory_server
+    restart: unless-stopped
+
+  # =============================================================================
+  # AWS SERVICES
+  # Usage: docker-compose --profile aws up
+  # =============================================================================
+  api-aws:
+    profiles: ["aws"]
+    image: redislabs/agent-memory-server-aws:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: aws
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - PORT=8000
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # AWS Bedrock configuration
+      - REGION_NAME=${REGION_NAME}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+      - LONG_TERM_MEMORY=True
+      - GENERATION_MODEL=gpt-4o-mini
+      - EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
+      - ENABLE_TOPIC_EXTRACTION=True
+      - ENABLE_NER=True
+    depends_on:
+      - redis
+    volumes:
+      - ./agent_memory_server:/app/agent_memory_server
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/v1/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  mcp-aws:
+    profiles: ["aws"]
+    image: redislabs/agent-memory-server-aws:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: aws
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - PORT=9050
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # AWS Bedrock configuration
       - REGION_NAME=${REGION_NAME}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
@@ -65,17 +129,18 @@ services:
       - redis
     command: ["agent-memory", "mcp", "--mode", "sse"]
 
-  task-worker:
+  task-worker-aws:
+    profiles: ["aws"]
+    image: redislabs/agent-memory-server-aws:latest
     build:
       context: .
       dockerfile: Dockerfile
-      target: ${DOCKER_TARGET:-standard}
+      target: aws
     environment:
       - REDIS_URL=redis://redis:6379
-      # Add your API keys here or use a .env file
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      # AWS Bedrock configuration (optional)
+      # AWS Bedrock configuration
       - REGION_NAME=${REGION_NAME}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
@@ -87,6 +152,9 @@ services:
       - ./agent_memory_server:/app/agent_memory_server
     restart: unless-stopped
 
+  # =============================================================================
+  # SHARED SERVICES
+  # =============================================================================
   redis:
     image: redis:8
     ports:
