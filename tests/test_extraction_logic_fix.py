@@ -63,7 +63,9 @@ class TestExtractionLogicFixes:
             settings.enable_discrete_memory_extraction = original_setting
 
     @pytest.mark.asyncio
-    async def test_extracted_memories_are_promoted(self, async_redis_client):
+    async def test_extracted_memories_are_promoted(
+        self, async_redis_client, mock_vectorstore_adapter
+    ):
         """Test that extracted memories are actually promoted to long-term storage"""
         from agent_memory_server.config import settings
 

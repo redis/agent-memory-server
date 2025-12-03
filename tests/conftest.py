@@ -1,14 +1,17 @@
 import contextlib
 import os
 import time
+from datetime import UTC, datetime
+from typing import Any
 from unittest import mock
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import docket
 import pytest
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from langchain_core.embeddings import Embeddings
 from redis.asyncio import Redis as AsyncRedis
 from testcontainers.compose import DockerCompose
 
@@ -19,11 +22,15 @@ from agent_memory_server.healthcheck import router as health_router
 from agent_memory_server.llms import OpenAIClientWrapper
 from agent_memory_server.models import (
     MemoryMessage,
+    MemoryRecord,
+    MemoryRecordResult,
+    MemoryRecordResults,
 )
 
 # Import the module to access its global for resetting
 from agent_memory_server.utils import redis as redis_utils_module
 from agent_memory_server.utils.keys import Keys
+from agent_memory_server.vectorstore_adapter import VectorStoreAdapter
 
 
 # from agent_memory_server.utils.redis import ensure_search_index_exists  # Not used currently
@@ -470,3 +477,197 @@ async def client_with_mock_background_tasks(
             base_url="http://test",
         ) as client:
             yield client
+
+
+@pytest.fixture
+def mock_llm_client():
+    """Mock the LLM client for tests that don't need real LLM calls."""
+    mock_client = MagicMock()
+    mock_client.create_chat_completion = AsyncMock(
+        return_value=MagicMock(
+            choices=[MagicMock(message=MagicMock(content="test response"))]
+        )
+    )
+    return mock_client
+
+
+@pytest.fixture()
+def mock_vectorstore_adapter():
+    """Create a mock vectorstore adapter and patch get_vectorstore_adapter.
+
+    This fixture provides a MockVectorStoreAdapter that doesn't require real
+    embeddings or API keys, suitable for unit tests that don't need actual
+    vector search functionality.
+
+    Usage:
+        def test_something(mock_vectorstore_adapter):
+            # mock_vectorstore_adapter is already patched as the global adapter
+            # You can also access the adapter instance directly:
+            mock_vectorstore_adapter.memories["id"] = some_memory
+    """
+    adapter = MockVectorStoreAdapter()
+
+    async def mock_get_vectorstore_adapter():
+        return adapter
+
+    with patch(
+        "agent_memory_server.vectorstore_factory.get_vectorstore_adapter",
+        mock_get_vectorstore_adapter,
+    ):
+        with patch(
+            "agent_memory_server.long_term_memory.get_vectorstore_adapter",
+            mock_get_vectorstore_adapter,
+        ):
+            # Also reset the global adapter to None to force re-creation
+            import agent_memory_server.vectorstore_factory
+
+            original_adapter = agent_memory_server.vectorstore_factory._adapter
+            agent_memory_server.vectorstore_factory._adapter = None
+
+            yield adapter
+
+            # Restore original adapter
+            agent_memory_server.vectorstore_factory._adapter = original_adapter
+
+
+class MockEmbeddings(Embeddings):
+    """Mock embeddings that return fixed-dimension vectors without API calls."""
+
+    def __init__(self, dimensions: int = 1536):
+        self.dimensions = dimensions
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        """Return mock embeddings for documents."""
+        return [[0.1] * self.dimensions for _ in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        """Return mock embedding for a query."""
+        return [0.1] * self.dimensions
+
+
+class MockVectorStoreAdapter(VectorStoreAdapter):
+    """Mock VectorStoreAdapter for testing without real embeddings."""
+
+    def __init__(self):
+        self.memories: dict[str, MemoryRecord] = {}
+        self.embeddings = MockEmbeddings()
+        self.vectorstore = MagicMock()
+
+    async def add_memories(self, memories: list[MemoryRecord]) -> list[str]:
+        """Add memories to the mock store."""
+        ids = []
+        for memory in memories:
+            self.memories[memory.id] = memory
+            ids.append(memory.id)
+        return ids
+
+    async def search_memories(
+        self,
+        query: str,
+        session_id: Any = None,
+        user_id: Any = None,
+        namespace: Any = None,
+        created_at: Any = None,
+        last_accessed: Any = None,
+        topics: Any = None,
+        entities: Any = None,
+        memory_type: Any = None,
+        event_date: Any = None,
+        memory_hash: Any = None,
+        id: Any = None,
+        discrete_memory_extracted: Any = None,
+        distance_threshold: float | None = None,
+        server_side_recency: bool | None = None,
+        recency_params: dict | None = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> MemoryRecordResults:
+        """Search memories in the mock store."""
+        results = []
+        for memory in list(self.memories.values()):
+            # Apply basic filters
+            if namespace and hasattr(namespace, "eq") and namespace.eq:
+                if memory.namespace != namespace.eq:
+                    continue
+            if user_id and hasattr(user_id, "eq") and user_id.eq:
+                if memory.user_id != user_id.eq:
+                    continue
+            if session_id and hasattr(session_id, "eq") and session_id.eq:
+                if memory.session_id != session_id.eq:
+                    continue
+            if memory_hash and hasattr(memory_hash, "eq") and memory_hash.eq:
+                if memory.memory_hash != memory_hash.eq:
+                    continue
+            if memory_type and hasattr(memory_type, "eq") and memory_type.eq:
+                mem_type_val = (
+                    memory.memory_type.value
+                    if hasattr(memory.memory_type, "value")
+                    else str(memory.memory_type)
+                )
+                if mem_type_val != memory_type.eq:
+                    continue
+
+            result = MemoryRecordResult(
+                id=memory.id,
+                text=memory.text,
+                dist=0.1,
+                created_at=memory.created_at or datetime.now(UTC),
+                updated_at=memory.updated_at or datetime.now(UTC),
+                last_accessed=memory.last_accessed or datetime.now(UTC),
+                user_id=memory.user_id,
+                session_id=memory.session_id,
+                namespace=memory.namespace,
+                topics=memory.topics or [],
+                entities=memory.entities or [],
+                memory_hash=memory.memory_hash or "",
+                memory_type=memory.memory_type.value
+                if hasattr(memory.memory_type, "value")
+                else str(memory.memory_type),
+                persisted_at=memory.persisted_at,
+            )
+            results.append(result)
+
+        # Apply pagination
+        paginated = results[offset : offset + limit]
+        next_offset = offset + limit if len(results) > offset + limit else None
+
+        return MemoryRecordResults(
+            memories=paginated,
+            total=len(results),
+            next_offset=next_offset,
+        )
+
+    async def delete_memories(self, memory_ids: list[str]) -> int:
+        """Delete memories from the mock store."""
+        deleted = 0
+        for memory_id in memory_ids:
+            if memory_id in self.memories:
+                del self.memories[memory_id]
+                deleted += 1
+        return deleted
+
+    async def update_memories(self, memories: list[MemoryRecord]) -> int:
+        """Update memories in the mock store."""
+        updated = 0
+        for memory in memories:
+            self.memories[memory.id] = memory
+            updated += 1
+        return updated
+
+    async def count_memories(
+        self,
+        namespace: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+    ) -> int:
+        """Count memories in the mock store."""
+        count = 0
+        for memory in self.memories.values():
+            if namespace and memory.namespace != namespace:
+                continue
+            if user_id and memory.user_id != user_id:
+                continue
+            if session_id and memory.session_id != session_id:
+                continue
+            count += 1
+        return count

@@ -587,9 +587,9 @@ class TestToolSchemaGeneration:
             if "memory_type" in params["properties"]:
                 memory_type_prop = params["properties"]["memory_type"]
                 if function_name in restricted_tools:
-                    assert (
-                        "message" not in memory_type_prop.get("enum", [])
-                    ), f"Creation/editing tool {function_name} should not expose 'message' memory type"
+                    assert "message" not in memory_type_prop.get("enum", []), (
+                        f"Creation/editing tool {function_name} should not expose 'message' memory type"
+                    )
 
             # Check nested properties (like in create_long_term_memory)
             if "memories" in params["properties"]:
@@ -597,9 +597,9 @@ class TestToolSchemaGeneration:
                 if "properties" in items and "memory_type" in items["properties"]:
                     memory_type_prop = items["properties"]["memory_type"]
                     if function_name in restricted_tools:
-                        assert (
-                            "message" not in memory_type_prop.get("enum", [])
-                        ), f"Creation/editing tool {function_name} should not expose 'message' memory type in nested properties"
+                        assert "message" not in memory_type_prop.get("enum", []), (
+                            f"Creation/editing tool {function_name} should not expose 'message' memory type in nested properties"
+                        )
 
 
 class TestToolCallErrorHandling:

@@ -13,6 +13,11 @@ services:
       # Add your API keys here or use a .env file
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # AWS Bedrock configuration (optional)
+      - REGION_NAME=${REGION_NAME}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
       # Optional configurations with defaults
       - LONG_TERM_MEMORY=True
       - GENERATION_MODEL=gpt-4o-mini
@@ -40,6 +45,11 @@ services:
       # Add your API keys here or use a .env file
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # AWS Bedrock configuration (optional)
+      - REGION_NAME=${REGION_NAME}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
     ports:
       - "9050:9000"
     depends_on:
@@ -55,7 +65,11 @@ services:
       # Add your API keys here or use a .env file
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      # Optional configurations with defaults
+      # AWS Bedrock configuration (optional)
+      - REGION_NAME=${REGION_NAME}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
     depends_on:
       - redis
     command: ["agent-memory", "task-worker"]

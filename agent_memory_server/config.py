@@ -16,6 +16,7 @@ class ModelProvider(str, Enum):
 
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    AWS_BEDROCK = "aws-bedrock"
 
 
 class ModelConfig(BaseModel):
@@ -173,6 +174,31 @@ MODEL_CONFIGS = {
         max_tokens=200000,
         embedding_dimensions=1536,
     ),
+    # AWS Bedrock Embedding Models
+    "amazon.titan-embed-text-v2:0": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="amazon.titan-embed-text-v2:0",
+        max_tokens=8192,
+        embedding_dimensions=1024,
+    ),
+    "amazon.titan-embed-text-v1": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="amazon.titan-embed-text-v1",
+        max_tokens=8192,
+        embedding_dimensions=1536,
+    ),
+    "cohere.embed-english-v3": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="cohere.embed-english-v3",
+        max_tokens=8192,
+        embedding_dimensions=1024,
+    ),
+    "cohere.embed-multilingual-v3": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="cohere.embed-multilingual-v3",
+        max_tokens=8192,
+        embedding_dimensions=1024,
+    ),
 }
 
 
@@ -185,6 +211,14 @@ class Settings(BaseSettings):
     anthropic_api_base: str | None = None
     generation_model: str = "gpt-4o"
     embedding_model: str = "text-embedding-3-small"
+
+    # Cloud
+    ## Cloud region
+    region_name: str | None = None
+    ## AWS Cloud credentials
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    aws_session_token: str | None = None
 
     # Model selection for query optimization
     slow_model: str = "gpt-4o"  # Slower, more capable model for complex tasks
@@ -304,6 +338,27 @@ Optimized query:"""
     def embedding_model_config(self) -> ModelConfig | None:
         """Get configuration for the embedding model."""
         return MODEL_CONFIGS.get(self.embedding_model)
+
+    @property
+    def aws_credentials(self) -> dict[str, str | None]:
+        """
+        Get a dictionary of AWS credentials.
+        """
+        credentials: dict[str, str] = {
+            "aws_access_key_id": self.aws_access_key_id or None,
+            "aws_secret_access_key": self.aws_secret_access_key or None,
+            "aws_session_token": self.aws_session_token or None,
+        }
+        return credentials
+
+    @property
+    def aws_region(self) -> str:
+        """
+        Get the AWS region.
+        """
+        if not self.region_name:
+            raise ValueError("Missing environment variable 'REGION_NAME'.")
+        return self.region_name
 
     def load_yaml_config(self, config_path: str) -> dict[str, Any]:
         """Load configuration from YAML file."""

@@ -1,0 +1,49 @@
+"""AWS clients for the Agent Memory Server.
+
+This module contains utilities for creating and managing AWS clients.
+"""
+
+from boto3 import Session
+from mypy_boto3_bedrock import BedrockClient
+
+from agent_memory_server.config import settings
+
+
+def create_aws_session(
+    region_name: str | None = None, credentials: dict[str, str] | None = None
+) -> Session:
+    """Create an AWS session.
+
+    Args:
+        credentials (dict[str, str | None]): The AWS credentials to use.
+
+    Returns:
+        An AWS session.
+    """
+    if credentials is None:
+        credentials = settings.aws_credentials
+    if region_name is None:
+        region_name = settings.aws_region
+    return Session(region_name=region_name, **credentials)
+
+
+def create_bedrock_client(
+    region_name: str | None = None,
+    session: Session | None = None,
+) -> BedrockClient:
+    """Create a Bedrock client.
+
+    Args:
+        region_name (str | None): The AWS region to use.\
+            If not provided, it will be picked up from the environment.
+        session (Session | None): The AWS session to use.\
+            If not provided, a new session will be created based on the environment.
+
+    Returns:
+        A Bedrock client.
+    """
+    if session is None:
+        session = create_aws_session(region_name=region_name)
+    if region_name is None:
+        region_name = settings.aws_region
+    return session.client("bedrock", region_name=region_name)

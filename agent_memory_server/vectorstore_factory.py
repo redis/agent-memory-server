@@ -27,7 +27,7 @@ from langchain_redis.config import RedisConfig
 from pydantic.types import SecretStr
 
 # RedisVL uses the same python-ulid library as this project, so no patching needed
-from agent_memory_server.config import settings
+from agent_memory_server.config import ModelProvider, settings
 from agent_memory_server.vectorstore_adapter import (
     LangChainVectorStoreAdapter,
     MemoryRedisVectorStore,
@@ -99,10 +99,39 @@ def create_embeddings() -> Embeddings:
         except Exception as e:
             logger.error(f"Error creating fallback OpenAI embeddings: {e}")
             raise
+
+    elif provider == "aws-bedrock":
+        try:
+            from langchain_aws import BedrockEmbeddings
+
+            from agent_memory_server._aws.clients import create_bedrock_client
+            from agent_memory_server._aws.utils import bedrock_embedding_model_exists
+        except ImportError:
+            err_msg: str = (
+                "AWS-related dependencies might be missing. "
+                "Try to install with: pip install agent-memory-server[aws]."
+            )
+            logger.exception(err_msg)
+            raise
+
+        # Instantiation-time check to catch misconfigurations early
+        bedrock_model_id: str = settings.embedding_model
+        if not bedrock_embedding_model_exists(
+            bedrock_model_id,
+            region_name=settings.aws_region,
+        ):
+            err_msg = f"Bedrock embedding model {bedrock_model_id} not found in region {settings.aws_region}."
+            logger.error(err_msg)
+            raise ValueError(err_msg)
+
+        bedrock_client = create_bedrock_client()
+        return BedrockEmbeddings(model_id=bedrock_model_id, client=bedrock_client)
+
     else:
         raise ValueError(
             f"Unsupported embedding provider: {provider}. "
-            f"Supported providers: openai, anthropic (falls back to OpenAI)"
+            f"Supported providers: {', '.join(ModelProvider.__members__.keys())}. "
+            f"Provider '{ModelProvider.ANTHROPIC}' falls back to '{ModelProvider.OPENAI}'."
         )
 
 
