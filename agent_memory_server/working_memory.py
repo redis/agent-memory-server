@@ -1,6 +1,5 @@
 """Working memory management for sessions."""
 
-import json
 import logging
 import time
 from datetime import UTC, datetime
@@ -18,13 +17,6 @@ from agent_memory_server.utils.redis import get_redis_conn
 
 
 logger = logging.getLogger(__name__)
-
-
-def json_datetime_handler(obj):
-    """JSON serializer for datetime objects."""
-    if isinstance(obj, datetime):
-        return obj.isoformat()
-    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
 async def list_sessions(
@@ -103,8 +95,9 @@ async def get_working_memory(
     )
 
     try:
-        data = await redis_client.get(key)
-        if not data:
+        # Use Redis native JSON to get data directly as dict
+        working_memory_data = await redis_client.json().get(key)
+        if not working_memory_data:
             logger.debug(
                 f"No working memory found for parameters: {session_id}, {user_id}, {namespace}"
             )
@@ -124,9 +117,6 @@ async def get_working_memory(
                     return reconstructed
 
             return None
-
-        # Parse the JSON data
-        working_memory_data = json.loads(data)
 
         # Convert memory records back to MemoryRecord objects
         memories = []
@@ -233,21 +223,16 @@ async def set_working_memory(
     }
 
     try:
+        # Use Redis native JSON storage
+        await redis_client.json().set(key, "$", data)
+
         if working_memory.ttl_seconds is not None:
-            # Store with TTL
-            await redis_client.setex(
-                key,
-                working_memory.ttl_seconds,
-                json.dumps(data, default=json_datetime_handler),
-            )
+            # Set TTL separately for JSON keys
+            await redis_client.expire(key, working_memory.ttl_seconds)
             logger.info(
                 f"Set working memory for session {working_memory.session_id} with TTL {working_memory.ttl_seconds}s"
             )
         else:
-            await redis_client.set(
-                key,
-                json.dumps(data, default=json_datetime_handler),
-            )
             logger.info(
                 f"Set working memory for session {working_memory.session_id} with no TTL"
             )

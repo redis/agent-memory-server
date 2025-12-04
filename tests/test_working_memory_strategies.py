@@ -1,7 +1,7 @@
 """Tests for working memory strategy integration."""
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -216,19 +216,22 @@ class TestWorkingMemoryStorageWithStrategy:
         with patch(
             "agent_memory_server.working_memory.get_redis_conn"
         ) as mock_get_redis:
-            mock_redis = AsyncMock()
+            mock_redis = MagicMock()
+            mock_redis.expire = AsyncMock()
+            # json() is synchronous but returns an object with async methods
+            mock_json = MagicMock()
+            mock_json.set = AsyncMock()
+            mock_redis.json.return_value = mock_json
             mock_get_redis.return_value = mock_redis
 
             await set_working_memory(memory, mock_redis)
 
-            # Verify Redis set was called
-            mock_redis.set.assert_called_once()
-            call_args = mock_redis.set.call_args
+            # Verify Redis JSON set was called
+            mock_json.set.assert_called_once()
+            call_args = mock_json.set.call_args
 
-            # Parse the stored data to verify strategy was included
-            import json
-
-            stored_data = json.loads(call_args[0][1])
+            # The data is passed directly as a dict (not JSON string) to redis.json().set()
+            stored_data = call_args[0][2]  # Third positional arg is the data
             assert "long_term_memory_strategy" in stored_data
             assert stored_data["long_term_memory_strategy"]["strategy"] == "summary"
             assert (
@@ -262,8 +265,12 @@ class TestWorkingMemoryStorageWithStrategy:
         with patch(
             "agent_memory_server.working_memory.get_redis_conn"
         ) as mock_get_redis:
-            mock_redis = AsyncMock()
-            mock_redis.get.return_value = json.dumps(stored_data).encode()
+            mock_redis = MagicMock()
+            # json() is synchronous but returns an object with async methods
+            mock_json = MagicMock()
+            # Redis JSON returns dict directly, not bytes
+            mock_json.get = AsyncMock(return_value=stored_data)
+            mock_redis.json.return_value = mock_json
             mock_get_redis.return_value = mock_redis
 
             result = await get_working_memory(
@@ -300,8 +307,12 @@ class TestWorkingMemoryStorageWithStrategy:
         with patch(
             "agent_memory_server.working_memory.get_redis_conn"
         ) as mock_get_redis:
-            mock_redis = AsyncMock()
-            mock_redis.get.return_value = json.dumps(stored_data).encode()
+            mock_redis = MagicMock()
+            # json() is synchronous but returns an object with async methods
+            mock_json = MagicMock()
+            # Redis JSON returns dict directly, not bytes
+            mock_json.get = AsyncMock(return_value=stored_data)
+            mock_redis.json.return_value = mock_json
             mock_get_redis.return_value = mock_redis
 
             result = await get_working_memory(
