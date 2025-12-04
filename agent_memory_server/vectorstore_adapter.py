@@ -1249,14 +1249,6 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                 session_filter = SessionId(eq=session_id).to_filter()
                 filters.append(session_filter)
 
-            # Combine filters with AND logic
-            redis_filter = None
-            if filters:
-                if len(filters) == 1:
-                    redis_filter = filters[0]
-                else:
-                    redis_filter = reduce(lambda x, y: x & y, filters)
-
             # Use list_memories for filter-only count (no embedding required)
             results = await self.list_memories(
                 namespace=Namespace(eq=namespace) if namespace else None,

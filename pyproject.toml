@@ -153,8 +153,9 @@ dev = [
     "freezegun>=1.2.0",
     "mypy>=1.16.1",
     "ipdb>=0.13.13",
-    "mypy-boto3-bedrock>=1.42.1,<2.0.0",
-    "mypy-boto3>=1.41.0,<2.0.0",
+    "mypy-boto3-bedrock>=1.42.1",
+    "mypy-boto3>=1.41.0",
+    "types-PyYAML>=6.0.12",
 ]
 docs = [
     "mkdocs-material>=9.5.0",

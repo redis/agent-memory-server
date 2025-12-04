@@ -588,16 +588,18 @@ class MockVectorStoreAdapter(VectorStoreAdapter):
         results = []
         for memory in list(self.memories.values()):
             # Apply basic filters
-            if namespace and hasattr(namespace, "eq") and namespace.eq:
-                if memory.namespace != namespace.eq:
-                    continue
-            if user_id and hasattr(user_id, "eq") and user_id.eq:
-                if memory.user_id != user_id.eq:
-                    continue
-            if session_id and hasattr(session_id, "eq") and session_id.eq:
-                if memory.session_id != session_id.eq:
-                    continue
-            if memory_hash and hasattr(memory_hash, "eq") and memory_hash.eq and memory.memory_hash != memory_hash.eq:
+            if namespace and hasattr(namespace, "eq") and namespace.eq and memory.namespace != namespace.eq:
+                continue
+            if user_id and hasattr(user_id, "eq") and user_id.eq and memory.user_id != user_id.eq:
+                continue
+            if session_id and hasattr(session_id, "eq") and session_id.eq and memory.session_id != session_id.eq:
+                continue
+            if (
+                memory_hash
+                and hasattr(memory_hash, "eq")
+                and memory_hash.eq
+                and memory.memory_hash != memory_hash.eq
+            ):
                 continue
             if memory_type and hasattr(memory_type, "eq") and memory_type.eq:
                 mem_type_val = (
@@ -694,13 +696,33 @@ class MockVectorStoreAdapter(VectorStoreAdapter):
         results = []
         for memory in list(self.memories.values()):
             # Apply basic filters
-            if namespace and hasattr(namespace, "eq") and namespace.eq and memory.namespace != namespace.eq:
+            if (
+                namespace
+                and hasattr(namespace, "eq")
+                and namespace.eq
+                and memory.namespace != namespace.eq
+            ):
                 continue
-            if user_id and hasattr(user_id, "eq") and user_id.eq and memory.user_id != user_id.eq:
+            if (
+                user_id
+                and hasattr(user_id, "eq")
+                and user_id.eq
+                and memory.user_id != user_id.eq
+            ):
                 continue
-            if session_id and hasattr(session_id, "eq") and session_id.eq and memory.session_id != session_id.eq:
+            if (
+                session_id
+                and hasattr(session_id, "eq")
+                and session_id.eq
+                and memory.session_id != session_id.eq
+            ):
                 continue
-            if memory_hash and hasattr(memory_hash, "eq") and memory_hash.eq and memory.memory_hash != memory_hash.eq:
+            if (
+                memory_hash
+                and hasattr(memory_hash, "eq")
+                and memory_hash.eq
+                and memory.memory_hash != memory_hash.eq
+            ):
                 continue
             if id and hasattr(id, "eq") and id.eq and memory.id != id.eq:
                 continue

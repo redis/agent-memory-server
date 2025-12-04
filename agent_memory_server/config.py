@@ -360,17 +360,17 @@ Optimized query:"""
         return MODEL_CONFIGS.get(self.embedding_model)
 
     @property
-    def aws_credentials(self) -> dict[str, str | None]:
+    def aws_credentials(self) -> dict[str, str]:
         """
         Get a dictionary of AWS credentials.
         """
-        possible_credentials: dict[str, str | None] = {
+        all_credentials: dict[str, str | None] = {
             "aws_access_key_id": self.aws_access_key_id or None,
             "aws_secret_access_key": self.aws_secret_access_key or None,
             "aws_session_token": self.aws_session_token or None,
         }
         credentials: dict[str, str] = {
-            k: v for k, v in possible_credentials.items() if v is not None
+            k: v for k, v in all_credentials.items() if v is not None
         }
         if not credentials:
             err_msg = "AWS credentials are not set."

@@ -170,7 +170,7 @@ class PromptValidator:
 class SecureFormatter:
     """Safe string formatter that prevents template injection."""
 
-    def __init__(self, allowed_keys: set[str] = None):
+    def __init__(self, allowed_keys: set[str] | None = None):
         """
         Initialize secure formatter.
 
@@ -244,7 +244,7 @@ def validate_custom_prompt(prompt: str, strict: bool = True) -> None:
     validator.validate_prompt(prompt)
 
 
-def secure_format_prompt(template: str, allowed_vars: set[str] = None, **kwargs) -> str:
+def secure_format_prompt(template: str, allowed_vars: set[str] | None = None, **kwargs) -> str:
     """
     Securely format a prompt template.
 

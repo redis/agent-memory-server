@@ -82,22 +82,24 @@ class TestCreateBedrockRuntimeClient:
             aws_session_token="test-token",
         )
 
-        with patch("agent_memory_server._aws.clients.settings", new=mock_settings):
-            with patch(
+        with (
+            patch("agent_memory_server._aws.clients.settings", new=mock_settings),
+            patch(
                 "agent_memory_server._aws.clients.create_aws_session"
-            ) as mock_create_session:
-                mock_session = MagicMock()
-                mock_client = MagicMock()
-                mock_session.client.return_value = mock_client
-                mock_create_session.return_value = mock_session
+            ) as mock_create_session,
+        ):
+            mock_session = MagicMock()
+            mock_client = MagicMock()
+            mock_session.client.return_value = mock_client
+            mock_create_session.return_value = mock_session
 
-                result = create_bedrock_runtime_client()
+            result = create_bedrock_runtime_client()
 
-                mock_create_session.assert_called_once_with(region_name=None)
-                mock_session.client.assert_called_once_with(
-                    "bedrock-runtime", region_name="us-east-1"
-                )
-                assert result == mock_client
+            mock_create_session.assert_called_once_with(region_name=None)
+            mock_session.client.assert_called_once_with(
+                "bedrock-runtime", region_name="us-east-1"
+            )
+            assert result == mock_client
 
     def test_create_bedrock_runtime_client_with_explicit_region(self):
         """Test creating Bedrock runtime client with explicit region."""
@@ -108,22 +110,24 @@ class TestCreateBedrockRuntimeClient:
             aws_session_token="test-token",
         )
 
-        with patch("agent_memory_server._aws.clients.settings", new=mock_settings):
-            with patch(
+        with (
+            patch("agent_memory_server._aws.clients.settings", new=mock_settings),
+            patch(
                 "agent_memory_server._aws.clients.create_aws_session"
-            ) as mock_create_session:
-                mock_session = MagicMock()
-                mock_client = MagicMock()
-                mock_session.client.return_value = mock_client
-                mock_create_session.return_value = mock_session
+            ) as mock_create_session,
+        ):
+            mock_session = MagicMock()
+            mock_client = MagicMock()
+            mock_session.client.return_value = mock_client
+            mock_create_session.return_value = mock_session
 
-                result = create_bedrock_runtime_client(region_name="eu-central-1")
+            result = create_bedrock_runtime_client(region_name="eu-central-1")
 
-                mock_create_session.assert_called_once_with(region_name="eu-central-1")
-                mock_session.client.assert_called_once_with(
-                    "bedrock-runtime", region_name="eu-central-1"
-                )
-                assert result == mock_client
+            mock_create_session.assert_called_once_with(region_name="eu-central-1")
+            mock_session.client.assert_called_once_with(
+                "bedrock-runtime", region_name="eu-central-1"
+            )
+            assert result == mock_client
 
     def test_create_bedrock_runtime_client_with_existing_session(self):
         """Test creating Bedrock runtime client with an existing session."""
@@ -159,22 +163,24 @@ class TestCreateBedrocClient:
             aws_session_token="test-token",
         )
 
-        with patch("agent_memory_server._aws.clients.settings", new=mock_settings):
-            with patch(
+        with (
+            patch("agent_memory_server._aws.clients.settings", new=mock_settings),
+            patch(
                 "agent_memory_server._aws.clients.create_aws_session"
-            ) as mock_create_session:
-                mock_session = MagicMock()
-                mock_client = MagicMock()
-                mock_session.client.return_value = mock_client
-                mock_create_session.return_value = mock_session
+            ) as mock_create_session,
+        ):
+            mock_session = MagicMock()
+            mock_client = MagicMock()
+            mock_session.client.return_value = mock_client
+            mock_create_session.return_value = mock_session
 
-                result = create_bedrock_client()
+            result = create_bedrock_client()
 
-                mock_create_session.assert_called_once_with(region_name=None)
-                mock_session.client.assert_called_once_with(
-                    "bedrock", region_name="us-east-1"
-                )
-                assert result == mock_client
+            mock_create_session.assert_called_once_with(region_name=None)
+            mock_session.client.assert_called_once_with(
+                "bedrock", region_name="us-east-1"
+            )
+            assert result == mock_client
 
     def test_create_bedrock_client_with_explicit_region(self):
         """Test creating Bedrock client with explicit region."""
@@ -185,22 +191,24 @@ class TestCreateBedrocClient:
             aws_session_token="test-token",
         )
 
-        with patch("agent_memory_server._aws.clients.settings", new=mock_settings):
-            with patch(
+        with (
+            patch("agent_memory_server._aws.clients.settings", new=mock_settings),
+            patch(
                 "agent_memory_server._aws.clients.create_aws_session"
-            ) as mock_create_session:
-                mock_session = MagicMock()
-                mock_client = MagicMock()
-                mock_session.client.return_value = mock_client
-                mock_create_session.return_value = mock_session
+            ) as mock_create_session,
+        ):
+            mock_session = MagicMock()
+            mock_client = MagicMock()
+            mock_session.client.return_value = mock_client
+            mock_create_session.return_value = mock_session
 
-                result = create_bedrock_client(region_name="eu-central-1")
+            result = create_bedrock_client(region_name="eu-central-1")
 
-                mock_create_session.assert_called_once_with(region_name="eu-central-1")
-                mock_session.client.assert_called_once_with(
-                    "bedrock", region_name="eu-central-1"
-                )
-                assert result == mock_client
+            mock_create_session.assert_called_once_with(region_name="eu-central-1")
+            mock_session.client.assert_called_once_with(
+                "bedrock", region_name="eu-central-1"
+            )
+            assert result == mock_client
 
     def test_create_bedrock_client_with_existing_session(self):
         """Test creating Bedrock runtime client with an existing session."""
