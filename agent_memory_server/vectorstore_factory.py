@@ -120,7 +120,12 @@ def create_embeddings() -> Embeddings:
             bedrock_model_id,
             region_name=settings.aws_region,
         ):
-            err_msg = f"Bedrock embedding model {bedrock_model_id} not found in region {settings.aws_region}."
+            err_msg = (
+                f"Bedrock embedding model {bedrock_model_id} not found in region {settings.aws_region}. "
+                "Please ensure that the model ID is valid, "
+                "that the model is available in the given AWS region, "
+                "and that your AWS role has the correct permissions to invoke it."
+            )
             logger.error(err_msg)
             raise ValueError(err_msg)
 
