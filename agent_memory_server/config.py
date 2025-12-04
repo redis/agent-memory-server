@@ -364,18 +364,19 @@ Optimized query:"""
         """
         Get a dictionary of AWS credentials.
         """
-        all_credentials: dict[str, str | None] = {
-            "aws_access_key_id": self.aws_access_key_id or None,
-            "aws_secret_access_key": self.aws_secret_access_key or None,
-            "aws_session_token": self.aws_session_token or None,
-        }
-        credentials: dict[str, str] = {
-            k: v for k, v in all_credentials.items() if v is not None
-        }
-        if not credentials:
-            err_msg = "AWS credentials are not set."
+        if not self.aws_access_key_id or not self.aws_secret_access_key:
+            err_msg = "AWS access key ID and secret access key are missing. Please set them in the environment."
             logger.error(err_msg)
             raise ValueError(err_msg)
+        
+        credentials: dict[str, str] = {
+            "aws_access_key_id": self.aws_access_key_id,
+            "aws_secret_access_key": self.aws_secret_access_key,
+        }
+        if self.aws_session_token:
+            # The session token is optional (only for STS).
+            credentials["aws_session_token"] = self.aws_session_token
+        
         return credentials
 
     @property
