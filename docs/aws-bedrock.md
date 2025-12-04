@@ -407,4 +407,3 @@ If you see authentication errors:
 - [Configuration](configuration.md) - Full configuration reference
 - [Vector Store Backends](vector-store-backends.md) - Custom vector store setup
 - [Getting Started](getting-started.md) - Initial setup guide
-
