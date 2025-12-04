@@ -127,7 +127,9 @@ def create_embeddings() -> Embeddings:
         # Create a bedrock-runtime client (not bedrock control plane)
         # BedrockEmbeddings uses bedrock-runtime for actual inference
         bedrock_runtime_client = create_bedrock_runtime_client()
-        return BedrockEmbeddings(model_id=bedrock_model_id, client=bedrock_runtime_client)
+        return BedrockEmbeddings(
+            model_id=bedrock_model_id, client=bedrock_runtime_client
+        )
 
     else:
         raise ValueError(

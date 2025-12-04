@@ -231,6 +231,11 @@ class TestVectorStoreAdapter:
                 async def update_memories(self, memories: list[MemoryRecord]) -> int:
                     return 0
 
+                async def list_memories(self, **kwargs):
+                    from agent_memory_server.models import MemoryRecordResults
+
+                    return MemoryRecordResults(memories=[], total=0, next_offset=None)
+
             mock_custom_adapter = MockVectorStoreAdapter()
 
             mock_create_embeddings.return_value = mock_embeddings

@@ -35,7 +35,9 @@ class TestAWSUtilities:
             )
 
         assert result is True
-        mock_client.list_foundation_models.assert_called_once_with(byOutputModality="EMBEDDING")
+        mock_client.list_foundation_models.assert_called_once_with(
+            byOutputModality="EMBEDDING"
+        )
 
     def test_bedrock_embedding_model_exists_not_found(self):
         """Test bedrock_embedding_model_exists returns False when model is not found."""

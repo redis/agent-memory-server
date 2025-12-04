@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 from enum import Enum
 from typing import Any, Literal
 
@@ -370,8 +370,7 @@ Optimized query:"""
             "aws_session_token": self.aws_session_token or None,
         }
         credentials: dict[str, str] = {
-            k: v for k, v in possible_credentials.items()
-            if v is not None
+            k: v for k, v in possible_credentials.items() if v is not None
         }
         if not credentials:
             err_msg = "AWS credentials are not set."

@@ -42,7 +42,7 @@ async def test_forget_long_term_memories_dry_run_selection():
     ]
 
     mock_adapter = AsyncMock()
-    mock_adapter.search_memories.return_value = MemoryRecordResults(
+    mock_adapter.list_memories.return_value = MemoryRecordResults(
         memories=results, total=len(results), next_offset=None
     )
 
@@ -84,7 +84,7 @@ async def test_forget_long_term_memories_executes_deletes_when_not_dry_run():
     ]
 
     mock_adapter = AsyncMock()
-    mock_adapter.search_memories.return_value = MemoryRecordResults(
+    mock_adapter.list_memories.return_value = MemoryRecordResults(
         memories=results, total=len(results), next_offset=None
     )
     mock_adapter.delete_memories.return_value = 1

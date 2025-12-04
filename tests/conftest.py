@@ -510,12 +510,15 @@ def mock_vectorstore_adapter():
     async def mock_get_vectorstore_adapter():
         return adapter
 
-    with patch(
-        "agent_memory_server.vectorstore_factory.get_vectorstore_adapter",
-        mock_get_vectorstore_adapter,
-    ), patch(
-        "agent_memory_server.long_term_memory.get_vectorstore_adapter",
-        mock_get_vectorstore_adapter,
+    with (
+        patch(
+            "agent_memory_server.vectorstore_factory.get_vectorstore_adapter",
+            mock_get_vectorstore_adapter,
+        ),
+        patch(
+            "agent_memory_server.long_term_memory.get_vectorstore_adapter",
+            mock_get_vectorstore_adapter,
+        ),
     ):
         # Also reset the global adapter to None to force re-creation
         import agent_memory_server.vectorstore_factory
@@ -594,9 +597,8 @@ class MockVectorStoreAdapter(VectorStoreAdapter):
             if session_id and hasattr(session_id, "eq") and session_id.eq:
                 if memory.session_id != session_id.eq:
                     continue
-            if memory_hash and hasattr(memory_hash, "eq") and memory_hash.eq:
-                if memory.memory_hash != memory_hash.eq:
-                    continue
+            if memory_hash and hasattr(memory_hash, "eq") and memory_hash.eq and memory.memory_hash != memory_hash.eq:
+                continue
             if memory_type and hasattr(memory_type, "eq") and memory_type.eq:
                 mem_type_val = (
                     memory.memory_type.value
@@ -670,3 +672,73 @@ class MockVectorStoreAdapter(VectorStoreAdapter):
                 continue
             count += 1
         return count
+
+    async def list_memories(
+        self,
+        session_id: Any = None,
+        user_id: Any = None,
+        namespace: Any = None,
+        created_at: Any = None,
+        last_accessed: Any = None,
+        topics: Any = None,
+        entities: Any = None,
+        memory_type: Any = None,
+        event_date: Any = None,
+        memory_hash: Any = None,
+        id: Any = None,
+        discrete_memory_extracted: Any = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> MemoryRecordResults:
+        """List memories in the mock store using filters without semantic search."""
+        results = []
+        for memory in list(self.memories.values()):
+            # Apply basic filters
+            if namespace and hasattr(namespace, "eq") and namespace.eq and memory.namespace != namespace.eq:
+                continue
+            if user_id and hasattr(user_id, "eq") and user_id.eq and memory.user_id != user_id.eq:
+                continue
+            if session_id and hasattr(session_id, "eq") and session_id.eq and memory.session_id != session_id.eq:
+                continue
+            if memory_hash and hasattr(memory_hash, "eq") and memory_hash.eq and memory.memory_hash != memory_hash.eq:
+                continue
+            if id and hasattr(id, "eq") and id.eq and memory.id != id.eq:
+                continue
+            if memory_type and hasattr(memory_type, "eq") and memory_type.eq:
+                mem_type_val = (
+                    memory.memory_type.value
+                    if hasattr(memory.memory_type, "value")
+                    else str(memory.memory_type)
+                )
+                if mem_type_val != memory_type.eq:
+                    continue
+
+            result = MemoryRecordResult(
+                id=memory.id,
+                text=memory.text,
+                dist=0.0,  # No distance for filter-only queries
+                created_at=memory.created_at or datetime.now(UTC),
+                updated_at=memory.updated_at or datetime.now(UTC),
+                last_accessed=memory.last_accessed or datetime.now(UTC),
+                user_id=memory.user_id,
+                session_id=memory.session_id,
+                namespace=memory.namespace,
+                topics=memory.topics or [],
+                entities=memory.entities or [],
+                memory_hash=memory.memory_hash or "",
+                memory_type=memory.memory_type.value
+                if hasattr(memory.memory_type, "value")
+                else str(memory.memory_type),
+                persisted_at=memory.persisted_at,
+            )
+            results.append(result)
+
+        # Apply pagination
+        paginated = results[offset : offset + limit]
+        next_offset = offset + limit if len(results) > offset + limit else None
+
+        return MemoryRecordResults(
+            memories=paginated,
+            total=len(results),
+            next_offset=next_offset,
+        )

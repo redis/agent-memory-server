@@ -31,7 +31,7 @@ class TestAWSConfigProperties:
         )
 
         with pytest.raises(ValueError):
-            test_settings.aws_credentials
+            _ = test_settings.aws_credentials
 
     def test_aws_region_property_set(self):
         """Test aws_region property when region is set."""
@@ -72,7 +72,9 @@ class TestAWSBedrockModelConfigs:
         """Test generation_model_config property returns correct config for AWS models."""
         from agent_memory_server.config import ModelProvider, Settings
 
-        test_settings = Settings(generation_model="anthropic.claude-sonnet-4-5-20250929-v1:0")
+        test_settings = Settings(
+            generation_model="anthropic.claude-sonnet-4-5-20250929-v1:0"
+        )
 
         config = test_settings.generation_model_config
 

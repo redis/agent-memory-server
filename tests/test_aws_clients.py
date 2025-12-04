@@ -1,6 +1,10 @@
 from unittest.mock import MagicMock, patch
 
-from agent_memory_server._aws.clients import create_aws_session, create_bedrock_runtime_client, create_bedrock_client
+from agent_memory_server._aws.clients import (
+    create_aws_session,
+    create_bedrock_client,
+    create_bedrock_runtime_client,
+)
 from agent_memory_server.config import Settings
 
 
