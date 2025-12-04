@@ -191,6 +191,28 @@ def _import_and_call_factory(
         raise
 
 
+def _get_embedding_dimensions() -> int:
+    """Get the embedding dimensions from the configured embedding model.
+
+    Returns the dimensions from the model config if available, otherwise
+    falls back to the REDISVL_VECTOR_DIMENSIONS setting.
+    """
+    embedding_config = settings.embedding_model_config
+    if embedding_config and embedding_config.embedding_dimensions:
+        logger.info(
+            f"Using embedding dimensions {embedding_config.embedding_dimensions} "
+            f"from model config for {settings.embedding_model}"
+        )
+        return embedding_config.embedding_dimensions
+
+    # Fall back to explicit setting
+    logger.info(
+        f"Using embedding dimensions {settings.redisvl_vector_dimensions} "
+        f"from REDISVL_VECTOR_DIMENSIONS setting"
+    )
+    return int(settings.redisvl_vector_dimensions)
+
+
 def create_redis_vectorstore(embeddings: Embeddings) -> VectorStore:
     """Create a Redis VectorStore instance using LangChain Redis.
 
@@ -224,6 +246,9 @@ def create_redis_vectorstore(embeddings: Embeddings) -> VectorStore:
             {"name": "id_", "type": "tag"},
         ]
 
+        # Get embedding dimensions from model config (auto-detected) or fallback to setting
+        embedding_dimensions = _get_embedding_dimensions()
+
         # Always use MemoryRedisVectorStore for consistency and to fix relevance score issues
         return MemoryRedisVectorStore(
             embeddings=embeddings,
@@ -234,7 +259,7 @@ def create_redis_vectorstore(embeddings: Embeddings) -> VectorStore:
                 index_name=settings.redisvl_index_name,
                 metadata_schema=metadata_schema,
                 distance_metric=settings.redisvl_distance_metric,
-                embedding_dimensions=int(settings.redisvl_vector_dimensions),
+                embedding_dimensions=embedding_dimensions,
             ),
         )
     except ImportError:
