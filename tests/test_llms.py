@@ -127,8 +127,8 @@ class TestBedrockClientWrapper:
                 credentials=credentials,
             )
 
-            assert client.region_name == "eu-west-1"
-            assert client.credentials == credentials
+            assert client._region_name == "eu-west-1"
+            assert client._credentials == credentials
             assert client._chat_models == {}
 
     def test_init_with_settings_defaults(self):
@@ -142,8 +142,8 @@ class TestBedrockClientWrapper:
         with patch("agent_memory_server.llms.settings", new=mock_settings):
             client = BedrockClientWrapper()
 
-            assert client.region_name == "us-west-2"
-            assert client.credentials == mock_settings.aws_credentials
+            assert client._region_name == "us-west-2"
+            assert client._credentials == mock_settings.aws_credentials
 
     def test_get_chat_model_creates_converse_client(self):
         """Test that _get_chat_model creates a ChatBedrockConverse instance."""
@@ -433,9 +433,7 @@ def test_get_model_config(model_name, expected_provider, expected_max_tokens):
 async def test_get_model_client():
     """Test the get_model_client function"""
     # Clear the client cache before each test
-    import agent_memory_server.llms
-
-    agent_memory_server.llms._model_clients = {}
+    _model_clients = {}
 
     # Test with OpenAI model
     with (
@@ -447,7 +445,7 @@ async def test_get_model_client():
         assert client == "openai-client"
 
     # Clear cache for next test
-    agent_memory_server.llms._model_clients = {}
+    _model_clients = {}
 
     # Test with Anthropic model
     with (
@@ -459,7 +457,7 @@ async def test_get_model_client():
         assert client == "anthropic-client"
 
     # Clear cache for next test
-    agent_memory_server.llms._model_clients = {}
+    _model_clients = {}
 
     # Test with Bedrock model
     mock_settings = Settings(

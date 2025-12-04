@@ -63,11 +63,12 @@ async def lifespan(app: FastAPI):
                     logger.error(err_msg)
                     raise ValueError(err_msg)
             case ModelProvider.AWS_BEDROCK:
-                has_access_keys = (
+                # The access key ID and secret access key are mandatory.
+                # The session token is optional (only for STS), so we don't need to check for it.
+                has_access_key = (
                     settings.aws_access_key_id and settings.aws_secret_access_key
                 )
-                has_session_token = settings.aws_session_token is not None
-                if not has_access_keys and not has_session_token:
+                if not has_access_key:
                     err_msg = "AWS credentials are not set."
                     logger.error(err_msg)
                     raise ValueError(err_msg)

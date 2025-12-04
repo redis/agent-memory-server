@@ -153,6 +153,7 @@ dev = [
     "freezegun>=1.2.0",
     "mypy>=1.16.1",
     "ipdb>=0.13.13",
+    "boto3-stubs[bedrock-runtime]>=1.42.3",
     "mypy-boto3-bedrock>=1.42.1",
     "mypy-boto3>=1.41.0",
     "types-PyYAML>=6.0.12",

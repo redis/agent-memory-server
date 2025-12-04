@@ -139,8 +139,8 @@ class BedrockClientWrapper:
             region_name (str | None): AWS region name. If not provided, it will be picked up from the environment.
             credentials (dict[str, str] | None): AWS credentials. If not provided, it will be picked up from the environment.
         """
-        self.region_name = region_name or settings.region_name
-        self.credentials = credentials or settings.aws_credentials
+        self._region_name = region_name or settings.region_name
+        self._credentials = credentials or settings.aws_credentials
         # Cache for ChatBedrockConverse instances per model
         self._chat_models: dict = {}
 
@@ -166,8 +166,8 @@ class BedrockClientWrapper:
 
         chat_model = ChatBedrockConverse(
             model=model_id,
-            region_name=self.region_name,
-            **self.credentials,
+            region_name=self._region_name,
+            **self._credentials,
         )
         self._chat_models[model_id] = chat_model
         return chat_model

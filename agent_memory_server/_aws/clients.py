@@ -12,6 +12,7 @@ from agent_memory_server.config import settings
 
 if TYPE_CHECKING:
     from mypy_boto3_bedrock import BedrockClient
+    from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
 
 
 def create_aws_session(
@@ -54,7 +55,7 @@ def create_bedrock_client(
 def create_bedrock_runtime_client(
     region_name: str | None = None,
     session: Session | None = None,
-) -> "BedrockClient":
+) -> "BedrockRuntimeClient":
     """Create a Bedrock runtime client.
 
     Args:
