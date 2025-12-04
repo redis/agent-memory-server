@@ -449,9 +449,9 @@ class TestContextualGroundingIntegration:
 
             # CI Stability: Accept any valid score (>= 0.0) while grounding system is being improved
             # This allows us to track grounding quality without blocking CI on implementation details
-            assert result.overall_score >= 0.0, (
-                f"Invalid score for {example['category']}: {result.overall_score}"
-            )
+            assert (
+                result.overall_score >= 0.0
+            ), f"Invalid score for {example['category']}: {result.overall_score}"
 
             # Log performance for monitoring
             if result.overall_score < 0.05:
@@ -530,6 +530,6 @@ class TestContextualGroundingIntegration:
             print(f"{model}: {status}")
 
         # At least one model should succeed
-        assert any(r["success"] for r in results_by_model.values()), (
-            "No model successfully completed grounding"
-        )
+        assert any(
+            r["success"] for r in results_by_model.values()
+        ), "No model successfully completed grounding"
