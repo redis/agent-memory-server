@@ -105,7 +105,7 @@ async def search_index(async_redis_client):
 
 
 @pytest.fixture()
-async def session(use_test_redis_connection, async_redis_client):
+async def session(use_test_redis_connection, async_redis_client, request):
     """Set up a test session with Redis data for testing"""
     import logging
 
@@ -164,11 +164,19 @@ async def session(use_test_redis_connection, async_redis_client):
             )
             long_term_memories.append(memory)
 
-        # Index the memories directly (only if OpenAI API key is available)
+        # Index the memories directly (only if tests explicitly opt-in to using
+        # real API keys). This prevents tests that don't require external
+        # services from accidentally making network calls when OPENAI_API_KEY
+        # is set in the environment.
         import os
 
-        if not os.getenv("OPENAI_API_KEY"):
-            # Skip embedding creation if no API key - tests can still run with empty index
+        requires_api_keys_marker = request.node.get_closest_marker("requires_api_keys")
+        has_api_key = bool(os.getenv("OPENAI_API_KEY"))
+
+        if not (has_api_key and requires_api_keys_marker):
+            # Skip embedding creation if no API key is configured or the test
+            # has not been marked as requiring API keys. Tests can still run
+            # with an empty semantic index.
             embeddings = []
         else:
             vectorizer = OpenAITextVectorizer()
@@ -588,11 +596,26 @@ class MockVectorStoreAdapter(VectorStoreAdapter):
         results = []
         for memory in list(self.memories.values()):
             # Apply basic filters
-            if namespace and hasattr(namespace, "eq") and namespace.eq and memory.namespace != namespace.eq:
+            if (
+                namespace
+                and hasattr(namespace, "eq")
+                and namespace.eq
+                and memory.namespace != namespace.eq
+            ):
                 continue
-            if user_id and hasattr(user_id, "eq") and user_id.eq and memory.user_id != user_id.eq:
+            if (
+                user_id
+                and hasattr(user_id, "eq")
+                and user_id.eq
+                and memory.user_id != user_id.eq
+            ):
                 continue
-            if session_id and hasattr(session_id, "eq") and session_id.eq and memory.session_id != session_id.eq:
+            if (
+                session_id
+                and hasattr(session_id, "eq")
+                and session_id.eq
+                and memory.session_id != session_id.eq
+            ):
                 continue
             if (
                 memory_hash

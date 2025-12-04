@@ -10,14 +10,27 @@ _configured = False
 
 
 def configure_logging():
-    """Configure structured logging for the application"""
+    """Configure structured logging for the application.
+
+    NOTE:
+        We intentionally bind handlers to ``sys.__stderr__`` instead of ``sys.stderr``.
+        Test runners like Click's ``CliRunner`` temporarily replace and then close
+        ``sys.stderr`` to capture output. If we bind logging handlers to that
+        temporary stream, any later log writes will raise ``ValueError: I/O
+        operation on closed file`` once the runner closes it. Using
+        ``sys.__stderr__`` ensures we always log to the original process stderr
+        that remains open for the lifetime of the process.
+    """
     global _configured
     if _configured:
         return
 
     # Configure standard library logging based on settings.log_level
     level = getattr(logging, settings.log_level.upper(), logging.INFO)
-    handler = logging.StreamHandler(sys.stderr)  # Use stderr instead of stdout
+
+    # Use the original stderr stream so logging isn't tied to temporary test
+    # runners' replacements of sys.stderr (which may be closed later).
+    handler = logging.StreamHandler(sys.__stderr__)
     handler.setLevel(level)
     logging.basicConfig(level=level, handlers=[handler], format="%(message)s")
 
@@ -54,9 +67,11 @@ def configure_mcp_logging():
     root_logger = logging.getLogger()
     root_logger.handlers.clear()
 
-    # Configure stderr-only logging for MCP stdio mode
+    # Configure stderr-only logging for MCP stdio mode. Use the original
+    # stderr stream so MCP logging is not affected by temporary replacements
+    # of sys.stderr (for example, in tests).
     level = getattr(logging, settings.log_level.upper(), logging.INFO)
-    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler = logging.StreamHandler(sys.__stderr__)
     stderr_handler.setLevel(level)
     stderr_handler.setFormatter(
         logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s")

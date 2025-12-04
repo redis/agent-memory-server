@@ -104,7 +104,6 @@ class TestOpenAIClientWrapper:
         )
 
 
-@pytest.mark.asyncio
 class TestBedrockClientWrapper:
     """Test the BedrockClientWrapper class."""
 
@@ -197,6 +196,7 @@ class TestBedrockClientWrapper:
             # Both should return the same mock
             assert result1 == result2
 
+    @pytest.mark.asyncio
     async def test_create_chat_completion_success(self):
         """Test successful chat completion."""
         mock_settings = Settings(
@@ -234,6 +234,7 @@ class TestBedrockClientWrapper:
             assert response.total_tokens == 30
             mock_chat_model.ainvoke.assert_called_once()
 
+    @pytest.mark.asyncio
     async def test_create_chat_completion_with_json_format(self):
         """Test chat completion with JSON response format."""
         mock_settings = Settings(
@@ -264,6 +265,7 @@ class TestBedrockClientWrapper:
             message = call_args[0][0][0]
             assert "You must respond with a valid JSON object" in message.content
 
+    @pytest.mark.asyncio
     async def test_create_chat_completion_with_functions(self):
         """Test chat completion with function definitions."""
         mock_settings = Settings(
@@ -305,6 +307,7 @@ class TestBedrockClientWrapper:
             message = call_args[0][0][0]
             assert "JSON object matching this schema" in message.content
 
+    @pytest.mark.asyncio
     async def test_create_chat_completion_no_usage_metadata(self):
         """Test chat completion when usage_metadata is not available."""
         mock_settings = Settings(
@@ -331,6 +334,7 @@ class TestBedrockClientWrapper:
 
             assert response.total_tokens == 0
 
+    @pytest.mark.asyncio
     async def test_create_chat_completion_error_handling(self):
         """Test that errors are properly raised."""
         mock_settings = Settings(
@@ -352,6 +356,7 @@ class TestBedrockClientWrapper:
                     prompt="Hello",
                 )
 
+    @pytest.mark.asyncio
     async def test_create_embedding_not_implemented(self):
         """Test that create_embedding raises NotImplementedError."""
         mock_settings = Settings(
