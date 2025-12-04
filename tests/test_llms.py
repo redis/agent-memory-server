@@ -13,7 +13,6 @@ from agent_memory_server.llms import (
     get_model_client,
     get_model_config,
     optimize_query_for_vector_search,
-    _model_clients,
 )
 
 

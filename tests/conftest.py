@@ -588,11 +588,26 @@ class MockVectorStoreAdapter(VectorStoreAdapter):
         results = []
         for memory in list(self.memories.values()):
             # Apply basic filters
-            if namespace and hasattr(namespace, "eq") and namespace.eq and memory.namespace != namespace.eq:
+            if (
+                namespace
+                and hasattr(namespace, "eq")
+                and namespace.eq
+                and memory.namespace != namespace.eq
+            ):
                 continue
-            if user_id and hasattr(user_id, "eq") and user_id.eq and memory.user_id != user_id.eq:
+            if (
+                user_id
+                and hasattr(user_id, "eq")
+                and user_id.eq
+                and memory.user_id != user_id.eq
+            ):
                 continue
-            if session_id and hasattr(session_id, "eq") and session_id.eq and memory.session_id != session_id.eq:
+            if (
+                session_id
+                and hasattr(session_id, "eq")
+                and session_id.eq
+                and memory.session_id != session_id.eq
+            ):
                 continue
             if (
                 memory_hash

@@ -368,7 +368,7 @@ Optimized query:"""
             err_msg = "AWS access key ID and secret access key are missing. Please set them in the environment."
             logger.error(err_msg)
             raise ValueError(err_msg)
-        
+
         credentials: dict[str, str] = {
             "aws_access_key_id": self.aws_access_key_id,
             "aws_secret_access_key": self.aws_secret_access_key,
@@ -376,7 +376,7 @@ Optimized query:"""
         if self.aws_session_token:
             # The session token is optional (only for STS).
             credentials["aws_session_token"] = self.aws_session_token
-        
+
         return credentials
 
     @property
