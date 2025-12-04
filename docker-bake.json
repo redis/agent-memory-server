@@ -13,13 +13,13 @@
       "inherits": ["common"],
       "dockerfile": "Dockerfile",
       "target": "aws",
-      "tags": ["redislabs/agent-memory-server-aws:0.12.3-fork"]
+      "tags": ["redislabs/agent-memory-server-aws:${REDIS_AGENT_MEMORY_AWS_VERSION:-latest}"]
     },
     "standard": {
       "inherits": ["common"],
       "dockerfile": "Dockerfile",
       "target": "standard",
-      "tags": ["redislabs/agent-memory-server:latest"]
+      "tags": ["redislabs/agent-memory-server:${REDIS_AGENT_MEMORY_VERSION:-latest}"]
     }
   }
 }
