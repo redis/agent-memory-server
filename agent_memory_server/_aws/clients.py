@@ -36,7 +36,7 @@ def create_aws_session(
 def create_bedrock_client(
     region_name: str | None = None,
     session: Session | None = None,
-) -> BedrockClient:
+) -> "BedrockClient":
     """Create a Bedrock client.
 
     Args:
@@ -55,7 +55,7 @@ def create_bedrock_client(
 def create_bedrock_runtime_client(
     region_name: str | None = None,
     session: Session | None = None,
-) -> BedrockRuntimeClient:
+) -> "BedrockRuntimeClient":
     """Create a Bedrock runtime client.
 
     Args:
