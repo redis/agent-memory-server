@@ -108,9 +108,9 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/v1/health || exit 1
 
-# Disable auth by default for easier local development.
-# Override with DISABLE_AUTH=false in production.
-ENV DISABLE_AUTH=true
+# Enable authentication by default.
+# You may override with DISABLE_AUTH=true in development.
+ENV DISABLE_AUTH=false
 
 # Default to development mode (no separate worker needed).
 # For production, override the command to remove --no-worker and run a separate task-worker container.
@@ -138,9 +138,9 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/v1/health || exit 1
 
-# Disable auth by default for easier local development.
-# Override with DISABLE_AUTH=false in production.
-ENV DISABLE_AUTH=true
+# Enable authentication by default.
+# You may override with DISABLE_AUTH=true in development.
+ENV DISABLE_AUTH=false
 
 # Default to development mode (no separate worker needed).
 # For production, override the command to remove --no-worker and run a separate task-worker container.

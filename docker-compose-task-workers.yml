@@ -32,6 +32,7 @@ services:
       - EMBEDDING_MODEL=text-embedding-3-small
       - ENABLE_TOPIC_EXTRACTION=True
       - ENABLE_NER=True
+      - DISABLE_AUTH=true # For local development only
     depends_on:
       - redis
     volumes:
@@ -53,6 +54,12 @@ services:
       - PORT=9050
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GENERATION_MODEL=gpt-4o-mini
+      - EMBEDDING_MODEL=text-embedding-3-small
+      - LONG_TERM_MEMORY=True
+      - ENABLE_TOPIC_EXTRACTION=True
+      - ENABLE_NER=True
+      - DISABLE_AUTH=true # For local development only
     ports:
       - "9050:9000"
     depends_on:
@@ -68,6 +75,12 @@ services:
       - REDIS_URL=redis://redis:6379
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GENERATION_MODEL=gpt-4o-mini
+      - EMBEDDING_MODEL=text-embedding-3-small
+      - LONG_TERM_MEMORY=True
+      - ENABLE_TOPIC_EXTRACTION=True
+      - ENABLE_NER=True
+      - DISABLE_AUTH=true # For local development only
     depends_on:
       - redis
     command: ["agent-memory", "task-worker"]
@@ -101,6 +114,7 @@ services:
       - LONG_TERM_MEMORY=True
       - ENABLE_TOPIC_EXTRACTION=True
       - ENABLE_NER=True
+      - DISABLE_AUTH=true # For local development only
     depends_on:
       - redis
     volumes:
@@ -129,6 +143,10 @@ services:
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
       - GENERATION_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
       - EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
+      - LONG_TERM_MEMORY=True
+      - ENABLE_TOPIC_EXTRACTION=True
+      - ENABLE_NER=True
+      - DISABLE_AUTH=true # For local development only
     ports:
       - "9050:9000"
     depends_on:
@@ -151,6 +169,10 @@ services:
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
       - GENERATION_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
       - EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
+      - LONG_TERM_MEMORY=True
+      - ENABLE_TOPIC_EXTRACTION=True
+      - ENABLE_NER=True
+      - DISABLE_AUTH=true # For local development only
     depends_on:
       - redis
     command: ["agent-memory", "task-worker"]
