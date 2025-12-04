@@ -6,7 +6,7 @@ This module contains utilities for working with AWS services.
 from botocore.exceptions import ClientError
 from cachetools import TTLCache, cached
 
-from agent_memory_server._aws.clients import create_bedrock_runtime_client, create_bedrock_client
+from agent_memory_server._aws.clients import create_bedrock_client
 from agent_memory_server.logging import get_logger
 
 

@@ -192,12 +192,15 @@ class BedrockClientWrapper:
         Returns:
             ChatResponse with the model's response
         """
-        from langchain_core.messages import HumanMessage
+        try:
+            from langchain_core.messages import HumanMessage
+        except ImportError:
+            err_msg = "Missing AWS-related dependencies. Try to install with: pip install agent-memory-server[aws]."
+            logger.error(err_msg)
+            raise
 
         try:
             chat_model = self._get_chat_model(model)
-
-            # Handle JSON response format by adding instruction to prompt
             effective_prompt = prompt
             if response_format and response_format.get("type") == "json_object":
                 effective_prompt = (
@@ -205,18 +208,13 @@ class BedrockClientWrapper:
                 )
 
             if functions and function_call:
-                # Add function schema to prompt for structured output
                 schema = functions[0]["parameters"]
                 effective_prompt = f"{effective_prompt}\n\nYou must respond with a JSON object matching this schema:\n{json.dumps(schema, indent=2)}"
 
-            # Use ainvoke for async operation
             message = HumanMessage(content=effective_prompt)
             response = await chat_model.ainvoke([message])
-
-            # Extract content from the response
             content = response.content if hasattr(response, "content") else ""
 
-            # Extract token usage from response metadata
             input_tokens = 0
             output_tokens = 0
             if hasattr(response, "usage_metadata") and response.usage_metadata:

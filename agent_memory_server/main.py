@@ -74,9 +74,7 @@ async def lifespan(app: FastAPI):
 
     # Set up Redis connection if long-term memory is enabled
     if settings.long_term_memory:
-        logger.info(f"Attempting to connect to Redis using at {settings.redis_url}.")
         await get_redis_conn()
-        logger.info("Connected to Redis successfully.")
 
     # Initialize Docket for background tasks if enabled
     if settings.use_docket:

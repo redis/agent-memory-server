@@ -638,10 +638,10 @@ async def compact_long_term_memories(
 
                 session_id_filter = SessionId(eq=session_id)
 
-            # Use vectorstore adapter to get all memories
+            # Use vectorstore adapter to get all memories using filter-only query
+            # (no embedding required)
             adapter = await get_vectorstore_adapter()
-            search_result = await adapter.search_memories(
-                query="",  # Empty query to get all matching filter criteria
+            search_result = await adapter.list_memories(
                 namespace=namespace_filter,
                 user_id=user_id_filter,
                 session_id=session_id_filter,
@@ -1037,10 +1037,9 @@ async def deduplicate_by_hash(
     # Use vectorstore adapter to search for memories with the same hash
     adapter = await get_vectorstore_adapter()
 
-    # Search for existing memories with the same hash
-    # Use a dummy query since we're filtering by hash, not doing semantic search
-    results = await adapter.search_memories(
-        query="",  # Empty query since we're filtering by hash
+    # Search for existing memories with the same hash using filter-only query
+    # (no embedding required)
+    results = await adapter.list_memories(
         session_id=session_id_filter,
         user_id=user_id_filter,
         namespace=namespace_filter,
@@ -1126,10 +1125,9 @@ async def deduplicate_by_id(
     # Use vectorstore adapter to search for memories with the same id
     adapter = await get_vectorstore_adapter()
 
-    # Search for existing memories with the same id
-    # Use a dummy query since we're filtering by id, not doing semantic search
-    results = await adapter.search_memories(
-        query="",  # Empty query since we're filtering by id
+    # Search for existing memories with the same id using filter-only query
+    # (no embedding required)
+    results = await adapter.list_memories(
         session_id=session_id_filter,
         user_id=user_id_filter,
         namespace=namespace_filter,
@@ -1507,9 +1505,8 @@ async def get_long_term_memory_by_id(memory_id: str) -> MemoryRecord | None:
 
     adapter = await get_vectorstore_adapter()
 
-    # Search for the memory by ID using the existing search function
-    results = await adapter.search_memories(
-        query="",  # Empty search text to get all results
+    # Search for the memory by ID using filter-only query (no embedding required)
+    results = await adapter.list_memories(
         limit=1,
         id=Id(eq=memory_id),
     )
@@ -1734,9 +1731,8 @@ async def forget_long_term_memories(
     user_id_filter = UserId(eq=user_id) if user_id else None
     session_id_filter = SessionId(eq=session_id) if session_id else None
 
-    # Fetch candidates with an empty query honoring filters
-    results = await adapter.search_memories(
-        query="",
+    # Fetch candidates using filter-only query (no embedding required)
+    results = await adapter.list_memories(
         namespace=namespace_filter,
         user_id=user_id_filter,
         session_id=session_id_filter,
