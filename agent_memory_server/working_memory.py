@@ -60,51 +60,57 @@ async def check_and_set_migration_status(redis_client: Redis | None = None) -> b
     cursor = 0
     json_keys_found = 0
 
-    while True:
-        cursor, keys = await redis_client.scan(
-            cursor=cursor, match="working_memory:*", count=1000
-        )
+    try:
+        while True:
+            cursor, keys = await redis_client.scan(
+                cursor=cursor, match="working_memory:*", count=1000
+            )
 
-        if keys:
-            # Use pipeline to batch TYPE calls for better performance
-            pipe = redis_client.pipeline()
-            for key in keys:
-                pipe.type(key)
-            types = await pipe.execute()
+            if keys:
+                # Use pipeline to batch TYPE calls for better performance
+                pipe = redis_client.pipeline()
+                for key in keys:
+                    pipe.type(key)
+                types = await pipe.execute()
 
-            for key_type in types:
-                if isinstance(key_type, bytes):
-                    key_type = key_type.decode("utf-8")
+                for key_type in types:
+                    if isinstance(key_type, bytes):
+                        key_type = key_type.decode("utf-8")
 
-                if key_type == "string":
-                    # Early exit: found at least one string key, enable lazy migration
-                    logger.info(
-                        "Found working memory key in old string format. "
-                        "Lazy migration enabled. Run 'agent-memory migrate-working-memory' "
-                        "to migrate all keys at once."
-                    )
-                    _string_keys_migrated = False
-                    # We don't know the exact count, so set to -1 to indicate unknown
-                    # The counter will be managed differently in this mode
-                    _remaining_string_keys = -1
-                    return False
-                elif key_type == "ReJSON-RL":
-                    json_keys_found += 1
+                    if key_type == "string":
+                        # Early exit: found at least one string key, enable lazy migration
+                        logger.info(
+                            "Found working memory key in old string format. "
+                            "Lazy migration enabled. Run 'agent-memory migrate-working-memory' "
+                            "to migrate all keys at once."
+                        )
+                        _string_keys_migrated = False
+                        # We don't know the exact count, so set to -1 to indicate unknown
+                        # The counter will be managed differently in this mode
+                        _remaining_string_keys = -1
+                        return False
+                    elif key_type == "ReJSON-RL":
+                        json_keys_found += 1
 
-        if cursor == 0:
-            break
+            if cursor == 0:
+                break
 
-    # No string keys found
-    if json_keys_found > 0:
-        logger.info(
-            f"All {json_keys_found} working memory keys are in JSON format. "
-            "Skipping type checks."
-        )
-    else:
-        logger.info("No working memory keys found. Skipping type checks.")
-    _string_keys_migrated = True
-    _remaining_string_keys = 0
-    return True
+        # No string keys found
+        if json_keys_found > 0:
+            logger.info(
+                f"All {json_keys_found} working memory keys are in JSON format. "
+                "Skipping type checks."
+            )
+        else:
+            logger.info("No working memory keys found. Skipping type checks.")
+        _string_keys_migrated = True
+        _remaining_string_keys = 0
+        return True
+    except Exception as e:
+        logger.error(f"Failed to check migration status: {e}")
+        _string_keys_migrated = False  # Safe default
+        _remaining_string_keys = -1
+        return False
 
 
 def _decrement_string_key_count() -> None:
@@ -174,9 +180,21 @@ async def _migrate_string_to_json(
         data = json.loads(string_data)
         logger.info(f"Migrating working memory key {key} from string to JSON format")
 
-        # Delete the old string key and set as JSON
-        await redis_client.delete(key)
-        await redis_client.json().set(key, "$", data)
+        # Atomically migrate the key from string to JSON using a Lua script
+        # The script: if key is string, get value, delete, set as JSON; else do nothing
+        lua_script = """
+        local key = KEYS[1]
+        if redis.call('TYPE', key).ok == 'string' then
+            local val = redis.call('GET', key)
+            redis.call('DEL', key)
+            redis.call('JSON.SET', key, '$', ARGV[1])
+            return val
+        else
+            return nil
+        end
+        """
+        # Pass the JSON string as ARGV[1]
+        migrated_val = await redis_client.eval(lua_script, 1, key, json.dumps(data))
 
         # Preserve TTL if it was set
         # Note: TTL is lost during migration since we deleted the key
