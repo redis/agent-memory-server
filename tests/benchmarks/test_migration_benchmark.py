@@ -269,3 +269,105 @@ class TestMigrationBenchmark:
         # Should find the string key
         assert result is False
 
+    @pytest.mark.asyncio
+    async def test_migration_script_performance(
+        self, async_redis_client, cleanup_working_memory_keys
+    ):
+        """Benchmark: Migration script performance with pipelined operations."""
+        namespace = "benchmark"
+
+        # Create string keys in batches using pipeline
+        print(f"\n📊 Creating {KEY_COUNT:,} string keys for migration...")
+        start = time.perf_counter()
+
+        batch_size = 1000
+        for batch_start in range(0, KEY_COUNT, batch_size):
+            pipe = async_redis_client.pipeline()
+            for i in range(batch_start, min(batch_start + batch_size, KEY_COUNT)):
+                key = Keys.working_memory_key(
+                    session_id=f"string-session-{i}", namespace=namespace
+                )
+                data = create_old_format_data(f"string-session-{i}", namespace)
+                pipe.set(key, json.dumps(data))
+            await pipe.execute()
+
+            if (batch_start + batch_size) % 100000 == 0:
+                print(f"  Created {batch_start + batch_size:,} string keys...")
+
+        creation_time = time.perf_counter() - start
+        print(f"✅ Created {KEY_COUNT:,} string keys in {creation_time:.2f}s")
+
+        # Benchmark migration (simulating what the CLI does)
+        print(f"\n📊 Benchmarking pipelined migration...")
+        migrate_start = time.perf_counter()
+
+        # Scan and collect string keys
+        string_keys = []
+        cursor = 0
+        while True:
+            cursor, keys = await async_redis_client.scan(
+                cursor, match="working_memory:*", count=1000
+            )
+            if keys:
+                pipe = async_redis_client.pipeline()
+                for key in keys:
+                    pipe.type(key)
+                types = await pipe.execute()
+
+                for key, key_type in zip(keys, types):
+                    if isinstance(key_type, bytes):
+                        key_type = key_type.decode("utf-8")
+                    if key_type == "string":
+                        string_keys.append(key)
+
+            if cursor == 0:
+                break
+
+        scan_time = time.perf_counter() - migrate_start
+        print(f"  Scan completed in {scan_time:.2f}s ({len(string_keys):,} string keys)")
+
+        # Migrate in batches
+        migrated = 0
+        for batch_start in range(0, len(string_keys), batch_size):
+            batch_keys = string_keys[batch_start : batch_start + batch_size]
+
+            # Read all string data
+            read_pipe = async_redis_client.pipeline()
+            for key in batch_keys:
+                read_pipe.get(key)
+            string_data_list = await read_pipe.execute()
+
+            # Parse and migrate
+            write_pipe = async_redis_client.pipeline()
+            for key, string_data in zip(batch_keys, string_data_list):
+                if string_data is None:
+                    continue
+                if isinstance(string_data, bytes):
+                    string_data = string_data.decode("utf-8")
+                data = json.loads(string_data)
+                write_pipe.delete(key)
+                write_pipe.json().set(key, "$", data)
+
+            await write_pipe.execute()
+            migrated += len(batch_keys)
+
+            if migrated % 100000 == 0:
+                elapsed = time.perf_counter() - migrate_start
+                print(f"  Migrated {migrated:,} keys ({migrated / elapsed:,.0f} keys/sec)")
+
+        migrate_time = time.perf_counter() - migrate_start
+        rate = migrated / migrate_time
+
+        print(f"✅ Migration completed in {migrate_time:.2f}s")
+        print(f"   Migrated: {migrated:,}")
+        print(f"   Rate: {rate:,.0f} keys/sec")
+
+        # Verify migration
+        sample_key = Keys.working_memory_key(
+            session_id="string-session-0", namespace=namespace
+        )
+        key_type = await async_redis_client.type(sample_key)
+        if isinstance(key_type, bytes):
+            key_type = key_type.decode("utf-8")
+        assert key_type == "ReJSON-RL", f"Expected ReJSON-RL, got {key_type}"
+
