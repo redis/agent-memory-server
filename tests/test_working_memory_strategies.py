@@ -265,12 +265,14 @@ class TestWorkingMemoryStorageWithStrategy:
         with patch(
             "agent_memory_server.working_memory.get_redis_conn"
         ) as mock_get_redis:
-            mock_redis = MagicMock()
+            mock_redis = AsyncMock()
+            # type() returns the key type - "ReJSON-RL" for JSON keys
+            mock_redis.type = AsyncMock(return_value="ReJSON-RL")
             # json() is synchronous but returns an object with async methods
             mock_json = MagicMock()
             # Redis JSON returns dict directly, not bytes
             mock_json.get = AsyncMock(return_value=stored_data)
-            mock_redis.json.return_value = mock_json
+            mock_redis.json = MagicMock(return_value=mock_json)
             mock_get_redis.return_value = mock_redis
 
             result = await get_working_memory(
@@ -307,12 +309,14 @@ class TestWorkingMemoryStorageWithStrategy:
         with patch(
             "agent_memory_server.working_memory.get_redis_conn"
         ) as mock_get_redis:
-            mock_redis = MagicMock()
+            mock_redis = AsyncMock()
+            # type() returns the key type - "ReJSON-RL" for JSON keys
+            mock_redis.type = AsyncMock(return_value="ReJSON-RL")
             # json() is synchronous but returns an object with async methods
             mock_json = MagicMock()
             # Redis JSON returns dict directly, not bytes
             mock_json.get = AsyncMock(return_value=stored_data)
-            mock_redis.json.return_value = mock_json
+            mock_redis.json = MagicMock(return_value=mock_json)
             mock_get_redis.return_value = mock_redis
 
             result = await get_working_memory(

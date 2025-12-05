@@ -74,9 +74,13 @@ async def lifespan(app: FastAPI):
             "Long-term memory requires OpenAI for embeddings, but OpenAI API key is not set"
         )
 
-    # Set up Redis connection if long-term memory is enabled
-    if settings.long_term_memory:
-        await get_redis_conn()
+    # Set up Redis connection and check working memory migration status
+    redis_conn = await get_redis_conn()
+
+    # Check if any working memory keys need migration from string to JSON format
+    from agent_memory_server.working_memory import check_and_set_migration_status
+
+    await check_and_set_migration_status(redis_conn)
 
     # Initialize Docket for background tasks if enabled
     if settings.use_docket:
