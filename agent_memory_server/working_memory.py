@@ -45,33 +45,38 @@ async def check_and_set_migration_status(redis_client: Redis | None = None) -> b
 
     # Scan for working_memory:* keys
     cursor = 0
-    string_keys_found = 0
     json_keys_found = 0
 
     while True:
         cursor, keys = await redis_client.scan(
-            cursor=cursor, match="working_memory:*", count=100
+            cursor=cursor, match="working_memory:*", count=1000
         )
 
-        for key in keys:
-            key_type = await redis_client.type(key)
-            if isinstance(key_type, bytes):
-                key_type = key_type.decode("utf-8")
+        if keys:
+            # Use pipeline to batch TYPE calls for better performance
+            pipe = redis_client.pipeline()
+            for key in keys:
+                pipe.type(key)
+            types = await pipe.execute()
 
-            if key_type == "string":
-                # Early exit: found at least one string key, enable lazy migration
-                logger.info(
-                    "Found working memory key in old string format. "
-                    "Lazy migration enabled. Run 'agent-memory migrate-working-memory' "
-                    "to migrate all keys at once."
-                )
-                _string_keys_migrated = False
-                # We don't know the exact count, so set to -1 to indicate unknown
-                # The counter will be managed differently in this mode
-                _remaining_string_keys = -1
-                return False
-            elif key_type == "ReJSON-RL":
-                json_keys_found += 1
+            for key_type in types:
+                if isinstance(key_type, bytes):
+                    key_type = key_type.decode("utf-8")
+
+                if key_type == "string":
+                    # Early exit: found at least one string key, enable lazy migration
+                    logger.info(
+                        "Found working memory key in old string format. "
+                        "Lazy migration enabled. Run 'agent-memory migrate-working-memory' "
+                        "to migrate all keys at once."
+                    )
+                    _string_keys_migrated = False
+                    # We don't know the exact count, so set to -1 to indicate unknown
+                    # The counter will be managed differently in this mode
+                    _remaining_string_keys = -1
+                    return False
+                elif key_type == "ReJSON-RL":
+                    json_keys_found += 1
 
         if cursor == 0:
             break

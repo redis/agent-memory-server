@@ -126,9 +126,11 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
     configure_logging()
 
     async def run_migration():
+        import json as json_module
+
         redis = await get_redis_conn()
 
-        # Count keys by type
+        # Count keys by type using pipelined TYPE calls
         string_keys = []
         json_keys_count = 0
         cursor = 0
@@ -139,15 +141,22 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
 
         while True:
             cursor, keys = await redis.scan(cursor, match=pattern, count=batch_size)
-            for key in keys:
-                key_type = await redis.type(key)
-                if isinstance(key_type, bytes):
-                    key_type = key_type.decode("utf-8")
 
-                if key_type == "string":
-                    string_keys.append(key)
-                elif key_type == "ReJSON-RL":
-                    json_keys_count += 1
+            if keys:
+                # Pipeline TYPE calls for better performance
+                pipe = redis.pipeline()
+                for key in keys:
+                    pipe.type(key)
+                types = await pipe.execute()
+
+                for key, key_type in zip(keys, types):
+                    if isinstance(key_type, bytes):
+                        key_type = key_type.decode("utf-8")
+
+                    if key_type == "string":
+                        string_keys.append(key)
+                    elif key_type == "ReJSON-RL":
+                        json_keys_count += 1
 
             if cursor == 0:
                 break
@@ -170,44 +179,70 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
             click.echo("\n--dry-run specified, no changes made.")
             return
 
-        # Migrate keys
+        # Migrate keys in batches using pipeline
         click.echo(f"\nMigrating {len(string_keys)} keys...")
         migrate_start = time.time()
         migrated = 0
         errors = 0
 
-        for key in string_keys:
-            try:
-                # Read string data
-                string_data = await redis.get(key)
+        # Process in batches
+        for batch_start in range(0, len(string_keys), batch_size):
+            batch_keys = string_keys[batch_start : batch_start + batch_size]
+
+            # First, read all string data in a pipeline
+            read_pipe = redis.pipeline()
+            for key in batch_keys:
+                read_pipe.get(key)
+            string_data_list = await read_pipe.execute()
+
+            # Parse and prepare migration
+            migrations = []  # List of (key, data) tuples
+            for key, string_data in zip(batch_keys, string_data_list):
                 if string_data is None:
                     continue
 
-                if isinstance(string_data, bytes):
-                    string_data = string_data.decode("utf-8")
+                try:
+                    if isinstance(string_data, bytes):
+                        string_data = string_data.decode("utf-8")
+                    data = json_module.loads(string_data)
+                    migrations.append((key, data))
+                except Exception as e:
+                    errors += 1
+                    logger.error(f"Failed to parse key {key}: {e}")
 
-                # Parse and migrate
-                import json as json_module
+            # Execute migrations in a pipeline (delete + json.set)
+            if migrations:
+                write_pipe = redis.pipeline()
+                for key, data in migrations:
+                    write_pipe.delete(key)
+                    write_pipe.json().set(key, "$", data)
 
-                data = json_module.loads(string_data)
-                await redis.delete(key)
-                await redis.json().set(key, "$", data)
-                migrated += 1
+                try:
+                    await write_pipe.execute()
+                    migrated += len(migrations)
+                except Exception as e:
+                    # If batch fails, try one by one
+                    logger.warning(f"Batch migration failed, retrying individually: {e}")
+                    for key, data in migrations:
+                        try:
+                            await redis.delete(key)
+                            await redis.json().set(key, "$", data)
+                            migrated += 1
+                        except Exception as e2:
+                            errors += 1
+                            logger.error(f"Failed to migrate key {key}: {e2}")
 
-                # Progress update every 1000 keys
-                if migrated % 1000 == 0:
-                    elapsed = time.time() - migrate_start
-                    rate = migrated / elapsed
-                    remaining = len(string_keys) - migrated
-                    eta = remaining / rate if rate > 0 else 0
-                    click.echo(
-                        f"  Migrated {migrated}/{len(string_keys)} "
-                        f"({rate:.0f} keys/sec, ETA: {eta:.0f}s)"
-                    )
-
-            except Exception as e:
-                errors += 1
-                logger.error(f"Failed to migrate key {key}: {e}")
+            # Progress update
+            total_processed = batch_start + len(batch_keys)
+            if total_processed % 10000 == 0 or total_processed == len(string_keys):
+                elapsed = time.time() - migrate_start
+                rate = migrated / elapsed if elapsed > 0 else 0
+                remaining = len(string_keys) - total_processed
+                eta = remaining / rate if rate > 0 else 0
+                click.echo(
+                    f"  Migrated {migrated}/{len(string_keys)} "
+                    f"({rate:.0f} keys/sec, ETA: {eta:.0f}s)"
+                )
 
         migrate_time = time.time() - migrate_start
         rate = migrated / migrate_time if migrate_time > 0 else 0
