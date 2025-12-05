@@ -46,7 +46,7 @@ FAST_MODEL=gpt-4o-mini               # Quick tasks (default: gpt-4o-mini)
 # Embedding model for vector search
 EMBEDDING_MODEL=text-embedding-3-small  # OpenAI embeddings (default)
 
-# API Keys
+# API Keys (for OpenAI/Anthropic)
 OPENAI_API_KEY=your-openai-key
 ANTHROPIC_API_KEY=your-anthropic-key
 
@@ -54,6 +54,31 @@ ANTHROPIC_API_KEY=your-anthropic-key
 OPENAI_API_BASE=https://api.openai.com/v1
 ANTHROPIC_API_BASE=https://api.anthropic.com
 ```
+
+#### Using AWS Bedrock for Generation
+```bash
+# Set generation models to Bedrock model IDs
+GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
+FAST_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
+SLOW_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
+```
+
+### AWS Bedrock Configuration
+```bash
+# AWS Region (required for Bedrock)
+REGION_NAME=us-east-1
+
+# AWS Credentials (optional - can use IAM roles, AWS CLI profiles, or credentials file)
+AWS_ACCESS_KEY_ID=your-access-key-id
+AWS_SECRET_ACCESS_KEY=your-secret-access-key
+AWS_SESSION_TOKEN=your-session-token  # Optional, for temporary credentials
+
+# Use a Bedrock embedding model
+EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
+REDISVL_VECTOR_DIMENSIONS=1024  # Must match the embedding model dimensions
+```
+
+For detailed AWS Bedrock setup, see [AWS Bedrock](aws-bedrock.md).
 
 ### Server Ports
 ```bash
@@ -180,10 +205,26 @@ uv run agent-memory task-worker --concurrency 5 --redelivery-timeout 60
 - `claude-3-opus-latest` - Most capable Claude model
 - Version-specific models also supported (e.g., `claude-3-5-sonnet-20241022`)
 
-### Embedding Models (OpenAI only)
+### Generation Models (AWS Bedrock)
+Pre-configured models:
+- `anthropic.claude-sonnet-4-5-20250929-v1:0` - Claude 4.5 Sonnet
+- `anthropic.claude-haiku-4-5-20251001-v1:0` - Claude 4.5 Haiku (Fast)
+- `anthropic.claude-opus-4-5-20251101-v1:0` - Claude 4.5 Opus (Most capable)
+
+The implementation uses `ChatBedrockConverse` which supports any Bedrock model via the Converse API. See [AWS Bedrock](aws-bedrock.md) for setup instructions and adding custom models.
+
+### Embedding Models (OpenAI)
 - `text-embedding-3-small` - 1536 dimensions (recommended)
 - `text-embedding-3-large` - 3072 dimensions (higher accuracy)
 - `text-embedding-ada-002` - Legacy model (1536 dimensions)
+
+### Embedding Models (AWS Bedrock)
+- `amazon.titan-embed-text-v2:0` - 1024 dimensions (recommended)
+- `amazon.titan-embed-text-v1` - 1536 dimensions
+- `cohere.embed-english-v3` - 1024 dimensions
+- `cohere.embed-multilingual-v3` - 1024 dimensions
+
+See [AWS Bedrock](aws-bedrock.md) for detailed setup instructions.
 
 ## Configuration Examples
 

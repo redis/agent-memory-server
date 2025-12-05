@@ -1,3 +1,4 @@
+import logging
 import os
 from enum import Enum
 from typing import Any, Literal
@@ -11,11 +12,15 @@ from pydantic_settings import BaseSettings
 load_dotenv()
 
 
+logger = logging.getLogger(__name__)
+
+
 class ModelProvider(str, Enum):
     """Type of model provider"""
 
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    AWS_BEDROCK = "aws-bedrock"
 
 
 class ModelConfig(BaseModel):
@@ -173,6 +178,47 @@ MODEL_CONFIGS = {
         max_tokens=200000,
         embedding_dimensions=1536,
     ),
+    # AWS Bedrock Embedding Models
+    "amazon.titan-embed-text-v2:0": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="amazon.titan-embed-text-v2:0",
+        max_tokens=8192,
+        embedding_dimensions=1024,
+    ),
+    "amazon.titan-embed-text-v1": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="amazon.titan-embed-text-v1",
+        max_tokens=8192,
+        embedding_dimensions=1536,
+    ),
+    "cohere.embed-english-v3": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="cohere.embed-english-v3",
+        max_tokens=8192,
+        embedding_dimensions=1024,
+    ),
+    "cohere.embed-multilingual-v3": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="cohere.embed-multilingual-v3",
+        max_tokens=8192,
+        embedding_dimensions=1024,
+    ),
+    # AWS Bedrock LLM Models
+    "anthropic.claude-sonnet-4-5-20250929-v1:0": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="anthropic.claude-sonnet-4-5-20250929-v1:0",
+        max_tokens=200000,
+    ),
+    "anthropic.claude-haiku-4-5-20251001-v1:0": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="anthropic.claude-haiku-4-5-20251001-v1:0",
+        max_tokens=200000,
+    ),
+    "anthropic.claude-opus-4-5-20251101-v1:0": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="anthropic.claude-opus-4-5-20251101-v1:0",
+        max_tokens=200000,
+    ),
 }
 
 
@@ -185,6 +231,14 @@ class Settings(BaseSettings):
     anthropic_api_base: str | None = None
     generation_model: str = "gpt-4o"
     embedding_model: str = "text-embedding-3-small"
+
+    # Cloud
+    ## Cloud region
+    region_name: str | None = None
+    ## AWS Cloud credentials
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    aws_session_token: str | None = None
 
     # Model selection for query optimization
     slow_model: str = "gpt-4o"  # Slower, more capable model for complex tasks
@@ -304,6 +358,35 @@ Optimized query:"""
     def embedding_model_config(self) -> ModelConfig | None:
         """Get configuration for the embedding model."""
         return MODEL_CONFIGS.get(self.embedding_model)
+
+    @property
+    def aws_credentials(self) -> dict[str, str]:
+        """
+        Get a dictionary of AWS credentials.
+        """
+        if not self.aws_access_key_id or not self.aws_secret_access_key:
+            err_msg = "AWS access key ID and secret access key are missing. Please set them in the environment."
+            logger.error(err_msg)
+            raise ValueError(err_msg)
+
+        credentials: dict[str, str] = {
+            "aws_access_key_id": self.aws_access_key_id,
+            "aws_secret_access_key": self.aws_secret_access_key,
+        }
+        if self.aws_session_token:
+            # The session token is optional (only for STS).
+            credentials["aws_session_token"] = self.aws_session_token
+
+        return credentials
+
+    @property
+    def aws_region(self) -> str:
+        """
+        Get the AWS region.
+        """
+        if not self.region_name:
+            raise ValueError("Missing environment variable 'REGION_NAME'.")
+        return self.region_name
 
     def load_yaml_config(self, config_path: str) -> dict[str, Any]:
         """Load configuration from YAML file."""

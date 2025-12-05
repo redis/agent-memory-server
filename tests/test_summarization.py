@@ -199,10 +199,16 @@ class TestSummarizeSession:
         pipeline_mock.ltrim = AsyncMock(return_value=True)
         pipeline_mock.execute = AsyncMock(return_value=True)
 
-        with patch(
-            "agent_memory_server.summarization.get_redis_conn",
-            return_value=mock_async_redis_client,
+        with (
+            patch(
+                "agent_memory_server.summarization.get_redis_conn",
+                return_value=mock_async_redis_client,
+            ),
+            patch(
+                "agent_memory_server.summarization.get_model_client"
+            ) as mock_get_model_client,
         ):
+            mock_get_model_client.return_value = mock_openai_client
             await summarize_session(
                 session_id,
                 model,

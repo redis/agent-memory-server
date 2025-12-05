@@ -11,6 +11,7 @@ from agent_memory_server.config import settings
 from agent_memory_server.filters import DiscreteMemoryExtracted, MemoryType
 from agent_memory_server.llms import (
     AnthropicClientWrapper,
+    BedrockClientWrapper,
     OpenAIClientWrapper,
     get_model_client,
 )
@@ -109,7 +110,10 @@ def extract_entities(text: str) -> list[str]:
 async def extract_topics_llm(
     text: str,
     num_topics: int | None = None,
-    client: OpenAIClientWrapper | AnthropicClientWrapper | None = None,
+    client: OpenAIClientWrapper
+    | AnthropicClientWrapper
+    | BedrockClientWrapper
+    | None = None,
 ) -> list[str]:
     """
     Extract topics from text using the LLM model.
@@ -234,12 +238,12 @@ async def extract_memories_with_strategy(
 
     if not memories:
         # If no memories are provided, search for any messages in long-term memory
-        # that haven't been processed for extraction
+        # that haven't been processed for extraction using filter-only query
+        # (no embedding required)
         memories = []
         offset = 0
         while True:
-            search_result = await adapter.search_memories(
-                query="",  # Empty query to get all messages
+            search_result = await adapter.list_memories(
                 memory_type=MemoryType(eq="message"),
                 discrete_memory_extracted=DiscreteMemoryExtracted(eq="f"),
                 limit=25,

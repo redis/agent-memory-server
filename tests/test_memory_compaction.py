@@ -119,7 +119,7 @@ def dummy_vectorizer(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_hash_deduplication_integration(
-    async_redis_client, search_index, mock_openai_client
+    async_redis_client, search_index, mock_openai_client, mock_vectorstore_adapter
 ):
     """Integration test for hash-based duplicate compaction"""
 
@@ -217,7 +217,7 @@ async def test_hash_deduplication_integration(
 
 @pytest.mark.asyncio
 async def test_semantic_deduplication_integration(
-    async_redis_client, search_index, mock_openai_client
+    async_redis_client, search_index, mock_openai_client, mock_vectorstore_adapter
 ):
     """Integration test for semantic duplicate compaction"""
 
@@ -291,7 +291,7 @@ async def test_semantic_deduplication_integration(
 
 @pytest.mark.asyncio
 async def test_full_compaction_integration(
-    async_redis_client, search_index, mock_openai_client
+    async_redis_client, search_index, mock_openai_client, mock_vectorstore_adapter
 ):
     """Integration test for full compaction pipeline"""
 

@@ -4,7 +4,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np
 import pytest
 
+from agent_memory_server.config import Settings
 from agent_memory_server.llms import (
+    BedrockClientWrapper,
+    ChatResponse,
     ModelProvider,
     OpenAIClientWrapper,
     get_model_client,
@@ -101,11 +104,311 @@ class TestOpenAIClientWrapper:
         )
 
 
+class TestBedrockClientWrapper:
+    """Test the BedrockClientWrapper class."""
+
+    def test_init_with_explicit_credentials(self):
+        """Test initializing with explicit credentials."""
+        mock_settings = Settings(
+            region_name="us-east-1",
+            aws_access_key_id="default-key",
+            aws_secret_access_key="default-secret",
+        )
+
+        credentials = {
+            "aws_access_key_id": "test-access-key",
+            "aws_secret_access_key": "test-secret-key",
+            "aws_session_token": "test-session-token",
+        }
+
+        with patch("agent_memory_server.llms.settings", new=mock_settings):
+            client = BedrockClientWrapper(
+                region_name="eu-west-1",
+                credentials=credentials,
+            )
+
+            assert client._region_name == "eu-west-1"
+            assert client._credentials == credentials
+            assert client._chat_models == {}
+
+    def test_init_with_settings_defaults(self):
+        """Test initializing with settings defaults."""
+        mock_settings = Settings(
+            region_name="us-west-2",
+            aws_access_key_id="settings-key",
+            aws_secret_access_key="settings-secret",
+        )
+
+        with patch("agent_memory_server.llms.settings", new=mock_settings):
+            client = BedrockClientWrapper()
+
+            assert client._region_name == "us-west-2"
+            assert client._credentials == mock_settings.aws_credentials
+
+    def test_get_chat_model_creates_converse_client(self):
+        """Test that _get_chat_model creates a ChatBedrockConverse instance."""
+        mock_settings = Settings(
+            region_name="us-east-1",
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+        )
+
+        with (
+            patch("agent_memory_server.llms.settings", new=mock_settings),
+            patch(
+                "agent_memory_server.llms.BedrockClientWrapper._get_chat_model"
+            ) as mock_method,
+        ):
+            mock_chat_model = MagicMock()
+            mock_method.return_value = mock_chat_model
+
+            client = BedrockClientWrapper()
+            result = client._get_chat_model("anthropic.claude-sonnet-4-5-20250929-v1:0")
+
+            assert result == mock_chat_model
+
+    def test_get_chat_model_caches_instances(self):
+        """Test that _get_chat_model caches model instances."""
+        mock_settings = Settings(
+            region_name="us-east-1",
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+        )
+
+        mock_chat_bedrock = MagicMock()
+
+        with (
+            patch("agent_memory_server.llms.settings", new=mock_settings),
+            patch.dict("sys.modules", {"langchain_aws": MagicMock()}),
+            patch(
+                "agent_memory_server.llms.BedrockClientWrapper._get_chat_model"
+            ) as mock_get,
+        ):
+            mock_get.return_value = mock_chat_bedrock
+
+            client = BedrockClientWrapper()
+
+            # First call
+            result1 = client._get_chat_model("model-1")
+            # Second call with same model
+            result2 = client._get_chat_model("model-1")
+
+            # Both should return the same mock
+            assert result1 == result2
+
+    @pytest.mark.asyncio
+    async def test_create_chat_completion_success(self):
+        """Test successful chat completion."""
+        mock_settings = Settings(
+            region_name="us-east-1",
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+        )
+
+        # Create mock response
+        mock_response = MagicMock()
+        mock_response.content = "This is the response content"
+        mock_response.usage_metadata = {
+            "input_tokens": 10,
+            "output_tokens": 20,
+        }
+
+        # Create mock chat model
+        mock_chat_model = MagicMock()
+        mock_chat_model.ainvoke = AsyncMock(return_value=mock_response)
+
+        with patch("agent_memory_server.llms.settings", new=mock_settings):
+            client = BedrockClientWrapper()
+            client._chat_models["test-model"] = mock_chat_model
+
+            response = await client.create_chat_completion(
+                model="test-model",
+                prompt="Hello, how are you?",
+            )
+
+            assert isinstance(response, ChatResponse)
+            assert (
+                response.choices[0]["message"]["content"]
+                == "This is the response content"
+            )
+            assert response.total_tokens == 30
+            mock_chat_model.ainvoke.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_create_chat_completion_with_json_format(self):
+        """Test chat completion with JSON response format."""
+        mock_settings = Settings(
+            region_name="us-east-1",
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+        )
+
+        mock_response = MagicMock()
+        mock_response.content = '{"key": "value"}'
+        mock_response.usage_metadata = {"input_tokens": 5, "output_tokens": 10}
+
+        mock_chat_model = MagicMock()
+        mock_chat_model.ainvoke = AsyncMock(return_value=mock_response)
+
+        with patch("agent_memory_server.llms.settings", new=mock_settings):
+            client = BedrockClientWrapper()
+            client._chat_models["test-model"] = mock_chat_model
+
+            await client.create_chat_completion(
+                model="test-model",
+                prompt="Return JSON",
+                response_format={"type": "json_object"},
+            )
+
+            # Verify the prompt was modified to include JSON instruction
+            call_args = mock_chat_model.ainvoke.call_args
+            message = call_args[0][0][0]
+            assert "You must respond with a valid JSON object" in message.content
+
+    @pytest.mark.asyncio
+    async def test_create_chat_completion_with_functions(self):
+        """Test chat completion with function definitions."""
+        mock_settings = Settings(
+            region_name="us-east-1",
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+        )
+
+        mock_response = MagicMock()
+        mock_response.content = '{"name": "test"}'
+        mock_response.usage_metadata = {}
+
+        mock_chat_model = MagicMock()
+        mock_chat_model.ainvoke = AsyncMock(return_value=mock_response)
+
+        with patch("agent_memory_server.llms.settings", new=mock_settings):
+            client = BedrockClientWrapper()
+            client._chat_models["test-model"] = mock_chat_model
+
+            functions = [
+                {
+                    "name": "test_function",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"name": {"type": "string"}},
+                    },
+                }
+            ]
+
+            await client.create_chat_completion(
+                model="test-model",
+                prompt="Call function",
+                functions=functions,
+                function_call={"name": "test_function"},
+            )
+
+            # Verify the prompt was modified to include schema
+            call_args = mock_chat_model.ainvoke.call_args
+            message = call_args[0][0][0]
+            assert "JSON object matching this schema" in message.content
+
+    @pytest.mark.asyncio
+    async def test_create_chat_completion_no_usage_metadata(self):
+        """Test chat completion when usage_metadata is not available."""
+        mock_settings = Settings(
+            region_name="us-east-1",
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+        )
+
+        mock_response = MagicMock()
+        mock_response.content = "Response without usage"
+        mock_response.usage_metadata = None
+
+        mock_chat_model = MagicMock()
+        mock_chat_model.ainvoke = AsyncMock(return_value=mock_response)
+
+        with patch("agent_memory_server.llms.settings", new=mock_settings):
+            client = BedrockClientWrapper()
+            client._chat_models["test-model"] = mock_chat_model
+
+            response = await client.create_chat_completion(
+                model="test-model",
+                prompt="Hello",
+            )
+
+            assert response.total_tokens == 0
+
+    @pytest.mark.asyncio
+    async def test_create_chat_completion_error_handling(self):
+        """Test that errors are properly raised."""
+        mock_settings = Settings(
+            region_name="us-east-1",
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+        )
+
+        mock_chat_model = MagicMock()
+        mock_chat_model.ainvoke = AsyncMock(side_effect=Exception("Bedrock API error"))
+
+        with patch("agent_memory_server.llms.settings", new=mock_settings):
+            client = BedrockClientWrapper()
+            client._chat_models["test-model"] = mock_chat_model
+
+            with pytest.raises(Exception, match="Bedrock API error"):
+                await client.create_chat_completion(
+                    model="test-model",
+                    prompt="Hello",
+                )
+
+    @pytest.mark.asyncio
+    async def test_create_embedding_not_implemented(self):
+        """Test that create_embedding raises NotImplementedError."""
+        mock_settings = Settings(
+            region_name="us-east-1",
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+        )
+
+        with patch("agent_memory_server.llms.settings", new=mock_settings):
+            client = BedrockClientWrapper()
+
+            with pytest.raises(NotImplementedError, match="Bedrock embeddings"):
+                await client.create_embedding(["test text"])
+
+    def test_get_chat_model_import_error(self):
+        """Test that missing langchain-aws raises ImportError."""
+        mock_settings = Settings(
+            region_name="us-east-1",
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+        )
+
+        with patch("agent_memory_server.llms.settings", new=mock_settings):
+            client = BedrockClientWrapper()
+            client._chat_models = {}  # Ensure cache is empty
+
+            # Patch the import to raise ImportError
+            with patch.dict("sys.modules", {"langchain_aws": None}):
+                # We need to actually trigger the import by not having the model cached
+                # and having the import fail
+                import builtins
+
+                original_import = builtins.__import__
+
+                def mock_import(name, *args, **kwargs):
+                    if name == "langchain_aws":
+                        raise ImportError("No module named 'langchain_aws'")
+                    return original_import(name, *args, **kwargs)
+
+                with (
+                    patch.object(builtins, "__import__", side_effect=mock_import),
+                    pytest.raises(ImportError, match="AWS-related dependencies"),
+                ):
+                    client._get_chat_model("new-model")
+
+
 @pytest.mark.parametrize(
     ("model_name", "expected_provider", "expected_max_tokens"),
     [
         ("gpt-4o", "openai", 128000),
         ("claude-3-sonnet-20240229", "anthropic", 200000),
+        ("anthropic.claude-sonnet-4-5-20250929-v1:0", "aws-bedrock", 200000),
         ("nonexistent-model", "openai", 128000),  # Should default to GPT-4o-mini
     ],
 )
@@ -117,8 +420,10 @@ def test_get_model_config(model_name, expected_provider, expected_max_tokens):
     # Check the provider
     if expected_provider == "openai":
         assert config.provider == ModelProvider.OPENAI
-    else:
+    elif expected_provider == "anthropic":
         assert config.provider == ModelProvider.ANTHROPIC
+    elif expected_provider == "aws-bedrock":
+        assert config.provider == ModelProvider.AWS_BEDROCK
 
     # Check the max tokens
     assert config.max_tokens == expected_max_tokens
@@ -127,6 +432,9 @@ def test_get_model_config(model_name, expected_provider, expected_max_tokens):
 @pytest.mark.asyncio
 async def test_get_model_client():
     """Test the get_model_client function"""
+    # Clear the client cache before each test
+    _model_clients = {}
+
     # Test with OpenAI model
     with (
         patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}),
@@ -136,6 +444,9 @@ async def test_get_model_client():
         client = await get_model_client("gpt-4")
         assert client == "openai-client"
 
+    # Clear cache for next test
+    _model_clients = {}
+
     # Test with Anthropic model
     with (
         patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
@@ -144,6 +455,28 @@ async def test_get_model_client():
         mock_anthropic.return_value = "anthropic-client"
         client = await get_model_client("claude-3-sonnet-20240229")
         assert client == "anthropic-client"
+
+    # Clear cache for next test
+    _model_clients = {}
+
+    # Test with Bedrock model
+    mock_settings = Settings(
+        region_name="us-east-1",
+        aws_access_key_id="test-key",
+        aws_secret_access_key="test-secret",
+    )
+
+    with (
+        patch("agent_memory_server.llms.settings", new=mock_settings),
+        patch("agent_memory_server.llms.BedrockClientWrapper") as mock_bedrock,
+    ):
+        mock_bedrock.return_value = "bedrock-client"
+        client = await get_model_client("anthropic.claude-sonnet-4-5-20250929-v1:0")
+        assert client == "bedrock-client"
+        mock_bedrock.assert_called_once_with(
+            region_name="us-east-1",
+            credentials=mock_settings.aws_credentials,
+        )
 
 
 @pytest.mark.asyncio

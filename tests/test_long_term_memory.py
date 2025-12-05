@@ -144,9 +144,9 @@ class TestLongTermMemory:
             mock_get_adapter.return_value = mock_adapter
 
             # Test case 1: Memory doesn't exist
-            mock_search_result = Mock()
-            mock_search_result.memories = []  # No existing memories
-            mock_adapter.search_memories.return_value = mock_search_result
+            mock_list_result = Mock()
+            mock_list_result.memories = []  # No existing memories
+            mock_adapter.list_memories.return_value = mock_list_result
 
             result_memory, overwrite = await deduplicate_by_id(
                 memory, redis_client=mock_async_redis_client
@@ -155,10 +155,9 @@ class TestLongTermMemory:
             assert result_memory == memory
             assert overwrite is False
 
-            # Verify search was called with correct filters
-            mock_adapter.search_memories.assert_called_once()
-            call_kwargs = mock_adapter.search_memories.call_args[1]
-            assert call_kwargs["query"] == ""
+            # Verify list_memories was called with correct filters
+            mock_adapter.list_memories.assert_called_once()
+            call_kwargs = mock_adapter.list_memories.call_args[1]
             assert call_kwargs["limit"] == 1
 
             # Test case 2: Memory exists
@@ -179,8 +178,8 @@ class TestLongTermMemory:
                 entities=[],
             )
 
-            mock_search_result.memories = [existing_memory]
-            mock_adapter.search_memories.return_value = mock_search_result
+            mock_list_result.memories = [existing_memory]
+            mock_adapter.list_memories.return_value = mock_list_result
             mock_adapter.delete_memories = AsyncMock()
 
             result_memory, overwrite = await deduplicate_by_id(
@@ -318,7 +317,7 @@ class TestLongTermMemory:
 
         # Test case 1: No duplicate found
         mock_adapter = AsyncMock()
-        mock_adapter.search_memories.return_value = MemoryRecordResults(
+        mock_adapter.list_memories.return_value = MemoryRecordResults(
             total=0, memories=[]
         )
 
@@ -344,7 +343,7 @@ class TestLongTermMemory:
             last_accessed=datetime.now(UTC),
         )
 
-        mock_adapter.search_memories.return_value = MemoryRecordResults(
+        mock_adapter.list_memories.return_value = MemoryRecordResults(
             total=1, memories=[existing_memory]
         )
 

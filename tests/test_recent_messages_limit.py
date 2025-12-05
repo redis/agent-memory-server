@@ -184,7 +184,9 @@ class TestRecentMessagesLimit:
         )  # Should return all messages when limit is negative
 
     @pytest.mark.asyncio
-    async def test_recent_messages_limit_with_reconstruction(self, async_redis_client):
+    async def test_recent_messages_limit_with_reconstruction(
+        self, async_redis_client, mock_vectorstore_adapter
+    ):
         """Test recent messages limit with reconstruction from long-term memory"""
         from agent_memory_server.config import settings
         from agent_memory_server.long_term_memory import index_long_term_memories
@@ -293,7 +295,7 @@ class TestRecentMessagesLimit:
 
     @pytest.mark.asyncio
     async def test_working_memory_takes_precedence_over_long_term(
-        self, async_redis_client
+        self, async_redis_client, mock_vectorstore_adapter
     ):
         """Test that working memory is used instead of long-term memory when both exist"""
         from datetime import UTC, datetime
@@ -436,7 +438,7 @@ class TestRecentMessagesLimit:
 
     @pytest.mark.asyncio
     async def test_message_persistence_sets_correct_memory_type(
-        self, async_redis_client
+        self, async_redis_client, mock_vectorstore_adapter
     ):
         """Test that messages persisted to long-term storage have memory_type='message'"""
         from agent_memory_server.config import settings

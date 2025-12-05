@@ -14,7 +14,7 @@ from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
 from langchain_redis.vectorstores import RedisVectorStore
-from redisvl.query import RangeQuery, VectorQuery
+from redisvl.query import FilterQuery, RangeQuery, VectorQuery
 
 from agent_memory_server.filters import (
     CreatedAt,
@@ -261,6 +261,51 @@ class VectorStoreAdapter(ABC):
 
         Returns:
             Number of matching memories
+        """
+        pass
+
+    @abstractmethod
+    async def list_memories(
+        self,
+        session_id: SessionId | None = None,
+        user_id: UserId | None = None,
+        namespace: Namespace | None = None,
+        created_at: CreatedAt | None = None,
+        last_accessed: LastAccessed | None = None,
+        topics: Topics | None = None,
+        entities: Entities | None = None,
+        memory_type: MemoryType | None = None,
+        event_date: EventDate | None = None,
+        memory_hash: MemoryHash | None = None,
+        id: Id | None = None,
+        discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> MemoryRecordResults:
+        """List memories matching the given filters without semantic search.
+
+        This method retrieves memories based solely on metadata filters,
+        without requiring a query for embedding. Use this when you need to
+        filter by hash, ID, or other metadata fields without semantic similarity.
+
+        Args:
+            session_id: Optional session ID filter
+            user_id: Optional user ID filter
+            namespace: Optional namespace filter
+            created_at: Optional created at filter
+            last_accessed: Optional last accessed filter
+            topics: Optional topics filter
+            entities: Optional entities filter
+            memory_type: Optional memory type filter
+            event_date: Optional event date filter
+            memory_hash: Optional memory hash filter
+            id: Optional memory ID filter
+            discrete_memory_extracted: Optional discrete memory extracted filter
+            limit: Maximum number of results
+            offset: Offset for pagination
+
+        Returns:
+            MemoryRecordResults containing matching memories
         """
         pass
 
@@ -734,6 +779,33 @@ class LangChainVectorStoreAdapter(VectorStoreAdapter):
             logger.error(f"Error updating memories in vector store: {e}")
             return 0
 
+    async def list_memories(
+        self,
+        session_id: SessionId | None = None,
+        user_id: UserId | None = None,
+        namespace: Namespace | None = None,
+        created_at: CreatedAt | None = None,
+        last_accessed: LastAccessed | None = None,
+        topics: Topics | None = None,
+        entities: Entities | None = None,
+        memory_type: MemoryType | None = None,
+        event_date: EventDate | None = None,
+        memory_hash: MemoryHash | None = None,
+        id: Id | None = None,
+        discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> MemoryRecordResults:
+        """List memories using filters without semantic search.
+
+        Note: The generic LangChain adapter does not support filter-only queries
+        without embedding. Use the RedisVectorStoreAdapter for filter-only searches.
+        """
+        raise NotImplementedError(
+            "LangChainVectorStoreAdapter does not support filter-only queries. "
+            "Use RedisVectorStoreAdapter or search_memories with a valid query string."
+        )
+
 
 class RedisVectorStoreAdapter(VectorStoreAdapter):
     """Redis adapter that uses LangChain's RedisVectorStore with Redis-specific optimizations."""
@@ -888,7 +960,6 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
         Raises:
             Exception: If Redis aggregation fails (caller should handle fallback)
         """
-
         index = self._get_vectorstore_index()
         if index is None:
             raise Exception("RedisVL index not available")
@@ -1178,6 +1249,96 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                 session_filter = SessionId(eq=session_id).to_filter()
                 filters.append(session_filter)
 
+            # Use list_memories for filter-only count (no embedding required)
+            results = await self.list_memories(
+                namespace=Namespace(eq=namespace) if namespace else None,
+                user_id=UserId(eq=user_id) if user_id else None,
+                session_id=SessionId(eq=session_id) if session_id else None,
+                limit=10000,  # Large number to get all results
+            )
+
+            return results.total
+
+        except Exception as e:
+            logger.error(
+                f"Error counting memories in Redis vectorstore: {e}", exc_info=True
+            )
+            return 0
+
+    async def list_memories(
+        self,
+        session_id: SessionId | None = None,
+        user_id: UserId | None = None,
+        namespace: Namespace | None = None,
+        created_at: CreatedAt | None = None,
+        last_accessed: LastAccessed | None = None,
+        topics: Topics | None = None,
+        entities: Entities | None = None,
+        memory_type: MemoryType | None = None,
+        event_date: EventDate | None = None,
+        memory_hash: MemoryHash | None = None,
+        id: Id | None = None,
+        discrete_memory_extracted: DiscreteMemoryExtracted | None = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> MemoryRecordResults:
+        """List memories using filters without semantic search.
+
+        Uses RedisVL FilterQuery for metadata-only filtering without requiring
+        an embedding. This is useful for operations like deduplication by hash
+        or ID where semantic similarity is not needed.
+
+        Args:
+            session_id: Optional session ID filter
+            user_id: Optional user ID filter
+            namespace: Optional namespace filter
+            created_at: Optional created at filter
+            last_accessed: Optional last accessed filter
+            topics: Optional topics filter
+            entities: Optional entities filter
+            memory_type: Optional memory type filter
+            event_date: Optional event date filter
+            memory_hash: Optional memory hash filter
+            id: Optional memory ID filter
+            discrete_memory_extracted: Optional discrete memory extracted filter
+            limit: Maximum number of results
+            offset: Offset for pagination
+
+        Returns:
+            MemoryRecordResults containing matching memories
+        """
+        try:
+            index = self._get_vectorstore_index()
+            if index is None:
+                raise Exception("RedisVL index not available for filter-only search")
+
+            # Build filters using the same approach as search_memories
+            filters = []
+            if session_id:
+                filters.append(session_id.to_filter())
+            if user_id:
+                filters.append(user_id.to_filter())
+            if namespace:
+                filters.append(namespace.to_filter())
+            if memory_type:
+                filters.append(memory_type.to_filter())
+            if topics:
+                filters.append(topics.to_filter())
+            if entities:
+                filters.append(entities.to_filter())
+            if created_at:
+                filters.append(created_at.to_filter())
+            if last_accessed:
+                filters.append(last_accessed.to_filter())
+            if event_date:
+                filters.append(event_date.to_filter())
+            if memory_hash:
+                filters.append(memory_hash.to_filter())
+            if id:
+                filters.append(id.to_filter())
+            if discrete_memory_extracted:
+                filters.append(discrete_memory_extracted.to_filter())
+
             # Combine filters with AND logic
             redis_filter = None
             if filters:
@@ -1186,17 +1347,81 @@ class RedisVectorStoreAdapter(VectorStoreAdapter):
                 else:
                     redis_filter = reduce(lambda x, y: x & y, filters)
 
-            # Use empty query to match all content with the vector search interface
-            search_results = await self.vectorstore.asimilarity_search(
-                query="",  # Empty query to match all content
-                filter=redis_filter,
-                k=10000,  # Large number to get all results
+            # Define fields to return
+            return_fields = [
+                "id_",
+                "text",
+                "session_id",
+                "user_id",
+                "namespace",
+                "created_at",
+                "last_accessed",
+                "updated_at",
+                "pinned",
+                "access_count",
+                "topics",
+                "entities",
+                "memory_hash",
+                "discrete_memory_extracted",
+                "memory_type",
+                "persisted_at",
+                "extracted_from",
+                "event_date",
+            ]
+
+            # Create FilterQuery for non-vector search
+            filter_query = FilterQuery(
+                filter_expression=redis_filter,
+                return_fields=return_fields,
+                num_results=limit + offset,
             )
 
-            return len(search_results)
+            # Execute query
+            if hasattr(index, "asearch"):
+                raw_results = await index.asearch(filter_query)
+            elif hasattr(index, "search"):
+                raw_results = index.search(filter_query)
+            else:
+                raise Exception("Index does not support search operations")
+
+            # Parse results
+            docs = getattr(raw_results, "docs", raw_results) or []
+            memory_results: list[MemoryRecordResult] = []
+
+            for doc in docs[offset:]:
+                # Handle different doc formats (dict-like or object)
+                if hasattr(doc, "__dict__"):
+                    fields = doc.__dict__
+                elif isinstance(doc, dict):
+                    fields = doc
+                else:
+                    fields = dict(doc)
+
+                # Build metadata from fields
+                metadata = {
+                    k: fields.get(k)
+                    for k in return_fields
+                    if k in fields and fields.get(k) is not None
+                }
+
+                text_val = fields.get("text", "")
+                doc_obj = Document(page_content=text_val, metadata=metadata)
+                memory_result = self.document_to_memory(doc_obj, score=0.0)
+                memory_results.append(memory_result)
+
+                if len(memory_results) >= limit:
+                    break
+
+            next_offset = offset + limit if len(docs) > offset + limit else None
+
+            return MemoryRecordResults(
+                memories=memory_results[:limit],
+                total=len(docs),
+                next_offset=next_offset,
+            )
 
         except Exception as e:
             logger.error(
-                f"Error counting memories in Redis vectorstore: {e}", exc_info=True
+                f"Error listing memories with filter-only query: {e}", exc_info=True
             )
-            return 0
+            raise

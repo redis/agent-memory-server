@@ -60,7 +60,9 @@ class TestWorkingMemoryReconstruction:
             settings.index_all_messages_in_long_term_memory = original_setting
 
     @pytest.mark.asyncio
-    async def test_reconstruction_with_messages(self, async_redis_client):
+    async def test_reconstruction_with_messages(
+        self, async_redis_client, mock_vectorstore_adapter
+    ):
         """Test successful reconstruction from messages in long-term memory"""
         # Enable the setting
         original_setting = settings.index_all_messages_in_long_term_memory
@@ -151,7 +153,7 @@ class TestWorkingMemoryReconstruction:
 
     @pytest.mark.asyncio
     async def test_reconstruction_ignores_existing_working_memory(
-        self, async_redis_client
+        self, async_redis_client, mock_vectorstore_adapter
     ):
         """Test that reconstruction doesn't happen if working memory already exists"""
         # Enable the setting
@@ -217,7 +219,9 @@ class TestWorkingMemoryReconstruction:
             settings.index_all_messages_in_long_term_memory = original_setting
 
     @pytest.mark.asyncio
-    async def test_reconstruction_with_malformed_messages(self, async_redis_client):
+    async def test_reconstruction_with_malformed_messages(
+        self, async_redis_client, mock_vectorstore_adapter
+    ):
         """Test reconstruction handles malformed message memories gracefully"""
         # Enable the setting
         original_setting = settings.index_all_messages_in_long_term_memory

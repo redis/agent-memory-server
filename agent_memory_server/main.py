@@ -24,55 +24,54 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize the application on startup"""
-    logger.info("Starting Redis Agent Memory Server 🤘")
+    logger.info("Starting Redis Agent Memory Server.")
 
     # Verify OAuth2/JWT authentication configuration
     try:
         verify_auth_config()
-    except Exception as e:
-        logger.error(f"Authentication configuration error: {e}")
+    except Exception:
+        logger.exception("Authentication configuration error.")
         raise
-
-    # Check for required API keys
-    available_providers = []
-
-    if settings.openai_api_key:
-        available_providers.append(ModelProvider.OPENAI)
-    else:
-        logger.warning("OpenAI API key not set, OpenAI models will not be available")
-
-    if settings.anthropic_api_key:
-        available_providers.append(ModelProvider.ANTHROPIC)
-    else:
-        logger.warning(
-            "Anthropic API key not set, Anthropic models will not be available"
-        )
 
     # Check if the configured models are available
     generation_model_config = MODEL_CONFIGS.get(settings.generation_model)
     embedding_model_config = MODEL_CONFIGS.get(settings.embedding_model)
 
-    if (
-        generation_model_config
-        and generation_model_config.provider not in available_providers
-    ):
-        logger.warning(
-            f"Selected generation model {settings.generation_model} requires {generation_model_config.provider} API key"
+    if not generation_model_config:
+        err_msg = (
+            f"Selected generation model {settings.generation_model} is not supported."
         )
+        logger.error(err_msg)
+        raise ValueError(err_msg)
+    if not embedding_model_config:
+        err_msg = (
+            f"Selected embedding model {settings.embedding_model} is not supported."
+        )
+        logger.error(err_msg)
+        raise ValueError(err_msg)
 
-    if (
-        embedding_model_config
-        and embedding_model_config.provider not in available_providers
-    ):
-        logger.warning(
-            f"Selected embedding model {settings.embedding_model} requires {embedding_model_config.provider} API key"
-        )
-
-    # If long-term memory is enabled but OpenAI isn't available, warn user
-    if settings.long_term_memory and ModelProvider.OPENAI not in available_providers:
-        logger.warning(
-            "Long-term memory requires OpenAI for embeddings, but OpenAI API key is not set"
-        )
+    for model_config in [generation_model_config, embedding_model_config]:
+        match model_config.provider:
+            case ModelProvider.OPENAI:
+                if not settings.openai_api_key:
+                    err_msg = "OpenAI API key is not set."
+                    logger.error(err_msg)
+                    raise ValueError(err_msg)
+            case ModelProvider.ANTHROPIC:
+                if not settings.anthropic_api_key:
+                    err_msg = "Anthropic API key is not set."
+                    logger.error(err_msg)
+                    raise ValueError(err_msg)
+            case ModelProvider.AWS_BEDROCK:
+                # The access key ID and secret access key are mandatory.
+                # The session token is optional (only for STS), so we don't need to check for it.
+                has_access_key = (
+                    settings.aws_access_key_id and settings.aws_secret_access_key
+                )
+                if not has_access_key:
+                    err_msg = "AWS credentials are not set."
+                    logger.error(err_msg)
+                    raise ValueError(err_msg)
 
     # Set up Redis connection if long-term memory is enabled
     if settings.long_term_memory:
@@ -80,6 +79,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize Docket for background tasks if enabled
     if settings.use_docket:
+        logger.info("Attempting to initialize Docket for background tasks.")
         try:
             await register_tasks()
             logger.info("Initialized Docket for background tasks")
@@ -92,27 +92,8 @@ async def lifespan(app: FastAPI):
             logger.error(f"Failed to initialize Docket: {e}")
             raise
 
-    # Show available models
-    openai_models = [
-        model
-        for model, config in MODEL_CONFIGS.items()
-        if config.provider == ModelProvider.OPENAI
-        and ModelProvider.OPENAI in available_providers
-    ]
-    anthropic_models = [
-        model
-        for model, config in MODEL_CONFIGS.items()
-        if config.provider == ModelProvider.ANTHROPIC
-        and ModelProvider.ANTHROPIC in available_providers
-    ]
-
-    if openai_models:
-        logger.info(f"Available OpenAI models: {', '.join(openai_models)}")
-    if anthropic_models:
-        logger.info(f"Available Anthropic models: {', '.join(anthropic_models)}")
-
     logger.info(
-        "Redis Agent Memory Server initialized",
+        "Redis Agent Memory Server initialized.",
         generation_model=settings.generation_model,
         embedding_model=settings.embedding_model,
         long_term_memory=settings.long_term_memory,

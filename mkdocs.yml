@@ -83,6 +83,7 @@ nav:
     - Memory Extraction Strategies: memory-extraction-strategies.md
     - Memory Lifecycle: memory-lifecycle.md
     - Vector Store Backends: vector-store-backends.md
+    - AWS Bedrock: aws-bedrock.md
     - Authentication: authentication.md
     - Security: security-custom-prompts.md
 

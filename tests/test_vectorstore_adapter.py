@@ -1,6 +1,7 @@
 """Tests for the VectorStore adapter functionality."""
 
 import asyncio
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,7 +13,10 @@ from agent_memory_server.vectorstore_adapter import (
     RedisVectorStoreAdapter,
     VectorStoreAdapter,
 )
-from agent_memory_server.vectorstore_factory import create_vectorstore_adapter
+from agent_memory_server.vectorstore_factory import (
+    create_embeddings,
+    create_vectorstore_adapter,
+)
 
 
 class TestVectorStoreAdapter:
@@ -130,16 +134,22 @@ class TestVectorStoreAdapter:
     @pytest.mark.asyncio
     async def test_vectorstore_factory_creates_adapter(self):
         """Integration test: verify that the factory can create an adapter."""
-        # Clear the global adapter to force recreation
         import agent_memory_server.vectorstore_factory
+        from tests.conftest import MockEmbeddings
 
+        # Clear the global adapter to force recreation
         agent_memory_server.vectorstore_factory._adapter = None
 
-        # Test with Redis backend (default factory) - this uses actual settings
-        adapter = create_vectorstore_adapter()
+        # Test with Redis backend (default factory) - mock embeddings to avoid API key requirement
+        with patch(
+            "agent_memory_server.vectorstore_factory.create_embeddings"
+        ) as mock_create_embeddings:
+            mock_create_embeddings.return_value = MockEmbeddings()
 
-        # For Redis backend, we should get RedisVectorStoreAdapter (not LangChainVectorStoreAdapter)
-        assert isinstance(adapter, RedisVectorStoreAdapter)
+            adapter = create_vectorstore_adapter()
+
+            # For Redis backend, we should get RedisVectorStoreAdapter
+            assert isinstance(adapter, RedisVectorStoreAdapter)
 
         # Reset the global adapter
         agent_memory_server.vectorstore_factory._adapter = None
@@ -220,6 +230,11 @@ class TestVectorStoreAdapter:
 
                 async def update_memories(self, memories: list[MemoryRecord]) -> int:
                     return 0
+
+                async def list_memories(self, **kwargs):
+                    from agent_memory_server.models import MemoryRecordResults
+
+                    return MemoryRecordResults(memories=[], total=0, next_offset=None)
 
             mock_custom_adapter = MockVectorStoreAdapter()
 
@@ -613,3 +628,100 @@ class TestVectorStoreAdapter:
         assert memory.memory_type.value == "semantic"
         assert memory.namespace == "user_preferences"
         assert memory.text == "User likes green tea"
+
+
+class TestCreateEmbeddings:
+    """Test cases for the create_embeddings function."""
+
+    def test_create_embeddings_aws_bedrock_success(self):
+        """Test creating AWS Bedrock embeddings successfully."""
+        mock_model_config = MagicMock()
+        mock_model_config.provider = "aws-bedrock"
+
+        # Create mock for BedrockEmbeddings
+        mock_bedrock_embeddings_class = MagicMock()
+        mock_embeddings_instance = MagicMock()
+        mock_bedrock_embeddings_class.return_value = mock_embeddings_instance
+
+        # Mock the runtime client (not control plane client)
+        mock_runtime_client = MagicMock()
+        mock_create_runtime_client = MagicMock(return_value=mock_runtime_client)
+        mock_model_exists = MagicMock(return_value=True)
+
+        with (
+            patch("agent_memory_server.vectorstore_factory.settings") as mock_settings,
+            patch(
+                "agent_memory_server._aws.clients.create_bedrock_runtime_client",
+                mock_create_runtime_client,
+            ),
+            patch(
+                "agent_memory_server._aws.utils.bedrock_embedding_model_exists",
+                mock_model_exists,
+            ),
+            patch.dict(sys.modules, {"langchain_aws": MagicMock()}),
+        ):
+            # Setup the langchain_aws mock properly
+            import langchain_aws
+
+            langchain_aws.BedrockEmbeddings = mock_bedrock_embeddings_class
+
+            mock_settings.embedding_model_config = mock_model_config
+            mock_settings.embedding_model = "amazon.titan-embed-text-v2:0"
+            mock_settings.aws_region = "us-east-1"
+
+            result = create_embeddings()
+
+            assert result == mock_embeddings_instance
+            mock_create_runtime_client.assert_called_once()
+            mock_model_exists.assert_called_once_with(
+                "amazon.titan-embed-text-v2:0",
+                region_name="us-east-1",
+            )
+
+    def test_create_embeddings_aws_bedrock_model_not_found(self):
+        """Test error when Bedrock embedding model doesn't exist."""
+        mock_model_config = MagicMock()
+        mock_model_config.provider = "aws-bedrock"
+
+        # Create mock module for langchain_aws (needed for import)
+        mock_langchain_aws = MagicMock()
+        mock_model_exists = MagicMock(return_value=False)
+        mock_aws_clients = MagicMock()
+        mock_aws_utils = MagicMock()
+        mock_aws_utils.bedrock_embedding_model_exists = mock_model_exists
+
+        with (
+            patch("agent_memory_server.vectorstore_factory.settings") as mock_settings,
+            patch.dict(
+                sys.modules,
+                {
+                    "langchain_aws": mock_langchain_aws,
+                    "agent_memory_server._aws.clients": mock_aws_clients,
+                    "agent_memory_server._aws.utils": mock_aws_utils,
+                },
+            ),
+        ):
+            mock_settings.embedding_model_config = mock_model_config
+            mock_settings.embedding_model = "invalid-model-id"
+            mock_settings.aws_region = "us-east-1"
+
+            with pytest.raises(ValueError) as exc_info:
+                create_embeddings()
+
+            assert "invalid-model-id" in str(exc_info.value)
+            assert "not found" in str(exc_info.value)
+
+    def test_create_embeddings_aws_bedrock_import_error(self):
+        """Test error when AWS dependencies are not installed."""
+        mock_model_config = MagicMock()
+        mock_model_config.provider = "aws-bedrock"
+
+        with (
+            patch("agent_memory_server.vectorstore_factory.settings") as mock_settings,
+            patch.dict(sys.modules, {"langchain_aws": None}),  # Simulate missing module
+        ):
+            mock_settings.embedding_model_config = mock_model_config
+            mock_settings.embedding_model = "amazon.titan-embed-text-v2:0"
+
+            with pytest.raises(ImportError):
+                create_embeddings()

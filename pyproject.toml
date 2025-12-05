@@ -17,13 +17,11 @@ requires-python = ">=3.12,<3.13"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Andrew Brookins", email = "andrew.brookins@redis.com" }]
 dependencies = [
-    "accelerate>=1.6.0",
     "agent-memory-client",
     "anthropic>=0.15.0",
     "fastapi>=0.115.11",
     "langchain-core>=0.3.0",
     "mcp>=1.6.0",
-    "numba>=0.60.0",
     "numpy>=2.1.0",
     "openai>=1.3.7",
     "pydantic>=2.5.2",
@@ -31,7 +29,6 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pydocket>=0.6.3",
     "redisvl>=0.6.0",
-    "sentence-transformers>=3.4.1",
     "structlog>=25.2.0",
     "tiktoken>=0.5.1",
     "transformers>=4.51.1",
@@ -47,6 +44,7 @@ dependencies = [
     "python-ulid>=3.0.0",
     "bcrypt>=4.0.0",
     "langchain-community>=0.3.27",
+    "cachetools>=6.2.2,<7.0.0",
 ]
 
 [project.scripts]
@@ -136,13 +134,14 @@ indent-style = "space"
 [project.optional-dependencies]
 dev = [
     "agent-memory-client",
-    "bertopic>=0.16.4,<0.17.0",
+]
+aws = [
+    "langchain-aws>=1.1.0,<2.0.0",
+    "boto3>=1.42.1,<2.0.0",
+    "botocore>=1.42.1,<2.0.0",
 ]
 
 [dependency-groups]
-bertopic = [
-    "bertopic<0.17.0,>=0.16.4",
-]
 dev = [
     "pytest>=8.3.5",
     "pytest-asyncio>=0.23.0",
@@ -154,6 +153,10 @@ dev = [
     "freezegun>=1.2.0",
     "mypy>=1.16.1",
     "ipdb>=0.13.13",
+    "boto3-stubs[bedrock-runtime]>=1.42.3",
+    "mypy-boto3-bedrock>=1.42.1",
+    "mypy-boto3>=1.41.0",
+    "types-PyYAML>=6.0.12",
 ]
 docs = [
     "mkdocs-material>=9.5.0",
