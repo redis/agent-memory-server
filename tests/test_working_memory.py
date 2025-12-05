@@ -593,3 +593,44 @@ class TestWorkingMemory:
         # Now migration should be complete
         assert is_migration_complete()
         assert get_remaining_string_keys() == 0
+
+    @pytest.mark.asyncio
+    async def test_migration_skipped_when_env_variable_set(
+        self, async_redis_client, monkeypatch
+    ):
+        """Test that migration check is skipped when WORKING_MEMORY_MIGRATION_COMPLETE=true."""
+        import json
+
+        from agent_memory_server import config
+        from agent_memory_server.working_memory import (
+            check_and_set_migration_status,
+            is_migration_complete,
+            reset_migration_status,
+        )
+
+        # Reset to ensure clean state
+        reset_migration_status()
+
+        # Create an old-format string key (would normally trigger lazy migration)
+        key = Keys.working_memory_key(
+            session_id="test-env-skip-session", namespace="test-namespace"
+        )
+        old_data = {
+            "messages": [],
+            "memories": [],
+            "session_id": "test-env-skip-session",
+            "namespace": "test-namespace",
+        }
+        await async_redis_client.set(key, json.dumps(old_data))
+
+        # Set the env variable via settings
+        monkeypatch.setattr(config.settings, "working_memory_migration_complete", True)
+
+        # Check status - should skip scan and mark as complete immediately
+        result = await check_and_set_migration_status(async_redis_client)
+        assert result is True
+        assert is_migration_complete()
+
+        # Clean up
+        await async_redis_client.delete(key)
+        monkeypatch.setattr(config.settings, "working_memory_migration_complete", False)

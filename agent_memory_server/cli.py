@@ -256,6 +256,10 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
             # Mark migration as complete
             set_migration_complete()
             click.echo("\nMigration status set to complete.")
+            click.echo(
+                "\n💡 Tip: Set WORKING_MEMORY_MIGRATION_COMPLETE=true to skip "
+                "startup checks permanently."
+            )
         else:
             click.echo(
                 "\nMigration completed with errors. "

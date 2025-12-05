@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from redis.asyncio import Redis
 
+from agent_memory_server.config import settings
 from agent_memory_server.models import (
     MemoryMessage,
     MemoryRecord,
@@ -32,6 +33,9 @@ async def check_and_set_migration_status(redis_client: Redis | None = None) -> b
     Check if any working memory keys are still in old string format.
     Sets the global _string_keys_migrated flag and _remaining_string_keys counter.
 
+    If WORKING_MEMORY_MIGRATION_COMPLETE=true is set, skips the scan entirely
+    and assumes all keys are in JSON format.
+
     Args:
         redis_client: Optional Redis client
 
@@ -39,6 +43,15 @@ async def check_and_set_migration_status(redis_client: Redis | None = None) -> b
         True if all keys are migrated (or no keys exist), False if string keys remain
     """
     global _string_keys_migrated, _remaining_string_keys
+
+    # If env variable is set, skip the scan entirely
+    if settings.working_memory_migration_complete:
+        logger.info(
+            "WORKING_MEMORY_MIGRATION_COMPLETE=true, skipping backward compatibility checks."
+        )
+        _string_keys_migrated = True
+        _remaining_string_keys = 0
+        return True
 
     if not redis_client:
         redis_client = await get_redis_conn()
