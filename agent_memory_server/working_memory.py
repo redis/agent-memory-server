@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from redis.asyncio import Redis
 
+from agent_memory_server.config import settings
 from agent_memory_server.models import (
     MemoryMessage,
     MemoryRecord,
@@ -19,12 +20,198 @@ from agent_memory_server.utils.redis import get_redis_conn
 
 logger = logging.getLogger(__name__)
 
+# Flag to track if all string keys have been migrated to JSON
+# When True, we skip the type() check and go straight to json().get()
+_string_keys_migrated: bool = False
 
-def json_datetime_handler(obj):
-    """JSON serializer for datetime objects."""
-    if isinstance(obj, datetime):
-        return obj.isoformat()
-    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+# Counter for remaining string keys (avoids re-scanning after each migration)
+_remaining_string_keys: int = 0
+
+
+async def check_and_set_migration_status(redis_client: Redis | None = None) -> bool:
+    """
+    Check if any working memory keys are still in old string format.
+    Sets the global _string_keys_migrated flag and _remaining_string_keys counter.
+
+    If WORKING_MEMORY_MIGRATION_COMPLETE=true is set, skips the scan entirely
+    and assumes all keys are in JSON format.
+
+    Args:
+        redis_client: Optional Redis client
+
+    Returns:
+        True if all keys are migrated (or no keys exist), False if string keys remain
+    """
+    global _string_keys_migrated, _remaining_string_keys
+
+    # If env variable is set, skip the scan entirely
+    if settings.working_memory_migration_complete:
+        logger.info(
+            "WORKING_MEMORY_MIGRATION_COMPLETE=true, skipping backward compatibility checks."
+        )
+        _string_keys_migrated = True
+        _remaining_string_keys = 0
+        return True
+
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    # Scan for working_memory:* keys
+    cursor = 0
+    json_keys_found = 0
+
+    try:
+        while True:
+            cursor, keys = await redis_client.scan(
+                cursor=cursor, match="working_memory:*", count=1000
+            )
+
+            if keys:
+                # Use pipeline to batch TYPE calls for better performance
+                pipe = redis_client.pipeline()
+                for key in keys:
+                    pipe.type(key)
+                types = await pipe.execute()
+
+                for key_type in types:
+                    if isinstance(key_type, bytes):
+                        key_type = key_type.decode("utf-8")
+
+                    if key_type == "string":
+                        # Early exit: found at least one string key, enable lazy migration
+                        logger.info(
+                            "Found working memory key in old string format. "
+                            "Lazy migration enabled. Run 'agent-memory migrate-working-memory' "
+                            "to migrate all keys at once."
+                        )
+                        _string_keys_migrated = False
+                        # We don't know the exact count, so set to -1 to indicate unknown
+                        # The counter will be managed differently in this mode
+                        _remaining_string_keys = -1
+                        return False
+                    elif key_type == "ReJSON-RL":
+                        json_keys_found += 1
+
+            if cursor == 0:
+                break
+
+        # No string keys found
+        if json_keys_found > 0:
+            logger.info(
+                f"All {json_keys_found} working memory keys are in JSON format. "
+                "Skipping type checks."
+            )
+        else:
+            logger.info("No working memory keys found. Skipping type checks.")
+        _string_keys_migrated = True
+        _remaining_string_keys = 0
+        return True
+    except Exception as e:
+        logger.error(f"Failed to check migration status: {e}")
+        _string_keys_migrated = False  # Safe default
+        _remaining_string_keys = -1
+        return False
+
+
+def _decrement_string_key_count() -> None:
+    """
+    Decrement the string key counter after a successful migration.
+
+    Note: When _remaining_string_keys is -1, we don't know the exact count
+    (early exit mode). In this case, lazy migration stays enabled until
+    the migration script is run.
+    """
+    global _string_keys_migrated, _remaining_string_keys
+
+    # If we don't know the count (-1), we can't track completion
+    # The migration script will set the flag when done
+    if _remaining_string_keys == -1:
+        return
+
+    _remaining_string_keys -= 1
+    if _remaining_string_keys <= 0:
+        _remaining_string_keys = 0
+        _string_keys_migrated = True
+        logger.info("All working memory keys have been migrated to JSON format.")
+
+
+def is_migration_complete() -> bool:
+    """Check if migration is complete (for testing purposes)."""
+    return _string_keys_migrated
+
+
+def get_remaining_string_keys() -> int:
+    """Get the count of remaining string keys (for testing purposes)."""
+    return _remaining_string_keys
+
+
+def reset_migration_status() -> None:
+    """Reset migration status (for testing purposes)."""
+    global _string_keys_migrated, _remaining_string_keys
+    _string_keys_migrated = False
+    _remaining_string_keys = 0
+
+
+def set_migration_complete() -> None:
+    """Mark migration as complete (called by migration script)."""
+    global _string_keys_migrated, _remaining_string_keys
+    _string_keys_migrated = True
+    _remaining_string_keys = 0
+    logger.info("Working memory migration marked as complete.")
+
+
+async def _migrate_string_to_json(
+    redis_client: Redis,
+    key: str,
+    string_data: str,
+) -> dict:
+    """
+    Migrate working memory from old string format to new JSON format.
+
+    Args:
+        redis_client: Redis client
+        key: The Redis key
+        string_data: The JSON string data from the old format
+
+    Returns:
+        The parsed dict data
+    """
+    try:
+        data = json.loads(string_data)
+        logger.info(f"Migrating working memory key {key} from string to JSON format")
+
+        # Atomically migrate the key from string to JSON using a Lua script
+        # The script: if key is string, get value, delete, set as JSON; else do nothing
+        lua_script = """
+        local key = KEYS[1]
+        if redis.call('TYPE', key).ok == 'string' then
+            local val = redis.call('GET', key)
+            redis.call('DEL', key)
+            redis.call('JSON.SET', key, '$', ARGV[1])
+            return val
+        else
+            return nil
+        end
+        """
+        # Pass the JSON string as ARGV[1]
+        migrated_val = await redis_client.eval(lua_script, 1, key, json.dumps(data))
+
+        # Preserve TTL if it was set
+        # Note: TTL is lost during migration since we deleted the key
+        # The next set_working_memory call will restore it if configured
+
+        logger.info(f"Successfully migrated working memory key {key} to JSON format")
+
+        # Decrement the counter (O(1) instead of re-scanning all keys)
+        _decrement_string_key_count()
+
+        return data
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse string data for key {key}: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Failed to migrate working memory key {key}: {e}")
+        raise
 
 
 async def list_sessions(
@@ -103,8 +290,32 @@ async def get_working_memory(
     )
 
     try:
-        data = await redis_client.get(key)
-        if not data:
+        working_memory_data = None
+
+        if _string_keys_migrated:
+            # Fast path: all keys are already in JSON format
+            working_memory_data = await redis_client.json().get(key)
+        else:
+            # Slow path: check key type to determine storage format
+            key_type = await redis_client.type(key)
+            if isinstance(key_type, bytes):
+                key_type = key_type.decode("utf-8")
+
+            if key_type == "ReJSON-RL":
+                # New JSON format
+                working_memory_data = await redis_client.json().get(key)
+            elif key_type == "string":
+                # Old string format - migrate to JSON
+                string_data = await redis_client.get(key)
+                if string_data:
+                    if isinstance(string_data, bytes):
+                        string_data = string_data.decode("utf-8")
+                    working_memory_data = await _migrate_string_to_json(
+                        redis_client, key, string_data
+                    )
+            # If key_type is "none", the key doesn't exist - working_memory_data stays None
+
+        if not working_memory_data:
             logger.debug(
                 f"No working memory found for parameters: {session_id}, {user_id}, {namespace}"
             )
@@ -124,9 +335,6 @@ async def get_working_memory(
                     return reconstructed
 
             return None
-
-        # Parse the JSON data
-        working_memory_data = json.loads(data)
 
         # Convert memory records back to MemoryRecord objects
         memories = []
@@ -233,21 +441,16 @@ async def set_working_memory(
     }
 
     try:
+        # Use Redis native JSON storage
+        await redis_client.json().set(key, "$", data)
+
         if working_memory.ttl_seconds is not None:
-            # Store with TTL
-            await redis_client.setex(
-                key,
-                working_memory.ttl_seconds,
-                json.dumps(data, default=json_datetime_handler),
-            )
+            # Set TTL separately for JSON keys
+            await redis_client.expire(key, working_memory.ttl_seconds)
             logger.info(
                 f"Set working memory for session {working_memory.session_id} with TTL {working_memory.ttl_seconds}s"
             )
         else:
-            await redis_client.set(
-                key,
-                json.dumps(data, default=json_datetime_handler),
-            )
             logger.info(
                 f"Set working memory for session {working_memory.session_id} with no TTL"
             )

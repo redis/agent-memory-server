@@ -339,3 +339,298 @@ class TestWorkingMemory:
         )
         ttl = await async_redis_client.ttl(key)
         assert 0 < ttl <= ttl_seconds
+
+    @pytest.mark.asyncio
+    async def test_backward_compatibility_string_to_json_migration(
+        self, async_redis_client
+    ):
+        """Test that old string-format working memory is migrated to JSON format on read."""
+        import json
+
+        from agent_memory_server.working_memory import (
+            is_migration_complete,
+            reset_migration_status,
+        )
+
+        # Reset migration status to ensure lazy migration is active
+        reset_migration_status()
+        assert not is_migration_complete()
+
+        session_id = "test-migration-session"
+        namespace = "test-namespace"
+
+        # Create old-format data (stringified JSON)
+        old_format_data = {
+            "messages": [
+                {
+                    "id": "msg-1",
+                    "role": "user",
+                    "content": "Hello",
+                    "created_at": "2024-01-01T00:00:00+00:00",
+                }
+            ],
+            "memories": [
+                {
+                    "id": "mem-1",
+                    "text": "User prefers dark mode",
+                    "memory_type": "semantic",
+                }
+            ],
+            "context": None,
+            "user_id": "user123",
+            "tokens": 10,
+            "session_id": session_id,
+            "namespace": namespace,
+            "ttl_seconds": None,
+            "data": {},
+            "long_term_memory_strategy": {"strategy": "discrete"},
+            "last_accessed": 1704067200,
+            "created_at": 1704067200,
+            "updated_at": 1704067200,
+        }
+
+        # Store as old string format directly
+        key = Keys.working_memory_key(session_id=session_id, namespace=namespace)
+        await async_redis_client.set(key, json.dumps(old_format_data))
+
+        # Verify it's stored as string (not JSON)
+        key_type = await async_redis_client.type(key)
+        # Redis returns bytes, decode if needed
+        if isinstance(key_type, bytes):
+            key_type = key_type.decode("utf-8")
+        assert key_type == "string"
+
+        # Now read using get_working_memory - should trigger migration
+        retrieved_mem = await get_working_memory(
+            session_id=session_id,
+            namespace=namespace,
+            redis_client=async_redis_client,
+        )
+
+        # Verify data was retrieved correctly
+        assert retrieved_mem is not None
+        assert retrieved_mem.session_id == session_id
+        assert retrieved_mem.namespace == namespace
+        assert len(retrieved_mem.messages) == 1
+        assert retrieved_mem.messages[0].role == "user"
+        assert retrieved_mem.messages[0].content == "Hello"
+        assert len(retrieved_mem.memories) == 1
+        assert retrieved_mem.memories[0].text == "User prefers dark mode"
+
+        # Verify the key was migrated to JSON format
+        key_type_after = await async_redis_client.type(key)
+        if isinstance(key_type_after, bytes):
+            key_type_after = key_type_after.decode("utf-8")
+        assert key_type_after == "ReJSON-RL"
+
+        # Verify migration status was updated (no more string keys)
+        assert is_migration_complete()
+
+        # Verify we can read it again (now from JSON format, using fast path)
+        retrieved_again = await get_working_memory(
+            session_id=session_id,
+            namespace=namespace,
+            redis_client=async_redis_client,
+        )
+        assert retrieved_again is not None
+        assert retrieved_again.session_id == session_id
+
+    @pytest.mark.asyncio
+    async def test_check_and_set_migration_status_with_no_keys(self, async_redis_client):
+        """Test migration status check when no working memory keys exist."""
+        from agent_memory_server.working_memory import (
+            check_and_set_migration_status,
+            is_migration_complete,
+            reset_migration_status,
+        )
+
+        # Reset to ensure clean state
+        reset_migration_status()
+        assert not is_migration_complete()
+
+        # Check status with no keys - should mark as migrated (nothing to migrate)
+        result = await check_and_set_migration_status(async_redis_client)
+        assert result is True
+        assert is_migration_complete()
+
+    @pytest.mark.asyncio
+    async def test_check_and_set_migration_status_with_json_keys_only(
+        self, async_redis_client
+    ):
+        """Test migration status check when only JSON keys exist."""
+        from agent_memory_server.working_memory import (
+            check_and_set_migration_status,
+            is_migration_complete,
+            reset_migration_status,
+        )
+
+        # Reset to ensure clean state
+        reset_migration_status()
+
+        # Create a JSON key
+        session_id = "test-json-session"
+        namespace = "test-namespace"
+        memories = [
+            MemoryRecord(
+                text="Test memory",
+                id="mem-1",
+                memory_type=MemoryTypeEnum.SEMANTIC,
+            ),
+        ]
+        working_mem = WorkingMemory(
+            memories=memories,
+            session_id=session_id,
+            namespace=namespace,
+        )
+        await set_working_memory(working_mem, redis_client=async_redis_client)
+
+        # Check status - should mark as migrated (only JSON keys)
+        result = await check_and_set_migration_status(async_redis_client)
+        assert result is True
+        assert is_migration_complete()
+
+    @pytest.mark.asyncio
+    async def test_check_and_set_migration_status_with_string_keys(
+        self, async_redis_client
+    ):
+        """Test migration status check when string keys exist."""
+        import json
+
+        from agent_memory_server.working_memory import (
+            check_and_set_migration_status,
+            is_migration_complete,
+            reset_migration_status,
+        )
+
+        # Reset to ensure clean state
+        reset_migration_status()
+
+        # Create an old-format string key
+        key = Keys.working_memory_key(
+            session_id="test-string-session", namespace="test-namespace"
+        )
+        old_data = {
+            "messages": [],
+            "memories": [],
+            "session_id": "test-string-session",
+            "namespace": "test-namespace",
+        }
+        await async_redis_client.set(key, json.dumps(old_data))
+
+        # Check status - should NOT mark as migrated (string keys exist)
+        result = await check_and_set_migration_status(async_redis_client)
+        assert result is False
+        assert not is_migration_complete()
+
+    @pytest.mark.asyncio
+    async def test_migration_status_set_by_set_migration_complete(
+        self, async_redis_client
+    ):
+        """Test that set_migration_complete() marks migration as done."""
+        import json
+
+        from agent_memory_server.working_memory import (
+            check_and_set_migration_status,
+            get_remaining_string_keys,
+            is_migration_complete,
+            reset_migration_status,
+            set_migration_complete,
+        )
+
+        # Reset to ensure clean state
+        reset_migration_status()
+
+        # Clean up any existing working_memory keys from other tests
+        cursor = 0
+        while True:
+            cursor, keys = await async_redis_client.scan(
+                cursor=cursor, match="working_memory:*", count=100
+            )
+            if keys:
+                await async_redis_client.delete(*keys)
+            if cursor == 0:
+                break
+
+        # Create an old-format string key
+        key = Keys.working_memory_key(
+            session_id="test-migrate-session-0", namespace="test-namespace"
+        )
+        old_data = {
+            "messages": [],
+            "memories": [],
+            "session_id": "test-migrate-session-0",
+            "namespace": "test-namespace",
+            "context": None,
+            "user_id": None,
+            "tokens": 0,
+            "ttl_seconds": None,
+            "data": {},
+            "long_term_memory_strategy": {"strategy": "discrete"},
+            "last_accessed": 1704067200,
+            "created_at": 1704067200,
+            "updated_at": 1704067200,
+        }
+        await async_redis_client.set(key, json.dumps(old_data))
+
+        # Check status - should NOT be migrated (early exit on first string key)
+        await check_and_set_migration_status(async_redis_client)
+        assert not is_migration_complete()
+        # With early exit, remaining count is -1 (unknown)
+        assert get_remaining_string_keys() == -1
+
+        # Read the key - triggers migration
+        await get_working_memory(
+            session_id="test-migrate-session-0",
+            namespace="test-namespace",
+            redis_client=async_redis_client,
+        )
+        # Still not complete - we don't track count with early exit
+        assert not is_migration_complete()
+
+        # Simulate what the migration script does
+        set_migration_complete()
+
+        # Now migration should be complete
+        assert is_migration_complete()
+        assert get_remaining_string_keys() == 0
+
+    @pytest.mark.asyncio
+    async def test_migration_skipped_when_env_variable_set(
+        self, async_redis_client, monkeypatch
+    ):
+        """Test that migration check is skipped when WORKING_MEMORY_MIGRATION_COMPLETE=true."""
+        import json
+
+        from agent_memory_server import config
+        from agent_memory_server.working_memory import (
+            check_and_set_migration_status,
+            is_migration_complete,
+            reset_migration_status,
+        )
+
+        # Reset to ensure clean state
+        reset_migration_status()
+
+        # Create an old-format string key (would normally trigger lazy migration)
+        key = Keys.working_memory_key(
+            session_id="test-env-skip-session", namespace="test-namespace"
+        )
+        old_data = {
+            "messages": [],
+            "memories": [],
+            "session_id": "test-env-skip-session",
+            "namespace": "test-namespace",
+        }
+        await async_redis_client.set(key, json.dumps(old_data))
+
+        # Set the env variable via settings
+        monkeypatch.setattr(config.settings, "working_memory_migration_complete", True)
+
+        # Check status - should skip scan and mark as complete immediately
+        result = await check_and_set_migration_status(async_redis_client)
+        assert result is True
+        assert is_migration_complete()
+
+        # Clean up
+        await async_redis_client.delete(key)
+        monkeypatch.setattr(config.settings, "working_memory_migration_complete", False)
