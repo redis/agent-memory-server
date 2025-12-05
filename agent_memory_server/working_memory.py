@@ -23,11 +23,14 @@ logger = logging.getLogger(__name__)
 # When True, we skip the type() check and go straight to json().get()
 _string_keys_migrated: bool = False
 
+# Counter for remaining string keys (avoids re-scanning after each migration)
+_remaining_string_keys: int = 0
+
 
 async def check_and_set_migration_status(redis_client: Redis | None = None) -> bool:
     """
     Check if any working memory keys are still in old string format.
-    Sets the global _string_keys_migrated flag accordingly.
+    Sets the global _string_keys_migrated flag and _remaining_string_keys counter.
 
     Args:
         redis_client: Optional Redis client
@@ -35,7 +38,7 @@ async def check_and_set_migration_status(redis_client: Redis | None = None) -> b
     Returns:
         True if all keys are migrated (or no keys exist), False if string keys remain
     """
-    global _string_keys_migrated
+    global _string_keys_migrated, _remaining_string_keys
 
     if not redis_client:
         redis_client = await get_redis_conn()
@@ -56,30 +59,56 @@ async def check_and_set_migration_status(redis_client: Redis | None = None) -> b
                 key_type = key_type.decode("utf-8")
 
             if key_type == "string":
-                string_keys_found += 1
+                # Early exit: found at least one string key, enable lazy migration
+                logger.info(
+                    "Found working memory key in old string format. "
+                    "Lazy migration enabled. Run 'agent-memory migrate-working-memory' "
+                    "to migrate all keys at once."
+                )
+                _string_keys_migrated = False
+                # We don't know the exact count, so set to -1 to indicate unknown
+                # The counter will be managed differently in this mode
+                _remaining_string_keys = -1
+                return False
             elif key_type == "ReJSON-RL":
                 json_keys_found += 1
 
         if cursor == 0:
             break
 
-    if string_keys_found > 0:
+    # No string keys found
+    if json_keys_found > 0:
         logger.info(
-            f"Found {string_keys_found} working memory keys in old string format, "
-            f"{json_keys_found} in JSON format. Lazy migration enabled."
+            f"All {json_keys_found} working memory keys are in JSON format. "
+            "Skipping type checks."
         )
-        _string_keys_migrated = False
-        return False
     else:
-        if json_keys_found > 0:
-            logger.info(
-                f"All {json_keys_found} working memory keys are in JSON format. "
-                "Skipping type checks."
-            )
-        else:
-            logger.info("No working memory keys found. Skipping type checks.")
+        logger.info("No working memory keys found. Skipping type checks.")
+    _string_keys_migrated = True
+    _remaining_string_keys = 0
+    return True
+
+
+def _decrement_string_key_count() -> None:
+    """
+    Decrement the string key counter after a successful migration.
+
+    Note: When _remaining_string_keys is -1, we don't know the exact count
+    (early exit mode). In this case, lazy migration stays enabled until
+    the migration script is run.
+    """
+    global _string_keys_migrated, _remaining_string_keys
+
+    # If we don't know the count (-1), we can't track completion
+    # The migration script will set the flag when done
+    if _remaining_string_keys == -1:
+        return
+
+    _remaining_string_keys -= 1
+    if _remaining_string_keys <= 0:
+        _remaining_string_keys = 0
         _string_keys_migrated = True
-        return True
+        logger.info("All working memory keys have been migrated to JSON format.")
 
 
 def is_migration_complete() -> bool:
@@ -87,10 +116,24 @@ def is_migration_complete() -> bool:
     return _string_keys_migrated
 
 
+def get_remaining_string_keys() -> int:
+    """Get the count of remaining string keys (for testing purposes)."""
+    return _remaining_string_keys
+
+
 def reset_migration_status() -> None:
     """Reset migration status (for testing purposes)."""
-    global _string_keys_migrated
+    global _string_keys_migrated, _remaining_string_keys
     _string_keys_migrated = False
+    _remaining_string_keys = 0
+
+
+def set_migration_complete() -> None:
+    """Mark migration as complete (called by migration script)."""
+    global _string_keys_migrated, _remaining_string_keys
+    _string_keys_migrated = True
+    _remaining_string_keys = 0
+    logger.info("Working memory migration marked as complete.")
 
 
 async def _migrate_string_to_json(
@@ -109,8 +152,6 @@ async def _migrate_string_to_json(
     Returns:
         The parsed dict data
     """
-    global _string_keys_migrated
-
     try:
         data = json.loads(string_data)
         logger.info(f"Migrating working memory key {key} from string to JSON format")
@@ -125,8 +166,8 @@ async def _migrate_string_to_json(
 
         logger.info(f"Successfully migrated working memory key {key} to JSON format")
 
-        # Re-check if all keys are now migrated
-        await check_and_set_migration_status(redis_client)
+        # Decrement the counter (O(1) instead of re-scanning all keys)
+        _decrement_string_key_count()
 
         return data
     except json.JSONDecodeError as e:

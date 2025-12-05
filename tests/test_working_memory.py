@@ -523,16 +523,18 @@ class TestWorkingMemory:
         assert not is_migration_complete()
 
     @pytest.mark.asyncio
-    async def test_migration_status_updated_after_all_keys_migrated(
+    async def test_migration_status_set_by_set_migration_complete(
         self, async_redis_client
     ):
-        """Test that migration status is updated after all string keys are migrated."""
+        """Test that set_migration_complete() marks migration as done."""
         import json
 
         from agent_memory_server.working_memory import (
             check_and_set_migration_status,
+            get_remaining_string_keys,
             is_migration_complete,
             reset_migration_status,
+            set_migration_complete,
         )
 
         # Reset to ensure clean state
@@ -549,46 +551,45 @@ class TestWorkingMemory:
             if cursor == 0:
                 break
 
-        # Create two old-format string keys
-        for i in range(2):
-            key = Keys.working_memory_key(
-                session_id=f"test-migrate-session-{i}", namespace="test-namespace"
-            )
-            old_data = {
-                "messages": [],
-                "memories": [],
-                "session_id": f"test-migrate-session-{i}",
-                "namespace": "test-namespace",
-                "context": None,
-                "user_id": None,
-                "tokens": 0,
-                "ttl_seconds": None,
-                "data": {},
-                "long_term_memory_strategy": {"strategy": "discrete"},
-                "last_accessed": 1704067200,
-                "created_at": 1704067200,
-                "updated_at": 1704067200,
-            }
-            await async_redis_client.set(key, json.dumps(old_data))
+        # Create an old-format string key
+        key = Keys.working_memory_key(
+            session_id="test-migrate-session-0", namespace="test-namespace"
+        )
+        old_data = {
+            "messages": [],
+            "memories": [],
+            "session_id": "test-migrate-session-0",
+            "namespace": "test-namespace",
+            "context": None,
+            "user_id": None,
+            "tokens": 0,
+            "ttl_seconds": None,
+            "data": {},
+            "long_term_memory_strategy": {"strategy": "discrete"},
+            "last_accessed": 1704067200,
+            "created_at": 1704067200,
+            "updated_at": 1704067200,
+        }
+        await async_redis_client.set(key, json.dumps(old_data))
 
-        # Check status - should NOT be migrated
+        # Check status - should NOT be migrated (early exit on first string key)
         await check_and_set_migration_status(async_redis_client)
         assert not is_migration_complete()
+        # With early exit, remaining count is -1 (unknown)
+        assert get_remaining_string_keys() == -1
 
-        # Read first key - triggers migration, but second key still exists
+        # Read the key - triggers migration
         await get_working_memory(
             session_id="test-migrate-session-0",
             namespace="test-namespace",
             redis_client=async_redis_client,
         )
-        # Still not complete - one string key remains
+        # Still not complete - we don't track count with early exit
         assert not is_migration_complete()
 
-        # Read second key - triggers migration, now all keys are JSON
-        await get_working_memory(
-            session_id="test-migrate-session-1",
-            namespace="test-namespace",
-            redis_client=async_redis_client,
-        )
+        # Simulate what the migration script does
+        set_migration_complete()
+
         # Now migration should be complete
         assert is_migration_complete()
+        assert get_remaining_string_keys() == 0
