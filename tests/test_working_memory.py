@@ -538,6 +538,17 @@ class TestWorkingMemory:
         # Reset to ensure clean state
         reset_migration_status()
 
+        # Clean up any existing working_memory keys from other tests
+        cursor = 0
+        while True:
+            cursor, keys = await async_redis_client.scan(
+                cursor=cursor, match="working_memory:*", count=100
+            )
+            if keys:
+                await async_redis_client.delete(*keys)
+            if cursor == 0:
+                break
+
         # Create two old-format string keys
         for i in range(2):
             key = Keys.working_memory_key(
