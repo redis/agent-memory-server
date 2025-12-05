@@ -8,7 +8,6 @@ Use environment variables to control scale:
     BENCHMARK_KEY_COUNT=10000 uv run pytest tests/benchmarks/test_migration_benchmark.py -v -s
 """
 
-import asyncio
 import json
 import os
 import time
