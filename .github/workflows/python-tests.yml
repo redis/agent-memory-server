@@ -3,6 +3,9 @@ name: Python Tests
 on:
   push:
     branches: [ main ]
+    tags:
+      - 'server/v*.*.*'
+      - 'client/v*.*.*'
   pull_request:
     branches: [ main ]
 

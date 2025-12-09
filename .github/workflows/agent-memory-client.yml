@@ -31,17 +31,9 @@ jobs:
         working-directory: agent-memory-client
         run: uv sync --extra dev
 
-      - name: Lint with Ruff
-        working-directory: agent-memory-client
-        run: uv run ruff check agent_memory_client
-
-      - name: Check formatting with Ruff formatter
-        working-directory: agent-memory-client
-        run: uv run ruff format --check agent_memory_client
-
-      - name: Type check with mypy
-        working-directory: agent-memory-client
-        run: uv run mypy agent_memory_client
+      - name: Run pre-commit
+        run: |
+          uv run pre-commit run --all-files
 
       - name: Run tests
         working-directory: agent-memory-client
