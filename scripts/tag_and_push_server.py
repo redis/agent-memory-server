@@ -86,15 +86,23 @@ def tag_exists(tag_name: str) -> bool:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Tag and push agent-memory-server release")
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Show what would be done without actually doing it"
+    parser = argparse.ArgumentParser(
+        description="Tag and push agent-memory-server release"
     )
     parser.add_argument(
-        "--force", action="store_true", help="Force tag creation even if tag already exists"
+        "--dry-run",
+        action="store_true",
+        help="Show what would be done without actually doing it",
     )
     parser.add_argument(
-        "--test", action="store_true", help="Add '-test' suffix to tag for TestPyPI deployment"
+        "--force",
+        action="store_true",
+        help="Force tag creation even if tag already exists",
+    )
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Add '-test' suffix to tag for TestPyPI deployment",
     )
 
     args = parser.parse_args()
@@ -133,7 +141,9 @@ def main():
                     print(f"Tag {tag_name} already exists, but --force specified")
                     run_command(["git", "tag", "-d", tag_name], args.dry_run)
                 else:
-                    print(f"Error: Tag {tag_name} already exists. Use --force to overwrite.")
+                    print(
+                        f"Error: Tag {tag_name} already exists. Use --force to overwrite."
+                    )
                     sys.exit(1)
 
         # Create the tag
@@ -162,4 +172,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
