@@ -455,9 +455,9 @@ class TestMCP:
             namespace="user_preferences",
         )
 
-        assert (
-            lenient_memory.discrete_memory_extracted == "t"
-        ), f"LenientMemoryRecord should default to 't', got '{lenient_memory.discrete_memory_extracted}'"
+        assert lenient_memory.discrete_memory_extracted == "t", (
+            f"LenientMemoryRecord should default to 't', got '{lenient_memory.discrete_memory_extracted}'"
+        )
         assert lenient_memory.memory_type.value == "semantic"
         assert lenient_memory.id is not None
 
@@ -466,9 +466,9 @@ class TestMCP:
             id="test_001", text="User prefers coffee", memory_type="semantic"
         )
 
-        assert (
-            extracted_memory.discrete_memory_extracted == "t"
-        ), f"ExtractedMemoryRecord should default to 't', got '{extracted_memory.discrete_memory_extracted}'"
+        assert extracted_memory.discrete_memory_extracted == "t", (
+            f"ExtractedMemoryRecord should default to 't', got '{extracted_memory.discrete_memory_extracted}'"
+        )
         assert extracted_memory.memory_type.value == "semantic"
 
     @pytest.mark.asyncio
