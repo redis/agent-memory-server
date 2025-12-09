@@ -1,0 +1,88 @@
+name: Agent Memory Server CI
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'server/v*.*.*'
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+
+      - name: Build package
+        run: python -m build
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/server/') && contains(github.ref, '-test')
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish package to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist/
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/server/') && !contains(github.ref, '-test')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+
+# Tag Format Guide:
+# - For TestPyPI (testing): server/v1.0.0-test
+# - For PyPI (production): server/v1.0.0
+#
+# Use the script: python scripts/tag_and_push_server.py --test (for TestPyPI)
+#                 python scripts/tag_and_push_server.py (for PyPI)
+#
+# This workflow uses PyPI Trusted Publishing (OIDC). Ensure the project is configured
+# on PyPI to trust this GitHub repository before releasing.
