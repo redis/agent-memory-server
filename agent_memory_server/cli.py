@@ -319,13 +319,8 @@ def mcp(port: int, mode: str, no_worker: bool):
     async def setup_and_run():
         # Redis setup is handled by the MCP app before it starts
 
-        # Set use_docket based on mode and --no-worker flag
-        if mode == "stdio":
-            # Don't run a task worker in stdio mode by default
-            settings.use_docket = False
-        elif no_worker:
-            # Use --no-worker flag for SSE mode
-            settings.use_docket = False
+        # Set use_docket based on --no-worker flag
+        settings.use_docket = no_worker
 
         # Run the MCP server
         if mode == "sse":
