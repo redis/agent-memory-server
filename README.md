@@ -159,6 +159,35 @@ uv run agent-memory mcp
 uv run agent-memory mcp --mode sse --port 9000 --no-worker
 ```
 
+### MCP config via uvx (recommended)
+
+Use this in your MCP tool configuration (e.g., Claude Desktop mcp.json):
+
+```json
+{
+  "mcpServers": {
+    "memory": {
+      "command": "uvx",
+      "args": ["--from", "agent-memory-server", "agent-memory", "mcp"],
+      "env": {
+        "DISABLE_AUTH": "true",
+        "REDIS_URL": "redis://localhost:6379",
+        "OPENAI_API_KEY": "<your-openai-key>"
+      }
+    }
+  }
+}
+```
+
+Notes:
+- API keys: Set either `OPENAI_API_KEY` (default models use OpenAI) or switch to Anthropic by setting `ANTHROPIC_API_KEY` and `GENERATION_MODEL` to an Anthropic model (e.g., `claude-3-5-haiku-20241022`).
+
+- Make sure your MCP host can find `uvx` (on its PATH or by using an absolute command path).
+  - macOS: `brew install uv`
+  - If not on PATH, set `"command"` to the absolute path (e.g., `/opt/homebrew/bin/uvx` on Apple Silicon, `/usr/local/bin/uvx` on Intel macOS). On Linux, `~/.local/bin/uvx` is common. See https://docs.astral.sh/uv/getting-started/
+- For production, remove `DISABLE_AUTH` and configure proper authentication.
+
+
 ## Documentation
 
 📚 **[Full Documentation](https://redis.github.io/agent-memory-server/)** - Complete guides, API reference, and examples

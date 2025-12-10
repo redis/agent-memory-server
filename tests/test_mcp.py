@@ -180,7 +180,9 @@ class TestMCP:
         # Capture injected namespace
         injected = {}
 
-        async def fake_core_search(payload, background_tasks=None, optimize_query=False):
+        async def fake_core_search(
+            payload, background_tasks=None, optimize_query=False
+        ):
             injected["namespace"] = payload.namespace.eq if payload.namespace else None
             # Return a dummy result with total>0 to skip fake fallback
             return MemoryRecordResults(
@@ -619,10 +621,10 @@ class TestMCP:
                 call_args = mock_search.call_args
 
                 # background_tasks should be passed as a keyword argument
-                assert "background_tasks" in call_args[1], (
-                    "background_tasks parameter must be passed to core_search_long_term_memory"
-                )
+                assert (
+                    "background_tasks" in call_args[1]
+                ), "background_tasks parameter must be passed to core_search_long_term_memory"
                 background_tasks = call_args[1]["background_tasks"]
-                assert isinstance(background_tasks, HybridBackgroundTasks), (
-                    f"background_tasks should be HybridBackgroundTasks, got {type(background_tasks)}"
-                )
+                assert isinstance(
+                    background_tasks, HybridBackgroundTasks
+                ), f"background_tasks should be HybridBackgroundTasks, got {type(background_tasks)}"

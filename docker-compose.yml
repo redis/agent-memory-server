@@ -18,11 +18,12 @@ services:
     image: redislabs/agent-memory-server:${REDIS_AGENT_MEMORY_VERSION:-latest}
     ports:
       - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
     environment:
       - REDIS_URL=redis://redis:6379
       - PORT=8000
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GENERATION_MODEL=gpt-4o-mini
       - EMBEDDING_MODEL=text-embedding-3-small
       - LONG_TERM_MEMORY=True
@@ -44,11 +45,12 @@ services:
   mcp:
     profiles: ["standard", ""]
     image: redislabs/agent-memory-server:${REDIS_AGENT_MEMORY_VERSION:-latest}
+    env_file:
+      - path: .env
+        required: false
     environment:
       - REDIS_URL=redis://redis:6379
       - PORT=9050
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GENERATION_MODEL=gpt-4o-mini
       - EMBEDDING_MODEL=text-embedding-3-small
       - LONG_TERM_MEMORY=True
@@ -66,10 +68,11 @@ services:
   task-worker:
     profiles: ["standard", ""]
     image: redislabs/agent-memory-server:${REDIS_AGENT_MEMORY_VERSION:-latest}
+    env_file:
+      - path: .env
+        required: false
     environment:
       - REDIS_URL=redis://redis:6379
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GENERATION_MODEL=gpt-4o-mini
       - EMBEDDING_MODEL=text-embedding-3-small
       - LONG_TERM_MEMORY=True
@@ -94,16 +97,12 @@ services:
     image: redislabs/agent-memory-server-aws:${REDIS_AGENT_MEMORY_AWS_VERSION:-latest}
     ports:
       - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
     environment:
       - REDIS_URL=redis://redis:6379
       - PORT=8000
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      # AWS Bedrock configuration
-      - REGION_NAME=${REGION_NAME}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
       - GENERATION_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
       - EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
       - LONG_TERM_MEMORY=True
@@ -125,16 +124,12 @@ services:
   mcp-aws:
     profiles: ["aws"]
     image: redislabs/agent-memory-server-aws:${REDIS_AGENT_MEMORY_AWS_VERSION:-latest}
+    env_file:
+      - path: .env
+        required: false
     environment:
       - REDIS_URL=redis://redis:6379
       - PORT=9050
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      # AWS Bedrock configuration
-      - REGION_NAME=${REGION_NAME}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
       - GENERATION_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
       - EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
       - LONG_TERM_MEMORY=True
@@ -152,15 +147,11 @@ services:
   task-worker-aws:
     profiles: ["aws"]
     image: redislabs/agent-memory-server-aws:${REDIS_AGENT_MEMORY_AWS_VERSION:-latest}
+    env_file:
+      - path: .env
+        required: false
     environment:
       - REDIS_URL=redis://redis:6379
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      # AWS Bedrock configuration
-      - REGION_NAME=${REGION_NAME}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
       - GENERATION_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
       - EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
       - LONG_TERM_MEMORY=True

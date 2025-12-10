@@ -235,6 +235,7 @@ class Settings(BaseSettings):
     # Cloud
     ## Cloud region
     region_name: str | None = None
+
     ## AWS Cloud credentials
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
