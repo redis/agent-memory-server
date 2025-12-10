@@ -376,6 +376,10 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     config.addinivalue_line(
         "markers",
+        "benchmark: mark test as a benchmark test",
+    )
+    config.addinivalue_line(
+        "markers",
         "integration: mark test as an integration test (requires running memory server)",
     )
 
