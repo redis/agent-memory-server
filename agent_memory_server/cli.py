@@ -119,7 +119,6 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
 
     from agent_memory_server.utils.keys import Keys
     from agent_memory_server.working_memory import (
-        reset_migration_status,
         set_migration_complete,
     )
 
@@ -149,7 +148,7 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
                     pipe.type(key)
                 types = await pipe.execute()
 
-                for key, key_type in zip(keys, types):
+                for key, key_type in zip(keys, types, strict=False):
                     if isinstance(key_type, bytes):
                         key_type = key_type.decode("utf-8")
 
@@ -197,7 +196,7 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
 
             # Parse and prepare migration
             migrations = []  # List of (key, data) tuples
-            for key, string_data in zip(batch_keys, string_data_list):
+            for key, string_data in zip(batch_keys, string_data_list, strict=False):
                 if string_data is None:
                     continue
 
@@ -222,7 +221,9 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
                     migrated += len(migrations)
                 except Exception as e:
                     # If batch fails, try one by one
-                    logger.warning(f"Batch migration failed, retrying individually: {e}")
+                    logger.warning(
+                        f"Batch migration failed, retrying individually: {e}"
+                    )
                     for key, data in migrations:
                         try:
                             await redis.delete(key)
@@ -262,8 +263,7 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
             )
         else:
             click.echo(
-                "\nMigration completed with errors. "
-                "Run again to retry failed keys."
+                "\nMigration completed with errors. " "Run again to retry failed keys."
             )
 
     asyncio.run(run_migration())

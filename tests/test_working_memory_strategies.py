@@ -1,6 +1,5 @@
 """Tests for working memory strategy integration."""
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

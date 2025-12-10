@@ -56,6 +56,7 @@ def create_old_format_data(session_id: str, namespace: str) -> dict:
 @pytest.fixture
 async def cleanup_working_memory_keys(async_redis_client):
     """Clean up all working memory keys before and after test."""
+
     async def cleanup():
         cursor = 0
         deleted = 0
@@ -118,7 +119,7 @@ class TestMigrationBenchmark:
         print(f"✅ Created {KEY_COUNT:,} keys in {creation_time:.2f}s")
 
         # Benchmark startup scan (with early exit)
-        print(f"\n📊 Benchmarking startup scan (early exit on first string key)...")
+        print("\n📊 Benchmarking startup scan (early exit on first string key)...")
         reset_migration_status()
 
         start = time.perf_counter()
@@ -251,10 +252,12 @@ class TestMigrationBenchmark:
         await async_redis_client.set(string_key, json.dumps(string_data))
 
         creation_time = time.perf_counter() - start
-        print(f"✅ Created {KEY_COUNT:,} JSON keys + 1 string key in {creation_time:.2f}s")
+        print(
+            f"✅ Created {KEY_COUNT:,} JSON keys + 1 string key in {creation_time:.2f}s"
+        )
 
         # Benchmark startup scan - must scan all keys to find the string one
-        print(f"\n📊 Benchmarking startup scan (worst case - string key at end)...")
+        print("\n📊 Benchmarking startup scan (worst case - string key at end)...")
         reset_migration_status()
 
         start = time.perf_counter()
@@ -297,7 +300,7 @@ class TestMigrationBenchmark:
         print(f"✅ Created {KEY_COUNT:,} string keys in {creation_time:.2f}s")
 
         # Benchmark migration (simulating what the CLI does)
-        print(f"\n📊 Benchmarking pipelined migration...")
+        print("\n📊 Benchmarking pipelined migration...")
         migrate_start = time.perf_counter()
 
         # Scan and collect string keys
@@ -313,7 +316,7 @@ class TestMigrationBenchmark:
                     pipe.type(key)
                 types = await pipe.execute()
 
-                for key, key_type in zip(keys, types):
+                for key, key_type in zip(keys, types, strict=False):
                     if isinstance(key_type, bytes):
                         key_type = key_type.decode("utf-8")
                     if key_type == "string":
@@ -323,7 +326,9 @@ class TestMigrationBenchmark:
                 break
 
         scan_time = time.perf_counter() - migrate_start
-        print(f"  Scan completed in {scan_time:.2f}s ({len(string_keys):,} string keys)")
+        print(
+            f"  Scan completed in {scan_time:.2f}s ({len(string_keys):,} string keys)"
+        )
 
         # Migrate in batches
         migrated = 0
@@ -338,7 +343,7 @@ class TestMigrationBenchmark:
 
             # Parse and migrate
             write_pipe = async_redis_client.pipeline()
-            for key, string_data in zip(batch_keys, string_data_list):
+            for key, string_data in zip(batch_keys, string_data_list, strict=False):
                 if string_data is None:
                     continue
                 if isinstance(string_data, bytes):
@@ -352,7 +357,9 @@ class TestMigrationBenchmark:
 
             if migrated % 100000 == 0:
                 elapsed = time.perf_counter() - migrate_start
-                print(f"  Migrated {migrated:,} keys ({migrated / elapsed:,.0f} keys/sec)")
+                print(
+                    f"  Migrated {migrated:,} keys ({migrated / elapsed:,.0f} keys/sec)"
+                )
 
         migrate_time = time.perf_counter() - migrate_start
         rate = migrated / migrate_time
@@ -369,4 +376,3 @@ class TestMigrationBenchmark:
         if isinstance(key_type, bytes):
             key_type = key_type.decode("utf-8")
         assert key_type == "ReJSON-RL", f"Expected ReJSON-RL, got {key_type}"
-
