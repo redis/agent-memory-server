@@ -45,6 +45,7 @@ class HybridBackgroundTasks(BackgroundTasks):
             # This runs in a thread to avoid event loop conflicts
             def run_in_thread():
                 """Run the async Docket operations in a separate thread"""
+
                 async def schedule_task():
                     async with Docket(
                         name=settings.docket_name,
