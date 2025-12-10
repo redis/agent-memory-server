@@ -111,7 +111,24 @@ REDISVL_INDEXING_ALGORITHM=HNSW          # Indexing algorithm (default: HNSW)
 ### Working Memory
 ```bash
 SUMMARIZATION_THRESHOLD=0.7  # Fraction of context window that triggers summarization (default: 0.7)
+
+# Message timestamp validation
+REQUIRE_MESSAGE_TIMESTAMPS=false  # If true, reject messages without created_at (default: false)
+MAX_FUTURE_TIMESTAMP_SECONDS=300  # Clock skew tolerance in seconds (default: 300 = 5 minutes)
 ```
+
+#### Message Timestamp Validation
+
+Messages in working memory should include `created_at` timestamps for accurate ordering and recency scoring. The server validates timestamps with the following behavior:
+
+| Setting | Behavior |
+|---------|----------|
+| `REQUIRE_MESSAGE_TIMESTAMPS=false` (default) | Auto-generates missing timestamps with deprecation warning |
+| `REQUIRE_MESSAGE_TIMESTAMPS=true` | Rejects messages without `created_at` with 400 error |
+
+**Future timestamp validation**: Messages with `created_at` more than `MAX_FUTURE_TIMESTAMP_SECONDS` in the future are rejected to prevent clock skew issues.
+
+**Deprecation notice**: When messages lack timestamps, the API returns an `X-Deprecation-Warning` header alerting clients that `created_at` will become required in the next major version.
 
 ## AI Features Configuration
 

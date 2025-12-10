@@ -45,14 +45,31 @@ The primary use of working memory is storing conversation messages to maintain c
 
 ```python
 import ulid
+from datetime import datetime, UTC
 
 # Store conversation messages for context continuity
+# IMPORTANT: Always provide created_at timestamps for accurate message ordering
 working_memory = WorkingMemory(
     session_id="chat_123",
     messages=[
-        MemoryMessage(role="user", content="I'm planning a trip to Paris next month", id=ulid.ULID()),
-        MemoryMessage(role="assistant", content="That sounds exciting! What type of activities are you interested in?", id=ulid.ULID()),
-        MemoryMessage(role="user", content="I love museums and good food", id=ulid.ULID())
+        MemoryMessage(
+            role="user",
+            content="I'm planning a trip to Paris next month",
+            id=ulid.ULID(),
+            created_at=datetime.now(UTC)  # Provide timestamp
+        ),
+        MemoryMessage(
+            role="assistant",
+            content="That sounds exciting! What type of activities are you interested in?",
+            id=ulid.ULID(),
+            created_at=datetime.now(UTC)
+        ),
+        MemoryMessage(
+            role="user",
+            content="I love museums and good food",
+            id=ulid.ULID(),
+            created_at=datetime.now(UTC)
+        )
     ]
 )
 
@@ -62,6 +79,15 @@ working_memory = WorkingMemory(
 # - User likes museums and food
 # This enables coherent, context-aware responses
 ```
+
+> **⚠️ Important: Message Timestamps**
+>
+> Always provide `created_at` timestamps for your messages. This ensures:
+> - Accurate message ordering by recency
+> - Correct temporal context when promoting to long-term memory
+> - Proper recency scoring in semantic search
+>
+> If you omit `created_at`, the server will auto-generate it at deserialization time and log a deprecation warning. In a future major version, `created_at` will become required.
 
 ### 2. Session-Specific Data
 
