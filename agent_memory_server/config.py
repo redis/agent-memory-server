@@ -313,6 +313,13 @@ class Settings(BaseSettings):
         0.7  # Fraction of context window that triggers summarization
     )
 
+    # Working memory migration settings
+    # Set to True to skip backward compatibility checks for old string-format keys.
+    # Use this after running 'agent-memory migrate-working-memory' or for fresh installs.
+    # When True, the server assumes all working memory keys are in JSON format,
+    # skipping the startup scan and per-read type checks for better performance.
+    working_memory_migration_complete: bool = False
+
     # Query optimization settings
     query_optimization_prompt_template: str = """Transform this natural language query into an optimized version for semantic search. The goal is to make it more effective for finding semantically similar content while preserving the original intent.
 

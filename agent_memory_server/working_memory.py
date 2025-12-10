@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from redis.asyncio import Redis
 
+from agent_memory_server.config import settings
 from agent_memory_server.models import (
     MemoryMessage,
     MemoryRecord,
@@ -19,12 +20,208 @@ from agent_memory_server.utils.redis import get_redis_conn
 
 logger = logging.getLogger(__name__)
 
+# Redis keys for migration status (shared across workers, persists across restarts)
+MIGRATION_STATUS_KEY = "working_memory:migration:complete"
+MIGRATION_REMAINING_KEY = "working_memory:migration:remaining"
 
-def json_datetime_handler(obj):
-    """JSON serializer for datetime objects."""
-    if isinstance(obj, datetime):
-        return obj.isoformat()
-    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+async def check_and_set_migration_status(redis_client: Redis | None = None) -> bool:
+    """
+    Check if any working memory keys are still in old string format.
+    Stores migration status in Redis for cross-worker consistency.
+
+    If WORKING_MEMORY_MIGRATION_COMPLETE=true is set, skips the scan entirely
+    and assumes all keys are in JSON format.
+
+    Args:
+        redis_client: Optional Redis client
+
+    Returns:
+        True if all keys are migrated (or no keys exist), False if string keys remain
+    """
+    # If env variable is set, skip the scan entirely
+    if settings.working_memory_migration_complete:
+        logger.info(
+            "WORKING_MEMORY_MIGRATION_COMPLETE=true, skipping backward compatibility checks."
+        )
+        return True
+
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    # Check if migration status is already stored in Redis
+    status = await redis_client.get(MIGRATION_STATUS_KEY)
+    if status:
+        if isinstance(status, bytes):
+            status = status.decode("utf-8")
+        if status == "true":
+            logger.info(
+                "Migration status in Redis indicates complete. Skipping type checks."
+            )
+            return True
+
+    # Scan for working_memory:* keys of type STRING only
+    # This is much faster than scanning all keys and calling TYPE on each
+    cursor = 0
+    string_keys_found = 0
+
+    try:
+        while True:
+            # Use _type="string" to only get string keys directly
+            cursor, keys = await redis_client.scan(
+                cursor=cursor, match="working_memory:*", count=1000, _type="string"
+            )
+
+            if keys:
+                # Filter out migration status keys (they're also strings)
+                keys = [
+                    k
+                    for k in keys
+                    if (k.decode("utf-8") if isinstance(k, bytes) else k)
+                    not in (MIGRATION_STATUS_KEY, MIGRATION_REMAINING_KEY)
+                ]
+                string_keys_found += len(keys)
+
+            if cursor == 0:
+                break
+
+        if string_keys_found > 0:
+            # Store the count in Redis for atomic decrement during lazy migration
+            await redis_client.set(MIGRATION_REMAINING_KEY, str(string_keys_found))
+            logger.info(
+                f"Found {string_keys_found} working memory keys in old string format. "
+                "Lazy migration enabled."
+            )
+            return False
+
+        # No string keys found - mark as complete in Redis
+        await redis_client.set(MIGRATION_STATUS_KEY, "true")
+        await redis_client.delete(MIGRATION_REMAINING_KEY)
+
+        logger.info(
+            "No working memory string keys found. Skipping backward compatibility checks."
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Failed to check migration status: {e}")
+        return False
+
+
+async def _decrement_remaining_count(redis_client: Redis) -> None:
+    """
+    Atomically decrement the remaining string key counter.
+    When it reaches 0, mark migration as complete.
+    """
+    try:
+        remaining = await redis_client.decr(MIGRATION_REMAINING_KEY)
+        if remaining <= 0:
+            await redis_client.set(MIGRATION_STATUS_KEY, "true")
+            await redis_client.delete(MIGRATION_REMAINING_KEY)
+            logger.info("All working memory keys have been migrated to JSON format.")
+    except Exception as e:
+        # Non-fatal - migration still works, just won't auto-complete
+        logger.warning(f"Failed to decrement migration counter: {e}")
+
+
+async def is_migration_complete(redis_client: Redis | None = None) -> bool:
+    """Check if migration is complete."""
+    if settings.working_memory_migration_complete:
+        return True
+
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    status = await redis_client.get(MIGRATION_STATUS_KEY)
+    if status:
+        if isinstance(status, bytes):
+            status = status.decode("utf-8")
+        return status == "true"
+    return False
+
+
+async def get_remaining_string_keys(redis_client: Redis | None = None) -> int:
+    """Get the count of remaining string keys (for testing/monitoring)."""
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    remaining = await redis_client.get(MIGRATION_REMAINING_KEY)
+    if remaining:
+        if isinstance(remaining, bytes):
+            remaining = remaining.decode("utf-8")
+        return int(remaining)
+    return 0
+
+
+async def reset_migration_status(redis_client: Redis | None = None) -> None:
+    """Reset migration status (for testing purposes)."""
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    await redis_client.delete(MIGRATION_STATUS_KEY, MIGRATION_REMAINING_KEY)
+
+
+async def set_migration_complete(redis_client: Redis | None = None) -> None:
+    """Mark migration as complete (called by migration script)."""
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    await redis_client.set(MIGRATION_STATUS_KEY, "true")
+    await redis_client.delete(MIGRATION_REMAINING_KEY)
+    logger.info("Working memory migration marked as complete.")
+
+
+async def _migrate_string_to_json(
+    redis_client: Redis,
+    key: str,
+    string_data: str,
+) -> dict:
+    """
+    Migrate working memory from old string format to new JSON format.
+
+    Args:
+        redis_client: Redis client
+        key: The Redis key
+        string_data: The JSON string data from the old format
+
+    Returns:
+        The parsed dict data
+    """
+    try:
+        data = json.loads(string_data)
+        logger.info(f"Migrating working memory key {key} from string to JSON format")
+
+        # Atomically migrate the key from string to JSON using a Lua script
+        # The script: get TTL, get value, delete, set as JSON, restore TTL if > 0
+        lua_script = """
+        local key = KEYS[1]
+        if redis.call('TYPE', key).ok == 'string' then
+            local ttl = redis.call('TTL', key)
+            local val = redis.call('GET', key)
+            redis.call('DEL', key)
+            redis.call('JSON.SET', key, '$', ARGV[1])
+            if ttl > 0 then
+                redis.call('EXPIRE', key, ttl)
+            end
+            return val
+        else
+            return nil
+        end
+        """
+        # Pass the JSON string as ARGV[1]
+        await redis_client.eval(lua_script, 1, key, json.dumps(data))
+
+        logger.info(f"Successfully migrated working memory key {key} to JSON format")
+
+        # Atomically decrement the remaining counter
+        await _decrement_remaining_count(redis_client)
+
+        return data
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse string data for key {key}: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Failed to migrate working memory key {key}: {e}")
+        raise
 
 
 async def list_sessions(
@@ -103,8 +300,35 @@ async def get_working_memory(
     )
 
     try:
-        data = await redis_client.get(key)
-        if not data:
+        working_memory_data = None
+
+        # Check migration status (uses Redis, shared across workers)
+        migration_complete = await is_migration_complete(redis_client)
+
+        if migration_complete:
+            # Fast path: all keys are already in JSON format
+            working_memory_data = await redis_client.json().get(key)
+        else:
+            # Slow path: check key type to determine storage format
+            key_type = await redis_client.type(key)
+            if isinstance(key_type, bytes):
+                key_type = key_type.decode("utf-8")
+
+            if key_type == "ReJSON-RL":
+                # New JSON format
+                working_memory_data = await redis_client.json().get(key)
+            elif key_type == "string":
+                # Old string format - migrate to JSON
+                string_data = await redis_client.get(key)
+                if string_data:
+                    if isinstance(string_data, bytes):
+                        string_data = string_data.decode("utf-8")
+                    working_memory_data = await _migrate_string_to_json(
+                        redis_client, key, string_data
+                    )
+            # If key_type is "none", the key doesn't exist - working_memory_data stays None
+
+        if not working_memory_data:
             logger.debug(
                 f"No working memory found for parameters: {session_id}, {user_id}, {namespace}"
             )
@@ -124,9 +348,6 @@ async def get_working_memory(
                     return reconstructed
 
             return None
-
-        # Parse the JSON data
-        working_memory_data = json.loads(data)
 
         # Convert memory records back to MemoryRecord objects
         memories = []
@@ -233,21 +454,16 @@ async def set_working_memory(
     }
 
     try:
+        # Use Redis native JSON storage
+        await redis_client.json().set(key, "$", data)
+
         if working_memory.ttl_seconds is not None:
-            # Store with TTL
-            await redis_client.setex(
-                key,
-                working_memory.ttl_seconds,
-                json.dumps(data, default=json_datetime_handler),
-            )
+            # Set TTL separately for JSON keys
+            await redis_client.expire(key, working_memory.ttl_seconds)
             logger.info(
                 f"Set working memory for session {working_memory.session_id} with TTL {working_memory.ttl_seconds}s"
             )
         else:
-            await redis_client.set(
-                key,
-                json.dumps(data, default=json_datetime_handler),
-            )
             logger.info(
                 f"Set working memory for session {working_memory.session_id} with no TTL"
             )
