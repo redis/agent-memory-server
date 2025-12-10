@@ -48,6 +48,7 @@ from .models import (
     WorkingMemory,
     WorkingMemoryResponse,
 )
+from .tool_schema import ToolSchema, ToolSchemaCollection
 
 # === Tool Call Type Definitions ===
 
@@ -1044,7 +1045,7 @@ class MemoryAPIClient:
         }
 
     @classmethod
-    def get_memory_search_tool_schema(cls) -> dict[str, Any]:
+    def get_memory_search_tool_schema(cls) -> ToolSchema:
         """
         Get OpenAI-compatible tool schema for memory search.
 
@@ -1053,19 +1054,20 @@ class MemoryAPIClient:
         memory search as a tool that LLMs can call.
 
         Returns:
-            Tool schema dictionary compatible with OpenAI tool calling format
+            ToolSchema object with customizable description and parameters
 
         Example:
             ```python
             # Register with OpenAI
             import openai
 
-            tools = [MemoryAPIClient.get_memory_search_tool_schema()]
+            schema = MemoryAPIClient.get_memory_search_tool_schema()
+            schema.set_description("Custom search description")
 
             response = await openai.chat.completions.create(
                 model="gpt-4",
                 messages=[{"role": "user", "content": "What did I say about my preferences?"}],
-                tools=tools,
+                tools=[schema.to_dict()],
                 tool_choice="auto"
             )
             ```
@@ -1081,66 +1083,69 @@ class MemoryAPIClient:
                         yield result
             ```
         """
-        return {
-            "type": "function",
-            "function": {
-                "name": "search_memory",
-                "description": "Search long-term memory for relevant information using semantic vector search. Use this when you need to find previously stored information about the user, such as their preferences, past conversations, or important facts. Examples: 'Find information about user food preferences', 'What did they say about their job?', 'Look for travel preferences'. This searches only long-term memory, not current working memory - use get_working_memory for current session info. IMPORTANT: The result includes 'memories' with an 'id' field; use these IDs when calling edit_long_term_memory or delete_long_term_memories.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "The query for vector search describing what information you're looking for",
+        return ToolSchema(
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_memory",
+                    "description": "Search long-term memory for relevant information using semantic vector search. Use this when you need to find previously stored information about the user, such as their preferences, past conversations, or important facts. Examples: 'Find information about user food preferences', 'What did they say about their job?', 'Look for travel preferences'. This searches only long-term memory, not current working memory - use get_working_memory for current session info. IMPORTANT: The result includes 'memories' with an 'id' field; use these IDs when calling edit_long_term_memory or delete_long_term_memories.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "The query for vector search describing what information you're looking for",
+                            },
+                            "topics": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Optional list of topics to filter by (e.g., ['preferences', 'work', 'personal'])",
+                            },
+                            "entities": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Optional list of entities to filter by (e.g., ['John', 'project_alpha', 'meetings'])",
+                            },
+                            "memory_type": {
+                                "type": "string",
+                                "enum": ["episodic", "semantic", "message"],
+                                "description": "Optional filter by memory type: 'episodic' (events/experiences), 'semantic' (facts/knowledge), 'message' (conversation history)",
+                            },
+                            "max_results": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 20,
+                                "default": 10,
+                                "description": "Maximum number of results to return",
+                            },
+                            "offset": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "default": 0,
+                                "description": "Offset for pagination (default: 0)",
+                            },
+                            "min_relevance": {
+                                "type": "number",
+                                "minimum": 0.0,
+                                "maximum": 1.0,
+                                "description": "Optional minimum relevance score (0.0-1.0, higher = more relevant)",
+                            },
+                            "user_id": {
+                                "type": "string",
+                                "description": "Optional user ID to filter memories by (e.g., 'user123')",
+                            },
+                            "optimize_query": {
+                                "type": "boolean",
+                                "default": False,
+                                "description": "Whether to optimize the query for vector search (default: False - LLMs typically provide already optimized queries)",
+                            },
                         },
-                        "topics": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Optional list of topics to filter by (e.g., ['preferences', 'work', 'personal'])",
-                        },
-                        "entities": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Optional list of entities to filter by (e.g., ['John', 'project_alpha', 'meetings'])",
-                        },
-                        "memory_type": {
-                            "type": "string",
-                            "enum": ["episodic", "semantic", "message"],
-                            "description": "Optional filter by memory type: 'episodic' (events/experiences), 'semantic' (facts/knowledge), 'message' (conversation history)",
-                        },
-                        "max_results": {
-                            "type": "integer",
-                            "minimum": 1,
-                            "maximum": 20,
-                            "default": 10,
-                            "description": "Maximum number of results to return",
-                        },
-                        "offset": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "default": 0,
-                            "description": "Offset for pagination (default: 0)",
-                        },
-                        "min_relevance": {
-                            "type": "number",
-                            "minimum": 0.0,
-                            "maximum": 1.0,
-                            "description": "Optional minimum relevance score (0.0-1.0, higher = more relevant)",
-                        },
-                        "user_id": {
-                            "type": "string",
-                            "description": "Optional user ID to filter memories by (e.g., 'user123')",
-                        },
-                        "optimize_query": {
-                            "type": "boolean",
-                            "default": False,
-                            "description": "Whether to optimize the query for vector search (default: False - LLMs typically provide already optimized queries)",
-                        },
+                        "required": ["query"],
                     },
-                    "required": ["query"],
                 },
             },
-        }
+            format="openai",
+        )
 
     # === Working Memory Tool Integration ===
 
@@ -1465,441 +1470,484 @@ class MemoryAPIClient:
             }
 
     @classmethod
-    def get_working_memory_tool_schema(cls) -> dict[str, Any]:
+    def get_working_memory_tool_schema(cls) -> ToolSchema:
         """
         Get OpenAI-compatible tool schema for reading working memory.
 
         Returns:
-            Tool schema dictionary compatible with OpenAI tool calling format
+            ToolSchema object with customizable description and parameters
         """
-        return {
-            "type": "function",
-            "function": {
-                "name": "get_or_create_working_memory",
-                "description": "Get the current working memory state including recent messages, temporarily stored memories, and session-specific data. Creates a new session if one doesn't exist. Returns information about whether the session was created or found existing. Use this to check what's already in the current conversation context before deciding whether to search long-term memory or add new information. Examples: Check if user preferences are already loaded in this session, review recent conversation context, see what structured data has been stored for this session.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": [],
+        return ToolSchema(
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_or_create_working_memory",
+                    "description": "Get the current working memory state including recent messages, temporarily stored memories, and session-specific data. Creates a new session if one doesn't exist. Returns information about whether the session was created or found existing. Use this to check what's already in the current conversation context before deciding whether to search long-term memory or add new information. Examples: Check if user preferences are already loaded in this session, review recent conversation context, see what structured data has been stored for this session.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                    },
                 },
             },
-        }
+            format="openai",
+        )
 
     @classmethod
-    def get_add_memory_tool_schema(cls) -> dict[str, Any]:
+    def get_add_memory_tool_schema(cls) -> ToolSchema:
         """
         Get OpenAI-compatible tool schema for adding memories to working memory.
 
         Returns:
-            Tool schema dictionary compatible with OpenAI tool calling format
+            ToolSchema object with customizable description and parameters
         """
-        return {
-            "type": "function",
-            "function": {
-                "name": "add_memory_to_working_memory",
-                "description": (
-                    "Store new important information as a structured memory. Use this when users share preferences, facts, or important details that should be remembered for future conversations. "
-                    "Examples: 'User is vegetarian', 'Lives in Seattle', 'Works as a software engineer', 'Prefers morning meetings'. The system automatically promotes important memories to long-term storage. "
-                    "For time-bound (episodic) information, include a grounded date phrase in the text (e.g., 'on August 14, 2025') and call get_current_datetime to resolve relative expressions like 'today'/'yesterday'; the backend will set the structured event_date during extraction/promotion. "
-                    "Always check if similar information already exists before creating new memories."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "text": {
-                            "type": "string",
-                            "description": "The memory content to store",
+        return ToolSchema(
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_memory_to_working_memory",
+                    "description": (
+                        "Store new important information as a structured memory. Use this when users share preferences, facts, or important details that should be remembered for future conversations. "
+                        "Examples: 'User is vegetarian', 'Lives in Seattle', 'Works as a software engineer', 'Prefers morning meetings'. The system automatically promotes important memories to long-term storage. "
+                        "For time-bound (episodic) information, include a grounded date phrase in the text (e.g., 'on August 14, 2025') and call get_current_datetime to resolve relative expressions like 'today'/'yesterday'; the backend will set the structured event_date during extraction/promotion. "
+                        "Always check if similar information already exists before creating new memories."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "text": {
+                                "type": "string",
+                                "description": "The memory content to store",
+                            },
+                            "memory_type": {
+                                "type": "string",
+                                "enum": ["episodic", "semantic"],
+                                "description": "Type of memory: 'episodic' (events/experiences), 'semantic' (facts/preferences)",
+                            },
+                            "topics": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Optional topics for categorization (e.g., ['preferences', 'budget', 'destinations'])",
+                            },
+                            "entities": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Optional entities mentioned (e.g., ['Paris', 'hotel', 'vegetarian'])",
+                            },
                         },
-                        "memory_type": {
-                            "type": "string",
-                            "enum": ["episodic", "semantic"],
-                            "description": "Type of memory: 'episodic' (events/experiences), 'semantic' (facts/preferences)",
-                        },
-                        "topics": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Optional topics for categorization (e.g., ['preferences', 'budget', 'destinations'])",
-                        },
-                        "entities": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Optional entities mentioned (e.g., ['Paris', 'hotel', 'vegetarian'])",
-                        },
+                        "required": ["text", "memory_type"],
                     },
-                    "required": ["text", "memory_type"],
                 },
             },
-        }
+            format="openai",
+        )
 
     @classmethod
-    def get_update_memory_data_tool_schema(cls) -> dict[str, Any]:
+    def get_update_memory_data_tool_schema(cls) -> ToolSchema:
         """
         Get OpenAI-compatible tool schema for updating working memory data.
 
         Returns:
-            Tool schema dictionary compatible with OpenAI tool calling format
+            ToolSchema object with customizable description and parameters
         """
-        return {
-            "type": "function",
-            "function": {
-                "name": "update_working_memory_data",
-                "description": "Store or update structured session data (JSON objects) in working memory. Use this for complex session-specific information that needs to be accessed and modified during the conversation. Examples: Travel itinerary {'destination': 'Paris', 'dates': ['2024-03-15', '2024-03-20']}, project details {'name': 'Website Redesign', 'deadline': '2024-04-01', 'status': 'in_progress'}. Different from add_memory_to_working_memory which stores simple text facts.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "data": {
-                            "type": "object",
-                            "description": "JSON data to store or update in working memory",
+        return ToolSchema(
+            {
+                "type": "function",
+                "function": {
+                    "name": "update_working_memory_data",
+                    "description": "Store or update structured session data (JSON objects) in working memory. Use this for complex session-specific information that needs to be accessed and modified during the conversation. Examples: Travel itinerary {'destination': 'Paris', 'dates': ['2024-03-15', '2024-03-20']}, project details {'name': 'Website Redesign', 'deadline': '2024-04-01', 'status': 'in_progress'}. Different from add_memory_to_working_memory which stores simple text facts.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "data": {
+                                "type": "object",
+                                "description": "JSON data to store or update in working memory",
+                            },
+                            "merge_strategy": {
+                                "type": "string",
+                                "enum": ["replace", "merge", "deep_merge"],
+                                "default": "merge",
+                                "description": "How to handle existing data: 'replace' (overwrite), 'merge' (shallow merge), 'deep_merge' (recursive merge)",
+                            },
                         },
-                        "merge_strategy": {
-                            "type": "string",
-                            "enum": ["replace", "merge", "deep_merge"],
-                            "default": "merge",
-                            "description": "How to handle existing data: 'replace' (overwrite), 'merge' (shallow merge), 'deep_merge' (recursive merge)",
-                        },
+                        "required": ["data"],
                     },
-                    "required": ["data"],
                 },
             },
-        }
+            format="openai",
+        )
 
     @classmethod
-    def get_long_term_memory_tool_schema(cls) -> dict[str, Any]:
+    def get_long_term_memory_tool_schema(cls) -> ToolSchema:
         """
         Get OpenAI-compatible tool schema for retrieving a long-term memory by ID.
 
         Returns:
-            Tool schema dictionary compatible with OpenAI tool calling format
+            ToolSchema object with customizable description and parameters
         """
-        return {
-            "type": "function",
-            "function": {
-                "name": "get_long_term_memory",
-                "description": "Retrieve a specific long-term memory by its unique ID to see full details. Use this when you have a memory ID from search_memory results and need complete information before editing or to show detailed memory content to the user. Example: After search_memory('job information') returns memories with IDs, call get_long_term_memory(memory_id=<ID>) to inspect before editing. Always obtain the memory_id from search_memory.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "memory_id": {
-                            "type": "string",
-                            "description": "The unique ID of the memory to retrieve",
+        return ToolSchema(
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_long_term_memory",
+                    "description": "Retrieve a specific long-term memory by its unique ID to see full details. Use this when you have a memory ID from search_memory results and need complete information before editing or to show detailed memory content to the user. Example: After search_memory('job information') returns memories with IDs, call get_long_term_memory(memory_id=<ID>) to inspect before editing. Always obtain the memory_id from search_memory.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "memory_id": {
+                                "type": "string",
+                                "description": "The unique ID of the memory to retrieve",
+                            },
                         },
+                        "required": ["memory_id"],
                     },
-                    "required": ["memory_id"],
                 },
             },
-        }
+            format="openai",
+        )
 
     @classmethod
-    def edit_long_term_memory_tool_schema(cls) -> dict[str, Any]:
+    def edit_long_term_memory_tool_schema(cls) -> ToolSchema:
         """
         Get OpenAI-compatible tool schema for editing a long-term memory.
 
         Returns:
-            Tool schema dictionary compatible with OpenAI tool calling format
+            ToolSchema object with customizable description and parameters
         """
-        return {
-            "type": "function",
-            "function": {
-                "name": "edit_long_term_memory",
-                "description": (
-                    "Update an existing long-term memory with new or corrected information. Use this when users provide corrections ('Actually, I work at Microsoft, not Google'), updates ('I got promoted to Senior Engineer'), or additional details. Only specify the fields you want to change - other fields remain unchanged. "
-                    "Examples: Update job title from 'Engineer' to 'Senior Engineer', change location from 'New York' to 'Seattle', correct food preference from 'coffee' to 'tea'. "
-                    "For time-bound (episodic) updates, ALWAYS set event_date (ISO 8601 UTC) and include a grounded, human-readable date in the text. Use get_current_datetime to resolve 'today'/'yesterday'/'last week' before setting event_date. "
-                    "IMPORTANT: First call search_memory to get candidate memories; then pass the chosen memory's 'id' as memory_id."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "memory_id": {
-                            "type": "string",
-                            "description": "The unique ID of the memory to edit (required)",
+        return ToolSchema(
+            {
+                "type": "function",
+                "function": {
+                    "name": "edit_long_term_memory",
+                    "description": (
+                        "Update an existing long-term memory with new or corrected information. Use this when users provide corrections ('Actually, I work at Microsoft, not Google'), updates ('I got promoted to Senior Engineer'), or additional details. Only specify the fields you want to change - other fields remain unchanged. "
+                        "Examples: Update job title from 'Engineer' to 'Senior Engineer', change location from 'New York' to 'Seattle', correct food preference from 'coffee' to 'tea'. "
+                        "For time-bound (episodic) updates, ALWAYS set event_date (ISO 8601 UTC) and include a grounded, human-readable date in the text. Use get_current_datetime to resolve 'today'/'yesterday'/'last week' before setting event_date. "
+                        "IMPORTANT: First call search_memory to get candidate memories; then pass the chosen memory's 'id' as memory_id."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "memory_id": {
+                                "type": "string",
+                                "description": "The unique ID of the memory to edit (required)",
+                            },
+                            "text": {
+                                "type": "string",
+                                "description": "Updated text content for the memory",
+                            },
+                            "topics": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Updated list of topics for the memory",
+                            },
+                            "entities": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Updated list of entities mentioned in the memory",
+                            },
+                            "memory_type": {
+                                "type": "string",
+                                "enum": ["episodic", "semantic"],
+                                "description": "Updated memory type: 'episodic' (events/experiences), 'semantic' (facts/preferences)",
+                            },
+                            "namespace": {
+                                "type": "string",
+                                "description": "Updated namespace for organizing the memory",
+                            },
+                            "user_id": {
+                                "type": "string",
+                                "description": "Updated user ID associated with the memory",
+                            },
+                            "session_id": {
+                                "type": "string",
+                                "description": "Updated session ID where the memory originated",
+                            },
+                            "event_date": {
+                                "type": "string",
+                                "description": "Updated event date for episodic memories (ISO 8601 format: '2024-01-15T14:30:00Z')",
+                            },
                         },
-                        "text": {
-                            "type": "string",
-                            "description": "Updated text content for the memory",
-                        },
-                        "topics": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Updated list of topics for the memory",
-                        },
-                        "entities": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Updated list of entities mentioned in the memory",
-                        },
-                        "memory_type": {
-                            "type": "string",
-                            "enum": ["episodic", "semantic"],
-                            "description": "Updated memory type: 'episodic' (events/experiences), 'semantic' (facts/preferences)",
-                        },
-                        "namespace": {
-                            "type": "string",
-                            "description": "Updated namespace for organizing the memory",
-                        },
-                        "user_id": {
-                            "type": "string",
-                            "description": "Updated user ID associated with the memory",
-                        },
-                        "session_id": {
-                            "type": "string",
-                            "description": "Updated session ID where the memory originated",
-                        },
-                        "event_date": {
-                            "type": "string",
-                            "description": "Updated event date for episodic memories (ISO 8601 format: '2024-01-15T14:30:00Z')",
-                        },
+                        "required": ["memory_id"],
                     },
-                    "required": ["memory_id"],
                 },
             },
-        }
+            format="openai",
+        )
 
     @classmethod
-    def create_long_term_memory_tool_schema(cls) -> dict[str, Any]:
+    def create_long_term_memory_tool_schema(cls) -> ToolSchema:
         """
         Get OpenAI-compatible tool schema for creating long-term memories directly.
 
         Returns:
-            Tool schema dictionary compatible with OpenAI tool calling format
+            ToolSchema object with customizable description and parameters
         """
-        return {
-            "type": "function",
-            "function": {
-                "name": "create_long_term_memory",
-                "description": (
-                    "Create long-term memories directly for immediate storage and retrieval. "
-                    "Use this for important information that should be permanently stored without going through working memory. "
-                    "This is the 'eager' approach - memories are created immediately in long-term storage. "
-                    "Examples: User preferences, important facts, key events that need to be searchable right away. "
-                    "For episodic memories, include event_date in ISO format."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "memories": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "text": {
-                                        "type": "string",
-                                        "description": "The memory content to store",
+        return ToolSchema(
+            {
+                "type": "function",
+                "function": {
+                    "name": "create_long_term_memory",
+                    "description": (
+                        "Create long-term memories directly for immediate storage and retrieval. "
+                        "Use this for important information that should be permanently stored without going through working memory. "
+                        "This is the 'eager' approach - memories are created immediately in long-term storage. "
+                        "Examples: User preferences, important facts, key events that need to be searchable right away. "
+                        "For episodic memories, include event_date in ISO format."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "memories": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "text": {
+                                            "type": "string",
+                                            "description": "The memory content to store",
+                                        },
+                                        "memory_type": {
+                                            "type": "string",
+                                            "enum": ["episodic", "semantic"],
+                                            "description": "Type of memory: 'episodic' (events/experiences), 'semantic' (facts/preferences)",
+                                        },
+                                        "topics": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "description": "Optional topics for categorization",
+                                        },
+                                        "entities": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "description": "Optional entities mentioned in the memory",
+                                        },
+                                        "event_date": {
+                                            "type": "string",
+                                            "description": "Optional event date for episodic memories (ISO 8601 format: '2024-01-15T14:30:00Z')",
+                                        },
                                     },
-                                    "memory_type": {
-                                        "type": "string",
-                                        "enum": ["episodic", "semantic"],
-                                        "description": "Type of memory: 'episodic' (events/experiences), 'semantic' (facts/preferences)",
-                                    },
-                                    "topics": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "description": "Optional topics for categorization",
-                                    },
-                                    "entities": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "description": "Optional entities mentioned in the memory",
-                                    },
-                                    "event_date": {
-                                        "type": "string",
-                                        "description": "Optional event date for episodic memories (ISO 8601 format: '2024-01-15T14:30:00Z')",
-                                    },
+                                    "required": ["text", "memory_type"],
                                 },
-                                "required": ["text", "memory_type"],
+                                "description": "List of memories to create",
                             },
-                            "description": "List of memories to create",
                         },
+                        "required": ["memories"],
                     },
-                    "required": ["memories"],
                 },
             },
-        }
+            format="openai",
+        )
 
     @classmethod
-    def delete_long_term_memories_tool_schema(cls) -> dict[str, Any]:
+    def delete_long_term_memories_tool_schema(cls) -> ToolSchema:
         """
         Get OpenAI-compatible tool schema for deleting long-term memories.
 
         Returns:
-            Tool schema dictionary compatible with OpenAI tool calling format
+            ToolSchema object with customizable description and parameters
         """
-        return {
-            "type": "function",
-            "function": {
-                "name": "delete_long_term_memories",
-                "description": "Permanently delete long-term memories that are outdated, incorrect, or no longer needed. Use this when users explicitly request information removal ('Delete that old job information'), when you find duplicate memories that should be consolidated, or when memories contain outdated information that might confuse future conversations. Examples: Remove old job info after user changes careers, delete duplicate food preferences, remove outdated contact information. IMPORTANT: First call search_memory to get candidate memories; then pass the selected memories' 'id' values as memory_ids. This action cannot be undone.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "memory_ids": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "List of memory IDs to delete",
+        return ToolSchema(
+            {
+                "type": "function",
+                "function": {
+                    "name": "delete_long_term_memories",
+                    "description": "Permanently delete long-term memories that are outdated, incorrect, or no longer needed. Use this when users explicitly request information removal ('Delete that old job information'), when you find duplicate memories that should be consolidated, or when memories contain outdated information that might confuse future conversations. Examples: Remove old job info after user changes careers, delete duplicate food preferences, remove outdated contact information. IMPORTANT: First call search_memory to get candidate memories; then pass the selected memories' 'id' values as memory_ids. This action cannot be undone.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "memory_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "List of memory IDs to delete",
+                            },
                         },
+                        "required": ["memory_ids"],
                     },
-                    "required": ["memory_ids"],
                 },
             },
-        }
+            format="openai",
+        )
 
     @classmethod
-    def get_all_memory_tool_schemas(cls) -> Sequence[dict[str, Any]]:
+    def get_all_memory_tool_schemas(cls) -> ToolSchemaCollection:
         """
         Get all memory-related tool schemas for easy LLM integration.
 
         Returns:
-            List of all memory tool schemas
+            ToolSchemaCollection with all memory tool schemas
 
         Example:
             ```python
             # Get all memory tools for OpenAI
             tools = MemoryAPIClient.get_all_memory_tool_schemas()
 
+            # Customize specific tools
+            tools.set_description("search_memory", "Custom search description")
+
             response = await openai.chat.completions.create(
                 model="gpt-4",
                 messages=messages,
-                tools=tools,
+                tools=tools.to_list(),
                 tool_choice="auto"
             )
             ```
         """
-        return [
-            cls.get_memory_search_tool_schema(),
-            cls.get_working_memory_tool_schema(),
-            cls.get_add_memory_tool_schema(),
-            cls.get_update_memory_data_tool_schema(),
-            cls.get_long_term_memory_tool_schema(),
-            cls.create_long_term_memory_tool_schema(),
-            cls.edit_long_term_memory_tool_schema(),
-            cls.delete_long_term_memories_tool_schema(),
-            cls.get_current_datetime_tool_schema(),
-        ]
+        return ToolSchemaCollection(
+            [
+                cls.get_memory_search_tool_schema(),
+                cls.get_working_memory_tool_schema(),
+                cls.get_add_memory_tool_schema(),
+                cls.get_update_memory_data_tool_schema(),
+                cls.get_long_term_memory_tool_schema(),
+                cls.create_long_term_memory_tool_schema(),
+                cls.edit_long_term_memory_tool_schema(),
+                cls.delete_long_term_memories_tool_schema(),
+                cls.get_current_datetime_tool_schema(),
+            ]
+        )
 
     @classmethod
-    def get_all_memory_tool_schemas_anthropic(cls) -> Sequence[dict[str, Any]]:
+    def get_all_memory_tool_schemas_anthropic(cls) -> ToolSchemaCollection:
         """
         Get all memory-related tool schemas in Anthropic format.
 
         Returns:
-            List of all memory tool schemas formatted for Anthropic API
+            ToolSchemaCollection with all memory tool schemas formatted for Anthropic API
 
         Example:
             ```python
             # Get all memory tools for Anthropic
             tools = MemoryAPIClient.get_all_memory_tool_schemas_anthropic()
 
+            # Customize specific tools
+            tools.set_description("search_memory", "Custom search description")
+
             response = anthropic.messages.create(
                 model="claude-3-opus-20240229",
                 messages=messages,
-                tools=tools,
+                tools=tools.to_list(),
                 max_tokens=1024
             )
             ```
         """
-        return [
-            cls.get_memory_search_tool_schema_anthropic(),
-            cls.get_working_memory_tool_schema_anthropic(),
-            cls.get_add_memory_tool_schema_anthropic(),
-            cls.get_update_memory_data_tool_schema_anthropic(),
-            cls.get_long_term_memory_tool_schema_anthropic(),
-            cls.create_long_term_memory_tool_schema_anthropic(),
-            cls.edit_long_term_memory_tool_schema_anthropic(),
-            cls.delete_long_term_memories_tool_schema_anthropic(),
-            cls.get_current_datetime_tool_schema_anthropic(),
-        ]
+        return ToolSchemaCollection(
+            [
+                cls.get_memory_search_tool_schema_anthropic(),
+                cls.get_working_memory_tool_schema_anthropic(),
+                cls.get_add_memory_tool_schema_anthropic(),
+                cls.get_update_memory_data_tool_schema_anthropic(),
+                cls.get_long_term_memory_tool_schema_anthropic(),
+                cls.create_long_term_memory_tool_schema_anthropic(),
+                cls.edit_long_term_memory_tool_schema_anthropic(),
+                cls.delete_long_term_memories_tool_schema_anthropic(),
+                cls.get_current_datetime_tool_schema_anthropic(),
+            ]
+        )
 
     @classmethod
-    def get_current_datetime_tool_schema(cls) -> dict[str, Any]:
+    def get_current_datetime_tool_schema(cls) -> ToolSchema:
         """OpenAI-compatible tool schema for current UTC datetime."""
-        return {
-            "type": "function",
-            "function": {
-                "name": "get_current_datetime",
-                "description": (
-                    "Return the current datetime in UTC to ground relative time expressions. "
-                    "Use this before setting `event_date` or including a human-readable date in text when the user says "
-                    "'today', 'yesterday', 'last week', etc."
-                ),
-                "parameters": {"type": "object", "properties": {}, "required": []},
+        return ToolSchema(
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_current_datetime",
+                    "description": (
+                        "Return the current datetime in UTC to ground relative time expressions. "
+                        "Use this before setting `event_date` or including a human-readable date in text when the user says "
+                        "'today', 'yesterday', 'last week', etc."
+                    ),
+                    "parameters": {"type": "object", "properties": {}, "required": []},
+                },
             },
-        }
+            format="openai",
+        )
 
     @classmethod
-    def get_current_datetime_tool_schema_anthropic(cls) -> dict[str, Any]:
+    def get_current_datetime_tool_schema_anthropic(cls) -> ToolSchema:
         """Anthropic-compatible tool schema for current UTC datetime."""
         return cls._convert_openai_to_anthropic_schema(
             cls.get_current_datetime_tool_schema()
         )
 
     @classmethod
-    def get_memory_search_tool_schema_anthropic(cls) -> dict[str, Any]:
+    def get_memory_search_tool_schema_anthropic(cls) -> ToolSchema:
         """Get memory search tool schema in Anthropic format."""
         openai_schema = cls.get_memory_search_tool_schema()
         return cls._convert_openai_to_anthropic_schema(openai_schema)
 
     @classmethod
-    def get_working_memory_tool_schema_anthropic(cls) -> dict[str, Any]:
+    def get_working_memory_tool_schema_anthropic(cls) -> ToolSchema:
         """Get working memory tool schema in Anthropic format."""
         openai_schema = cls.get_working_memory_tool_schema()
         return cls._convert_openai_to_anthropic_schema(openai_schema)
 
     @classmethod
-    def get_add_memory_tool_schema_anthropic(cls) -> dict[str, Any]:
+    def get_add_memory_tool_schema_anthropic(cls) -> ToolSchema:
         """Get add memory tool schema in Anthropic format."""
         openai_schema = cls.get_add_memory_tool_schema()
         return cls._convert_openai_to_anthropic_schema(openai_schema)
 
     @classmethod
-    def get_update_memory_data_tool_schema_anthropic(cls) -> dict[str, Any]:
+    def get_update_memory_data_tool_schema_anthropic(cls) -> ToolSchema:
         """Get update memory data tool schema in Anthropic format."""
         openai_schema = cls.get_update_memory_data_tool_schema()
         return cls._convert_openai_to_anthropic_schema(openai_schema)
 
     @classmethod
-    def get_long_term_memory_tool_schema_anthropic(cls) -> dict[str, Any]:
+    def get_long_term_memory_tool_schema_anthropic(cls) -> ToolSchema:
         """Get long-term memory tool schema in Anthropic format."""
         openai_schema = cls.get_long_term_memory_tool_schema()
         return cls._convert_openai_to_anthropic_schema(openai_schema)
 
     @classmethod
-    def create_long_term_memory_tool_schema_anthropic(cls) -> dict[str, Any]:
+    def create_long_term_memory_tool_schema_anthropic(cls) -> ToolSchema:
         """Get create long-term memory tool schema in Anthropic format."""
         openai_schema = cls.create_long_term_memory_tool_schema()
         return cls._convert_openai_to_anthropic_schema(openai_schema)
 
     @classmethod
-    def edit_long_term_memory_tool_schema_anthropic(cls) -> dict[str, Any]:
+    def edit_long_term_memory_tool_schema_anthropic(cls) -> ToolSchema:
         """Get edit long-term memory tool schema in Anthropic format."""
         openai_schema = cls.edit_long_term_memory_tool_schema()
         return cls._convert_openai_to_anthropic_schema(openai_schema)
 
     @classmethod
-    def delete_long_term_memories_tool_schema_anthropic(cls) -> dict[str, Any]:
+    def delete_long_term_memories_tool_schema_anthropic(cls) -> ToolSchema:
         """Get delete long-term memories tool schema in Anthropic format."""
         openai_schema = cls.delete_long_term_memories_tool_schema()
         return cls._convert_openai_to_anthropic_schema(openai_schema)
 
     @staticmethod
     def _convert_openai_to_anthropic_schema(
-        openai_schema: dict[str, Any],
-    ) -> dict[str, Any]:
+        openai_schema: ToolSchema | dict[str, Any],
+    ) -> ToolSchema:
         """
         Convert OpenAI tool schema to Anthropic format.
 
         Args:
-            openai_schema: Tool schema in OpenAI format
+            openai_schema: Tool schema in OpenAI format (ToolSchema or dict)
 
         Returns:
-            Tool schema in Anthropic format
+            ToolSchema in Anthropic format
         """
-        function_def = openai_schema["function"]
+        # Handle both ToolSchema and dict inputs
+        if isinstance(openai_schema, ToolSchema):
+            schema_dict = openai_schema.to_dict()
+        else:
+            schema_dict = openai_schema
 
-        return {
-            "name": function_def["name"],
-            "description": function_def["description"],
-            "input_schema": function_def["parameters"],
-        }
+        function_def = schema_dict["function"]
+
+        return ToolSchema(
+            {
+                "name": function_def["name"],
+                "description": function_def["description"],
+                "input_schema": function_def["parameters"],
+            },
+            format="anthropic",
+        )
 
     # === Function Call Resolution ===
 
