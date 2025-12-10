@@ -1,13 +1,13 @@
 import logging
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from agent_memory_client.models import ClientMemoryRecord
 from mcp.server.fastmcp.prompts import base
 from mcp.types import AudioContent, EmbeddedResource, ImageContent, TextContent
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 from ulid import ULID
 
 from agent_memory_server.filters import (
@@ -82,6 +82,11 @@ class MemoryStrategyConfig(BaseModel):
 class MemoryMessage(BaseModel):
     """A message in the memory system"""
 
+    # Track message IDs that have been warned (in-memory, per-worker)
+    # Used to rate-limit deprecation warnings
+    _warned_message_ids: ClassVar[set[str]] = set()
+    _max_warned_ids: ClassVar[int] = 10000  # Prevent unbounded growth
+
     role: str
     content: str
     id: str = Field(
@@ -90,7 +95,7 @@ class MemoryMessage(BaseModel):
     )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
-        description="Timestamp when the message was created",
+        description="Timestamp when the message was created (should be provided by client)",
     )
     persisted_at: datetime | None = Field(
         default=None,
@@ -100,6 +105,88 @@ class MemoryMessage(BaseModel):
         default="f",
         description="Whether memory extraction has run for this message",
     )
+    # Internal flag to track if created_at was explicitly provided by client
+    # Used for deprecation header in API responses
+    _created_at_was_provided: bool = PrivateAttr(default=False)
+
+    def __init__(self, **data):
+        # Check if created_at was provided before calling super().__init__
+        created_at_provided = "created_at" in data and data["created_at"] is not None
+        super().__init__(**data)
+        self._created_at_was_provided = created_at_provided
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_created_at(cls, data: Any) -> Any:
+        """
+        Validate created_at timestamp:
+        - Warn (or error) if not provided by client
+        - Error if timestamp is in the future (beyond tolerance)
+        """
+        from agent_memory_server.config import settings
+
+        if not isinstance(data, dict):
+            return data
+
+        created_at_provided = "created_at" in data and data["created_at"] is not None
+
+        if not created_at_provided:
+            # Handle missing created_at
+            if settings.require_message_timestamps:
+                raise ValueError(
+                    "created_at is required for messages. "
+                    "Please provide the timestamp when the message was created."
+                )
+            # Rate-limit warnings by message ID
+            msg_id = data.get("id", "unknown")
+
+            if msg_id not in cls._warned_message_ids:
+                # Prevent unbounded memory growth
+                if len(cls._warned_message_ids) >= cls._max_warned_ids:
+                    cls._warned_message_ids.clear()
+                cls._warned_message_ids.add(msg_id)
+
+                logger.warning(
+                    "MemoryMessage created without explicit created_at timestamp. "
+                    "This will become required in a future version. "
+                    "Please update your client to provide created_at for accurate "
+                    "message ordering and recency scoring."
+                )
+        else:
+            # Validate that created_at is not in the future
+            created_at_value = data["created_at"]
+
+            # Parse string to datetime if needed
+            if isinstance(created_at_value, str):
+                try:
+                    # Handle ISO format with Z suffix
+                    created_at_value = datetime.fromisoformat(
+                        created_at_value.replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    # Let Pydantic handle the parsing error
+                    return data
+
+            if isinstance(created_at_value, datetime):
+                # Ensure timezone-aware comparison
+                now = datetime.now(UTC)
+                if created_at_value.tzinfo is None:
+                    # Assume UTC for naive datetimes
+                    created_at_value = created_at_value.replace(tzinfo=UTC)
+
+                max_allowed = now + timedelta(
+                    seconds=settings.max_future_timestamp_seconds
+                )
+
+                if created_at_value > max_allowed:
+                    raise ValueError(
+                        f"created_at cannot be in the future. "
+                        f"Received: {created_at_value.isoformat()}, "
+                        f"Max allowed (with {settings.max_future_timestamp_seconds}s tolerance): "
+                        f"{max_allowed.isoformat()}"
+                    )
+
+        return data
 
 
 class SessionListResponse(BaseModel):
