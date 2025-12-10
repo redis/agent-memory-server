@@ -20,18 +20,15 @@ from agent_memory_server.utils.redis import get_redis_conn
 
 logger = logging.getLogger(__name__)
 
-# Flag to track if all string keys have been migrated to JSON
-# When True, we skip the type() check and go straight to json().get()
-_string_keys_migrated: bool = False
-
-# Counter for remaining string keys (avoids re-scanning after each migration)
-_remaining_string_keys: int = 0
+# Redis keys for migration status (shared across workers, persists across restarts)
+MIGRATION_STATUS_KEY = "working_memory:migration:complete"
+MIGRATION_REMAINING_KEY = "working_memory:migration:remaining"
 
 
 async def check_and_set_migration_status(redis_client: Redis | None = None) -> bool:
     """
     Check if any working memory keys are still in old string format.
-    Sets the global _string_keys_migrated flag and _remaining_string_keys counter.
+    Stores migration status in Redis for cross-worker consistency.
 
     If WORKING_MEMORY_MIGRATION_COMPLETE=true is set, skips the scan entirely
     and assumes all keys are in JSON format.
@@ -42,121 +39,134 @@ async def check_and_set_migration_status(redis_client: Redis | None = None) -> b
     Returns:
         True if all keys are migrated (or no keys exist), False if string keys remain
     """
-    global _string_keys_migrated, _remaining_string_keys
-
     # If env variable is set, skip the scan entirely
     if settings.working_memory_migration_complete:
         logger.info(
             "WORKING_MEMORY_MIGRATION_COMPLETE=true, skipping backward compatibility checks."
         )
-        _string_keys_migrated = True
-        _remaining_string_keys = 0
         return True
 
     if not redis_client:
         redis_client = await get_redis_conn()
 
-    # Scan for working_memory:* keys
+    # Check if migration status is already stored in Redis
+    status = await redis_client.get(MIGRATION_STATUS_KEY)
+    if status:
+        if isinstance(status, bytes):
+            status = status.decode("utf-8")
+        if status == "true":
+            logger.info(
+                "Migration status in Redis indicates complete. Skipping type checks."
+            )
+            return True
+
+    # Scan for working_memory:* keys of type STRING only
+    # This is much faster than scanning all keys and calling TYPE on each
     cursor = 0
-    json_keys_found = 0
+    string_keys_found = 0
 
     try:
         while True:
+            # Use _type="string" to only get string keys directly
             cursor, keys = await redis_client.scan(
-                cursor=cursor, match="working_memory:*", count=1000
+                cursor=cursor, match="working_memory:*", count=1000, _type="string"
             )
 
             if keys:
-                # Use pipeline to batch TYPE calls for better performance
-                pipe = redis_client.pipeline()
-                for key in keys:
-                    pipe.type(key)
-                types = await pipe.execute()
-
-                for key_type in types:
-                    if isinstance(key_type, bytes):
-                        key_type = key_type.decode("utf-8")
-
-                    if key_type == "string":
-                        # Early exit: found at least one string key, enable lazy migration
-                        logger.info(
-                            "Found working memory key in old string format. "
-                            "Lazy migration enabled. Run 'agent-memory migrate-working-memory' "
-                            "to migrate all keys at once."
-                        )
-                        _string_keys_migrated = False
-                        # We don't know the exact count, so set to -1 to indicate unknown
-                        # The counter will be managed differently in this mode
-                        _remaining_string_keys = -1
-                        return False
-                    elif key_type == "ReJSON-RL":  # noqa: RET505
-                        json_keys_found += 1
+                # Filter out migration status keys (they're also strings)
+                keys = [
+                    k
+                    for k in keys
+                    if (k.decode("utf-8") if isinstance(k, bytes) else k)
+                    not in (MIGRATION_STATUS_KEY, MIGRATION_REMAINING_KEY)
+                ]
+                string_keys_found += len(keys)
 
             if cursor == 0:
                 break
 
-        # No string keys found
-        if json_keys_found > 0:
+        if string_keys_found > 0:
+            # Store the count in Redis for atomic decrement during lazy migration
+            await redis_client.set(MIGRATION_REMAINING_KEY, str(string_keys_found))
             logger.info(
-                f"All {json_keys_found} working memory keys are in JSON format. "
-                "Skipping type checks."
+                f"Found {string_keys_found} working memory keys in old string format. "
+                "Lazy migration enabled."
             )
-        else:
-            logger.info("No working memory keys found. Skipping type checks.")
-        _string_keys_migrated = True
-        _remaining_string_keys = 0
+            return False
+
+        # No string keys found - mark as complete in Redis
+        await redis_client.set(MIGRATION_STATUS_KEY, "true")
+        await redis_client.delete(MIGRATION_REMAINING_KEY)
+
+        logger.info(
+            "No working memory string keys found. Skipping backward compatibility checks."
+        )
         return True
     except Exception as e:
         logger.error(f"Failed to check migration status: {e}")
-        _string_keys_migrated = False  # Safe default
-        _remaining_string_keys = -1
         return False
 
 
-def _decrement_string_key_count() -> None:
+async def _decrement_remaining_count(redis_client: Redis) -> None:
     """
-    Decrement the string key counter after a successful migration.
-
-    Note: When _remaining_string_keys is -1, we don't know the exact count
-    (early exit mode). In this case, lazy migration stays enabled until
-    the migration script is run.
+    Atomically decrement the remaining string key counter.
+    When it reaches 0, mark migration as complete.
     """
-    global _string_keys_migrated, _remaining_string_keys
-
-    # If we don't know the count (-1), we can't track completion
-    # The migration script will set the flag when done
-    if _remaining_string_keys == -1:
-        return
-
-    _remaining_string_keys -= 1
-    if _remaining_string_keys <= 0:
-        _remaining_string_keys = 0
-        _string_keys_migrated = True
-        logger.info("All working memory keys have been migrated to JSON format.")
+    try:
+        remaining = await redis_client.decr(MIGRATION_REMAINING_KEY)
+        if remaining <= 0:
+            await redis_client.set(MIGRATION_STATUS_KEY, "true")
+            await redis_client.delete(MIGRATION_REMAINING_KEY)
+            logger.info("All working memory keys have been migrated to JSON format.")
+    except Exception as e:
+        # Non-fatal - migration still works, just won't auto-complete
+        logger.warning(f"Failed to decrement migration counter: {e}")
 
 
-def is_migration_complete() -> bool:
-    """Check if migration is complete (for testing purposes)."""
-    return _string_keys_migrated
+async def is_migration_complete(redis_client: Redis | None = None) -> bool:
+    """Check if migration is complete."""
+    if settings.working_memory_migration_complete:
+        return True
+
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    status = await redis_client.get(MIGRATION_STATUS_KEY)
+    if status:
+        if isinstance(status, bytes):
+            status = status.decode("utf-8")
+        return status == "true"
+    return False
 
 
-def get_remaining_string_keys() -> int:
-    """Get the count of remaining string keys (for testing purposes)."""
-    return _remaining_string_keys
+async def get_remaining_string_keys(redis_client: Redis | None = None) -> int:
+    """Get the count of remaining string keys (for testing/monitoring)."""
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    remaining = await redis_client.get(MIGRATION_REMAINING_KEY)
+    if remaining:
+        if isinstance(remaining, bytes):
+            remaining = remaining.decode("utf-8")
+        return int(remaining)
+    return 0
 
 
-def reset_migration_status() -> None:
+async def reset_migration_status(redis_client: Redis | None = None) -> None:
     """Reset migration status (for testing purposes)."""
-    global _string_keys_migrated, _remaining_string_keys
-    _string_keys_migrated = False
-    _remaining_string_keys = 0
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    await redis_client.delete(MIGRATION_STATUS_KEY, MIGRATION_REMAINING_KEY)
 
 
-def set_migration_complete() -> None:
+async def set_migration_complete(redis_client: Redis | None = None) -> None:
     """Mark migration as complete (called by migration script)."""
-    global _string_keys_migrated, _remaining_string_keys
-    _string_keys_migrated = True
-    _remaining_string_keys = 0
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    await redis_client.set(MIGRATION_STATUS_KEY, "true")
+    await redis_client.delete(MIGRATION_REMAINING_KEY)
     logger.info("Working memory migration marked as complete.")
 
 
@@ -202,8 +212,8 @@ async def _migrate_string_to_json(
 
         logger.info(f"Successfully migrated working memory key {key} to JSON format")
 
-        # Decrement the counter (O(1) instead of re-scanning all keys)
-        _decrement_string_key_count()
+        # Atomically decrement the remaining counter
+        await _decrement_remaining_count(redis_client)
 
         return data
     except json.JSONDecodeError as e:
@@ -292,7 +302,10 @@ async def get_working_memory(
     try:
         working_memory_data = None
 
-        if _string_keys_migrated:
+        # Check migration status (uses Redis, shared across workers)
+        migration_complete = await is_migration_complete(redis_client)
+
+        if migration_complete:
             # Fast path: all keys are already in JSON format
             working_memory_data = await redis_client.json().get(key)
         else:

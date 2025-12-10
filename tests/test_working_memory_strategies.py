@@ -261,12 +261,17 @@ class TestWorkingMemoryStorageWithStrategy:
             "updated_at": 1640995200,
         }
 
-        with patch(
-            "agent_memory_server.working_memory.get_redis_conn"
-        ) as mock_get_redis:
+        with (
+            patch(
+                "agent_memory_server.working_memory.get_redis_conn"
+            ) as mock_get_redis,
+            patch(
+                "agent_memory_server.working_memory.is_migration_complete"
+            ) as mock_is_migration_complete,
+        ):
             mock_redis = AsyncMock()
-            # type() returns the key type - "ReJSON-RL" for JSON keys
-            mock_redis.type = AsyncMock(return_value="ReJSON-RL")
+            # Mock is_migration_complete to return True (fast path)
+            mock_is_migration_complete.return_value = True
             # json() is synchronous but returns an object with async methods
             mock_json = MagicMock()
             # Redis JSON returns dict directly, not bytes
@@ -305,12 +310,17 @@ class TestWorkingMemoryStorageWithStrategy:
             "updated_at": 1640995200,
         }
 
-        with patch(
-            "agent_memory_server.working_memory.get_redis_conn"
-        ) as mock_get_redis:
+        with (
+            patch(
+                "agent_memory_server.working_memory.get_redis_conn"
+            ) as mock_get_redis,
+            patch(
+                "agent_memory_server.working_memory.is_migration_complete"
+            ) as mock_is_migration_complete,
+        ):
             mock_redis = AsyncMock()
-            # type() returns the key type - "ReJSON-RL" for JSON keys
-            mock_redis.type = AsyncMock(return_value="ReJSON-RL")
+            # Mock is_migration_complete to return True (fast path)
+            mock_is_migration_complete.return_value = True
             # json() is synchronous but returns an object with async methods
             mock_json = MagicMock()
             # Redis JSON returns dict directly, not bytes

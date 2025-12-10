@@ -129,49 +129,35 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
 
         redis = await get_redis_conn()
 
-        # Count keys by type using pipelined TYPE calls
+        # Scan for string keys only using _type filter (much faster)
         string_keys = []
-        json_keys_count = 0
         cursor = 0
         pattern = Keys.working_memory_key("*")
 
-        click.echo("Scanning for working memory keys...")
+        click.echo("Scanning for working memory keys (string type only)...")
         scan_start = time.time()
 
         while True:
-            cursor, keys = await redis.scan(cursor, match=pattern, count=batch_size)
+            # Use _type="string" to only get string keys directly
+            cursor, keys = await redis.scan(
+                cursor, match=pattern, count=batch_size, _type="string"
+            )
 
             if keys:
-                # Pipeline TYPE calls for better performance
-                pipe = redis.pipeline()
-                for key in keys:
-                    pipe.type(key)
-                types = await pipe.execute()
-
-                for key, key_type in zip(keys, types, strict=False):
-                    if isinstance(key_type, bytes):
-                        key_type = key_type.decode("utf-8")
-
-                    if key_type == "string":
-                        string_keys.append(key)
-                    elif key_type == "ReJSON-RL":
-                        json_keys_count += 1
+                string_keys.extend(keys)
 
             if cursor == 0:
                 break
 
         scan_time = time.time() - scan_start
-        total_keys = len(string_keys) + json_keys_count
 
         click.echo(f"Scan completed in {scan_time:.2f}s")
-        click.echo(f"  Total keys: {total_keys}")
-        click.echo(f"  JSON format: {json_keys_count}")
         click.echo(f"  String format (need migration): {len(string_keys)}")
 
         if not string_keys:
             click.echo("\nNo keys need migration. All done!")
             # Mark migration as complete
-            set_migration_complete()
+            await set_migration_complete(redis)
             return
 
         if dry_run:
@@ -263,7 +249,7 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
 
         if errors == 0:
             # Mark migration as complete
-            set_migration_complete()
+            await set_migration_complete(redis)
             click.echo("\nMigration status set to complete.")
             click.echo(
                 "\n💡 Tip: Set WORKING_MEMORY_MIGRATION_COMPLETE=true to skip "

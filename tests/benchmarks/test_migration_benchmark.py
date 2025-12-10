@@ -73,13 +73,13 @@ async def cleanup_working_memory_keys(async_redis_client):
 
     # Clean before
     await cleanup()
-    reset_migration_status()
+    await reset_migration_status(async_redis_client)
 
     yield
 
     # Clean after
     await cleanup()
-    reset_migration_status()
+    await reset_migration_status(async_redis_client)
 
 
 @pytest.mark.benchmark
@@ -120,7 +120,7 @@ class TestMigrationBenchmark:
 
         # Benchmark startup scan (with early exit)
         print("\n📊 Benchmarking startup scan (early exit on first string key)...")
-        reset_migration_status()
+        await reset_migration_status(async_redis_client)
 
         start = time.perf_counter()
         result = await check_and_set_migration_status(async_redis_client)
@@ -154,7 +154,7 @@ class TestMigrationBenchmark:
             await async_redis_client.set(key, json.dumps(data))
 
         # Set migration status
-        reset_migration_status()
+        await reset_migration_status(async_redis_client)
         await check_and_set_migration_status(async_redis_client)
 
         # Benchmark lazy migration (read each key, triggering migration)
@@ -195,7 +195,7 @@ class TestMigrationBenchmark:
             await pipe.execute()
 
         # Set migration as complete
-        reset_migration_status()
+        await reset_migration_status(async_redis_client)
         await check_and_set_migration_status(async_redis_client)
 
         # Benchmark reads (should use fast path)
@@ -258,7 +258,7 @@ class TestMigrationBenchmark:
 
         # Benchmark startup scan - must scan all keys to find the string one
         print("\n📊 Benchmarking startup scan (worst case - string key at end)...")
-        reset_migration_status()
+        await reset_migration_status(async_redis_client)
 
         start = time.perf_counter()
         result = await check_and_set_migration_status(async_redis_client)
