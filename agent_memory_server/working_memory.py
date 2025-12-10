@@ -181,13 +181,17 @@ async def _migrate_string_to_json(
         logger.info(f"Migrating working memory key {key} from string to JSON format")
 
         # Atomically migrate the key from string to JSON using a Lua script
-        # The script: if key is string, get value, delete, set as JSON; else do nothing
+        # The script: get TTL, get value, delete, set as JSON, restore TTL if > 0
         lua_script = """
         local key = KEYS[1]
         if redis.call('TYPE', key).ok == 'string' then
+            local ttl = redis.call('TTL', key)
             local val = redis.call('GET', key)
             redis.call('DEL', key)
             redis.call('JSON.SET', key, '$', ARGV[1])
+            if ttl > 0 then
+                redis.call('EXPIRE', key, ttl)
+            end
             return val
         else
             return nil
@@ -195,10 +199,6 @@ async def _migrate_string_to_json(
         """
         # Pass the JSON string as ARGV[1]
         await redis_client.eval(lua_script, 1, key, json.dumps(data))
-
-        # Preserve TTL if it was set
-        # Note: TTL is lost during migration since we deleted the key
-        # The next set_working_memory call will restore it if configured
 
         logger.info(f"Successfully migrated working memory key {key} to JSON format")
 

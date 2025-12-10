@@ -188,15 +188,19 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
         for batch_start in range(0, len(string_keys), batch_size):
             batch_keys = string_keys[batch_start : batch_start + batch_size]
 
-            # First, read all string data in a pipeline
+            # Read all string data and TTLs in a pipeline
             read_pipe = redis.pipeline()
             for key in batch_keys:
                 read_pipe.get(key)
-            string_data_list = await read_pipe.execute()
+                read_pipe.ttl(key)
+            results = await read_pipe.execute()
 
-            # Parse and prepare migration
-            migrations = []  # List of (key, data) tuples
-            for key, string_data in zip(batch_keys, string_data_list, strict=False):
+            # Parse results (alternating: data, ttl, data, ttl, ...)
+            migrations = []  # List of (key, data, ttl) tuples
+            for i, key in enumerate(batch_keys):
+                string_data = results[i * 2]
+                ttl = results[i * 2 + 1]
+
                 if string_data is None:
                     continue
 
@@ -204,17 +208,19 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
                     if isinstance(string_data, bytes):
                         string_data = string_data.decode("utf-8")
                     data = json_module.loads(string_data)
-                    migrations.append((key, data))
+                    migrations.append((key, data, ttl))
                 except Exception as e:
                     errors += 1
                     logger.error(f"Failed to parse key {key}: {e}")
 
-            # Execute migrations in a pipeline (delete + json.set)
+            # Execute migrations in a pipeline (delete + json.set + expire if needed)
             if migrations:
                 write_pipe = redis.pipeline()
-                for key, data in migrations:
+                for key, data, ttl in migrations:
                     write_pipe.delete(key)
                     write_pipe.json().set(key, "$", data)
+                    if ttl > 0:
+                        write_pipe.expire(key, ttl)
 
                 try:
                     await write_pipe.execute()
@@ -224,10 +230,12 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
                     logger.warning(
                         f"Batch migration failed, retrying individually: {e}"
                     )
-                    for key, data in migrations:
+                    for key, data, ttl in migrations:
                         try:
                             await redis.delete(key)
                             await redis.json().set(key, "$", data)
+                            if ttl > 0:
+                                await redis.expire(key, ttl)
                             migrated += 1
                         except Exception as e2:
                             errors += 1

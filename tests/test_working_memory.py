@@ -436,6 +436,67 @@ class TestWorkingMemory:
         assert retrieved_again.session_id == session_id
 
     @pytest.mark.asyncio
+    async def test_migration_preserves_ttl(self, async_redis_client):
+        """Test that TTL is preserved when migrating from string to JSON format."""
+        import json
+
+        from agent_memory_server.working_memory import reset_migration_status
+
+        # Reset migration status to ensure lazy migration is active
+        reset_migration_status()
+
+        session_id = "test-ttl-migration-session"
+        namespace = "test-namespace"
+        ttl_seconds = 3600  # 1 hour
+
+        # Create old-format data with TTL
+        old_format_data = {
+            "messages": [],
+            "memories": [],
+            "session_id": session_id,
+            "namespace": namespace,
+            "context": None,
+            "user_id": None,
+            "tokens": 0,
+            "ttl_seconds": ttl_seconds,
+            "data": {},
+            "long_term_memory_strategy": {"strategy": "discrete"},
+            "last_accessed": 1704067200,
+            "created_at": 1704067200,
+            "updated_at": 1704067200,
+        }
+
+        # Store as old string format with TTL
+        key = Keys.working_memory_key(session_id=session_id, namespace=namespace)
+        await async_redis_client.set(key, json.dumps(old_format_data), ex=ttl_seconds)
+
+        # Verify TTL is set
+        ttl_before = await async_redis_client.ttl(key)
+        assert ttl_before > 0
+        assert ttl_before <= ttl_seconds
+
+        # Trigger migration by reading
+        retrieved_mem = await get_working_memory(
+            session_id=session_id,
+            namespace=namespace,
+            redis_client=async_redis_client,
+        )
+        assert retrieved_mem is not None
+
+        # Verify key was migrated to JSON
+        key_type = await async_redis_client.type(key)
+        if isinstance(key_type, bytes):
+            key_type = key_type.decode("utf-8")
+        assert key_type == "ReJSON-RL"
+
+        # Verify TTL was preserved
+        ttl_after = await async_redis_client.ttl(key)
+        assert ttl_after > 0
+        # TTL should be close to original (within a few seconds of test execution)
+        assert ttl_after <= ttl_seconds
+        assert ttl_after >= ttl_before - 5  # Allow 5 seconds for test execution
+
+    @pytest.mark.asyncio
     async def test_check_and_set_migration_status_with_no_keys(
         self, async_redis_client
     ):
