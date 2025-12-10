@@ -180,7 +180,7 @@ class TestMCP:
         # Capture injected namespace
         injected = {}
 
-        async def fake_core_search(payload, optimize_query=False):
+        async def fake_core_search(payload, background_tasks=None, optimize_query=False):
             injected["namespace"] = payload.namespace.eq if payload.namespace else None
             # Return a dummy result with total>0 to skip fake fallback
             return MemoryRecordResults(
@@ -590,3 +590,39 @@ class TestMCP:
                 call_args = mock_prompt.call_args
                 optimize_query = call_args[1]["optimize_query"]
                 assert optimize_query is True
+
+    @pytest.mark.asyncio
+    async def test_search_long_term_memory_passes_background_tasks(
+        self, session, mcp_test_setup
+    ):
+        """Regression test: MCP search_long_term_memory must pass background_tasks to core API.
+
+        This test ensures that the MCP tool correctly passes a HybridBackgroundTasks
+        instance to the core_search_long_term_memory function, which requires it.
+        """
+        from agent_memory_server.dependencies import HybridBackgroundTasks
+
+        async with client_session(mcp_app._mcp_server) as client:
+            with mock.patch(
+                "agent_memory_server.mcp.core_search_long_term_memory"
+            ) as mock_search:
+                mock_search.return_value = MemoryRecordResults(total=0, memories=[])
+
+                # Call search_long_term_memory via MCP
+                await client.call_tool(
+                    "search_long_term_memory",
+                    {"text": "test query"},
+                )
+
+                # Verify search was called with background_tasks parameter
+                mock_search.assert_called_once()
+                call_args = mock_search.call_args
+
+                # background_tasks should be passed as a keyword argument
+                assert "background_tasks" in call_args[1], (
+                    "background_tasks parameter must be passed to core_search_long_term_memory"
+                )
+                background_tasks = call_args[1]["background_tasks"]
+                assert isinstance(background_tasks, HybridBackgroundTasks), (
+                    f"background_tasks should be HybridBackgroundTasks, got {type(background_tasks)}"
+                )
