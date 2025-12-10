@@ -436,7 +436,9 @@ class TestWorkingMemory:
         assert retrieved_again.session_id == session_id
 
     @pytest.mark.asyncio
-    async def test_check_and_set_migration_status_with_no_keys(self, async_redis_client):
+    async def test_check_and_set_migration_status_with_no_keys(
+        self, async_redis_client
+    ):
         """Test migration status check when no working memory keys exist."""
         from agent_memory_server.working_memory import (
             check_and_set_migration_status,

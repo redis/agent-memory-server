@@ -89,7 +89,7 @@ async def check_and_set_migration_status(redis_client: Redis | None = None) -> b
                         # The counter will be managed differently in this mode
                         _remaining_string_keys = -1
                         return False
-                    elif key_type == "ReJSON-RL":
+                    elif key_type == "ReJSON-RL":  # noqa: RET505
                         json_keys_found += 1
 
             if cursor == 0:
@@ -194,7 +194,7 @@ async def _migrate_string_to_json(
         end
         """
         # Pass the JSON string as ARGV[1]
-        migrated_val = await redis_client.eval(lua_script, 1, key, json.dumps(data))
+        await redis_client.eval(lua_script, 1, key, json.dumps(data))
 
         # Preserve TTL if it was set
         # Note: TTL is lost during migration since we deleted the key
