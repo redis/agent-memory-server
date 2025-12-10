@@ -521,8 +521,12 @@ async def search_long_term_memory(
             limit=limit,
             offset=offset,
         )
+        # Create a background tasks instance for the MCP call
+        from agent_memory_server.dependencies import HybridBackgroundTasks
+
+        background_tasks = HybridBackgroundTasks()
         results = await core_search_long_term_memory(
-            payload, optimize_query=optimize_query
+            payload, background_tasks=background_tasks, optimize_query=optimize_query
         )
         return MemoryRecordResults(
             total=results.total,

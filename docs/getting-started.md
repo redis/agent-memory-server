@@ -48,6 +48,32 @@ uv run agent-memory mcp --mode sse --no-worker
 uv run agent-memory mcp --mode sse
 ```
 
+### Using uvx in MCP clients
+
+When configuring MCP-enabled apps (e.g., Claude Desktop), prefer `uvx` so the app can run the server without a local checkout:
+
+```json
+{
+  "mcpServers": {
+    "memory": {
+      "command": "uvx",
+      "args": ["--from", "agent-memory-server", "agent-memory", "mcp"],
+      "env": {
+        "DISABLE_AUTH": "true",
+        "REDIS_URL": "redis://localhost:6379",
+        "OPENAI_API_KEY": "<your-openai-key>"
+      }
+    }
+  }
+}
+```
+
+Notes:
+- API keys: Default models use OpenAI. Set `OPENAI_API_KEY`. To use Anthropic instead, set `ANTHROPIC_API_KEY` and also `GENERATION_MODEL` to an Anthropic model (e.g., `claude-3-5-haiku-20241022`).
+- Make sure your MCP host can find `uvx` (on its PATH or by using an absolute command path). macOS: `brew install uv`. If not on PATH, set `"command"` to an absolute path (e.g., `/opt/homebrew/bin/uvx` on Apple Silicon, `/usr/local/bin/uvx` on Intel macOS).
+- For production, remove `DISABLE_AUTH` and configure auth.
+
+
 **For production deployments**, you'll need to run a separate worker process:
 
 ```bash

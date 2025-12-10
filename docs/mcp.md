@@ -67,29 +67,68 @@ You can use the MCP server that comes with this project in any application or SD
 
 <img src="../claude.png">
 
-For example, with Claude, use the following configuration:
+For Claude, the easiest way is to use uvx (recommended):
 
 ```json
 {
   "mcpServers": {
-    "redis-memory-server": {
+    "memory": {
+      "command": "uvx",
+      "args": ["--from", "agent-memory-server", "agent-memory", "mcp"],
+      "env": {
+        "DISABLE_AUTH": "true",
+        "REDIS_URL": "redis://localhost:6379",
+        "OPENAI_API_KEY": "<your-openai-key>"
+      }
+    }
+  }
+}
+```
+
+Notes:
+- API keys: Default models use OpenAI. Set `OPENAI_API_KEY`. To use Anthropic instead, set `ANTHROPIC_API_KEY` and also `GENERATION_MODEL` to an Anthropic model (e.g., `claude-3-5-haiku-20241022`).
+- Make sure your MCP host can find `uvx` (on its PATH or by using an absolute command path).
+  - macOS: `brew install uv`
+  - If not on PATH, set `"command"` to an absolute path (e.g., `/opt/homebrew/bin/uvx` on Apple Silicon, `/usr/local/bin/uvx` on Intel macOS). On Linux, `~/.local/bin/uvx` is common. See https://docs.astral.sh/uv/getting-started/ for distro specifics
+- Set `DISABLE_AUTH=false` in production and configure proper auth per the Authentication guide.
+
+If you’re running from a local checkout instead of PyPI, you can use `uv run` with a directory:
+
+```json
+{
+  "mcpServers": {
+    "memory": {
       "command": "uv",
       "args": [
         "--directory",
         "/ABSOLUTE/PATH/TO/REPO/DIRECTORY/agent-memory-server",
         "run",
         "agent-memory",
-        "mcp",
-        "--mode",
-        "stdio"
+        "mcp"
       ]
     }
   }
 }
 ```
 
-**NOTE:** On a Mac, this configuration requires that you use `brew install uv` to install uv. Probably any method that makes the `uv`
-command globally accessible, so Claude can find it, would work.
+Alternative (Anthropic):
+
+```json
+{
+  "mcpServers": {
+    "memory": {
+      "command": "uvx",
+      "args": ["--from", "agent-memory-server", "agent-memory", "mcp"],
+      "env": {
+        "DISABLE_AUTH": "true",
+        "REDIS_URL": "redis://localhost:6379",
+        "ANTHROPIC_API_KEY": "<your-anthropic-key>",
+        "GENERATION_MODEL": "claude-3-5-haiku-20241022"
+      }
+    }
+  }
+}
+```
 
 ### Cursor
 

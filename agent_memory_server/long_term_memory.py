@@ -893,6 +893,25 @@ async def search_long_term_memories(
     Returns:
         MemoryRecordResults containing matching memories
     """
+    # If no query text is provided, perform a filter-only listing (no semantic search).
+    # This enables patterns like: "return all memories for this user/namespace".
+    if not (text or "").strip():
+        adapter = await get_vectorstore_adapter()
+        return await adapter.list_memories(
+            session_id=session_id,
+            user_id=user_id,
+            namespace=namespace,
+            created_at=created_at,
+            last_accessed=last_accessed,
+            topics=topics,
+            entities=entities,
+            memory_type=memory_type,
+            event_date=event_date,
+            memory_hash=memory_hash,
+            limit=limit,
+            offset=offset,
+        )
+
     # Optimize query for vector search if requested.
     search_query = text
     optimized_applied = False
