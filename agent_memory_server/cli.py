@@ -257,7 +257,7 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
             )
         else:
             click.echo(
-                "\nMigration completed with errors. " "Run again to retry failed keys."
+                "\nMigration completed with errors. Run again to retry failed keys."
             )
 
     asyncio.run(run_migration())
@@ -268,16 +268,41 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
 @click.option("--host", default="0.0.0.0", help="Host to run the server on")
 @click.option("--reload", is_flag=True, help="Enable auto-reload")
 @click.option(
-    "--no-worker", is_flag=True, help="Use FastAPI background tasks instead of Docket"
+    "--no-worker",
+    is_flag=True,
+    help=(
+        "(DEPRECATED) Use --task-backend=asyncio instead. "
+        "If present, force FastAPI/asyncio background tasks instead of Docket."
+    ),
+    deprecated=True,
 )
-def api(port: int, host: str, reload: bool, no_worker: bool):
+@click.option(
+    "--task-backend",
+    default="docket",
+    type=click.Choice(["asyncio", "docket"]),
+    help=(
+        "Background task backend (asyncio, docket). "
+        "Default is 'docket' to preserve existing behavior using Docket-based "
+        "workers (requires a running `agent-memory task-worker` for "
+        "non-blocking background tasks). Use 'asyncio' (or deprecated "
+        "--no-worker) for single-process development without a worker."
+    ),
+)
+def api(port: int, host: str, reload: bool, no_worker: bool, task_backend: str):
     """Run the REST API server."""
     from agent_memory_server.main import on_start_logger
 
     configure_logging()
 
-    # Set use_docket based on the --no-worker flag
-    if no_worker:
+    # Determine effective backend.
+    # - Default is 'docket' to preserve prior behavior (Docket workers).
+    # - --task-backend=asyncio opts into single-process asyncio background tasks.
+    # - Deprecated --no-worker flag forces asyncio for backward compatibility.
+    effective_backend = "asyncio" if no_worker else task_backend
+
+    if effective_backend == "docket":
+        settings.use_docket = True
+    else:  # "asyncio"
         settings.use_docket = False
 
     on_start_logger(port)
@@ -298,9 +323,17 @@ def api(port: int, host: str, reload: bool, no_worker: bool):
     type=click.Choice(["stdio", "sse"]),
 )
 @click.option(
-    "--no-worker", is_flag=True, help="Use FastAPI background tasks instead of Docket"
+    "--task-backend",
+    default="asyncio",
+    type=click.Choice(["asyncio", "docket"]),
+    help=(
+        "Background task backend (asyncio, docket). "
+        "Default is 'asyncio' (no separate worker needed). "
+        "Use 'docket' for production setups with a running task worker "
+        "(see `agent-memory task-worker`)."
+    ),
 )
-def mcp(port: int, mode: str, no_worker: bool):
+def mcp(port: int, mode: str, task_backend: str):
     """Run the MCP server."""
     import asyncio
 
@@ -317,14 +350,12 @@ def mcp(port: int, mode: str, no_worker: bool):
     from agent_memory_server.mcp import mcp_app
 
     async def setup_and_run():
-        # Redis setup is handled by the MCP app before it starts
-
-        # Set use_docket based on mode and --no-worker flag
-        if mode == "stdio":
-            # Don't run a task worker in stdio mode by default
-            settings.use_docket = False
-        elif no_worker:
-            # Use --no-worker flag for SSE mode
+        # Configure background task backend for MCP.
+        # Default is asyncio (no separate worker required). Use 'docket' to
+        # send tasks to a separate worker process.
+        if task_backend == "docket":
+            settings.use_docket = True
+        else:  # "asyncio"
             settings.use_docket = False
 
         # Run the MCP server
