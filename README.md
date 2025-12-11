@@ -74,8 +74,13 @@ uv install --all-extras
 # Start Redis
 docker-compose up redis
 
+<<<<<<< Updated upstream
 # Start the server (development mode)
 uv run agent-memory api --no-worker
+=======
+# Start the server (development mode, asyncio task backend)
+uv run agent-memory api --task-backend=asyncio
+>>>>>>> Stashed changes
 ```
 
 ### 2. Python SDK
