@@ -31,10 +31,14 @@ docker-compose up
 docker run -p 8000:8000 \
   -e REDIS_URL=redis://your-redis:6379 \
   -e OPENAI_API_KEY=your-key \
-  redislabs/agent-memory-server:latest
+  redislabs/agent-memory-server:latest \
+  agent-memory api --host 0.0.0.0 --port 8000 --task-backend=asyncio
 ```
 
-The default image runs in development mode using the **asyncio** task backend (no separate worker required), which is perfect for testing and development.
+By default, the image runs the API with the **Docket** task backend, which
+expects a separate `agent-memory task-worker` process for non-blocking
+background tasks. The example above shows how to override this to use the
+asyncio backend for a single-container development setup.
 
 **Production Deployment**:
 

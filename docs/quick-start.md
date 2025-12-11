@@ -78,7 +78,7 @@ Start the REST API server:
 
 ```bash
 # Start the API server in development mode (runs on port 8000, asyncio backend)
-uv run agent-memory api
+uv run agent-memory api --task-backend=asyncio
 ```
 
 Your server is now running at `http://localhost:8000`!

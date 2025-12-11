@@ -329,7 +329,7 @@ def api(port: int, host: str, reload: bool, no_worker: bool, task_backend: str):
     help=(
         "Background task backend (asyncio, docket). "
         "Default is 'asyncio' (no separate worker needed). "
-        "Use 'docket' for production setups with a running task worker."
+        "Use 'docket' for production setups with a running task worker "
         "(see `agent-memory task-worker`)."
     ),
 )
