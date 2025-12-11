@@ -77,8 +77,8 @@ EOF
 Start the REST API server:
 
 ```bash
-# Start the API server in development mode (runs on port 8000)
-uv run agent-memory api --no-worker
+# Start the API server in development mode (runs on port 8000, asyncio backend)
+uv run agent-memory api
 ```
 
 Your server is now running at `http://localhost:8000`!
@@ -307,7 +307,7 @@ For web-based MCP clients, you can use SSE mode, but this requires manually star
 
 ```bash
 # Only needed for SSE mode (development)
-uv run agent-memory mcp --mode sse --port 9000 --no-worker
+uv run agent-memory mcp --mode sse --port 9000
 ```
 
 **Recommendation**: Use stdio mode with Claude Desktop as it's much simpler to set up.
@@ -355,11 +355,11 @@ Now that you have the basics working, explore these advanced features:
 
 ## Production Deployment
 
-The examples above use `--no-worker` for development convenience. For production environments, you should use Docket workers for better reliability, scalability, and performance.
+The examples above use asyncio task backends for simple, single-process development. For production environments, the `api` command defaults to the **Docket** backend (no flag needed), while the `mcp` command still defaults to **asyncio** for single-process MCP usage. Use `--task-backend=docket` with `mcp` when you want MCP to enqueue background work for workers.
 
 ### Why Use Workers in Production?
 
-**Development mode (`--no-worker`):**
+**Development mode (asyncio backend):**
 - ✅ Quick setup, no extra processes needed
 - ✅ Perfect for testing and development
 - ❌ Tasks run inline, blocking API responses
@@ -375,10 +375,10 @@ The examples above use `--no-worker` for development convenience. For production
 
 ### Production Setup Steps
 
-1. **Start the API server (without --no-worker):**
+1. **Start the API server (default Docket backend):**
 
 ```bash
-# Production API server
+# Production API server (uses Docket by default; requires task-worker)
 uv run agent-memory api --port 8000
 ```
 
@@ -396,8 +396,8 @@ uv run agent-memory task-worker --concurrency 5 &
 3. **Start MCP server (if using SSE mode):**
 
 ```bash
-# Production MCP server (stdio mode doesn't need changes)
-uv run agent-memory mcp --mode sse --port 9000
+# Production MCP server (uses Docket backend)
+uv run agent-memory mcp --mode sse --port 9000 --task-backend docket
 ```
 
 4. **Enable authentication:**
@@ -463,7 +463,7 @@ services:
       - "9000:9000"
     environment:
       - REDIS_URL=redis://redis:6379
-    command: uv run agent-memory mcp --mode sse --port 9000
+    command: uv run agent-memory mcp --mode sse --port 9000 --task-backend docket
     depends_on:
       - redis
 
@@ -489,14 +489,14 @@ redis-cli -h localhost -p 6379
 
 | Use Case | Mode | Command |
 |----------|------|---------|
-| **Quick testing** | Development | `uv run agent-memory api --no-worker` |
-| **Local development** | Development | `uv run agent-memory api --no-worker` |
+| **Quick testing** | Development | `uv run agent-memory api --task-backend asyncio` |
+| **Local development** | Development | `uv run agent-memory api --reload --task-backend asyncio` |
 | **Production API** | Production | `uv run agent-memory api` + workers |
 | **High-scale deployment** | Production | `uv run agent-memory api` + multiple workers |
-| **Claude Desktop MCP** | Either | `uv run agent-memory mcp` (stdio mode) |
-| **Web MCP clients** | Either | `uv run agent-memory mcp --mode sse [--no-worker]` |
+| **Claude Desktop MCP** | Either | `uv run agent-memory mcp` (stdio mode, asyncio backend) |
+| **Web MCP clients** | Either | `uv run agent-memory mcp --mode sse [--task-backend docket]` |
 
-**Recommendation**: Start with `--no-worker` for development, then graduate to worker-based deployment for production.
+**Recommendation**: Start with the asyncio backend (`--task-backend asyncio`) for simple development runs, then rely on the default Docket backend for the API in production, and enable `--task-backend=docket` for MCP when you want shared workers.
 
 ## Common Issues
 
@@ -513,8 +513,8 @@ redis-cli -h localhost -p 6379
 - If still failing, try: `uv add redisvl>=0.6.0`
 
 **"Background tasks not processing"**
-- If using `--no-worker`: Tasks run inline, check API server logs
-- If using workers: Make sure task worker is running: `uv run agent-memory task-worker`
+- If using the asyncio backend: Tasks run inline, check API/MCP server logs
+- If using workers (`--task-backend docket` or API default in production): Make sure task worker is running: `uv run agent-memory task-worker`
 - Check worker logs for errors and ensure Redis is accessible
 
 ## Get Help

@@ -34,7 +34,7 @@ docker run -p 8000:8000 \
   redislabs/agent-memory-server:latest
 ```
 
-The default image runs in development mode (`--no-worker`), which is perfect for testing and development.
+The default image runs in development mode using the **asyncio** task backend (no separate worker required), which is perfect for testing and development.
 
 **Production Deployment**:
 
@@ -74,8 +74,8 @@ uv install --all-extras
 # Start Redis
 docker-compose up redis
 
-# Start the server (development mode)
-uv run agent-memory api --no-worker
+# Start the server (development mode, default asyncio backend)
+uv run agent-memory api
 ```
 
 ### 2. Python SDK
@@ -155,8 +155,8 @@ result = await executor.ainvoke({"input": "Remember that I love pizza"})
 # Start MCP server (stdio mode - recommended for Claude Desktop)
 uv run agent-memory mcp
 
-# Or with SSE mode (development mode)
-uv run agent-memory mcp --mode sse --port 9000 --no-worker
+# Or with SSE mode (development mode, default asyncio backend)
+uv run agent-memory mcp --mode sse --port 9000
 ```
 
 ### MCP config via uvx (recommended)

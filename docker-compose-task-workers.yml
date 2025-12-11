@@ -10,8 +10,8 @@ networks:
 
 services:
   # For testing a production-like setup, you can run this API and the
-  # task-worker container. This API container does NOT use --no-worker, so when
-  # it starts background work, the task-worker will process those tasks.
+  # task-worker container. This API container uses --task-backend=docket, so
+  # when it starts background work, the task-worker will process those tasks.
 
   # =============================================================================
   # STANDARD (OpenAI/Anthropic only)
@@ -44,7 +44,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    command: ["agent-memory", "api", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["agent-memory", "api", "--host", "0.0.0.0", "--port", "8000", "--task-backend", "docket"]
 
   mcp:
     profiles: ["standard", ""]
@@ -64,7 +64,7 @@ services:
       - "9050:9000"
     depends_on:
       - redis
-    command: ["agent-memory", "mcp", "--mode", "sse"]
+    command: ["agent-memory", "mcp", "--mode", "sse", "--task-backend", "docket"]
     networks:
       - server-network
 
@@ -126,7 +126,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    command: ["agent-memory", "api", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["agent-memory", "api", "--host", "0.0.0.0", "--port", "8000", "--task-backend", "docket"]
 
   mcp-aws:
     profiles: ["aws"]
@@ -151,7 +151,7 @@ services:
       - "9050:9000"
     depends_on:
       - redis
-    command: ["agent-memory", "mcp", "--mode", "sse"]
+    command: ["agent-memory", "mcp", "--mode", "sse", "--task-backend", "docket"]
     networks:
       - server-network
 

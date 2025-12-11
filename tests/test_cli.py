@@ -114,17 +114,21 @@ class TestApiCommand:
     @patch("agent_memory_server.cli.uvicorn.run")
     @patch("agent_memory_server.main.on_start_logger")
     def test_api_command_defaults(self, mock_on_start_logger, mock_uvicorn_run):
-        """Test api command with default parameters."""
+        """Test api command with default parameters uses Docket backend.
+
+        By default, we preserve existing behavior by enabling Docket-based
+        background tasks (settings.use_docket should be True).
+        """
         from agent_memory_server.config import settings
 
         # Set initial state
-        settings.use_docket = True
+        settings.use_docket = False
 
         runner = CliRunner()
         result = runner.invoke(api)
 
         assert result.exit_code == 0
-        # Should not change use_docket when --no-worker is not specified
+        # Default should enable Docket-based background tasks
         assert settings.use_docket is True
 
         mock_on_start_logger.assert_called_once()
@@ -158,7 +162,11 @@ class TestApiCommand:
     def test_api_command_with_no_worker_flag(
         self, mock_on_start_logger, mock_uvicorn_run
     ):
-        """Test api command with --no-worker flag."""
+        """Test api command with deprecated --no-worker flag.
+
+        The flag should continue to force asyncio background tasks and not
+        require a Docket worker.
+        """
         from agent_memory_server.config import settings
 
         # Set initial state
@@ -181,10 +189,10 @@ class TestApiCommand:
 
     @patch("agent_memory_server.cli.uvicorn.run")
     @patch("agent_memory_server.main.on_start_logger")
-    def test_api_command_with_combined_options(
+    def test_api_command_with_task_backend_asyncio(
         self, mock_on_start_logger, mock_uvicorn_run
     ):
-        """Test api command with --no-worker and other options."""
+        """Test api command with --task-backend=asyncio and other options."""
         from agent_memory_server.config import settings
 
         # Set initial state
@@ -192,11 +200,20 @@ class TestApiCommand:
 
         runner = CliRunner()
         result = runner.invoke(
-            api, ["--port", "9999", "--host", "127.0.0.1", "--reload", "--no-worker"]
+            api,
+            [
+                "--port",
+                "9999",
+                "--host",
+                "127.0.0.1",
+                "--reload",
+                "--task-backend",
+                "asyncio",
+            ],
         )
 
         assert result.exit_code == 0
-        # Should set use_docket to False
+        # Should opt into asyncio when task-backend=asyncio is specified
         assert settings.use_docket is False
 
         mock_on_start_logger.assert_called_once_with(9999)
@@ -207,14 +224,17 @@ class TestApiCommand:
             reload=True,
         )
 
-    def test_api_command_help_includes_no_worker(self):
-        """Test that API command help includes --no-worker option."""
+    def test_api_command_help_includes_task_backend_and_no_worker(self):
+        """Test that API help mentions deprecated --no-worker and new task-backend."""
         runner = CliRunner()
         result = runner.invoke(api, ["--help"])
 
         assert result.exit_code == 0
         assert "--no-worker" in result.output
-        assert "Use FastAPI background tasks instead of Docket" in result.output
+        assert "DEPRECATED" in result.output
+        assert "--task-backend" in result.output
+        assert "asyncio" in result.output
+        assert "docket" in result.output
 
 
 class TestMcpCommand:
@@ -284,10 +304,14 @@ class TestMcpCommand:
 
     @patch("agent_memory_server.cli.configure_mcp_logging")
     @patch("agent_memory_server.mcp.mcp_app")
-    def test_mcp_command_stdio_mode_defaults_to_no_worker(
+    def test_mcp_command_stdio_mode_uses_asyncio_by_default(
         self, mock_mcp_app, mock_configure_mcp_logging
     ):
-        """Test that stdio mode defaults to use_docket=False."""
+        """Test that stdio mode uses asyncio backend by default.
+
+        Default behavior should not require a separate Docket worker, so
+        settings.use_docket should be False.
+        """
         from agent_memory_server.config import settings
 
         # Set initial state
@@ -299,16 +323,16 @@ class TestMcpCommand:
         result = runner.invoke(mcp, ["--mode", "stdio"])
 
         assert result.exit_code == 0
-        # stdio mode should set use_docket to False by default
+        # stdio mode should switch to asyncio backend by default
         assert settings.use_docket is False
         mock_mcp_app.run_stdio_async.assert_called_once()
 
     @patch("agent_memory_server.cli.configure_logging")
     @patch("agent_memory_server.mcp.mcp_app")
-    def test_mcp_command_sse_mode_preserves_docket(
+    def test_mcp_command_sse_mode_uses_asyncio_by_default(
         self, mock_mcp_app, mock_configure_logging
     ):
-        """Test that SSE mode preserves use_docket=True by default."""
+        """Test that SSE mode uses asyncio backend by default."""
         from agent_memory_server.config import settings
 
         # Set initial state
@@ -320,50 +344,50 @@ class TestMcpCommand:
         result = runner.invoke(mcp, ["--mode", "sse"])
 
         assert result.exit_code == 0
-        # SSE mode should keep use_docket as True by default
-        assert settings.use_docket is True
+        # SSE mode should also use asyncio backend by default
+        assert settings.use_docket is False
         mock_mcp_app.run_sse_async.assert_called_once()
 
     @patch("agent_memory_server.cli.configure_logging")
     @patch("agent_memory_server.mcp.mcp_app")
-    def test_mcp_command_sse_mode_with_no_worker_flag(
+    def test_mcp_command_sse_mode_with_task_backend_docket(
         self, mock_mcp_app, mock_configure_logging
     ):
-        """Test that SSE mode with --no-worker flag sets use_docket=False."""
+        """Test that SSE mode with --task-backend=docket sets use_docket=True."""
         from agent_memory_server.config import settings
 
         # Set initial state
-        settings.use_docket = True
+        settings.use_docket = False
 
         mock_mcp_app.run_sse_async = AsyncMock()
 
         runner = CliRunner()
-        result = runner.invoke(mcp, ["--mode", "sse", "--no-worker"])
+        result = runner.invoke(mcp, ["--mode", "sse", "--task-backend", "docket"])
 
         assert result.exit_code == 0
-        # SSE mode with --no-worker should set use_docket to False
-        assert settings.use_docket is False
+        # SSE mode with task-backend=docket should enable Docket
+        assert settings.use_docket is True
         mock_mcp_app.run_sse_async.assert_called_once()
 
     @patch("agent_memory_server.cli.configure_mcp_logging")
     @patch("agent_memory_server.mcp.mcp_app")
-    def test_mcp_command_stdio_mode_with_no_worker_flag(
+    def test_mcp_command_stdio_mode_with_task_backend_docket(
         self, mock_mcp_app, mock_configure_mcp_logging
     ):
-        """Test that stdio mode with --no-worker flag still sets use_docket=False."""
+        """Test that stdio mode with --task-backend=docket sets use_docket=True."""
         from agent_memory_server.config import settings
 
         # Set initial state
-        settings.use_docket = True
+        settings.use_docket = False
 
         mock_mcp_app.run_stdio_async = AsyncMock()
 
         runner = CliRunner()
-        result = runner.invoke(mcp, ["--mode", "stdio", "--no-worker"])
+        result = runner.invoke(mcp, ["--mode", "stdio", "--task-backend", "docket"])
 
         assert result.exit_code == 0
-        # stdio mode should set use_docket to False regardless of --no-worker flag
-        assert settings.use_docket is False
+        # stdio mode with task-backend=docket should enable Docket
+        assert settings.use_docket is True
         mock_mcp_app.run_stdio_async.assert_called_once()
 
     @patch("agent_memory_server.cli.configure_logging")
@@ -385,14 +409,16 @@ class TestMcpCommand:
         assert settings.mcp_port == 7777
         assert settings.mcp_port != original_port
 
-    def test_mcp_command_help_includes_no_worker(self):
-        """Test that MCP command help includes --no-worker option."""
+    def test_mcp_command_help_includes_task_backend(self):
+        """Test that MCP command help includes --task-backend option."""
         runner = CliRunner()
         result = runner.invoke(mcp, ["--help"])
 
         assert result.exit_code == 0
-        assert "--no-worker" in result.output
-        assert "Use FastAPI background tasks instead of Docket" in result.output
+        assert "--task-backend" in result.output
+        assert "asyncio" in result.output
+        assert "docket" in result.output
+        assert "--no-worker" not in result.output
 
     def test_mcp_command_mode_choices(self):
         """Test that MCP command only accepts valid mode choices."""

@@ -28,10 +28,10 @@ But you can also run these components via the CLI commands. Here's how you
 run the REST API server:
 
 ```bash
-# Development mode (no separate worker needed)
-uv run agent-memory api --no-worker
+# Development mode (no separate worker needed, asyncio backend)
+uv run agent-memory api --task-backend asyncio
 
-# Production mode (requires separate worker process)
+# Production mode (default Docket backend; requires separate worker process)
 uv run agent-memory api
 ```
 
@@ -42,10 +42,10 @@ Or the MCP server:
 uv run agent-memory mcp
 
 # SSE mode for development
-uv run agent-memory mcp --mode sse --no-worker
-
-# SSE mode for production
 uv run agent-memory mcp --mode sse
+
+# SSE mode for production (use Docket backend)
+uv run agent-memory mcp --mode sse --task-backend docket
 ```
 
 ### Using uvx in MCP clients
@@ -80,7 +80,7 @@ Notes:
 uv run agent-memory task-worker
 ```
 
-**For development**, use the `--no-worker` flag to run tasks inline without needing a separate worker process.
+**For development**, the default `--task-backend=asyncio` on the `mcp` command runs tasks inline without needing a separate worker process. For the `api` command, use `--task-backend=asyncio` explicitly when you want single-process behavior.
 
 **NOTE:** With uv, prefix the command with `uv`, e.g.: `uv run agent-memory --mode sse`. If you installed from source, you'll probably need to add `--directory` to tell uv where to find the code: `uv run --directory <path/to/checkout> run agent-memory --mode stdio`.
 

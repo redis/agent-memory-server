@@ -112,13 +112,14 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # You may override with DISABLE_AUTH=true in development.
 ENV DISABLE_AUTH=false
 
-# Default to development mode (no separate worker needed).
-# For production, override the command to remove --no-worker and run a separate task-worker container.
+# Default to development mode using the API's default backend (Docket). For
+# single-process development without a worker, add `--task-backend=asyncio` to
+# the api command.
 # Examples:
-#   Development: docker run -p 8000:8000 redislabs/agent-memory-server
+#   Development: docker run -p 8000:8000 redislabs/agent-memory-server agent-memory api --host 0.0.0.0 --port 8000 --task-backend=asyncio
 #   Production API: docker run -p 8000:8000 redislabs/agent-memory-server agent-memory api --host 0.0.0.0 --port 8000
 #   Production Worker: docker run redislabs/agent-memory-server agent-memory task-worker --concurrency 10
-CMD ["agent-memory", "api", "--host", "0.0.0.0", "--port", "8000", "--no-worker"]
+CMD ["agent-memory", "api", "--host", "0.0.0.0", "--port", "8000"]
 
 # ============================================
 # AWS VARIANT - Includes AWS Bedrock support
@@ -142,10 +143,11 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # You may override with DISABLE_AUTH=true in development.
 ENV DISABLE_AUTH=false
 
-# Default to development mode (no separate worker needed).
-# For production, override the command to remove --no-worker and run a separate task-worker container.
+# Default to development mode using the API's default backend (Docket). For
+# single-process development without a worker, add `--task-backend=asyncio` to
+# the api command.
 # Examples:
-#   Development: docker run -p 8000:8000 redislabs/agent-memory-server:aws
+#   Development: docker run -p 8000:8000 redislabs/agent-memory-server:aws agent-memory api --host 0.0.0.0 --port 8000 --task-backend=asyncio
 #   Production API: docker run -p 8000:8000 redislabs/agent-memory-server:aws agent-memory api --host 0.0.0.0 --port 8000
 #   Production Worker: docker run redislabs/agent-memory-server:aws agent-memory task-worker --concurrency 10
-CMD ["agent-memory", "api", "--host", "0.0.0.0", "--port", "8000", "--no-worker"]
+CMD ["agent-memory", "api", "--host", "0.0.0.0", "--port", "8000"]
