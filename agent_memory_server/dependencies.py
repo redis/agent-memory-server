@@ -1,8 +1,10 @@
+import asyncio
 import concurrent.futures
 from collections.abc import Callable
 from typing import Any
 
 from fastapi import BackgroundTasks
+from starlette.concurrency import run_in_threadpool
 
 from agent_memory_server.config import settings
 from agent_memory_server.logging import get_logger
@@ -12,11 +14,26 @@ logger = get_logger(__name__)
 
 
 class HybridBackgroundTasks(BackgroundTasks):
-    """A BackgroundTasks implementation that can use either Docket or FastAPI background tasks."""
+    """A BackgroundTasks implementation that can use either Docket or asyncio tasks.
+
+    When use_docket=True, tasks are scheduled through Docket's Redis-based queue
+    for processing by a separate worker process.
+
+    When use_docket=False, tasks are scheduled using asyncio.create_task() to run
+    in the current event loop. This works in both FastAPI and MCP contexts, unlike
+    the parent class's approach which relies on Starlette's response lifecycle
+    (which doesn't exist in MCP's stdio/SSE modes).
+    """
 
     def add_task(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
-        """Run tasks either directly, through Docket, or through FastAPI background tasks"""
-        logger.info("Adding task to background tasks...")
+        """Schedule a background task for execution.
+
+        Args:
+            func: The function to run (can be sync or async)
+            *args: Positional arguments to pass to the function
+            **kwargs: Keyword arguments to pass to the function
+        """
+        logger.info(f"Adding background task: {func.__name__}")
 
         if settings.use_docket:
             logger.info("Scheduling task through Docket")
@@ -28,7 +45,6 @@ class HybridBackgroundTasks(BackgroundTasks):
             # This runs in a thread to avoid event loop conflicts
             def run_in_thread():
                 """Run the async Docket operations in a separate thread"""
-                import asyncio
 
                 async def schedule_task():
                     async with Docket(
@@ -48,9 +64,34 @@ class HybridBackgroundTasks(BackgroundTasks):
 
             # When using Docket, we don't add anything to FastAPI background tasks
         else:
-            logger.info("Using FastAPI background tasks")
-            # Use FastAPI's background tasks directly
-            super().add_task(func, *args, **kwargs)
+            logger.info("Scheduling task with asyncio.create_task")
+            # Use asyncio.create_task to schedule the task in the event loop.
+            # This works universally in both FastAPI and MCP contexts.
+            #
+            # Note: We don't use super().add_task() because Starlette's BackgroundTasks
+            # relies on being attached to a response object and run after the response
+            # is sent. In MCP mode (stdio/SSE), there's no Starlette response lifecycle,
+            # so tasks added via super().add_task() would never execute.
+            asyncio.create_task(self._run_task(func, *args, **kwargs))
+
+    async def _run_task(
+        self, func: Callable[..., Any], *args: Any, **kwargs: Any
+    ) -> None:
+        """Execute a background task, handling both sync and async functions.
+
+        Args:
+            func: The function to run (can be sync or async)
+            *args: Positional arguments to pass to the function
+            **kwargs: Keyword arguments to pass to the function
+        """
+        try:
+            if asyncio.iscoroutinefunction(func):
+                await func(*args, **kwargs)
+            else:
+                # Run sync functions in a thread pool to avoid blocking the event loop
+                await run_in_threadpool(func, *args, **kwargs)
+        except Exception as e:
+            logger.error(f"Background task {func.__name__} failed: {e}", exc_info=True)
 
 
 # Backwards compatibility alias
