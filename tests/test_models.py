@@ -256,7 +256,8 @@ class TestMemoryMessageTimestampValidation:
                 created_at=future_time,
             )
 
-        assert "cannot be in the future" in str(exc_info.value)
+        assert "cannot be more than" in str(exc_info.value)
+        assert "seconds in the future" in str(exc_info.value)
 
     def test_message_with_near_future_timestamp_allowed(self):
         """Test that timestamps within tolerance are allowed"""

@@ -6,6 +6,7 @@ For full model definitions, see the main agent_memory_server package.
 """
 
 import logging
+import threading
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, ClassVar, Literal
@@ -68,6 +69,7 @@ class MemoryMessage(BaseModel):
     # Track message IDs that have been warned (in-memory, per-process)
     # Used to rate-limit deprecation warnings
     _warned_message_ids: ClassVar[set[str]] = set()
+    _warned_message_ids_lock: ClassVar[threading.Lock] = threading.Lock()
     _max_warned_ids: ClassVar[int] = 10000  # Prevent unbounded growth
 
     # Default tolerance for future timestamp validation (5 minutes)
@@ -106,15 +108,20 @@ class MemoryMessage(BaseModel):
         created_at_provided = "created_at" in data and data["created_at"] is not None
 
         if not created_at_provided:
-            # Rate-limit warnings by message ID
+            # Rate-limit warnings by message ID (thread-safe)
             msg_id = data.get("id", "unknown")
 
-            if msg_id not in cls._warned_message_ids:
-                # Prevent unbounded memory growth
-                if len(cls._warned_message_ids) >= cls._max_warned_ids:
-                    cls._warned_message_ids.clear()
-                cls._warned_message_ids.add(msg_id)
+            with cls._warned_message_ids_lock:
+                if msg_id not in cls._warned_message_ids:
+                    # Prevent unbounded memory growth
+                    if len(cls._warned_message_ids) >= cls._max_warned_ids:
+                        cls._warned_message_ids.clear()
+                    cls._warned_message_ids.add(msg_id)
+                    should_warn = True
+                else:
+                    should_warn = False
 
+            if should_warn:
                 logger.warning(
                     "MemoryMessage created without explicit created_at timestamp. "
                     "This will become required in a future version. "
