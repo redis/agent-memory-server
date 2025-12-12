@@ -48,7 +48,8 @@ import ulid
 from datetime import datetime, UTC
 
 # Store conversation messages for context continuity
-# IMPORTANT: Always provide created_at timestamps for accurate message ordering
+# IMPORTANT: Provide created_at timestamps that reflect actual message creation times
+# In real usage, each message would have its own timestamp from when it was created
 working_memory = WorkingMemory(
     session_id="chat_123",
     messages=[
@@ -56,19 +57,19 @@ working_memory = WorkingMemory(
             role="user",
             content="I'm planning a trip to Paris next month",
             id=ulid.ULID(),
-            created_at=datetime.now(UTC)  # Provide timestamp
+            created_at=datetime.fromisoformat("2024-01-15T10:30:00+00:00")
         ),
         MemoryMessage(
             role="assistant",
             content="That sounds exciting! What type of activities are you interested in?",
             id=ulid.ULID(),
-            created_at=datetime.now(UTC)
+            created_at=datetime.fromisoformat("2024-01-15T10:30:05+00:00")
         ),
         MemoryMessage(
             role="user",
             content="I love museums and good food",
             id=ulid.ULID(),
-            created_at=datetime.now(UTC)
+            created_at=datetime.fromisoformat("2024-01-15T10:30:30+00:00")
         )
     ]
 )
