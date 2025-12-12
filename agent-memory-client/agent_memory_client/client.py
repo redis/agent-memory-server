@@ -1144,7 +1144,7 @@ class MemoryAPIClient:
                     },
                 },
             },
-            format="openai",
+            schema_format="openai",
         )
 
     # === Working Memory Tool Integration ===
@@ -1490,7 +1490,7 @@ class MemoryAPIClient:
                     },
                 },
             },
-            format="openai",
+            schema_format="openai",
         )
 
     @classmethod
@@ -1539,7 +1539,7 @@ class MemoryAPIClient:
                     },
                 },
             },
-            format="openai",
+            schema_format="openai",
         )
 
     @classmethod
@@ -1574,7 +1574,7 @@ class MemoryAPIClient:
                     },
                 },
             },
-            format="openai",
+            schema_format="openai",
         )
 
     @classmethod
@@ -1603,7 +1603,7 @@ class MemoryAPIClient:
                     },
                 },
             },
-            format="openai",
+            schema_format="openai",
         )
 
     @classmethod
@@ -1672,7 +1672,7 @@ class MemoryAPIClient:
                     },
                 },
             },
-            format="openai",
+            schema_format="openai",
         )
 
     @classmethod
@@ -1736,7 +1736,7 @@ class MemoryAPIClient:
                     },
                 },
             },
-            format="openai",
+            schema_format="openai",
         )
 
     @classmethod
@@ -1766,7 +1766,7 @@ class MemoryAPIClient:
                     },
                 },
             },
-            format="openai",
+            schema_format="openai",
         )
 
     @classmethod
@@ -1861,7 +1861,7 @@ class MemoryAPIClient:
                     "parameters": {"type": "object", "properties": {}, "required": []},
                 },
             },
-            format="openai",
+            schema_format="openai",
         )
 
     @classmethod
@@ -1946,7 +1946,7 @@ class MemoryAPIClient:
                 "description": function_def["description"],
                 "input_schema": function_def["parameters"],
             },
-            format="anthropic",
+            schema_format="anthropic",
         )
 
     # === Function Call Resolution ===
