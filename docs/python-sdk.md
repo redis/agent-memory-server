@@ -282,7 +282,7 @@ all_tools.set_name("search_memory", "find_memories")
 # Get a specific tool for detailed customization
 search_tool = all_tools.get_by_name("find_memories")
 if search_tool:
-    search_tool.set_parameter_description("limit", "Max results to return")
+    search_tool.set_parameter_description("max_results", "Max results to return")
 
 # List all tool names
 print(all_tools.names())  # ['find_memories', 'get_or_create_working_memory', ...]
