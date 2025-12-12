@@ -124,7 +124,7 @@ Messages in working memory should include `created_at` timestamps for accurate o
 | Setting | Behavior |
 |---------|----------|
 | `REQUIRE_MESSAGE_TIMESTAMPS=false` (default) | Auto-generates missing timestamps with deprecation warning |
-| `REQUIRE_MESSAGE_TIMESTAMPS=true` | Rejects messages without `created_at` with 400 error |
+| `REQUIRE_MESSAGE_TIMESTAMPS=true` | Rejects messages without `created_at` with 422 error |
 
 **Future timestamp validation**: Messages with `created_at` more than `MAX_FUTURE_TIMESTAMP_SECONDS` in the future are rejected to prevent clock skew issues.
 
