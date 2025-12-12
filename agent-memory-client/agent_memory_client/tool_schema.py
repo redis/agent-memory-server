@@ -34,17 +34,17 @@ class ToolSchema:
     def __init__(
         self,
         schema: dict[str, Any],
-        format: Literal["openai", "anthropic"] = "openai",
+        schema_format: Literal["openai", "anthropic"] = "openai",
     ):
         """
         Initialize a ToolSchema wrapper.
 
         Args:
             schema: The raw schema dictionary
-            format: The schema format ("openai" or "anthropic")
+            schema_format: The schema format ("openai" or "anthropic")
         """
         self._schema = schema
-        self._format = format
+        self._format = schema_format
 
     @property
     def format(self) -> Literal["openai", "anthropic"]:
