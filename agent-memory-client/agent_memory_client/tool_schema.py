@@ -7,6 +7,7 @@ tool descriptions and other properties before passing them to LLMs.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
@@ -60,11 +61,21 @@ class ToolSchema:
 
         Returns:
             Self for method chaining
+
+        Raises:
+            ValueError: If the schema structure is malformed
         """
-        if self._format == "openai":
-            self._schema["function"]["description"] = description
-        else:  # anthropic
-            self._schema["description"] = description
+        try:
+            if self._format == "openai":
+                self._schema["function"]["description"] = description
+            else:  # anthropic
+                self._schema["description"] = description
+        except (KeyError, TypeError) as e:
+            raise ValueError(
+                f"Malformed schema structure for {self._format} format. "
+                f"Expected {'function.description' if self._format == 'openai' else 'description'} path. "
+                f"Original error: {e}"
+            ) from e
         return self
 
     def set_name(self, name: str) -> Self:
@@ -76,11 +87,21 @@ class ToolSchema:
 
         Returns:
             Self for method chaining
+
+        Raises:
+            ValueError: If the schema structure is malformed
         """
-        if self._format == "openai":
-            self._schema["function"]["name"] = name
-        else:  # anthropic
-            self._schema["name"] = name
+        try:
+            if self._format == "openai":
+                self._schema["function"]["name"] = name
+            else:  # anthropic
+                self._schema["name"] = name
+        except (KeyError, TypeError) as e:
+            raise ValueError(
+                f"Malformed schema structure for {self._format} format. "
+                f"Expected {'function.name' if self._format == 'openai' else 'name'} path. "
+                f"Original error: {e}"
+            ) from e
         return self
 
     def set_parameter_description(self, param_name: str, description: str) -> Self:
@@ -108,16 +129,40 @@ class ToolSchema:
         return self
 
     def get_description(self) -> str:
-        """Get the current tool description."""
-        if self._format == "openai":
-            return self._schema["function"]["description"]
-        return self._schema["description"]
+        """
+        Get the current tool description.
+
+        Raises:
+            ValueError: If the schema structure is malformed
+        """
+        try:
+            if self._format == "openai":
+                return self._schema["function"]["description"]
+            return self._schema["description"]
+        except (KeyError, TypeError) as e:
+            raise ValueError(
+                f"Malformed schema structure for {self._format} format. "
+                f"Expected {'function.description' if self._format == 'openai' else 'description'} path. "
+                f"Original error: {e}"
+            ) from e
 
     def get_name(self) -> str:
-        """Get the current tool name."""
-        if self._format == "openai":
-            return self._schema["function"]["name"]
-        return self._schema["name"]
+        """
+        Get the current tool name.
+
+        Raises:
+            ValueError: If the schema structure is malformed
+        """
+        try:
+            if self._format == "openai":
+                return self._schema["function"]["name"]
+            return self._schema["name"]
+        except (KeyError, TypeError) as e:
+            raise ValueError(
+                f"Malformed schema structure for {self._format} format. "
+                f"Expected {'function.name' if self._format == 'openai' else 'name'} path. "
+                f"Original error: {e}"
+            ) from e
 
     def get_parameter_description(self, param_name: str) -> str | None:
         """
@@ -216,10 +261,17 @@ class ToolSchemaCollection:
 
         Returns:
             Self for method chaining
+
+        Raises:
+            KeyError: If no tool with the given name exists in the collection
         """
         schema = self.get_by_name(name)
-        if schema:
-            schema.set_description(description)
+        if schema is None:
+            raise KeyError(
+                f"Tool '{name}' not found in collection. "
+                f"Available tools: {self.names()}"
+            )
+        schema.set_description(description)
         return self
 
     def set_name(self, old_name: str, new_name: str) -> Self:
@@ -232,10 +284,17 @@ class ToolSchemaCollection:
 
         Returns:
             Self for method chaining
+
+        Raises:
+            KeyError: If no tool with the given name exists in the collection
         """
         schema = self.get_by_name(old_name)
-        if schema:
-            schema.set_name(new_name)
+        if schema is None:
+            raise KeyError(
+                f"Tool '{old_name}' not found in collection. "
+                f"Available tools: {self.names()}"
+            )
+        schema.set_name(new_name)
         return self
 
     def to_list(self) -> list[dict[str, Any]]:
@@ -250,7 +309,7 @@ class ToolSchemaCollection:
         """Get all tool names in the collection."""
         return [s.get_name() for s in self._schemas]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[ToolSchema]:
         return iter(self._schemas)
 
     def __len__(self) -> int:
