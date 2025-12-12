@@ -180,7 +180,7 @@ class MemoryMessage(BaseModel):
 
                 if created_at_value > max_allowed:
                     raise ValueError(
-                        f"created_at cannot be in the future. "
+                        f"created_at cannot be more than {settings.max_future_timestamp_seconds} seconds in the future. "
                         f"Received: {created_at_value.isoformat()}, "
                         f"Max allowed (with {settings.max_future_timestamp_seconds}s tolerance): "
                         f"{max_allowed.isoformat()}"
