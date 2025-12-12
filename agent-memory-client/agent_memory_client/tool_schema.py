@@ -101,6 +101,10 @@ class ToolSchema:
 
         if param_name in props:
             props[param_name]["description"] = description
+        else:
+            raise KeyError(
+                f"Parameter '{param_name}' does not exist in the schema properties: {list(props.keys())}"
+            )
         return self
 
     def get_description(self) -> str:
