@@ -11,7 +11,7 @@ from agent_memory_server.api import (
     get_long_term_memory as core_get_long_term_memory,
     get_working_memory as core_get_working_memory,
     memory_prompt as core_memory_prompt,
-    put_working_memory as core_put_working_memory,
+    put_working_memory_core as core_put_working_memory,
     search_long_term_memory as core_search_long_term_memory,
     update_long_term_memory as core_update_long_term_memory,
 )

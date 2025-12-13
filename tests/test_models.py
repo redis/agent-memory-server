@@ -1,4 +1,8 @@
-from datetime import UTC, datetime
+import logging
+from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
+
+import pytest
 
 from agent_memory_server.filters import (
     CreatedAt,
@@ -192,3 +196,131 @@ class TestModels:
         assert filters["created_at"] == created_at
         assert filters["last_accessed"] == last_accessed
         assert filters["user_id"] == user_id
+
+
+class TestMemoryMessageTimestampValidation:
+    """Tests for MemoryMessage created_at timestamp validation"""
+
+    def setup_method(self):
+        """Clear the warned message IDs cache before each test"""
+        MemoryMessage._warned_message_ids.clear()
+
+    def test_message_with_explicit_created_at_no_warning(self, caplog):
+        """Test that providing created_at does not trigger a warning"""
+        with caplog.at_level(logging.WARNING):
+            msg = MemoryMessage(
+                role="user",
+                content="Hello",
+                created_at=datetime.now(UTC),
+            )
+            assert msg.role == "user"
+            assert msg.content == "Hello"
+            # No warning should be logged
+            assert "created_at timestamp" not in caplog.text
+
+    def test_message_without_created_at_logs_warning(self, caplog):
+        """Test that missing created_at triggers a deprecation warning"""
+        with caplog.at_level(logging.WARNING):
+            msg = MemoryMessage(role="user", content="Hello")
+            assert msg.role == "user"
+            # Warning should be logged
+            assert "created_at timestamp" in caplog.text
+            assert "required in a future version" in caplog.text
+
+    def test_message_warning_rate_limited(self, caplog):
+        """Test that warnings are rate-limited per message ID"""
+        with caplog.at_level(logging.WARNING):
+            # First message without created_at - should warn
+            MemoryMessage(id="msg-1", role="user", content="Hello")
+            assert "created_at timestamp" in caplog.text
+
+            caplog.clear()
+
+            # Same message ID again - should NOT warn (rate-limited)
+            MemoryMessage(id="msg-1", role="user", content="Hello again")
+            assert "created_at timestamp" not in caplog.text
+
+            # Different message ID - should warn
+            MemoryMessage(id="msg-2", role="user", content="Different message")
+            assert "created_at timestamp" in caplog.text
+
+    def test_message_with_future_timestamp_rejected(self):
+        """Test that future timestamps (beyond tolerance) are rejected"""
+        # Create a timestamp 10 minutes in the future (beyond 5 min tolerance)
+        future_time = datetime.now(UTC) + timedelta(minutes=10)
+
+        with pytest.raises(ValueError) as exc_info:
+            MemoryMessage(
+                role="user",
+                content="Hello",
+                created_at=future_time,
+            )
+
+        assert "cannot be more than" in str(exc_info.value)
+        assert "seconds in the future" in str(exc_info.value)
+
+    def test_message_with_near_future_timestamp_allowed(self):
+        """Test that timestamps within tolerance are allowed"""
+        # Create a timestamp 2 minutes in the future (within 5 min tolerance)
+        near_future = datetime.now(UTC) + timedelta(minutes=2)
+
+        msg = MemoryMessage(
+            role="user",
+            content="Hello",
+            created_at=near_future,
+        )
+        assert msg.created_at == near_future
+
+    def test_message_with_past_timestamp_allowed(self):
+        """Test that past timestamps are allowed"""
+        past_time = datetime(2023, 1, 1, tzinfo=UTC)
+
+        msg = MemoryMessage(
+            role="user",
+            content="Hello",
+            created_at=past_time,
+        )
+        assert msg.created_at == past_time
+
+    def test_message_with_iso_string_timestamp(self):
+        """Test that ISO format string timestamps are parsed correctly"""
+        msg = MemoryMessage(
+            role="user",
+            content="Hello",
+            created_at="2023-06-15T10:30:00+00:00",
+        )
+        assert msg.created_at == datetime(2023, 6, 15, 10, 30, 0, tzinfo=UTC)
+
+    def test_message_with_z_suffix_timestamp(self):
+        """Test that Z suffix timestamps are parsed correctly"""
+        msg = MemoryMessage(
+            role="user",
+            content="Hello",
+            created_at="2023-06-15T10:30:00Z",
+        )
+        assert msg.created_at == datetime(2023, 6, 15, 10, 30, 0, tzinfo=UTC)
+
+    def test_require_message_timestamps_setting(self):
+        """Test that require_message_timestamps=True rejects missing timestamps"""
+        with patch("agent_memory_server.config.settings") as mock_settings:
+            mock_settings.require_message_timestamps = True
+            mock_settings.max_future_timestamp_seconds = 300
+
+            with pytest.raises(ValueError) as exc_info:
+                MemoryMessage(role="user", content="Hello")
+
+            assert "created_at is required" in str(exc_info.value)
+
+    def test_created_at_was_provided_flag(self):
+        """Test that _created_at_was_provided flag is set correctly"""
+        # With explicit created_at
+        msg1 = MemoryMessage(
+            role="user",
+            content="Hello",
+            created_at=datetime.now(UTC),
+        )
+        assert msg1._created_at_was_provided is True
+
+        # Without created_at
+        msg2 = MemoryMessage(role="user", content="Hello")
+        assert msg2._created_at_was_provided is False

@@ -30,13 +30,16 @@ The following endpoints are available:
 - **PUT /v1/working-memory/{session_id}**
   Sets working memory for a session, replacing any existing memory.
   Automatically summarizes conversations that exceed the token limit.
+
+  **Important**: Messages should include `created_at` timestamps for accurate ordering. If timestamps are missing, the server returns an `X-Deprecation-Warning` header indicating that `created_at` will become required in the next major version.
+
   _Request Body Example:_
 
   ```json
   {
     "messages": [
-      { "role": "user", "content": "Hello" },
-      { "role": "assistant", "content": "Hi there" }
+      { "role": "user", "content": "Hello", "created_at": "2024-01-15T10:30:00Z" },
+      { "role": "assistant", "content": "Hi there", "created_at": "2024-01-15T10:30:05Z" }
     ],
     "memories": [
       {

@@ -314,6 +314,13 @@ class Settings(BaseSettings):
         0.7  # Fraction of context window that triggers summarization
     )
 
+    # Message timestamp validation settings
+    # If true, reject messages without created_at timestamp.
+    # If false (default), auto-generate timestamp with deprecation warning.
+    require_message_timestamps: bool = False
+    # Maximum allowed clock skew for future timestamp validation (in seconds)
+    max_future_timestamp_seconds: int = 300  # 5 minutes
+
     # Working memory migration settings
     # Set to True to skip backward compatibility checks for old string-format keys.
     # Use this after running 'agent-memory migrate-working-memory' or for fresh installs.

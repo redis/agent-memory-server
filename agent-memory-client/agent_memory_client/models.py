@@ -5,12 +5,16 @@ This module contains essential data models needed by the client.
 For full model definitions, see the main agent_memory_server package.
 """
 
-from datetime import datetime, timezone
+import logging
+import threading
+from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from ulid import ULID
+
+logger = logging.getLogger(__name__)
 
 # Model name literals for model-specific window sizes
 ModelNameLiteral = Literal[
@@ -62,6 +66,15 @@ class MemoryStrategyConfig(BaseModel):
 class MemoryMessage(BaseModel):
     """A message in the memory system"""
 
+    # Track message IDs that have been warned (in-memory, per-process)
+    # Used to rate-limit deprecation warnings
+    _warned_message_ids: ClassVar[set[str]] = set()
+    _warned_message_ids_lock: ClassVar[threading.Lock] = threading.Lock()
+    _max_warned_ids: ClassVar[int] = 10000  # Prevent unbounded growth
+
+    # Default tolerance for future timestamp validation (5 minutes)
+    _max_future_seconds: ClassVar[int] = 300
+
     role: str
     content: str
     id: str = Field(
@@ -70,7 +83,7 @@ class MemoryMessage(BaseModel):
     )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
-        description="Timestamp when the message was created",
+        description="Timestamp when the message was created (should be provided by client)",
     )
     persisted_at: datetime | None = Field(
         default=None,
@@ -80,6 +93,72 @@ class MemoryMessage(BaseModel):
         default="f",
         description="Whether memory extraction has run for this message",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_created_at(cls, data: Any) -> Any:
+        """
+        Validate created_at timestamp:
+        - Warn if not provided by client (will become required in future version)
+        - Error if timestamp is in the future (beyond tolerance)
+        """
+        if not isinstance(data, dict):
+            return data
+
+        created_at_provided = "created_at" in data and data["created_at"] is not None
+
+        if not created_at_provided:
+            # Rate-limit warnings by message ID (thread-safe)
+            msg_id = data.get("id", "unknown")
+
+            with cls._warned_message_ids_lock:
+                if msg_id not in cls._warned_message_ids:
+                    # Prevent unbounded memory growth
+                    if len(cls._warned_message_ids) >= cls._max_warned_ids:
+                        cls._warned_message_ids.clear()
+                    cls._warned_message_ids.add(msg_id)
+                    should_warn = True
+                else:
+                    should_warn = False
+
+            if should_warn:
+                logger.warning(
+                    "MemoryMessage created without explicit created_at timestamp. "
+                    "This will become required in a future version. "
+                    "Please provide created_at for accurate message ordering."
+                )
+        else:
+            # Validate that created_at is not in the future
+            created_at_value = data["created_at"]
+
+            # Parse string to datetime if needed
+            if isinstance(created_at_value, str):
+                try:
+                    # Handle ISO format with Z suffix
+                    created_at_value = datetime.fromisoformat(
+                        created_at_value.replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    # Let Pydantic handle the parsing error
+                    return data
+
+            if isinstance(created_at_value, datetime):
+                # Ensure timezone-aware comparison
+                now = datetime.now(timezone.utc)
+                if created_at_value.tzinfo is None:
+                    # Assume UTC for naive datetimes
+                    created_at_value = created_at_value.replace(tzinfo=timezone.utc)
+
+                max_allowed = now + timedelta(seconds=cls._max_future_seconds)
+
+                if created_at_value > max_allowed:
+                    raise ValueError(
+                        f"created_at cannot be more than {cls._max_future_seconds} seconds in the future. "
+                        f"Received: {created_at_value.isoformat()}, "
+                        f"Max allowed: {max_allowed.isoformat()}"
+                    )
+
+        return data
 
 
 class MemoryRecord(BaseModel):

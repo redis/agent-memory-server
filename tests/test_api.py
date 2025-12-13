@@ -1390,3 +1390,93 @@ class TestLongTermMemoryEndpoint:
 
         # Verify delete function was called with empty list
         mock_delete.assert_called_once_with(ids=[])
+
+
+class TestDeprecationHeader:
+    """Tests for X-Deprecation-Warning header on working memory endpoints"""
+
+    @pytest.mark.asyncio
+    async def test_put_working_memory_without_created_at_has_deprecation_header(
+        self, client
+    ):
+        """Test that PUT without created_at includes deprecation header"""
+
+        payload = {
+            "messages": [
+                {"role": "user", "content": "Hello"},  # No created_at
+                {"role": "assistant", "content": "Hi there"},  # No created_at
+            ],
+            "memories": [],
+            "namespace": "test-namespace",
+        }
+
+        response = await client.put("/v1/working-memory/test-session", json=payload)
+
+        assert response.status_code == 200
+        # Should have deprecation warning header
+        assert "X-Deprecation-Warning" in response.headers
+        assert "created_at" in response.headers["X-Deprecation-Warning"]
+        assert "required" in response.headers["X-Deprecation-Warning"]
+
+    @pytest.mark.asyncio
+    async def test_put_working_memory_with_created_at_no_deprecation_header(
+        self, client
+    ):
+        """Test that PUT with created_at does not include deprecation header"""
+        from datetime import UTC, datetime
+
+        now = datetime.now(UTC).isoformat()
+        payload = {
+            "messages": [
+                {"role": "user", "content": "Hello", "created_at": now},
+                {"role": "assistant", "content": "Hi there", "created_at": now},
+            ],
+            "memories": [],
+            "namespace": "test-namespace",
+        }
+
+        response = await client.put("/v1/working-memory/test-session", json=payload)
+
+        assert response.status_code == 200
+        # Should NOT have deprecation warning header
+        assert "X-Deprecation-Warning" not in response.headers
+
+    @pytest.mark.asyncio
+    async def test_put_working_memory_mixed_messages_has_deprecation_header(
+        self, client
+    ):
+        """Test that PUT with some messages missing created_at includes deprecation header"""
+        from datetime import UTC, datetime
+
+        now = datetime.now(UTC).isoformat()
+        payload = {
+            "messages": [
+                {"role": "user", "content": "Hello", "created_at": now},
+                {"role": "assistant", "content": "Hi there"},  # No created_at
+            ],
+            "memories": [],
+            "namespace": "test-namespace",
+        }
+
+        response = await client.put("/v1/working-memory/test-session", json=payload)
+
+        assert response.status_code == 200
+        # Should have deprecation warning header (at least one message missing timestamp)
+        assert "X-Deprecation-Warning" in response.headers
+
+    @pytest.mark.asyncio
+    async def test_put_working_memory_empty_messages_no_deprecation_header(
+        self, client
+    ):
+        """Test that PUT with no messages does not include deprecation header"""
+        payload = {
+            "messages": [],
+            "memories": [],
+            "namespace": "test-namespace",
+        }
+
+        response = await client.put("/v1/working-memory/test-session", json=payload)
+
+        assert response.status_code == 200
+        # Should NOT have deprecation warning header (no messages to check)
+        assert "X-Deprecation-Warning" not in response.headers
