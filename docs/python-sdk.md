@@ -227,6 +227,136 @@ The SDK provides these tools for LLM integration:
 - `create_long_term_memories` (deprecated) → use `eagerly_create_long_term_memory`
 - `add_memory_to_working_memory` (deprecated) → use `lazily_create_long_term_memory`
 
+### Customizing Tool Descriptions
+
+The SDK provides `ToolSchema` and `ToolSchemaCollection` wrapper classes that allow you to customize tool descriptions, names, and parameter descriptions before passing them to LLMs. This is useful for:
+
+- Adjusting descriptions to match your application's tone or domain
+- Renaming tools to avoid conflicts with other tools
+- Adding context-specific information to parameter descriptions
+
+#### Basic Customization
+
+```python
+from agent_memory_client import MemoryAPIClient
+
+# Get a tool schema and customize it
+schema = MemoryAPIClient.get_memory_search_tool_schema()
+schema.set_description("Search through the user's personal knowledge base")
+schema.set_name("search_knowledge_base")
+
+# Customize parameter descriptions
+schema.set_parameter_description("query", "Natural language search query")
+
+# Use with LLM
+response = await openai_client.chat.completions.create(
+    model="gpt-4o",
+    messages=messages,
+    tools=[schema.to_dict()]
+)
+```
+
+#### Method Chaining
+
+All setter methods return `self` for fluent method chaining:
+
+```python
+schema = (MemoryAPIClient.get_memory_search_tool_schema()
+    .set_description("Find relevant information from memory")
+    .set_name("find_info")
+    .set_parameter_description("query", "What to search for"))
+```
+
+#### Bulk Customization with Collections
+
+When working with all tools, use `ToolSchemaCollection` for bulk operations:
+
+```python
+# Get all tools as a collection
+all_tools = MemoryAPIClient.get_all_memory_tool_schemas()
+
+# Customize specific tools by name
+all_tools.set_description("search_memory", "Find relevant memories")
+all_tools.set_name("search_memory", "find_memories")
+
+# Get a specific tool for detailed customization
+search_tool = all_tools.get_by_name("find_memories")
+if search_tool:
+    search_tool.set_parameter_description("max_results", "Max results to return")
+
+# List all tool names
+print(all_tools.names())  # ['find_memories', 'get_or_create_working_memory', ...]
+
+# Convert to list for LLM consumption
+response = await openai_client.chat.completions.create(
+    model="gpt-4o",
+    messages=messages,
+    tools=all_tools.to_list()
+)
+```
+
+#### Creating Independent Copies
+
+Use `copy()` to create independent copies that won't affect the original:
+
+```python
+# Create a copy for customization
+custom_schema = MemoryAPIClient.get_memory_search_tool_schema().copy()
+custom_schema.set_description("Custom description")
+
+# Original is unchanged
+original = MemoryAPIClient.get_memory_search_tool_schema()
+assert original.get_description() != custom_schema.get_description()
+```
+
+#### Anthropic Format
+
+The same customization API works for Anthropic tool schemas:
+
+```python
+# Anthropic format
+schema = MemoryAPIClient.get_memory_search_tool_schema_anthropic()
+schema.set_description("Custom Anthropic description")
+
+# Check the format
+print(schema.format)  # "anthropic"
+
+# Use with Anthropic
+response = await anthropic_client.messages.create(
+    model="claude-3-5-sonnet-20241022",
+    messages=messages,
+    tools=[schema.to_dict()]
+)
+```
+
+#### ToolSchema API Reference
+
+| Method | Description |
+|--------|-------------|
+| `set_description(text)` | Set the tool description |
+| `set_name(name)` | Set the tool name |
+| `set_parameter_description(param, text)` | Set a parameter's description |
+| `get_description()` | Get the current description |
+| `get_name()` | Get the current name |
+| `get_parameter_description(param)` | Get a parameter's description |
+| `to_dict()` | Convert to dict (returns deep copy) |
+| `copy()` | Create an independent copy |
+| `format` | Property: "openai" or "anthropic" |
+
+#### ToolSchemaCollection API Reference
+
+| Method | Description |
+|--------|-------------|
+| `get_by_name(name)` | Get a specific tool by name |
+| `set_description(name, text)` | Set description for a tool by name |
+| `set_name(old_name, new_name)` | Rename a tool |
+| `names()` | Get list of all tool names |
+| `to_list()` | Convert to list of dicts |
+| `copy()` | Create an independent copy |
+| `len(collection)` | Get number of tools |
+| `collection[index]` | Access tool by index |
+| `for tool in collection` | Iterate over tools |
+
 ## Memory Operations
 
 ### Creating Memories
