@@ -1,6 +1,7 @@
 import logging
 import threading
 from collections.abc import Callable
+from contextvars import ContextVar
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any, ClassVar, Literal
@@ -89,8 +90,11 @@ class MemoryMessage(BaseModel):
     _warned_message_ids_lock: ClassVar[threading.Lock] = threading.Lock()
     _max_warned_ids: ClassVar[int] = 10000  # Prevent unbounded growth
 
-    # Thread-local storage for passing created_at_provided flag from validator to model_post_init
-    _created_at_provided_thread_local: ClassVar[threading.local] = threading.local()
+    # ContextVar for passing created_at_provided flag from validator to model_post_init
+    # ContextVar is async-safe (works correctly with coroutines on the same thread)
+    _created_at_provided_context: ClassVar[ContextVar[bool]] = ContextVar(
+        "created_at_provided", default=False
+    )
 
     role: str
     content: str
@@ -115,14 +119,11 @@ class MemoryMessage(BaseModel):
     _created_at_was_provided: bool = PrivateAttr(default=False)
 
     def model_post_init(self, __context: Any) -> None:
-        """Set _created_at_was_provided from thread-local storage after model is constructed."""
-        # Retrieve the flag from thread-local storage (set by validator)
-        self._created_at_was_provided = getattr(
-            self._created_at_provided_thread_local, "value", False
-        )
-        # Clean up thread-local storage
-        if hasattr(self._created_at_provided_thread_local, "value"):
-            del self._created_at_provided_thread_local.value
+        """Set _created_at_was_provided from ContextVar after model is constructed."""
+        # Retrieve the flag from ContextVar (set by validator)
+        self._created_at_was_provided = self._created_at_provided_context.get()
+        # Reset ContextVar to default for next use
+        self._created_at_provided_context.set(False)
 
     @model_validator(mode="before")
     @classmethod
@@ -139,8 +140,8 @@ class MemoryMessage(BaseModel):
 
         created_at_provided = "created_at" in data and data["created_at"] is not None
 
-        # Store in thread-local for model_post_init to pick up
-        cls._created_at_provided_thread_local.value = created_at_provided
+        # Store in ContextVar for model_post_init to pick up (async-safe)
+        cls._created_at_provided_context.set(created_at_provided)
 
         if not created_at_provided:
             # Handle missing created_at
