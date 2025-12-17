@@ -5,6 +5,7 @@ import tiktoken
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from mcp.server.fastmcp.prompts import base
 from mcp.types import TextContent
+from ulid import ULID
 
 from agent_memory_server import long_term_memory, working_memory
 from agent_memory_server.auth import UserInfo, get_current_user
@@ -16,6 +17,7 @@ from agent_memory_server.logging import get_logger
 from agent_memory_server.models import (
     AckResponse,
     CreateMemoryRecordRequest,
+    CreateSummaryViewRequest,
     EditMemoryRecordRequest,
     GetSessionsQuery,
     MemoryMessage,
@@ -24,14 +26,30 @@ from agent_memory_server.models import (
     MemoryRecord,
     MemoryRecordResultsResponse,
     ModelNameLiteral,
+    RunSummaryViewPartitionRequest,
+    RunSummaryViewRequest,
     SearchRequest,
     SessionListResponse,
+    SummaryView,
+    SummaryViewPartitionResult,
     SystemMessage,
+    Task,
+    TaskStatusEnum,
+    TaskTypeEnum,
     UpdateWorkingMemory,
     WorkingMemory,
     WorkingMemoryResponse,
 )
 from agent_memory_server.summarization import _incremental_summary
+from agent_memory_server.summary_views import (
+    get_summary_view as get_summary_view_config,
+    list_partition_results,
+    list_summary_views,
+    save_partition_result,
+    save_summary_view,
+    summarize_partition_for_view,
+)
+from agent_memory_server.tasks import create_task, get_task
 from agent_memory_server.utils.redis import get_redis_conn
 
 
@@ -1030,3 +1048,232 @@ async def memory_prompt(
     )
 
     return MemoryPromptResponse(messages=_messages)
+
+
+def _validate_summary_view_keys(payload: CreateSummaryViewRequest) -> None:
+    """Validate group_by and filter keys for a SummaryView.
+
+    For v1 we explicitly restrict these keys to a small, known set so we can
+    implement execution safely. We also currently only support long-term
+    memory as the source for SummaryViews.
+    """
+
+    if payload.source != "long_term":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "SummaryView.source must be 'long_term' for now; "
+                "'working_memory' is not yet supported."
+            ),
+        )
+
+    allowed_group_by = {"user_id", "namespace", "session_id", "memory_type"}
+    allowed_filters = {
+        "user_id",
+        "namespace",
+        "session_id",
+        "memory_type",
+    }
+
+    invalid_group = [k for k in payload.group_by if k not in allowed_group_by]
+    if invalid_group:
+        raise HTTPException(
+            status_code=400,
+            detail=("Unsupported group_by fields: " + ", ".join(sorted(invalid_group))),
+        )
+
+    invalid_filters = [k for k in payload.filters if k not in allowed_filters]
+    if invalid_filters:
+        raise HTTPException(
+            status_code=400,
+            detail=("Unsupported filter fields: " + ", ".join(sorted(invalid_filters))),
+        )
+
+
+@router.post("/v1/summary-views", response_model=SummaryView)
+async def create_summary_view(
+    payload: CreateSummaryViewRequest,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Create a new SummaryView configuration.
+
+    The server assigns an ID; the configuration can then be run on-demand or
+    by background workers.
+    """
+
+    _validate_summary_view_keys(payload)
+
+    view = SummaryView(
+        id=str(ULID()),
+        name=payload.name,
+        source=payload.source,
+        group_by=payload.group_by,
+        filters=payload.filters,
+        time_window_days=payload.time_window_days,
+        continuous=payload.continuous,
+        prompt=payload.prompt,
+        model_name=payload.model_name,
+    )
+
+    await save_summary_view(view)
+    return view
+
+
+@router.get("/v1/summary-views", response_model=list[SummaryView])
+async def list_summary_views_endpoint(
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """List all registered SummaryViews.
+
+    Filtering by source/continuous can be added later if needed.
+    """
+
+    return await list_summary_views()
+
+
+@router.get("/v1/summary-views/{view_id}", response_model=SummaryView)
+async def get_summary_view(
+    view_id: str,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Get a SummaryView configuration by ID."""
+
+    view = await get_summary_view_config(view_id)
+    if view is None:
+        raise HTTPException(status_code=404, detail=f"SummaryView {view_id} not found")
+    return view
+
+
+@router.delete("/v1/summary-views/{view_id}", response_model=AckResponse)
+async def delete_summary_view_endpoint(
+    view_id: str,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Delete a SummaryView configuration.
+
+    Stored partition summaries are left as-is for now.
+    """
+
+    from agent_memory_server.summary_views import delete_summary_view
+
+    await delete_summary_view(view_id)
+    return AckResponse(status="ok")
+
+
+@router.post(
+    "/v1/summary-views/{view_id}/partitions/run",
+    response_model=SummaryViewPartitionResult,
+)
+async def run_summary_view_partition(
+    view_id: str,
+    payload: RunSummaryViewPartitionRequest,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Synchronously compute a summary for a single partition of a view.
+
+    For long-term memory views this will query the underlying memories
+    and run a real summarization. For other sources it currently returns
+    a placeholder summary.
+    """
+
+    view = await get_summary_view_config(view_id)
+    if view is None:
+        raise HTTPException(status_code=404, detail=f"SummaryView {view_id} not found")
+
+    # Ensure the provided group keys match the view's group_by definition.
+    group_keys = set(payload.group.keys())
+    expected_keys = set(view.group_by)
+    if group_keys != expected_keys:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"group keys {sorted(group_keys)} must exactly match "
+                f"view.group_by {sorted(expected_keys)}"
+            ),
+        )
+
+    result = await summarize_partition_for_view(view, payload.group)
+    # Persist the result so it appears in materialized listings.
+    await save_partition_result(result)
+    return result
+
+
+@router.get(
+    "/v1/summary-views/{view_id}/partitions",
+    response_model=list[SummaryViewPartitionResult],
+)
+async def list_summary_view_partitions(
+    view_id: str,
+    user_id: str | None = None,
+    namespace: str | None = None,
+    session_id: str | None = None,
+    memory_type: str | None = None,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """List materialized partition summaries for a SummaryView.
+
+    This does not trigger recomputation; it simply reads stored
+    SummaryViewPartitionResult entries from Redis. Optional query
+    parameters filter by group fields when present.
+    """
+
+    view = await get_summary_view_config(view_id)
+    if view is None:
+        raise HTTPException(status_code=404, detail=f"SummaryView {view_id} not found")
+
+    group_filter: dict[str, str] = {}
+    if user_id is not None:
+        group_filter["user_id"] = user_id
+    if namespace is not None:
+        group_filter["namespace"] = namespace
+    if session_id is not None:
+        group_filter["session_id"] = session_id
+    if memory_type is not None:
+        group_filter["memory_type"] = memory_type
+
+    return await list_partition_results(view_id, group_filter or None)
+
+
+@router.post("/v1/summary-views/{view_id}/run", response_model=Task)
+async def run_summary_view_full(
+    view_id: str,
+    payload: RunSummaryViewRequest,
+    background_tasks: HybridBackgroundTasks,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Trigger an asynchronous full recompute of all partitions for a view.
+
+    Returns a Task that can be polled for status. The actual work is
+    performed by a Docket worker running refresh_summary_view.
+    """
+
+    view = await get_summary_view_config(view_id)
+    if view is None:
+        raise HTTPException(status_code=404, detail=f"SummaryView {view_id} not found")
+
+    task_id = payload.task_id or str(ULID())
+    task = Task(
+        id=task_id,
+        type=TaskTypeEnum.SUMMARY_VIEW_FULL_RUN,
+        status=TaskStatusEnum.PENDING,
+        view_id=view_id,
+    )
+    await create_task(task)
+
+    from agent_memory_server.summary_views import refresh_summary_view
+
+    background_tasks.add_task(refresh_summary_view, view_id=view_id, task_id=task_id)
+    return task
+
+
+@router.get("/v1/tasks/{task_id}", response_model=Task)
+async def get_task_status(
+    task_id: str,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Get the status of a background Task by ID."""
+
+    task = await get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+    return task

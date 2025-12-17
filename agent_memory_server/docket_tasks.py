@@ -21,6 +21,10 @@ from agent_memory_server.long_term_memory import (
     update_last_accessed,
 )
 from agent_memory_server.summarization import summarize_session
+from agent_memory_server.summary_views import (
+    periodic_refresh_summary_views,
+    refresh_summary_view,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -38,6 +42,8 @@ task_collection = [
     forget_long_term_memories,
     periodic_forget_long_term_memories,
     update_last_accessed,
+    refresh_summary_view,
+    periodic_refresh_summary_views,
 ]
 
 

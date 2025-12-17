@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from agent_memory_client.models import ClientMemoryRecord
 from mcp.server.fastmcp.prompts import base
-from mcp.types import AudioContent, EmbeddedResource, ImageContent, TextContent
+from mcp.types import TextContent
 from pydantic import BaseModel, Field
 from ulid import ULID
 
@@ -676,7 +676,7 @@ class SystemMessage(BaseModel):
     """A system message"""
 
     role: Literal["system"] = "system"
-    content: str | TextContent | ImageContent | AudioContent | EmbeddedResource
+    content: str | TextContent
 
 
 class UserMessage(base.Message):
@@ -732,4 +732,223 @@ class EditMemoryRecordRequest(BaseModel):
     )
     event_date: datetime | None = Field(
         default=None, description="Updated event date for episodic memories"
+    )
+
+
+class TaskStatusEnum(str, Enum):
+    """Status values for background tasks exposed to clients."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCESS = "success"
+    FAILED = "failed"
+
+
+class TaskTypeEnum(str, Enum):
+    """Type of background task.
+
+    We start with summary view refreshes but keep this extensible.
+    """
+
+    SUMMARY_VIEW_FULL_RUN = "summary_view_full_run"
+
+
+class Task(BaseModel):
+    """Client-visible background task tracked in Redis as JSON.
+
+    These tasks represent long-running operations such as a full recompute
+    of all partitions for a SummaryView.
+    """
+
+    id: str = Field(description="Unique task identifier (client or server generated)")
+    type: TaskTypeEnum = Field(
+        description="Type of task, e.g. summary_view_full_run",
+    )
+    status: TaskStatusEnum = Field(
+        default=TaskStatusEnum.PENDING,
+        description="Current task status",
+    )
+    view_id: str | None = Field(
+        default=None,
+        description="Associated SummaryView ID, if applicable",
+    )
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="When the task record was created",
+    )
+    started_at: datetime | None = Field(
+        default=None,
+        description="When execution of the task actually started",
+    )
+    completed_at: datetime | None = Field(
+        default=None,
+        description="When execution of the task finished (success or failure)",
+    )
+    error_message: str | None = Field(
+        default=None,
+        description="Error message if the task failed",
+    )
+
+
+class SummaryView(BaseModel):
+    """Configuration for a summary view over memories.
+
+    A SummaryView fully specifies what pool of memories to summarize and how
+    to partition and filter them, so it can be run on-demand or by a
+    background worker without additional runtime parameters.
+    """
+
+    id: str = Field(description="Unique identifier for the summary view")
+    name: str | None = Field(
+        default=None,
+        description="Optional human-readable name for the view",
+    )
+    source: Literal["long_term", "working_memory"] = Field(
+        description=(
+            "Memory source to summarize. Currently only 'long_term' is "
+            "supported; 'working_memory' is reserved for future use."
+        ),
+    )
+    group_by: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Fields used to partition summaries (e.g. ['user_id'], "
+            "['user_id', 'namespace'])."
+        ),
+    )
+    filters: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Static filters applied to every run (e.g. memory_type, namespace). "
+            "Only a small, known set of keys is supported in v1."
+        ),
+    )
+    time_window_days: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "If set, each run uses now() - time_window_days as a cutoff "
+            "for eligible memories."
+        ),
+    )
+    continuous: bool = Field(
+        default=False,
+        description=(
+            "If true, background workers periodically refresh all partitions "
+            "for this view."
+        ),
+    )
+    prompt: str | None = Field(
+        default=None,
+        description=(
+            "Optional custom summarization instructions. If omitted, a "
+            "server-defined default prompt is used."
+        ),
+    )
+    model_name: str | None = Field(
+        default=None,
+        description=(
+            "Optional model override for summarization. Defaults to a fast "
+            "model from settings when not provided."
+        ),
+    )
+
+
+class SummaryViewPartitionResult(BaseModel):
+    """Result of summarizing one partition of a SummaryView.
+
+    A partition is defined by a concrete combination of the view's
+    group_by fields, e.g. {"user_id": "alice"} or
+    {"user_id": "alice", "namespace": "chat"}.
+    """
+
+    view_id: str = Field(description="ID of the SummaryView that produced this result")
+    group: dict[str, str] = Field(
+        description="Concrete values for the view's group_by fields",
+    )
+    summary: str = Field(description="Summarized text for this partition")
+    memory_count: int = Field(
+        ge=0,
+        description="Number of memories that contributed to this summary",
+    )
+    computed_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="When this summary was computed",
+    )
+
+
+class CreateSummaryViewRequest(BaseModel):
+    """Payload for creating a new SummaryView.
+
+    Same fields as SummaryView except for the server-assigned id.
+    """
+
+    name: str | None = Field(
+        default=None,
+        description="Optional human-readable name for the view",
+    )
+    source: Literal["long_term", "working_memory"] = Field(
+        description="Memory source to summarize: long-term or working memory",
+    )
+    group_by: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Fields used to partition summaries (e.g. ['user_id'], "
+            "['user_id', 'namespace'])."
+        ),
+    )
+    filters: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Static filters applied to every run (e.g. memory_type, namespace). "
+            "Only a small, known set of keys is supported in v1."
+        ),
+    )
+    time_window_days: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "If set, each run uses now() - time_window_days as a cutoff "
+            "for eligible memories."
+        ),
+    )
+    continuous: bool = Field(
+        default=False,
+        description=(
+            "If true, background workers periodically refresh all partitions "
+            "for this view."
+        ),
+    )
+    prompt: str | None = Field(
+        default=None,
+        description=(
+            "Optional custom summarization instructions. If omitted, a "
+            "server-defined default prompt is used."
+        ),
+    )
+    model_name: str | None = Field(
+        default=None,
+        description=(
+            "Optional model override for summarization. Defaults to a fast "
+            "model from settings when not provided."
+        ),
+    )
+
+
+class RunSummaryViewPartitionRequest(BaseModel):
+    """Request body for running a single partition of a SummaryView."""
+
+    group: dict[str, str] = Field(
+        description="Concrete values for this view's group_by fields",
+    )
+
+
+class RunSummaryViewRequest(BaseModel):
+    """Request body for triggering a full SummaryView run as a Task."""
+
+    task_id: str | None = Field(
+        default=None,
+        description=(
+            "Optional client-provided task ID. If omitted, the server " "generates one."
+        ),
     )
