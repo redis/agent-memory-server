@@ -235,3 +235,4 @@ libs/redis/docs/.Trash*
 .claude
 TASK_MEMORY.md
 *.code-workspace
+/agent-memory-client/agent-memory-client-java/.gradle/
