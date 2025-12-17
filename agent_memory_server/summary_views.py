@@ -40,6 +40,10 @@ logger = logging.getLogger(__name__)
 
 _SUMMARY_VIEW_INDEX_KEY = "summary_view:index"
 
+# Conservative cap on how many memories we inline into a single LLM prompt.
+# We still report the full memory_count separately.
+_MAX_MEMORIES_FOR_LLM_PROMPT = 200
+
 
 def _config_key(view_id: str) -> str:
     return f"summary_view:{view_id}:config"
@@ -307,16 +311,52 @@ async def summarize_partition_long_term(
         )
         instructions = view.prompt or default_instructions
 
-        memories_text = "\n".join(f"- {m.text}" for m in memories)
+        # Avoid constructing an excessively large prompt when many memories
+        # are present in a partition. We cap the memories used for the prompt
+        # but still report the full memory_count below.
+        memories_for_prompt = memories[:_MAX_MEMORIES_FOR_LLM_PROMPT]
+        memories_text = "\n".join(f"- {m.text}" for m in memories_for_prompt)
+        if len(memories) > _MAX_MEMORIES_FOR_LLM_PROMPT:
+            memories_text += (
+                f"\n\n[Truncated to first {_MAX_MEMORIES_FOR_LLM_PROMPT} "
+                f"memories out of {len(memories)}]"
+            )
+
         prompt = (
             f"{instructions}\n\n"
             f"GROUP: {json.dumps(group, sort_keys=True)}\n\n"
             f"MEMORIES:\n{memories_text}\n\nSUMMARY:"
         )
 
-        # We use the same interface pattern as other summarization helpers.
-        response = await client.create_chat_completion(model_name, prompt)
-        summary_text = response.choices[0].message.content
+        # We use the same interface pattern as other summarization helpers,
+        # but add minimal defensive checks around the response structure.
+        try:
+            response = await client.create_chat_completion(model_name, prompt)
+            choices = getattr(response, "choices", None) or []
+            content = None
+            if choices:
+                first_message = getattr(choices[0], "message", None)
+                content = getattr(first_message, "content", None)
+        except Exception:
+            logger.exception(
+                "Error calling summarization model %s for SummaryView %s group %r",
+                model_name,
+                view.id,
+                group,
+            )
+            content = None
+
+        if not content:
+            logger.warning(
+                "Summarization model %s returned empty response for SummaryView %s "
+                "group %r; using fallback text.",
+                model_name,
+                view.id,
+                group,
+            )
+            summary_text = "No summary could be generated for this partition."
+        else:
+            summary_text = content
 
     return SummaryViewPartitionResult(
         view_id=view.id,

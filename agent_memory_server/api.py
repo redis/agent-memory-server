@@ -2,7 +2,7 @@ import re
 from typing import Any
 
 import tiktoken
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from mcp.server.fastmcp.prompts import base
 from mcp.types import TextContent
 from ulid import ULID
@@ -470,39 +470,28 @@ async def get_working_memory(
     return WorkingMemoryResponse(**working_mem_data)
 
 
-@router.put("/v1/working-memory/{session_id}", response_model=WorkingMemoryResponse)
-async def put_working_memory(
+async def put_working_memory_core(
     session_id: str,
     memory: UpdateWorkingMemory,
     background_tasks: HybridBackgroundTasks,
     model_name: ModelNameLiteral | None = None,
     context_window_max: int | None = None,
-    current_user: UserInfo = Depends(get_current_user),
-):
+) -> WorkingMemoryResponse:
     """
-    Set working memory for a session. Replaces existing working memory.
+    Core implementation of put_working_memory.
 
-    The session_id comes from the URL path, not the request body.
-    If the token count exceeds the context window threshold, messages will be summarized
-    immediately and the updated memory state returned to the client.
-
-    NOTE on context_percentage_* fields:
-    The response includes `context_percentage_total_used` and `context_percentage_until_summarization`
-    fields that show token usage. These fields will be `null` unless you provide either:
-    - `model_name` query parameter (e.g., `?model_name=gpt-4o-mini`)
-    - `context_window_max` query parameter (e.g., `?context_window_max=500`)
+    This function contains the business logic for setting working memory and can be
+    called from both the REST API endpoint and MCP tools.
 
     Args:
-        session_id: The session ID (from URL path)
-        memory: Working memory data to save (session_id not required in body)
+        session_id: The session ID
+        memory: Working memory data to save
+        background_tasks: Background tasks handler
         model_name: The client's LLM model name for context window determination
-        context_window_max: Direct specification of context window max tokens (overrides model_name)
-        background_tasks: DocketBackgroundTasks instance (injected automatically)
+        context_window_max: Direct specification of context window max tokens
 
     Returns:
-        Updated working memory (potentially with summary if tokens were condensed).
-        Includes context_percentage_total_used and context_percentage_until_summarization
-        if model information is provided.
+        Updated working memory response
     """
     redis = await get_redis_conn()
 
@@ -573,6 +562,61 @@ async def put_working_memory(
         until_summarization_percentage
     )
     return WorkingMemoryResponse(**updated_memory_data)
+
+
+@router.put("/v1/working-memory/{session_id}", response_model=WorkingMemoryResponse)
+async def put_working_memory(
+    session_id: str,
+    memory: UpdateWorkingMemory,
+    background_tasks: HybridBackgroundTasks,
+    response: Response,
+    model_name: ModelNameLiteral | None = None,
+    context_window_max: int | None = None,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """
+    Set working memory for a session. Replaces existing working memory.
+
+    The session_id comes from the URL path, not the request body.
+    If the token count exceeds the context window threshold, messages will be summarized
+    immediately and the updated memory state returned to the client.
+
+    NOTE on context_percentage_* fields:
+    The response includes `context_percentage_total_used` and `context_percentage_until_summarization`
+    fields that show token usage. These fields will be `null` unless you provide either:
+    - `model_name` query parameter (e.g., `?model_name=gpt-4o-mini`)
+    - `context_window_max` query parameter (e.g., `?context_window_max=500`)
+
+    Args:
+        session_id: The session ID (from URL path)
+        memory: Working memory data to save (session_id not required in body)
+        model_name: The client's LLM model name for context window determination
+        context_window_max: Direct specification of context window max tokens (overrides model_name)
+        background_tasks: DocketBackgroundTasks instance (injected automatically)
+        response: FastAPI Response object for setting headers
+
+    Returns:
+        Updated working memory (potentially with summary if tokens were condensed).
+        Includes context_percentage_total_used and context_percentage_until_summarization
+        if model information is provided.
+    """
+    # Check if any messages are missing created_at timestamps and add deprecation header
+    messages_missing_timestamp = any(
+        not getattr(msg, "_created_at_was_provided", True) for msg in memory.messages
+    )
+    if messages_missing_timestamp:
+        response.headers["X-Deprecation-Warning"] = (
+            "messages[].created_at will become required in the next major version. "
+            "Please provide timestamps for all messages."
+        )
+
+    return await put_working_memory_core(
+        session_id=session_id,
+        memory=memory,
+        background_tasks=background_tasks,
+        model_name=model_name,
+        context_window_max=context_window_max,
+    )
 
 
 @router.delete("/v1/working-memory/{session_id}", response_model=AckResponse)

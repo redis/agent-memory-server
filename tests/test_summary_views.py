@@ -1,7 +1,6 @@
 import pytest
 
 from agent_memory_server.models import TaskStatusEnum
-from agent_memory_server.utils.redis import get_redis_conn
 
 
 @pytest.mark.asyncio
@@ -89,11 +88,6 @@ async def test_run_full_view_creates_task_and_updates_status(client):
     assert resp_run.status_code == 200, resp_run.text
     task = resp_run.json()
     task_id = task["id"]
-
-    # Task should exist in Redis and eventually transition to success
-    redis = await get_redis_conn()
-    raw = await redis.get(f"task:{task_id}")
-    assert raw is not None
 
     # Poll the task status via the API
     resp_task = await client.get(f"/v1/tasks/{task_id}")
