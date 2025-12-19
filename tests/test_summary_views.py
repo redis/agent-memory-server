@@ -1,6 +1,6 @@
 import pytest
 
-from agent_memory_server.models import TaskStatusEnum
+from agent_memory_server.models import MemoryRecord, SummaryView, TaskStatusEnum
 
 
 @pytest.mark.asyncio
@@ -163,3 +163,82 @@ async def test_run_full_view_creates_task_and_updates_status(client):
         TaskStatusEnum.RUNNING,
         TaskStatusEnum.SUCCESS,
     }
+
+
+@pytest.mark.asyncio
+async def test_fetch_long_term_memories_for_view_paginates(monkeypatch):
+    """_fetch_long_term_memories_for_view should paginate through results.
+
+    We monkeypatch long_term_memory.search_long_term_memories to return
+    deterministic pages and verify that multiple calls are made when the
+    number of results exceeds the configured page_size.
+    """
+
+    from agent_memory_server import summary_views
+
+    calls: list[tuple[int, int]] = []
+
+    class FakeResults:
+        def __init__(self, memories: list[MemoryRecord]):
+            self.memories = memories
+
+    async def fake_search_long_term_memories(
+        *, text: str, limit: int, offset: int, **_: object
+    ):  # type: ignore[override]
+        # Record the (limit, offset) pair for assertions.
+        calls.append((limit, offset))
+
+        # Pretend we have 2500 total memories; each page returns `limit`
+        # until we reach that total.
+        total = 2500
+        remaining = max(total - offset, 0)
+        batch_size = min(limit, remaining)
+
+        memories = [
+            MemoryRecord(
+                id=f"mem-{offset + i}",
+                text=f"memory {offset + i}",
+                session_id=None,
+                user_id=None,
+                namespace=None,
+            )
+            for i in range(batch_size)
+        ]
+        return FakeResults(memories)
+
+    monkeypatch.setattr(
+        summary_views.long_term_memory,
+        "search_long_term_memories",
+        fake_search_long_term_memories,
+    )
+
+    view = SummaryView(
+        id="view-1",
+        name="test",
+        source="long_term",
+        group_by=["user_id"],
+        filters={},
+        time_window_days=None,
+        continuous=False,
+        prompt=None,
+        model_name=None,
+    )
+
+    # Use a small page_size so multiple pages are required; also set
+    # an overall_limit below the total so we exercise that branch.
+    memories = await summary_views._fetch_long_term_memories_for_view(
+        view,
+        extra_group=None,
+        page_size=1000,
+        overall_limit=2100,
+    )
+
+    # We should have respected the overall_limit.
+    assert len(memories) == 2100
+
+    # And we should have made at least two paginated calls with advancing
+    # offsets.
+    assert calls[0] == (1000, 0)
+    assert calls[1] == (1000, 1000)
+    # The final page only needs 100 records to reach 2100.
+    assert calls[2] == (100, 2000)

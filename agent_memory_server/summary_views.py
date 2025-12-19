@@ -225,35 +225,58 @@ def _build_long_term_filters_for_view(
 async def _fetch_long_term_memories_for_view(
     view: SummaryView,
     extra_group: dict[str, str] | None = None,
-    limit: int = 1000,
+    page_size: int = 1000,
+    overall_limit: int | None = None,
 ) -> list[MemoryRecord]:
     """Fetch long-term memories matching a SummaryView and optional group.
 
     Uses the filter-only listing path of search_long_term_memories by
-    providing an empty text query.
+    providing an empty text query and paginating through results.
+
+    If overall_limit is provided, it serves as an upper bound on the total
+    number of memories returned; otherwise, all available pages are fetched.
     """
+
+    if page_size <= 0:
+        raise ValueError("page_size must be positive")
 
     filters = _build_long_term_filters_for_view(view, extra_group)
 
-    results = await long_term_memory.search_long_term_memories(
-        text="",
-        limit=limit,
-        offset=0,
-        **filters,
-    )
-    memories = list(results.memories)
+    memories: list[MemoryRecord] = []
+    offset = 0
 
-    # If we hit the page limit, log a warning so potential truncation does
-    # not go unnoticed. We keep the single-page behavior for now to avoid
-    # unbounded scans but make it observable.
-    if len(memories) >= limit:
-        logger.warning(
-            "_fetch_long_term_memories_for_view fetched %d memories for view %s; "
-            "results may be truncated due to the current limit=%d.",
-            len(memories),
-            view.id,
-            limit,
+    while True:
+        # Respect an overall cap if provided
+        if overall_limit is not None:
+            remaining = overall_limit - len(memories)
+            if remaining <= 0:
+                break
+            current_limit = min(page_size, remaining)
+        else:
+            current_limit = page_size
+
+        results = await long_term_memory.search_long_term_memories(
+            text="",
+            limit=current_limit,
+            offset=offset,
+            **filters,
         )
+        batch = list(results.memories)
+        if not batch:
+            break
+
+        memories.extend(batch)
+
+        # If fewer results than requested were returned, we've reached the
+        # end of the result set.
+        if len(batch) < current_limit:
+            break
+
+        offset += len(batch)
+
+    # If we applied an overall limit, enforce it defensively here too.
+    if overall_limit is not None and len(memories) > overall_limit:
+        memories = memories[:overall_limit]
 
     return memories
 
