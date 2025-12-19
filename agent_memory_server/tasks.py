@@ -8,6 +8,11 @@ from agent_memory_server.utils.redis import get_redis_conn
 logger = logging.getLogger(__name__)
 
 
+# Tasks are operational metadata; we don't need to retain them forever.
+# Use a conservative TTL so Redis state cannot grow without bound.
+_TASK_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
+
+
 def _task_key(task_id: str) -> str:
     """Return the Redis key for a task JSON payload."""
 
@@ -21,7 +26,11 @@ async def create_task(task: Task) -> None:
     """
 
     redis = await get_redis_conn()
-    await redis.set(_task_key(task.id), task.model_dump_json())
+    await redis.set(
+        _task_key(task.id),
+        task.model_dump_json(),
+        ex=_TASK_TTL_SECONDS,
+    )
 
 
 async def get_task(task_id: str) -> Task | None:
@@ -87,4 +96,4 @@ async def update_task_status(
     if task.created_at is None:
         task.created_at = datetime.now(UTC)
 
-    await redis.set(key, task.model_dump_json())
+    await redis.set(key, task.model_dump_json(), ex=_TASK_TTL_SECONDS)

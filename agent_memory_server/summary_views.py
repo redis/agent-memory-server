@@ -1,9 +1,8 @@
-"""Helpers for SummaryView configs, stored results, and execution stubs.
+"""Helpers for SummaryView configs, stored results, and summarization logic.
 
-This module currently focuses on Redis JSON storage and key conventions.
-Execution logic for summarizing memories will be expanded in follow-up
-changes; for now, we provide minimal placeholder behavior so the API
-surface is wired end-to-end.
+This module implements the execution logic for summarizing long-term memory
+sources using LLMs, including Redis JSON storage, key conventions, and
+partitioned summary management so the API surface is wired end-to-end.
 """
 
 from __future__ import annotations
@@ -14,6 +13,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import tiktoken
 from docket import Perpetual
 
 from agent_memory_server import long_term_memory
@@ -57,7 +57,11 @@ def encode_partition_key(group: dict[str, str]) -> str:
     """Create a stable key representation from group_by values.
 
     Keys are sorted alphabetically so the same group always produces the
-    same identifier.
+    same identifier. The resulting string is treated as an opaque key –
+    we never parse it back into a dict. Because the allowed group_by
+    fields are a small fixed set without the '|' or '=' characters,
+    this encoding is stable and effectively collision-free for our use
+    case even if values contain those delimiters.
     """
 
     parts: list[str] = []
@@ -185,8 +189,13 @@ def _build_long_term_filters_for_view(
 
     filters: dict[str, Any] = {}
 
-    # Static filters from the view config
-    for key, value in view.filters.items():
+    def _apply_filter(key: str, value: str | Any) -> None:
+        """Apply a single filter mapping from a raw key/value pair.
+
+        Both static view.filters and extra_group values are coerced to str
+        for consistency.
+        """
+
         if key == "user_id":
             filters["user_id"] = UserId(eq=str(value))
         elif key == "namespace":
@@ -196,17 +205,14 @@ def _build_long_term_filters_for_view(
         elif key == "memory_type":
             filters["memory_type"] = MemoryType(eq=str(value))
 
+    # Static filters from the view config
+    for key, value in view.filters.items():
+        _apply_filter(key, value)
+
     # Group-specific filters
     if extra_group:
         for key, value in extra_group.items():
-            if key == "user_id":
-                filters["user_id"] = UserId(eq=value)
-            elif key == "namespace":
-                filters["namespace"] = Namespace(eq=value)
-            elif key == "session_id":
-                filters["session_id"] = SessionId(eq=value)
-            elif key == "memory_type":
-                filters["memory_type"] = MemoryType(eq=value)
+            _apply_filter(key, value)
 
     # Time window: apply to created_at for now
     if view.time_window_days is not None and view.time_window_days > 0:
@@ -235,7 +241,21 @@ async def _fetch_long_term_memories_for_view(
         offset=0,
         **filters,
     )
-    return list(results.memories)
+    memories = list(results.memories)
+
+    # If we hit the page limit, log a warning so potential truncation does
+    # not go unnoticed. We keep the single-page behavior for now to avoid
+    # unbounded scans but make it observable.
+    if len(memories) >= limit:
+        logger.warning(
+            "_fetch_long_term_memories_for_view fetched %d memories for view %s; "
+            "results may be truncated due to the current limit=%d.",
+            len(memories),
+            view.id,
+            limit,
+        )
+
+    return memories
 
 
 def _partition_memories_by_group(
@@ -262,6 +282,88 @@ def _partition_memories_by_group(
             partitions.setdefault(key, []).append(mem)
 
     return partitions
+
+
+def _build_long_term_summary_prompt(
+    view: SummaryView,
+    group: dict[str, str],
+    memories: list[MemoryRecord],
+    model_name: str,
+    instructions: str,
+) -> str:
+    """Build a token-aware prompt for long-term memory summarization.
+
+    Uses tiktoken and the model's configured context window to truncate the
+    inlined memories so the prompt stays within a safe fraction of the
+    context limit while still leaving room for the model's response.
+    """
+
+    # Import here to avoid circular imports at module load time.
+    from agent_memory_server.llms import get_model_config
+
+    encoding = tiktoken.get_encoding("cl100k_base")
+
+    model_config = get_model_config(model_name)
+    full_context_tokens = max(model_config.max_tokens, 1)
+
+    # Use the same summarization_threshold knob as working-memory
+    # summarization to control how much of the context window we devote
+    # to the prompt itself.
+    prompt_budget = int(full_context_tokens * settings.summarization_threshold)
+
+    # Reserve some space for the model's response and any overhead.
+    reserved_completion_tokens = min(4096, full_context_tokens // 10)
+    max_prompt_tokens = max(prompt_budget - reserved_completion_tokens, 1024)
+
+    base_prefix = (
+        f"{instructions}\n\n"
+        f"GROUP: {json.dumps(group, sort_keys=True)}\n\n"
+        "MEMORIES:\n"
+    )
+    base_tokens = len(encoding.encode(base_prefix))
+
+    remaining_tokens = max_prompt_tokens - base_tokens
+    if remaining_tokens <= 0:
+        return (
+            base_prefix
+            + "[Memories omitted due to token budget constraints.]\n\nSUMMARY:"
+        )
+
+    # Cap the size of each individual memory text we inline so that a
+    # single extremely long memory cannot dominate the prompt.
+    max_bullet_tokens = min(1024, full_context_tokens // 20)
+
+    bullet_lines: list[str] = []
+    for mem in memories[:_MAX_MEMORIES_FOR_LLM_PROMPT]:
+        text = mem.text or ""
+        bullet = f"- {text}"
+        bullet_tokens = len(encoding.encode(bullet))
+
+        if bullet_tokens > max_bullet_tokens:
+            # Roughly truncate very long memories by characters, then
+            # recompute tokens. This mirrors the approach used in
+            # agent_memory_server.summarization.
+            approx_chars = max_bullet_tokens * 4
+            text = text[:approx_chars]
+            bullet = f"- {text}"
+            bullet_tokens = len(encoding.encode(bullet))
+
+        if bullet_tokens > remaining_tokens:
+            break
+
+        bullet_lines.append(bullet)
+        remaining_tokens -= bullet_tokens
+
+    memories_text = "\n".join(bullet_lines)
+    total_memories = len(memories)
+    used_memories = len(bullet_lines)
+    if total_memories > used_memories:
+        memories_text += (
+            f"\n\n[Memories truncated to fit token budget: used {used_memories} "
+            f"of {total_memories} entries]"
+        )
+
+    return f"{base_prefix}{memories_text}\n\nSUMMARY:"
 
 
 async def summarize_partition_long_term(
@@ -303,7 +405,9 @@ async def summarize_partition_long_term(
         model_name = view.model_name or settings.fast_model
         client = await get_model_client(model_name)
 
-        # Build a simple prompt using either the view's prompt or a default.
+        # Build a prompt using either the view's prompt or a default, then
+        # construct a token-aware memories section based on the model's
+        # configured context window.
         default_instructions = (
             "You are a summarization assistant. Given a set of long-term "
             "memories, produce a concise summary that highlights key facts, "
@@ -311,21 +415,12 @@ async def summarize_partition_long_term(
         )
         instructions = view.prompt or default_instructions
 
-        # Avoid constructing an excessively large prompt when many memories
-        # are present in a partition. We cap the memories used for the prompt
-        # but still report the full memory_count below.
-        memories_for_prompt = memories[:_MAX_MEMORIES_FOR_LLM_PROMPT]
-        memories_text = "\n".join(f"- {m.text}" for m in memories_for_prompt)
-        if len(memories) > _MAX_MEMORIES_FOR_LLM_PROMPT:
-            memories_text += (
-                f"\n\n[Truncated to first {_MAX_MEMORIES_FOR_LLM_PROMPT} "
-                f"memories out of {len(memories)}]"
-            )
-
-        prompt = (
-            f"{instructions}\n\n"
-            f"GROUP: {json.dumps(group, sort_keys=True)}\n\n"
-            f"MEMORIES:\n{memories_text}\n\nSUMMARY:"
+        prompt = _build_long_term_summary_prompt(
+            view=view,
+            group=group,
+            memories=memories,
+            model_name=model_name,
+            instructions=instructions,
         )
 
         # We use the same interface pattern as other summarization helpers,
@@ -457,6 +552,9 @@ async def refresh_summary_view(view_id: str, task_id: str | None = None) -> None
                 completed_at=datetime.now(UTC),
             )
     except Exception as exc:  # noqa: BLE001
+        # We deliberately catch all exceptions here so that background workers
+        # never crash silently and any failure is reflected in the Task record
+        # as FAILED. The original error is logged with traceback above.
         logger.exception("Error refreshing SummaryView %s", view_id)
         if task_id is not None:
             await update_task_status(

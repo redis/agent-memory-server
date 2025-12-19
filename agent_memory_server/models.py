@@ -40,6 +40,9 @@ class MemoryTypeEnum(str, Enum):
 
 # These should match the keys in MODEL_CONFIGS
 ModelNameLiteral = Literal[
+    # OpenAI chat and reasoning models
+    "gpt-4.1",
+    "gpt-4.1-mini",
     "gpt-3.5-turbo",
     "gpt-3.5-turbo-16k",
     "gpt-4",
@@ -49,9 +52,15 @@ ModelNameLiteral = Literal[
     "o1",
     "o1-mini",
     "o3-mini",
+    "gpt-5-mini",
+    "gpt-5-nano",
+    "gpt-5.1-chat-latest",
+    "gpt-5.2-chat-latest",
+    # OpenAI embedding models
     "text-embedding-ada-002",
     "text-embedding-3-small",
     "text-embedding-3-large",
+    # Anthropic Claude 3.x family
     "claude-3-opus-20240229",
     "claude-3-sonnet-20240229",
     "claude-3-haiku-20240307",
@@ -63,6 +72,13 @@ ModelNameLiteral = Literal[
     "claude-3-5-sonnet-latest",
     "claude-3-5-haiku-latest",
     "claude-3-opus-latest",
+    # Anthropic Claude 4.5 family (direct API IDs and aliases)
+    "claude-sonnet-4-5-20250929",
+    "claude-haiku-4-5-20251001",
+    "claude-opus-4-5-20251101",
+    "claude-sonnet-4-5",
+    "claude-haiku-4-5",
+    "claude-opus-4-5",
 ]
 
 

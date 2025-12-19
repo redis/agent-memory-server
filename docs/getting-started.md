@@ -69,7 +69,7 @@ When configuring MCP-enabled apps (e.g., Claude Desktop), prefer `uvx` so the ap
 ```
 
 Notes:
-- API keys: Default models use OpenAI. Set `OPENAI_API_KEY`. To use Anthropic instead, set `ANTHROPIC_API_KEY` and also `GENERATION_MODEL` to an Anthropic model (e.g., `claude-3-5-haiku-20241022`).
+- API keys: Default models use OpenAI. Set `OPENAI_API_KEY`. To use Anthropic instead, set `ANTHROPIC_API_KEY` and also `GENERATION_MODEL` to an Anthropic model (e.g., `claude-3-5-haiku-20241022`). If you have access to GPT-5 models, you can instead set `GENERATION_MODEL` to `gpt-5.2-chat-latest`, `gpt-5.1-chat-latest`, `gpt-5-mini`, or `gpt-5-nano`.
 - Make sure your MCP host can find `uvx` (on its PATH or by using an absolute command path). macOS: `brew install uv`. If not on PATH, set `"command"` to an absolute path (e.g., `/opt/homebrew/bin/uvx` on Apple Silicon, `/usr/local/bin/uvx` on Intel macOS).
 - For production, remove `DISABLE_AUTH` and configure auth.
 
