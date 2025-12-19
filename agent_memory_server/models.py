@@ -1070,6 +1070,6 @@ class RunSummaryViewRequest(BaseModel):
     task_id: str | None = Field(
         default=None,
         description=(
-            "Optional client-provided task ID. If omitted, the server " "generates one."
+            "Optional client-provided task ID. If omitted, the server generates one."
         ),
     )
