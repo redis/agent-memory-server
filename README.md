@@ -1,9 +1,15 @@
+
+<div align=center>
+
 # Redis Agent Memory Server
 
-A memory layer for AI agents using Redis as the vector database.
+A memory layer for AI agents.
 
+  **[Documentation](https://redis.github.io/agent-memory-server/)** • **[GitHub](https://github.com/redis/agent-memory-server)** • **[Docker](https://hub.docker.com/r/redislabs/agent-memory-server)**
+
+</div>
+  
 ## Features
-
 - **Dual Interface**: REST API and Model Context Protocol (MCP) server
 - **Two-Tier Memory**: Working memory (session-scoped) and long-term memory (persistent)
 - **Configurable Memory Strategies**: Customize how memories are extracted (discrete, summary, preferences, custom)
