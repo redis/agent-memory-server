@@ -27,15 +27,16 @@ agent-memory api [OPTIONS]
 - `--port INTEGER`: Port to run the server on. (Default: value from `settings.port`, usually 8000)
 - `--host TEXT`: Host to run the server on. (Default: "0.0.0.0")
 - `--reload`: Enable auto-reload for development.
-- `--no-worker`: Use FastAPI background tasks instead of Docket workers. Ideal for development and testing.
+- `--task-backend [asyncio|docket]`: Background task backend. `docket` (default) uses Docket-based background workers (requires a running `agent-memory task-worker` for non-blocking tasks). `asyncio` runs tasks inline in the API process and does **not** require a separate worker.
+- `--no-worker` (**deprecated**): Backwards-compatible alias for `--task-backend=asyncio`. Maintained for older scripts; prefer `--task-backend`.
 
 **Examples:**
 
 ```bash
-# Development mode (no separate worker needed)
-agent-memory api --port 8080 --reload --no-worker
+# Development mode (no separate worker needed, asyncio backend)
+agent-memory api --port 8080 --reload --task-backend asyncio
 
-# Production mode (requires separate worker process)
+# Production mode (default Docket backend; requires separate worker process)
 agent-memory api --port 8080
 ```
 
@@ -51,22 +52,22 @@ agent-memory mcp [OPTIONS]
 
 - `--port INTEGER`: Port to run the MCP server on. (Default: value from `settings.mcp_port`, usually 9000)
 - `--mode [stdio|sse]`: Run the MCP server in stdio or SSE mode. (Default: stdio)
-- `--no-worker`: Use FastAPI background tasks instead of Docket workers. Ideal for development and testing.
+- `--task-backend [asyncio|docket]`: Background task backend. `asyncio` (default) runs tasks inline in the MCP process with no separate worker. `docket` sends tasks to a Docket queue, which requires running `agent-memory task-worker`.
 
 **Examples:**
 
 ```bash
-# Stdio mode (recommended for Claude Desktop) - automatically uses --no-worker
+# Stdio mode (recommended for Claude Desktop) - default asyncio backend
 agent-memory mcp
 
 # SSE mode for development (no separate worker needed)
-agent-memory mcp --mode sse --port 9001 --no-worker
+agent-memory mcp --mode sse --port 9001
 
 # SSE mode for production (requires separate worker process)
-agent-memory mcp --mode sse --port 9001
+agent-memory mcp --mode sse --port 9001 --task-backend docket
 ```
 
-**Note:** Stdio mode automatically disables Docket workers as they're not needed when Claude Desktop manages the process lifecycle.
+**Note:** Stdio mode is designed for tools like Claude Desktop and, by default, uses the asyncio backend (no worker). Use `--task-backend docket` if you want MCP to enqueue background work into a shared Docket worker.
 
 ### `schedule-task`
 

@@ -28,10 +28,10 @@ But you can also run these components via the CLI commands. Here's how you
 run the REST API server:
 
 ```bash
-# Development mode (no separate worker needed)
-uv run agent-memory api --no-worker
+# Development mode (no separate worker needed, asyncio backend)
+uv run agent-memory api --task-backend asyncio
 
-# Production mode (requires separate worker process)
+# Production mode (default Docket backend; requires separate worker process)
 uv run agent-memory api
 ```
 
@@ -42,11 +42,37 @@ Or the MCP server:
 uv run agent-memory mcp
 
 # SSE mode for development
-uv run agent-memory mcp --mode sse --no-worker
-
-# SSE mode for production
 uv run agent-memory mcp --mode sse
+
+# SSE mode for production (use Docket backend)
+uv run agent-memory mcp --mode sse --task-backend docket
 ```
+
+### Using uvx in MCP clients
+
+When configuring MCP-enabled apps (e.g., Claude Desktop), prefer `uvx` so the app can run the server without a local checkout:
+
+```json
+{
+  "mcpServers": {
+    "memory": {
+      "command": "uvx",
+      "args": ["--from", "agent-memory-server", "agent-memory", "mcp"],
+      "env": {
+        "DISABLE_AUTH": "true",
+        "REDIS_URL": "redis://localhost:6379",
+        "OPENAI_API_KEY": "<your-openai-key>"
+      }
+    }
+  }
+}
+```
+
+Notes:
+- API keys: Default models use OpenAI. Set `OPENAI_API_KEY`. To use Anthropic instead, set `ANTHROPIC_API_KEY` and also `GENERATION_MODEL` to an Anthropic model (e.g., `claude-3-5-haiku-20241022`).
+- Make sure your MCP host can find `uvx` (on its PATH or by using an absolute command path). macOS: `brew install uv`. If not on PATH, set `"command"` to an absolute path (e.g., `/opt/homebrew/bin/uvx` on Apple Silicon, `/usr/local/bin/uvx` on Intel macOS).
+- For production, remove `DISABLE_AUTH` and configure auth.
+
 
 **For production deployments**, you'll need to run a separate worker process:
 
@@ -54,7 +80,7 @@ uv run agent-memory mcp --mode sse
 uv run agent-memory task-worker
 ```
 
-**For development**, use the `--no-worker` flag to run tasks inline without needing a separate worker process.
+**For development**, the default `--task-backend=asyncio` on the `mcp` command runs tasks inline without needing a separate worker process. For the `api` command, use `--task-backend=asyncio` explicitly when you want single-process behavior.
 
 **NOTE:** With uv, prefix the command with `uv`, e.g.: `uv run agent-memory --mode sse`. If you installed from source, you'll probably need to add `--directory` to tell uv where to find the code: `uv run --directory <path/to/checkout> run agent-memory --mode stdio`.
 

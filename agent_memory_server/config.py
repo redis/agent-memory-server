@@ -235,6 +235,7 @@ class Settings(BaseSettings):
     # Cloud
     ## Cloud region
     region_name: str | None = None
+
     ## AWS Cloud credentials
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
@@ -312,6 +313,20 @@ class Settings(BaseSettings):
     summarization_threshold: float = (
         0.7  # Fraction of context window that triggers summarization
     )
+
+    # Message timestamp validation settings
+    # If true, reject messages without created_at timestamp.
+    # If false (default), auto-generate timestamp with deprecation warning.
+    require_message_timestamps: bool = False
+    # Maximum allowed clock skew for future timestamp validation (in seconds)
+    max_future_timestamp_seconds: int = 300  # 5 minutes
+
+    # Working memory migration settings
+    # Set to True to skip backward compatibility checks for old string-format keys.
+    # Use this after running 'agent-memory migrate-working-memory' or for fresh installs.
+    # When True, the server assumes all working memory keys are in JSON format,
+    # skipping the startup scan and per-read type checks for better performance.
+    working_memory_migration_complete: bool = False
 
     # Query optimization settings
     query_optimization_prompt_template: str = """Transform this natural language query into an optimized version for semantic search. The goal is to make it more effective for finding semantically similar content while preserving the original intent.

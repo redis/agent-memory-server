@@ -45,14 +45,32 @@ The primary use of working memory is storing conversation messages to maintain c
 
 ```python
 import ulid
+from datetime import datetime, UTC
 
 # Store conversation messages for context continuity
+# IMPORTANT: Provide created_at timestamps that reflect actual message creation times
+# In real usage, each message would have its own timestamp from when it was created
 working_memory = WorkingMemory(
     session_id="chat_123",
     messages=[
-        MemoryMessage(role="user", content="I'm planning a trip to Paris next month", id=ulid.ULID()),
-        MemoryMessage(role="assistant", content="That sounds exciting! What type of activities are you interested in?", id=ulid.ULID()),
-        MemoryMessage(role="user", content="I love museums and good food", id=ulid.ULID())
+        MemoryMessage(
+            role="user",
+            content="I'm planning a trip to Paris next month",
+            id=ulid.ULID(),
+            created_at=datetime.fromisoformat("2024-01-15T10:30:00+00:00")
+        ),
+        MemoryMessage(
+            role="assistant",
+            content="That sounds exciting! What type of activities are you interested in?",
+            id=ulid.ULID(),
+            created_at=datetime.fromisoformat("2024-01-15T10:30:05+00:00")
+        ),
+        MemoryMessage(
+            role="user",
+            content="I love museums and good food",
+            id=ulid.ULID(),
+            created_at=datetime.fromisoformat("2024-01-15T10:30:30+00:00")
+        )
     ]
 )
 
@@ -62,6 +80,15 @@ working_memory = WorkingMemory(
 # - User likes museums and food
 # This enables coherent, context-aware responses
 ```
+
+> **⚠️ Important: Message Timestamps**
+>
+> Always provide `created_at` timestamps for your messages. This ensures:
+> - Accurate message ordering by recency
+> - Correct temporal context when promoting to long-term memory
+> - Proper recency scoring in semantic search
+>
+> If you omit `created_at`, the server will auto-generate it at deserialization time and log a deprecation warning. In a future major version, `created_at` will become required.
 
 ### 2. Session-Specific Data
 

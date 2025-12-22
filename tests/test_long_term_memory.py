@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from agent_memory_server.filters import SessionId
+from agent_memory_server.filters import Namespace, SessionId
 from agent_memory_server.long_term_memory import (
     compact_long_term_memories,
     count_long_term_memories,
@@ -883,6 +883,96 @@ class TestLongTermMemoryIntegration:
             # Re-raise to see the full traceback
             raise
 
+    @pytest.mark.asyncio
+    async def test_search_with_empty_query_returns_all_memories(
+        self, async_redis_client
+    ):
+        """Test that an empty query returns all memories (filter-only search)."""
+        # Create distinct memories
+        long_term_memories = [
+            MemoryRecord(
+                id="empty-query-test-1",
+                text="The Eiffel Tower is in Paris",
+                session_id="empty-query-session",
+                namespace="empty-query-ns",
+            ),
+            MemoryRecord(
+                id="empty-query-test-2",
+                text="Mount Everest is the tallest mountain",
+                session_id="empty-query-session",
+                namespace="empty-query-ns",
+            ),
+            MemoryRecord(
+                id="empty-query-test-3",
+                text="The Pacific Ocean is the largest ocean",
+                session_id="empty-query-session",
+                namespace="empty-query-ns",
+            ),
+        ]
+
+        # Index memories
+        await index_long_term_memories(
+            long_term_memories,
+            redis_client=async_redis_client,
+        )
+
+        # Search with empty query - should return all memories for this session/namespace
+        results = await search_long_term_memories(
+            text="",
+            session_id=SessionId(eq="empty-query-session"),
+            namespace=Namespace(eq="empty-query-ns"),
+            limit=10,
+        )
+
+        # Verify we get all 3 memories back
+        assert results.total == 3, f"Expected 3 results, got {results.total}"
+        assert len(results.memories) == 3
+
+        # Verify all our memories are present (order may vary)
+        result_ids = {m.id for m in results.memories}
+        expected_ids = {
+            "empty-query-test-1",
+            "empty-query-test-2",
+            "empty-query-test-3",
+        }
+        assert result_ids == expected_ids, f"Expected {expected_ids}, got {result_ids}"
+
+    @pytest.mark.asyncio
+    async def test_search_with_whitespace_query_returns_all_memories(
+        self, async_redis_client
+    ):
+        """Test that a whitespace-only query returns all memories (filter-only search)."""
+        long_term_memories = [
+            MemoryRecord(
+                id="whitespace-query-test-1",
+                text="Apple makes iPhones",
+                session_id="whitespace-query-session",
+                namespace="whitespace-query-ns",
+            ),
+            MemoryRecord(
+                id="whitespace-query-test-2",
+                text="Google makes Android",
+                session_id="whitespace-query-session",
+                namespace="whitespace-query-ns",
+            ),
+        ]
+
+        await index_long_term_memories(
+            long_term_memories,
+            redis_client=async_redis_client,
+        )
+
+        # Search with whitespace-only query
+        results = await search_long_term_memories(
+            text="   ",
+            session_id=SessionId(eq="whitespace-query-session"),
+            namespace=Namespace(eq="whitespace-query-ns"),
+            limit=10,
+        )
+
+        assert results.total == 2, f"Expected 2 results, got {results.total}"
+        assert len(results.memories) == 2
+
 
 @pytest.mark.asyncio
 class TestSearchQueryOptimization:
@@ -986,10 +1076,9 @@ class TestSearchQueryOptimization:
         # Verify optimization was NOT called for empty query
         mock_optimize.assert_not_called()
 
-        # Verify adapter was called with empty query
-        mock_adapter.search_memories.assert_called_once()
-        call_kwargs = mock_adapter.search_memories.call_args[1]
-        assert call_kwargs["query"] == ""
+        # Verify adapter performed filter-only listing (no semantic search)
+        mock_adapter.list_memories.assert_called_once()
+        mock_adapter.search_memories.assert_not_called()
 
     @patch("agent_memory_server.long_term_memory.get_vectorstore_adapter")
     @patch("agent_memory_server.long_term_memory.optimize_query_for_vector_search")

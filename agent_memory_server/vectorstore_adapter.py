@@ -403,6 +403,12 @@ class VectorStoreAdapter(ABC):
                 # Unix timestamp from Redis
                 return datetime.fromtimestamp(dt_val, tz=UTC)
             if isinstance(dt_val, str):
+                # Try to parse as float first (Unix timestamp as string)
+                try:
+                    timestamp = float(dt_val)
+                    return datetime.fromtimestamp(timestamp, tz=UTC)
+                except ValueError:
+                    pass
                 # ISO string from other backends
                 return datetime.fromisoformat(dt_val)
             return None

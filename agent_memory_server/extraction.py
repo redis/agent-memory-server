@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, Any
 import ulid
 from tenacity.asyncio import AsyncRetrying
 from tenacity.stop import stop_after_attempt
-from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
 
+# Lazy-import transformers in get_ner_model to avoid heavy deps at startup
 from agent_memory_server.config import settings
 from agent_memory_server.filters import DiscreteMemoryExtracted, MemoryType
 from agent_memory_server.llms import (
@@ -61,9 +61,27 @@ def get_ner_model() -> Any:
     """
     global _ner_model, _ner_tokenizer
     if _ner_model is None:
+        # Lazy import to avoid importing heavy ML frameworks at process startup
+        try:
+            from transformers import (
+                AutoModelForTokenClassification,
+                AutoTokenizer,
+                pipeline as hf_pipeline,
+            )
+        except Exception as e:
+            logger.warning(
+                "Transformers not available or failed to import; NER disabled: %s", e
+            )
+            raise
+
         _ner_tokenizer = AutoTokenizer.from_pretrained(settings.ner_model)
         _ner_model = AutoModelForTokenClassification.from_pretrained(settings.ner_model)
-    return pipeline("ner", model=_ner_model, tokenizer=_ner_tokenizer)
+        return hf_pipeline("ner", model=_ner_model, tokenizer=_ner_tokenizer)
+
+    # If already initialized, import the lightweight symbol and return a new pipeline
+    from transformers import pipeline as hf_pipeline  # type: ignore
+
+    return hf_pipeline("ner", model=_ner_model, tokenizer=_ner_tokenizer)
 
 
 def extract_entities(text: str) -> list[str]:

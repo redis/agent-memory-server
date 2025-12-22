@@ -236,3 +236,4 @@ libs/redis/docs/.Trash*
 TASK_MEMORY.md
 *.code-workspace
 /agent-memory-client/agent-memory-client-java/.gradle/
+augment*.md

@@ -18,12 +18,16 @@ from .models import (
     # Re-export essential models for convenience
     ModelNameLiteral,
 )
+from .tool_schema import ToolSchema, ToolSchemaCollection
 
 __all__ = [
     # Client classes
     "MemoryAPIClient",
     "MemoryClientConfig",
     "create_memory_client",
+    # Tool schema classes
+    "ToolSchema",
+    "ToolSchemaCollection",
     # Exceptions
     "MemoryClientError",
     "MemoryValidationError",
