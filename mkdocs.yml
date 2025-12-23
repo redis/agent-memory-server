@@ -72,11 +72,13 @@ extra:
 nav:
   - Home: index.md
   - Getting Started:
+    - getting-started-index.md
     - Quick Start: quick-start.md
     - Installation: getting-started.md
     - Use Cases: use-cases.md
 
   - Developer Guide:
+    - developer-guide-index.md
     - Memory Integration Patterns: memory-integration-patterns.md
     - Working Memory: working-memory.md
     - Long-term Memory: long-term-memory.md
@@ -88,6 +90,7 @@ nav:
     - Security: security-custom-prompts.md
 
   - Python SDK:
+    - python-sdk-index.md
     - SDK Documentation: python-sdk.md
     - LangChain Integration: langchain-integration.md
     - Configuration: configuration.md
@@ -96,12 +99,14 @@ nav:
     - Agent Examples: agent-examples.md
 
   - Advanced Topics:
+    - advanced-topics-index.md
     - Query Optimization: query-optimization.md
     - Recency Boost: recency-boost.md
     - Advanced Vector Store Config: vector-store-advanced.md
     - Contextual Grounding: contextual-grounding.md
 
   - API Reference:
+    - api-reference-index.md
     - REST API: api.md
     - MCP Server: mcp.md
     - CLI Reference: cli.md

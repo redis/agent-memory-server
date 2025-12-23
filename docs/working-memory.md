@@ -136,85 +136,32 @@ working_memory = WorkingMemory(
 > - Use `memories` field for **important** facts that should be promoted to long-term storage
 > - Anything in the `memories` field will automatically become persistent and searchable across all future sessions
 
-## Producing Long-Term Memories from Working Memory
+## Memory Promotion to Long-Term Storage
 
-Working memory can automatically extract and promote memories to long-term storage using different strategies. This is one of the most powerful features of the memory server - it can intelligently analyze conversation content and create persistent memories without manual intervention.
+Working memory can automatically promote important information to long-term storage using configurable extraction strategies.
 
-### Memory Server Extracts in the Background
+**Two approaches:**
 
-By default, the memory server automatically analyzes working memory content and extracts meaningful memories in the background. This is ideal when you want the memory server to handle all LLM operations internally.
+1. **Background extraction** (server-side): The memory server automatically analyzes conversation content and extracts memories. Configure this using the `long_term_memory_strategy` field on working memory.
+
+2. **Client-side extraction** (LLM tools): Your LLM uses tools to add memories to the `memories` field of working memory. These are batched and promoted to long-term storage efficiently.
 
 ```python
-# Configure automatic extraction strategy - use "summary" to create conversation summaries
+# Background extraction with a custom strategy
 working_memory = WorkingMemory(
     session_id="chat_123",
+    messages=[...],
     long_term_memory_strategy=MemoryStrategyConfig(
-        strategy="summary",  # Creates conversation summaries
-        config={"max_summary_length": 500}
-    ),
-    messages=[
-        MemoryMessage(role="user", content="I'm a software engineer at TechCorp"),
-        MemoryMessage(role="assistant", content="That's great! What technologies do you work with?"),
-        MemoryMessage(role="user", content="Mainly Python and React for web applications")
-    ]
-)
-
-# The server will automatically extract a summary like:
-# - "User is a software engineer at TechCorp who works with Python and React for web applications"
-
-# Or use "discrete" strategy (default) to extract individual facts:
-working_memory = WorkingMemory(
-    session_id="chat_123",
-    long_term_memory_strategy=MemoryStrategyConfig(
-        strategy="discrete",  # Extracts individual semantic and episodic facts
+        strategy="discrete",  # or "summary", "preferences", "custom"
         config={}
     ),
-    messages=[...]
-)
-
-# The discrete strategy will extract separate memories like:
-# - "User is a software engineer at TechCorp"
-# - "User works with Python and React for web applications"
-
-# Or use "custom" strategy with your own extraction prompt:
-working_memory = WorkingMemory(
-    session_id="chat_123",
-    long_term_memory_strategy=MemoryStrategyConfig(
-        strategy="custom",
-        config={"custom_prompt": "Extract key facts about user preferences and important events"}
-    ),
-    messages=[...]
+    user_id="alice"
 )
 ```
 
-### Your LLM Extracts (Client-Side)
+For detailed guidance on when to use each approach, see [Memory Integration Patterns](memory-integration-patterns.md).
 
-If you prefer to manage all LLM activity in your application, you can have your LLM extract memories client-side and add them to working memory. This gives you full control over the extraction process and LLM usage.
-
-```python
-# Your LLM can use tools to lazily add memories to working memory
-# These will be promoted to long-term storage when the session is processed
-
-# Using the add_memory_to_working_memory tool (lazy approach)
-tools = [client.get_add_memory_tool_schema()]
-
-# Your LLM can call this tool to add memories:
-# add_memory_to_working_memory(
-#     session_id="chat_123",
-#     memory={
-#         "text": "User prefers Python for backend development",
-#         "memory_type": "semantic",
-#         "topics": ["programming", "preferences"]
-#     }
-# )
-```
-
-The Python SDK includes tools that allow your LLM to create memories either lazily (added to working memory for later promotion) or eagerly (created directly in long-term storage):
-
-- **Lazy approach**: `add_memory_to_working_memory` - adds memories to working memory for batch promotion
-- **Eager approach**: `create_long_term_memory` - creates memories directly in long-term storage
-
-See the [Long-Term Memory documentation](long-term-memory.md) for details on eager creation.
+For configuration options for each extraction strategy (discrete, summary, preferences, custom), see [Memory Extraction Strategies](memory-extraction-strategies.md).
 
 ## API Endpoints
 
