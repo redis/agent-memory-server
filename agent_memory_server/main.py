@@ -8,9 +8,14 @@ from fastapi import FastAPI
 from agent_memory_server import __version__
 from agent_memory_server.api import router as memory_router
 from agent_memory_server.auth import verify_auth_config
-from agent_memory_server.config import MODEL_CONFIGS, ModelProvider, settings
+from agent_memory_server.config import ModelProvider, settings
 from agent_memory_server.docket_tasks import register_tasks
 from agent_memory_server.healthcheck import router as health_router
+from agent_memory_server.llm_client import (
+    APIKeyMissingError,
+    LLMClient,
+    ModelValidationError,
+)
 from agent_memory_server.logging import get_logger
 from agent_memory_server.utils.redis import (
     _redis_pool as connection_pool,
@@ -33,45 +38,64 @@ async def lifespan(app: FastAPI):
         logger.exception("Authentication configuration error.")
         raise
 
-    # Check if the configured models are available
-    generation_model_config = MODEL_CONFIGS.get(settings.generation_model)
-    embedding_model_config = MODEL_CONFIGS.get(settings.embedding_model)
-
-    if not generation_model_config:
+    # Validate configured models using LLMClient
+    try:
+        generation_model_config = LLMClient.get_model_config(settings.generation_model)
+        logger.info(
+            f"Generation model: {settings.generation_model} "
+            f"(provider: {generation_model_config.provider.value}, "
+            f"max_tokens: {generation_model_config.max_tokens})"
+        )
+    except Exception as e:
         err_msg = (
-            f"Selected generation model {settings.generation_model} is not supported."
+            f"Failed to resolve generation model '{settings.generation_model}': {e}. "
+            "Ensure the model name is valid or add it to MODEL_CONFIGS. "
+            "Note: We support most models supported by LiteLLM."
         )
         logger.error(err_msg)
-        raise ValueError(err_msg)
-    if not embedding_model_config:
+        raise ModelValidationError(err_msg) from e
+
+    try:
+        embedding_model_config = LLMClient.get_model_config(settings.embedding_model)
+        logger.info(
+            f"Embedding model: {settings.embedding_model} "
+            f"(provider: {embedding_model_config.provider.value}, "
+            f"dimensions: {embedding_model_config.embedding_dimensions})"
+        )
+    except Exception as e:
         err_msg = (
-            f"Selected embedding model {settings.embedding_model} is not supported."
+            f"Failed to resolve embedding model '{settings.embedding_model}': {e}. "
+            "Ensure the model name is valid or add it to MODEL_CONFIGS."
+            "Note: We support most models supported by LiteLLM."
         )
         logger.error(err_msg)
-        raise ValueError(err_msg)
+        raise ModelValidationError(err_msg) from e
 
+    # Validate API keys for resolved providers
     for model_config in [generation_model_config, embedding_model_config]:
         match model_config.provider:
             case ModelProvider.OPENAI:
                 if not settings.openai_api_key:
-                    err_msg = "OpenAI API key is not set."
-                    logger.error(err_msg)
-                    raise ValueError(err_msg)
+                    error = APIKeyMissingError("OpenAI", "OPENAI_API_KEY")
+                    logger.error(str(error))
+                    raise error
             case ModelProvider.ANTHROPIC:
                 if not settings.anthropic_api_key:
-                    err_msg = "Anthropic API key is not set."
-                    logger.error(err_msg)
-                    raise ValueError(err_msg)
+                    error = APIKeyMissingError("Anthropic", "ANTHROPIC_API_KEY")
+                    logger.error(str(error))
+                    raise error
             case ModelProvider.AWS_BEDROCK:
                 # The access key ID and secret access key are mandatory.
-                # The session token is optional (only for STS), so we don't need to check for it.
+                # The session token is optional (only for STS).
                 has_access_key = (
                     settings.aws_access_key_id and settings.aws_secret_access_key
                 )
                 if not has_access_key:
-                    err_msg = "AWS credentials are not set."
-                    logger.error(err_msg)
-                    raise ValueError(err_msg)
+                    error = APIKeyMissingError(
+                        "AWS Bedrock", "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"
+                    )
+                    logger.error(str(error))
+                    raise error
 
     # Set up Redis connection and check working memory migration status
     redis_conn = await get_redis_conn()
