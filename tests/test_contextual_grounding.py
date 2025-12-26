@@ -1,17 +1,12 @@
 import json
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import ulid
 
+from agent_memory_server.llm_client import ChatCompletionResponse
 from agent_memory_server.memory_strategies import get_memory_strategy
 from agent_memory_server.models import MemoryRecord, MemoryTypeEnum
-
-
-@pytest.fixture
-def mock_openai_client():
-    """Mock OpenAI client for testing"""
-    return AsyncMock()
 
 
 @pytest.fixture
@@ -60,8 +55,7 @@ class TestContextualGrounding:
     grounded to absolute context.
     """
 
-    @patch("agent_memory_server.memory_strategies.get_model_client")
-    async def test_pronoun_grounding_he_him(self, mock_get_client):
+    async def test_pronoun_grounding_he_him(self):
         """Test grounding of 'he/him' pronouns to actual person names"""
         # Create test message with pronoun reference
         test_memory = MemoryRecord(
@@ -74,50 +68,53 @@ class TestContextualGrounding:
         )
 
         # Mock the LLM response to properly ground the pronoun
-        mock_client = AsyncMock()
-        mock_response = Mock()
-        mock_response.choices = [
-            Mock(
-                message=Mock(
-                    content=json.dumps(
+        mock_response = ChatCompletionResponse(
+            content=json.dumps(
+                {
+                    "memories": [
                         {
-                            "memories": [
-                                {
-                                    "type": "semantic",
-                                    "text": "John prefers coffee over tea",
-                                    "topics": ["preferences", "beverages"],
-                                    "entities": ["John", "coffee", "tea"],
-                                },
-                                {
-                                    "type": "episodic",
-                                    "text": "User recommended a new cafe to John",
-                                    "topics": ["recommendation", "cafe"],
-                                    "entities": ["User", "John", "cafe"],
-                                },
-                            ]
-                        }
-                    )
-                )
+                            "type": "semantic",
+                            "text": "John prefers coffee over tea",
+                            "topics": ["preferences", "beverages"],
+                            "entities": ["John", "coffee", "tea"],
+                        },
+                        {
+                            "type": "episodic",
+                            "text": "User recommended a new cafe to John",
+                            "topics": ["recommendation", "cafe"],
+                            "entities": ["User", "John", "cafe"],
+                        },
+                    ]
+                }
+            ),
+            finish_reason="stop",
+            prompt_tokens=100,
+            completion_tokens=50,
+            total_tokens=150,
+            model="gpt-4o-mini",
+        )
+
+        with patch(
+            "agent_memory_server.memory_strategies.LLMClient.create_chat_completion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            # Extract memories using the new strategy system
+            extracted_memories = await extract_memories_using_strategy([test_memory])
+
+            # Check that extracted memories don't contain ungrounded pronouns
+            memory_texts = [mem.text for mem in extracted_memories]
+            assert any("John prefers coffee" in text for text in memory_texts)
+            assert any(
+                "John" in text and "recommended" in text for text in memory_texts
             )
-        ]
-        mock_client.create_chat_completion = AsyncMock(return_value=mock_response)
-        mock_get_client.return_value = mock_client
 
-        # Extract memories using the new strategy system
-        extracted_memories = await extract_memories_using_strategy([test_memory])
+            # Ensure no ungrounded pronouns remain
+            for text in memory_texts:
+                assert "he" not in text.lower() or "John" in text
+                assert "him" not in text.lower() or "John" in text
 
-        # Check that extracted memories don't contain ungrounded pronouns
-        memory_texts = [mem.text for mem in extracted_memories]
-        assert any("John prefers coffee" in text for text in memory_texts)
-        assert any("John" in text and "recommended" in text for text in memory_texts)
-
-        # Ensure no ungrounded pronouns remain
-        for text in memory_texts:
-            assert "he" not in text.lower() or "John" in text
-            assert "him" not in text.lower() or "John" in text
-
-    @patch("agent_memory_server.memory_strategies.get_model_client")
-    async def test_pronoun_grounding_she_her(self, mock_get_client):
+    async def test_pronoun_grounding_she_her(self):
         """Test grounding of 'she/her' pronouns to actual person names"""
         test_memory = MemoryRecord(
             id=str(ulid.ULID()),
@@ -129,45 +126,48 @@ class TestContextualGrounding:
         )
 
         # Mock the LLM response to properly ground the pronoun
-        mock_client = AsyncMock()
-        mock_response = Mock()
-        mock_response.choices = [
-            Mock(
-                message=Mock(
-                    content=json.dumps(
+        mock_response = ChatCompletionResponse(
+            content=json.dumps(
+                {
+                    "memories": [
                         {
-                            "memories": [
-                                {
-                                    "type": "semantic",
-                                    "text": "Sarah loves hiking",
-                                    "topics": ["hobbies", "outdoor"],
-                                    "entities": ["Sarah", "hiking"],
-                                },
-                                {
-                                    "type": "episodic",
-                                    "text": "User provided trail recommendations to Sarah",
-                                    "topics": ["recommendation", "trails"],
-                                    "entities": ["User", "Sarah", "trails"],
-                                },
-                            ]
-                        }
-                    )
-                )
-            )
-        ]
-        mock_client.create_chat_completion = AsyncMock(return_value=mock_response)
-        mock_get_client.return_value = mock_client
-
-        # Extract memories using the new strategy system
-        extracted_memories = await extract_memories_using_strategy([test_memory])
-        memory_texts = [mem.text for mem in extracted_memories]
-
-        assert any("Sarah loves hiking" in text for text in memory_texts)
-        assert any(
-            "Sarah" in text and "trail recommendations" in text for text in memory_texts
+                            "type": "semantic",
+                            "text": "Sarah loves hiking",
+                            "topics": ["hobbies", "outdoor"],
+                            "entities": ["Sarah", "hiking"],
+                        },
+                        {
+                            "type": "episodic",
+                            "text": "User provided trail recommendations to Sarah",
+                            "topics": ["recommendation", "trails"],
+                            "entities": ["User", "Sarah", "trails"],
+                        },
+                    ]
+                }
+            ),
+            finish_reason="stop",
+            prompt_tokens=100,
+            completion_tokens=50,
+            total_tokens=150,
+            model="gpt-4o-mini",
         )
 
-        # Ensure no ungrounded pronouns remain
-        for text in memory_texts:
-            assert "she" not in text.lower() or "Sarah" in text
-            assert "her" not in text.lower() or "Sarah" in text
+        with patch(
+            "agent_memory_server.memory_strategies.LLMClient.create_chat_completion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            # Extract memories using the new strategy system
+            extracted_memories = await extract_memories_using_strategy([test_memory])
+            memory_texts = [mem.text for mem in extracted_memories]
+
+            assert any("Sarah loves hiking" in text for text in memory_texts)
+            assert any(
+                "Sarah" in text and "trail recommendations" in text
+                for text in memory_texts
+            )
+
+            # Ensure no ungrounded pronouns remain
+            for text in memory_texts:
+                assert "she" not in text.lower() or "Sarah" in text
+                assert "her" not in text.lower() or "Sarah" in text

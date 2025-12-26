@@ -1,6 +1,6 @@
 import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -46,18 +46,23 @@ def test_generate_memory_hash():
 
 
 @pytest.mark.asyncio
-async def test_merge_memories_with_llm(mock_openai_client, monkeypatch):
+async def test_merge_memories_with_llm():
     """Test merging memories with LLM returns expected structure"""
     from datetime import UTC, datetime
+    from unittest.mock import patch
 
+    from agent_memory_server.llm_client import ChatCompletionResponse
     from agent_memory_server.models import MemoryTypeEnum
 
-    # Setup dummy LLM response
-    dummy_response = MagicMock()
-    dummy_response.choices = [MagicMock()]
-    dummy_response.choices[0].message = MagicMock()
-    dummy_response.choices[0].message.content = "Merged content"
-    mock_openai_client.create_chat_completion = AsyncMock(return_value=dummy_response)
+    # Setup mock LLM response
+    mock_response = ChatCompletionResponse(
+        content="Merged content",
+        finish_reason="stop",
+        prompt_tokens=100,
+        completion_tokens=20,
+        total_tokens=120,
+        model="gpt-4o-mini",
+    )
 
     # Create two example memories
     t0 = int(time.time()) - 100
@@ -89,13 +94,18 @@ async def test_merge_memories_with_llm(mock_openai_client, monkeypatch):
         ),
     ]
 
-    merged = await merge_memories_with_llm(memories, llm_client=mock_openai_client)
-    assert merged.text == "Merged content"
-    assert merged.created_at == datetime.fromtimestamp(t0 - 50, UTC)  # Earliest
-    assert merged.last_accessed == datetime.fromtimestamp(t1, UTC)  # Latest
-    assert set(merged.topics) == {"a", "b"}
-    assert set(merged.entities) == {"x", "y"}
-    assert merged.memory_hash is not None
+    with patch(
+        "agent_memory_server.long_term_memory.LLMClient.create_chat_completion",
+        new_callable=AsyncMock,
+        return_value=mock_response,
+    ):
+        merged = await merge_memories_with_llm(memories)
+        assert merged.text == "Merged content"
+        assert merged.created_at == datetime.fromtimestamp(t0 - 50, UTC)  # Earliest
+        assert merged.last_accessed == datetime.fromtimestamp(t1, UTC)  # Latest
+        assert set(merged.topics) == {"a", "b"}
+        assert set(merged.entities) == {"x", "y"}
+        assert merged.memory_hash is not None
 
 
 @pytest.fixture(autouse=True)
@@ -119,7 +129,7 @@ def dummy_vectorizer(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_hash_deduplication_integration(
-    async_redis_client, search_index, mock_openai_client, mock_vectorstore_adapter
+    async_redis_client, search_index, mock_vectorstore_adapter
 ):
     """Integration test for hash-based duplicate compaction"""
 
@@ -127,7 +137,7 @@ async def test_hash_deduplication_integration(
     await async_redis_client.flushdb()
 
     # Stub merge to return first memory unchanged
-    async def dummy_merge(memories, llm_client=None):
+    async def dummy_merge(memories):
         memory = memories[0]
         memory.memory_hash = generate_memory_hash(memory)
         return memory
@@ -217,7 +227,7 @@ async def test_hash_deduplication_integration(
 
 @pytest.mark.asyncio
 async def test_semantic_deduplication_integration(
-    async_redis_client, search_index, mock_openai_client, mock_vectorstore_adapter
+    async_redis_client, search_index, mock_vectorstore_adapter
 ):
     """Integration test for semantic duplicate compaction"""
 
@@ -225,7 +235,7 @@ async def test_semantic_deduplication_integration(
     await async_redis_client.flushdb()
 
     # Stub merge to return first memory
-    async def dummy_merge(memories, llm_client=None):
+    async def dummy_merge(memories):
         memory = memories[0]
         memory.memory_hash = generate_memory_hash(memory)
         return memory
@@ -291,14 +301,14 @@ async def test_semantic_deduplication_integration(
 
 @pytest.mark.asyncio
 async def test_full_compaction_integration(
-    async_redis_client, search_index, mock_openai_client, mock_vectorstore_adapter
+    async_redis_client, search_index, mock_vectorstore_adapter
 ):
     """Integration test for full compaction pipeline"""
 
     # Clear all data to ensure clean test environment
     await async_redis_client.flushdb()
 
-    async def dummy_merge(memories, llm_client=None):
+    async def dummy_merge(memories):
         memory = memories[0]
         memory.memory_hash = generate_memory_hash(memory)
         return memory
