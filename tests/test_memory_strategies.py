@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from agent_memory_server.llm_client import ChatCompletionResponse
 from agent_memory_server.memory_strategies import (
     MEMORY_STRATEGIES,
     BaseMemoryStrategy,
@@ -93,23 +94,24 @@ class TestDiscreteMemoryStrategy:
         strategy = DiscreteMemoryStrategy()
 
         # Mock the LLM response
+        mock_response = ChatCompletionResponse(
+            content='{"memories": [{"type": "semantic", "text": "User prefers coffee", "topics": ["preferences"], "entities": ["User", "coffee"]}]}',
+            finish_reason="stop",
+            prompt_tokens=100,
+            completion_tokens=50,
+            total_tokens=150,
+            model="gpt-4o-mini",
+        )
 
         with patch(
-            "agent_memory_server.memory_strategies.get_model_client"
-        ) as mock_get_client:
-            mock_client = AsyncMock()
-            mock_response_obj = AsyncMock()
-            mock_response_obj.choices = [AsyncMock()]
-            mock_response_obj.choices[
-                0
-            ].message.content = '{"memories": [{"type": "semantic", "text": "User prefers coffee", "topics": ["preferences"], "entities": ["User", "coffee"]}]}'
-            mock_client.create_chat_completion.return_value = mock_response_obj
-            mock_get_client.return_value = mock_client
-
+            "agent_memory_server.memory_strategies.LLMClient.create_chat_completion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_create:
             result = await strategy.extract_memories("I love coffee!")
 
             assert isinstance(result, list)
-            mock_client.create_chat_completion.assert_called_once()
+            mock_create.assert_called_once()
 
 
 class TestSummaryMemoryStrategy:
@@ -137,26 +139,29 @@ class TestSummaryMemoryStrategy:
         """Test summary memory extraction."""
         strategy = SummaryMemoryStrategy(max_summary_length=100)
 
-        with patch(
-            "agent_memory_server.memory_strategies.get_model_client"
-        ) as mock_get_client:
-            mock_client = AsyncMock()
-            mock_response_obj = AsyncMock()
-            mock_response_obj.choices = [AsyncMock()]
-            mock_response_obj.choices[
-                0
-            ].message.content = '{"memories": [{"type": "semantic", "text": "Discussion about project requirements", "topics": ["project"], "entities": ["requirements"]}]}'
-            mock_client.create_chat_completion.return_value = mock_response_obj
-            mock_get_client.return_value = mock_client
+        mock_response = ChatCompletionResponse(
+            content='{"memories": [{"type": "semantic", "text": "Discussion about project requirements", "topics": ["project"], "entities": ["requirements"]}]}',
+            finish_reason="stop",
+            prompt_tokens=100,
+            completion_tokens=50,
+            total_tokens=150,
+            model="gpt-4o-mini",
+        )
 
+        with patch(
+            "agent_memory_server.memory_strategies.LLMClient.create_chat_completion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_create:
             result = await strategy.extract_memories(
                 "Long conversation about project..."
             )
 
             assert isinstance(result, list)
             # Check that prompt includes the max_summary_length
-            call_args = mock_client.create_chat_completion.call_args
-            assert "100" in call_args[1]["prompt"]
+            call_kwargs = mock_create.call_args[1]
+            prompt = call_kwargs["messages"][0]["content"]
+            assert "100" in prompt
 
 
 class TestUserPreferencesMemoryStrategy:
@@ -175,22 +180,24 @@ class TestUserPreferencesMemoryStrategy:
         """Test preferences memory extraction."""
         strategy = UserPreferencesMemoryStrategy()
 
-        with patch(
-            "agent_memory_server.memory_strategies.get_model_client"
-        ) as mock_get_client:
-            mock_client = AsyncMock()
-            mock_response_obj = AsyncMock()
-            mock_response_obj.choices = [AsyncMock()]
-            mock_response_obj.choices[
-                0
-            ].message.content = '{"memories": [{"type": "semantic", "text": "User prefers dark mode", "topics": ["preferences"], "entities": ["User"]}]}'
-            mock_client.create_chat_completion.return_value = mock_response_obj
-            mock_get_client.return_value = mock_client
+        mock_response = ChatCompletionResponse(
+            content='{"memories": [{"type": "semantic", "text": "User prefers dark mode", "topics": ["preferences"], "entities": ["User"]}]}',
+            finish_reason="stop",
+            prompt_tokens=100,
+            completion_tokens=50,
+            total_tokens=150,
+            model="gpt-4o-mini",
+        )
 
+        with patch(
+            "agent_memory_server.memory_strategies.LLMClient.create_chat_completion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_create:
             result = await strategy.extract_memories("I always use dark mode")
 
             assert isinstance(result, list)
-            mock_client.create_chat_completion.assert_called_once()
+            mock_create.assert_called_once()
 
 
 class TestCustomMemoryStrategy:
@@ -221,27 +228,30 @@ class TestCustomMemoryStrategy:
         custom_prompt = "Extract key information: {message} at {current_datetime}"
         strategy = CustomMemoryStrategy(custom_prompt=custom_prompt)
 
-        with patch(
-            "agent_memory_server.memory_strategies.get_model_client"
-        ) as mock_get_client:
-            mock_client = AsyncMock()
-            mock_response_obj = AsyncMock()
-            mock_response_obj.choices = [AsyncMock()]
-            mock_response_obj.choices[
-                0
-            ].message.content = '{"memories": [{"type": "semantic", "text": "Custom extracted info", "topics": ["custom"], "entities": ["info"]}]}'
-            mock_client.create_chat_completion.return_value = mock_response_obj
-            mock_get_client.return_value = mock_client
+        mock_response = ChatCompletionResponse(
+            content='{"memories": [{"type": "semantic", "text": "Custom extracted info", "topics": ["custom"], "entities": ["info"]}]}',
+            finish_reason="stop",
+            prompt_tokens=100,
+            completion_tokens=50,
+            total_tokens=150,
+            model="gpt-4o-mini",
+        )
 
+        with patch(
+            "agent_memory_server.memory_strategies.LLMClient.create_chat_completion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_create:
             result = await strategy.extract_memories(
                 "Test message", context={"extra": "data"}
             )
 
             assert isinstance(result, list)
             # Check that the custom prompt was used
-            call_args = mock_client.create_chat_completion.call_args
-            assert "Extract key information:" in call_args[1]["prompt"]
-            assert "Test message" in call_args[1]["prompt"]
+            call_kwargs = mock_create.call_args[1]
+            prompt = call_kwargs["messages"][0]["content"]
+            assert "Extract key information:" in prompt
+            assert "Test message" in prompt
 
 
 class TestMemoryStrategiesRegistry:
