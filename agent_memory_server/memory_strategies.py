@@ -9,7 +9,7 @@ from tenacity.asyncio import AsyncRetrying
 from tenacity.stop import stop_after_attempt
 
 from agent_memory_server.config import settings
-from agent_memory_server.llms import get_model_client
+from agent_memory_server.llm_client import LLMClient
 from agent_memory_server.logging import get_logger
 from agent_memory_server.prompt_security import (
     PromptSecurityError,
@@ -158,28 +158,24 @@ class DiscreteMemoryStrategy(BaseMemoryStrategy):
         self, text: str, context: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
         """Extract discrete semantic and episodic memories from text."""
-        client = await get_model_client(settings.generation_model)
+        prompt = self.EXTRACTION_PROMPT.format(
+            message=text,
+            top_k_topics=settings.top_k_topics,
+            current_datetime=datetime.now().strftime("%A, %B %d, %Y at %I:%M %p %Z"),
+        )
 
         async for attempt in AsyncRetrying(stop=stop_after_attempt(3)):
             with attempt:
-                response = await client.create_chat_completion(
+                response = await LLMClient.create_chat_completion(
                     model=settings.generation_model,
-                    prompt=self.EXTRACTION_PROMPT.format(
-                        message=text,
-                        top_k_topics=settings.top_k_topics,
-                        current_datetime=datetime.now().strftime(
-                            "%A, %B %d, %Y at %I:%M %p %Z"
-                        ),
-                    ),
+                    messages=[{"role": "user", "content": prompt}],
                     response_format={"type": "json_object"},
                 )
                 try:
-                    response_data = json.loads(response.choices[0].message.content)
+                    response_data = json.loads(response.content)
                     return response_data.get("memories", [])
                 except json.JSONDecodeError:
-                    logger.error(
-                        f"Error decoding JSON: {response.choices[0].message.content}"
-                    )
+                    logger.error(f"Error decoding JSON: {response.content}")
                     raise
         return None
 
@@ -254,28 +250,24 @@ class SummaryMemoryStrategy(BaseMemoryStrategy):
         self, text: str, context: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
         """Extract summary memory from conversation text."""
-        client = await get_model_client(settings.generation_model)
+        prompt = self.SUMMARY_PROMPT.format(
+            message=text,
+            max_length=self.max_summary_length,
+            current_datetime=datetime.now().strftime("%A, %B %d, %Y at %I:%M %p %Z"),
+        )
 
         async for attempt in AsyncRetrying(stop=stop_after_attempt(3)):
             with attempt:
-                response = await client.create_chat_completion(
+                response = await LLMClient.create_chat_completion(
                     model=settings.generation_model,
-                    prompt=self.SUMMARY_PROMPT.format(
-                        message=text,
-                        max_length=self.max_summary_length,
-                        current_datetime=datetime.now().strftime(
-                            "%A, %B %d, %Y at %I:%M %p %Z"
-                        ),
-                    ),
+                    messages=[{"role": "user", "content": prompt}],
                     response_format={"type": "json_object"},
                 )
                 try:
-                    response_data = json.loads(response.choices[0].message.content)
+                    response_data = json.loads(response.content)
                     return response_data.get("memories", [])
                 except json.JSONDecodeError:
-                    logger.error(
-                        f"Error decoding JSON: {response.choices[0].message.content}"
-                    )
+                    logger.error(f"Error decoding JSON: {response.content}")
                     raise
         return None
 
@@ -352,27 +344,23 @@ class UserPreferencesMemoryStrategy(BaseMemoryStrategy):
         self, text: str, context: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
         """Extract user preferences from text."""
-        client = await get_model_client(settings.generation_model)
+        prompt = self.PREFERENCES_PROMPT.format(
+            message=text,
+            current_datetime=datetime.now().strftime("%A, %B %d, %Y at %I:%M %p %Z"),
+        )
 
         async for attempt in AsyncRetrying(stop=stop_after_attempt(3)):
             with attempt:
-                response = await client.create_chat_completion(
+                response = await LLMClient.create_chat_completion(
                     model=settings.generation_model,
-                    prompt=self.PREFERENCES_PROMPT.format(
-                        message=text,
-                        current_datetime=datetime.now().strftime(
-                            "%A, %B %d, %Y at %I:%M %p %Z"
-                        ),
-                    ),
+                    messages=[{"role": "user", "content": prompt}],
                     response_format={"type": "json_object"},
                 )
                 try:
-                    response_data = json.loads(response.choices[0].message.content)
+                    response_data = json.loads(response.content)
                     return response_data.get("memories", [])
                 except json.JSONDecodeError:
-                    logger.error(
-                        f"Error decoding JSON: {response.choices[0].message.content}"
-                    )
+                    logger.error(f"Error decoding JSON: {response.content}")
                     raise
         return None
 
@@ -411,8 +399,6 @@ class CustomMemoryStrategy(BaseMemoryStrategy):
         self, text: str, context: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
         """Extract memories using custom prompt."""
-        client = await get_model_client(settings.generation_model)
-
         # Prepare safe template variables
         template_vars = {
             "message": text,
@@ -449,13 +435,13 @@ class CustomMemoryStrategy(BaseMemoryStrategy):
 
         async for attempt in AsyncRetrying(stop=stop_after_attempt(3)):
             with attempt:
-                response = await client.create_chat_completion(
+                response = await LLMClient.create_chat_completion(
                     model=settings.generation_model,
-                    prompt=formatted_prompt,
+                    messages=[{"role": "user", "content": formatted_prompt}],
                     response_format={"type": "json_object"},
                 )
                 try:
-                    response_data = json.loads(response.choices[0].message.content)
+                    response_data = json.loads(response.content)
                     memories = response_data.get("memories", [])
 
                     # Filter and validate output memories for security
@@ -470,9 +456,7 @@ class CustomMemoryStrategy(BaseMemoryStrategy):
 
                     return validated_memories
                 except json.JSONDecodeError:
-                    logger.error(
-                        f"Error decoding JSON: {response.choices[0].message.content}"
-                    )
+                    logger.error(f"Error decoding JSON: {response.content}")
                     raise
         return None
 
