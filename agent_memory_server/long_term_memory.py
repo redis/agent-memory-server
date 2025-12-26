@@ -29,7 +29,7 @@ from agent_memory_server.filters import (
     Topics,
     UserId,
 )
-from agent_memory_server.llm_client import LLMClient, optimize_query_for_vector_search
+from agent_memory_server.llm import LLMClient, optimize_query_for_vector_search
 from agent_memory_server.models import (
     ExtractedMemoryRecord,
     MemoryRecord,

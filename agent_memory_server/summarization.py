@@ -5,7 +5,7 @@ import tiktoken
 from redis import WatchError
 
 from agent_memory_server.config import settings
-from agent_memory_server.llm_client import LLMClient, get_model_config
+from agent_memory_server.llm import LLMClient, get_model_config
 from agent_memory_server.models import MemoryMessage
 from agent_memory_server.utils.keys import Keys
 from agent_memory_server.utils.redis import get_redis_conn
