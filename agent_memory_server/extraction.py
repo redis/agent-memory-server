@@ -9,12 +9,7 @@ from tenacity.stop import stop_after_attempt
 # Lazy-import transformers in get_ner_model to avoid heavy deps at startup
 from agent_memory_server.config import settings
 from agent_memory_server.filters import DiscreteMemoryExtracted, MemoryType
-from agent_memory_server.llms import (
-    AnthropicClientWrapper,
-    BedrockClientWrapper,
-    OpenAIClientWrapper,
-    get_model_client,
-)
+from agent_memory_server.llm_client import LLMClient
 from agent_memory_server.logging import get_logger
 from agent_memory_server.models import MemoryRecord
 
@@ -128,15 +123,10 @@ def extract_entities(text: str) -> list[str]:
 async def extract_topics_llm(
     text: str,
     num_topics: int | None = None,
-    client: OpenAIClientWrapper
-    | AnthropicClientWrapper
-    | BedrockClientWrapper
-    | None = None,
 ) -> list[str]:
     """
     Extract topics from text using the LLM model.
     """
-    _client = client or await get_model_client(settings.topic_model)
     _num_topics = num_topics if num_topics is not None else settings.top_k_topics
 
     prompt = f"""
@@ -152,17 +142,15 @@ async def extract_topics_llm(
 
     async for attempt in AsyncRetrying(stop=stop_after_attempt(3)):
         with attempt:
-            response = await _client.create_chat_completion(
+            response = await LLMClient.create_chat_completion(
                 model=settings.generation_model,
-                prompt=prompt,
+                messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
             )
             try:
-                topics = json.loads(response.choices[0].message.content)["topics"]
+                topics = json.loads(response.content)["topics"]
             except (json.JSONDecodeError, KeyError):
-                logger.error(
-                    f"Error decoding JSON: {response.choices[0].message.content}"
-                )
+                logger.error(f"Error decoding JSON: {response.content}")
                 topics = []
             if topics:
                 topics = topics[:_num_topics]
