@@ -19,7 +19,7 @@ from agent_memory_server.api import router as memory_router
 from agent_memory_server.config import settings
 from agent_memory_server.dependencies import HybridBackgroundTasks
 from agent_memory_server.healthcheck import router as health_router
-from agent_memory_server.llms import OpenAIClientWrapper
+from agent_memory_server.llm_client import LLMClient
 from agent_memory_server.models import (
     MemoryMessage,
     MemoryRecord,
@@ -57,9 +57,9 @@ def memory_messages():
 
 
 @pytest.fixture()
-def mock_openai_client():
-    """Create a mock OpenAI client"""
-    return AsyncMock(spec=OpenAIClientWrapper)
+def mock_llm_client():
+    """Create a mock LLM client"""
+    return AsyncMock(spec=LLMClient)
 
     # We won't set default side effects here, allowing tests to set their own mocks
     # This prevents conflicts with tests that need specific return values
