@@ -11,7 +11,7 @@ from agent_memory_server.auth import UserInfo, get_current_user
 from agent_memory_server.config import settings
 from agent_memory_server.dependencies import HybridBackgroundTasks
 from agent_memory_server.filters import SessionId, UserId
-from agent_memory_server.llm_client import LLMClient
+from agent_memory_server.llm import LLMClient
 from agent_memory_server.logging import get_logger
 from agent_memory_server.models import (
     AckResponse,

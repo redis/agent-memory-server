@@ -11,7 +11,7 @@ from agent_memory_server.auth import verify_auth_config
 from agent_memory_server.config import ModelProvider, settings
 from agent_memory_server.docket_tasks import register_tasks
 from agent_memory_server.healthcheck import router as health_router
-from agent_memory_server.llm_client import (
+from agent_memory_server.llm import (
     APIKeyMissingError,
     LLMClient,
     ModelValidationError,

@@ -9,7 +9,7 @@ from tenacity.asyncio import AsyncRetrying
 from tenacity.stop import stop_after_attempt
 
 from agent_memory_server.config import settings
-from agent_memory_server.llm_client import LLMClient
+from agent_memory_server.llm import LLMClient
 from agent_memory_server.logging import get_logger
 from agent_memory_server.prompt_security import (
     PromptSecurityError,

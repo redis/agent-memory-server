@@ -9,7 +9,7 @@ from tenacity.stop import stop_after_attempt
 # Lazy-import transformers in get_ner_model to avoid heavy deps at startup
 from agent_memory_server.config import settings
 from agent_memory_server.filters import DiscreteMemoryExtracted, MemoryType
-from agent_memory_server.llm_client import LLMClient
+from agent_memory_server.llm import LLMClient
 from agent_memory_server.logging import get_logger
 from agent_memory_server.models import MemoryRecord
 
