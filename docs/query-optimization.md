@@ -228,9 +228,9 @@ LOG_LEVEL=DEBUG
 ### Example Log Output
 
 ```
-DEBUG:agent_memory_server.llms:Optimizing query: "what do I like to eat"
-DEBUG:agent_memory_server.llms:Optimized query: "user food preferences dietary likes dislikes favorite meals"
-DEBUG:agent_memory_server.llms:Query optimization took 245ms
+DEBUG:agent_memory_server.llm:Optimizing query: "what do I like to eat"
+DEBUG:agent_memory_server.llm:Optimized query: "user food preferences dietary likes dislikes favorite meals"
+DEBUG:agent_memory_server.llm:Query optimization took 245ms
 ```
 
 ## Advanced Configuration

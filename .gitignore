@@ -237,3 +237,4 @@ TASK_MEMORY.md
 *.code-workspace
 /agent-memory-client/agent-memory-client-java/.gradle/
 augment*.md
+dev_docs/

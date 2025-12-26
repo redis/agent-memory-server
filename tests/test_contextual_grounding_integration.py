@@ -18,7 +18,7 @@ import ulid
 from pydantic import BaseModel
 
 from agent_memory_server.config import settings
-from agent_memory_server.llms import get_model_client
+from agent_memory_server.llm import LLMClient
 
 
 class GroundingEvaluationResult(BaseModel):
@@ -198,8 +198,6 @@ class LLMContextualGroundingJudge:
         expected_grounding: dict[str, str],
     ) -> dict[str, float]:
         """Evaluate contextual grounding quality using LLM judge"""
-        client = await get_model_client(self.judge_model)
-
         prompt = self.EVALUATION_PROMPT.format(
             context_messages="\n".join(context_messages),
             original_text=original_text,
@@ -207,14 +205,14 @@ class LLMContextualGroundingJudge:
             expected_grounding=json.dumps(expected_grounding, indent=2),
         )
 
-        response = await client.create_chat_completion(
+        response = await LLMClient.create_chat_completion(
             model=self.judge_model,
-            prompt=prompt,
+            messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
         )
 
         try:
-            evaluation = json.loads(response.choices[0].message.content)
+            evaluation = json.loads(response.content or "{}")
             return {
                 "pronoun_resolution_score": evaluation.get(
                     "pronoun_resolution_score", 0.0
@@ -231,9 +229,7 @@ class LLMContextualGroundingJudge:
                 "explanation": evaluation.get("explanation", ""),
             }
         except json.JSONDecodeError as e:
-            print(
-                f"Failed to parse judge response: {response.choices[0].message.content}"
-            )
+            print(f"Failed to parse judge response: {response.content}")
             raise e
 
 
