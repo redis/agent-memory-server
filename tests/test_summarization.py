@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agent_memory_server.llm_client import ChatCompletionResponse
+from agent_memory_server.llm import ChatCompletionResponse
 from agent_memory_server.summarization import (
     _incremental_summary,
     summarize_session,
@@ -90,9 +90,7 @@ class TestIncrementalSummarization:
 class TestSummarizeSession:
     @pytest.mark.asyncio
     @patch("agent_memory_server.summarization._incremental_summary")
-    async def test_summarize_session(
-        self, mock_summarization, mock_async_redis_client
-    ):
+    async def test_summarize_session(self, mock_summarization, mock_async_redis_client):
         """Test summarize_session with mocked summarization"""
         session_id = "test-session"
         model = "gpt-3.5-turbo"

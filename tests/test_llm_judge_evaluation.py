@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_memory_server.llm_client import LLMClient
+from agent_memory_server.llm import LLMClient
 from tests.test_contextual_grounding_integration import (
     LLMContextualGroundingJudge,
 )

@@ -369,7 +369,7 @@ class TestLongTermMemory:
         from datetime import UTC, datetime
         from unittest.mock import patch
 
-        from agent_memory_server.llm_client import ChatCompletionResponse
+        from agent_memory_server.llm import ChatCompletionResponse
 
         memories = [
             MemoryRecord(

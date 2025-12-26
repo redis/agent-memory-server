@@ -19,7 +19,7 @@ from agent_memory_server.api import router as memory_router
 from agent_memory_server.config import settings
 from agent_memory_server.dependencies import HybridBackgroundTasks
 from agent_memory_server.healthcheck import router as health_router
-from agent_memory_server.llm_client import LLMClient
+from agent_memory_server.llm import LLMClient
 from agent_memory_server.models import (
     MemoryMessage,
     MemoryRecord,
@@ -489,18 +489,6 @@ async def client_with_mock_background_tasks(
             base_url="http://test",
         ) as client:
             yield client
-
-
-@pytest.fixture
-def mock_llm_client():
-    """Mock the LLM client for tests that don't need real LLM calls."""
-    mock_client = MagicMock()
-    mock_client.create_chat_completion = AsyncMock(
-        return_value=MagicMock(
-            choices=[MagicMock(message=MagicMock(content="test response"))]
-        )
-    )
-    return mock_client
 
 
 @pytest.fixture()

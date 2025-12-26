@@ -18,7 +18,7 @@ import ulid
 from pydantic import BaseModel
 
 from agent_memory_server.config import settings
-from agent_memory_server.llm_client import LLMClient
+from agent_memory_server.llm import LLMClient
 
 
 class GroundingEvaluationResult(BaseModel):

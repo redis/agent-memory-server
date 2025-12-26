@@ -51,7 +51,7 @@ async def test_merge_memories_with_llm():
     from datetime import UTC, datetime
     from unittest.mock import patch
 
-    from agent_memory_server.llm_client import ChatCompletionResponse
+    from agent_memory_server.llm import ChatCompletionResponse
     from agent_memory_server.models import MemoryTypeEnum
 
     # Setup mock LLM response

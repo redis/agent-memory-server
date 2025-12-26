@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from agent_memory_server.llm_client import ChatCompletionResponse
+from agent_memory_server.llm import ChatCompletionResponse
 from agent_memory_server.memory_strategies import (
     MEMORY_STRATEGIES,
     BaseMemoryStrategy,

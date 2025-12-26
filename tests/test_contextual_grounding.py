@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import ulid
 
-from agent_memory_server.llm_client import ChatCompletionResponse
+from agent_memory_server.llm import ChatCompletionResponse
 from agent_memory_server.memory_strategies import get_memory_strategy
 from agent_memory_server.models import MemoryRecord, MemoryTypeEnum
 
