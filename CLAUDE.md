@@ -152,7 +152,11 @@ agent_memory_server/
 ├── summarization.py     # Conversation summarization
 ├── extraction.py        # Topic and entity extraction
 ├── filters.py           # Search filtering logic
-├── llms.py              # LLM provider integrations
+├── llm/                 # LLM client package (LiteLLM-based)
+│   ├── __init__.py      # Re-exports for clean imports
+│   ├── client.py        # LLMClient class with chat/embedding methods
+│   ├── types.py         # ChatCompletionResponse, EmbeddingResponse, LLMBackend
+│   └── exceptions.py    # LLMClientError, ModelValidationError, APIKeyMissingError
 ├── migrations.py        # Database schema migrations
 ├── docket_tasks.py      # Background task definitions
 ├── cli.py               # Command-line interface
