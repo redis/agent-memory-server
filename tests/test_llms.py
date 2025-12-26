@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from agent_memory_server.config import ModelProvider
-from agent_memory_server.llm_client import (
+from agent_memory_server.llm import (
     ChatCompletionResponse,
     LLMClient,
     get_model_config,
@@ -64,7 +64,7 @@ class TestQueryOptimization:
         )
 
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             return_value=mock_response,
         ) as mock_create:
@@ -87,7 +87,7 @@ class TestQueryOptimization:
         )
 
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             return_value=mock_response,
         ) as mock_create:
@@ -118,7 +118,7 @@ class TestQueryOptimization:
         )
 
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             return_value=mock_response,
         ) as mock_create:
@@ -131,7 +131,7 @@ class TestQueryOptimization:
     async def test_optimize_query_empty_input(self):
         """Test optimization with empty or None input."""
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
         ) as mock_create:
             # Test empty string
@@ -147,7 +147,7 @@ class TestQueryOptimization:
     async def test_optimize_query_client_error_fallback(self):
         """Test fallback to original query when client fails."""
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             side_effect=Exception("Model client error"),
         ) as mock_create:
@@ -169,7 +169,7 @@ class TestQueryOptimization:
         )
 
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
@@ -190,7 +190,7 @@ class TestQueryOptimization:
         )
 
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
@@ -211,7 +211,7 @@ class TestQueryOptimization:
         )
 
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
@@ -232,7 +232,7 @@ class TestQueryOptimization:
         )
 
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
@@ -251,7 +251,7 @@ class TestQueryOptimization:
         )
 
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             return_value=mock_response,
         ) as mock_create:

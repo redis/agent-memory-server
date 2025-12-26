@@ -7,7 +7,7 @@ without making actual API calls.
 
 import pytest
 
-from agent_memory_server.llm_client import (
+from agent_memory_server.llm import (
     ChatCompletionResponse,
     EmbeddingResponse,
     LLMClient,
@@ -106,7 +106,7 @@ class TestEmbeddingResponse:
 
 # TODO: Gateway tests disabled pending integration test setup.
 # These tests will be re-enabled when gateway functionality is implemented.
-# See agent_memory_server/llm_client.py for the gateway design.
+# See agent_memory_server/llm/client.py for the gateway design.
 #
 # class TestLLMClientGatewayConfiguration:
 #     """Tests for gateway configuration."""

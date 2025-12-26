@@ -16,13 +16,16 @@ from agent_memory_server.models import (
 @pytest.fixture
 def mock_llm_client():
     """Create a mock LLMClient that doesn't need an API key"""
-    from agent_memory_server.llm_client import ChatCompletionResponse, EmbeddingResponse
+    from agent_memory_server.llm import ChatCompletionResponse, EmbeddingResponse
 
-    with patch(
-        "agent_memory_server.llm_client.LLMClient.create_chat_completion"
-    ) as mock_chat, patch(
-        "agent_memory_server.llm_client.LLMClient.create_embedding"
-    ) as mock_embed:
+    with (
+        patch(
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion"
+        ) as mock_chat,
+        patch(
+            "agent_memory_server.llm.client.LLMClient.create_embedding"
+        ) as mock_embed,
+    ):
         # Mock the create_embedding and create_chat_completion methods
         mock_embed.return_value = EmbeddingResponse(
             embeddings=[[0.1] * 1536],

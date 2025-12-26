@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from agent_memory_server.llm_client import (
+from agent_memory_server.llm import (
     ChatCompletionResponse,
     optimize_query_for_vector_search,
 )
@@ -23,7 +23,7 @@ class TestQueryOptimizationErrorHandling:
     async def test_optimization_with_network_timeout(self):
         """Test graceful fallback when model API times out."""
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             side_effect=TimeoutError("Request timed out"),
         ) as mock_create:
@@ -37,7 +37,7 @@ class TestQueryOptimizationErrorHandling:
     async def test_optimization_with_invalid_api_key(self):
         """Test fallback when API key is invalid."""
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             side_effect=Exception("Invalid API key"),
         ):
@@ -59,7 +59,7 @@ class TestQueryOptimizationErrorHandling:
         )
 
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
@@ -81,7 +81,7 @@ class TestQueryOptimizationErrorHandling:
         )
 
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
@@ -103,7 +103,7 @@ class TestQueryOptimizationErrorHandling:
         )
 
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             return_value=mock_response,
         ) as mock_create:
@@ -125,7 +125,7 @@ class TestQueryOptimizationErrorHandling:
         )
 
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             return_value=mock_response,
         ) as mock_create:
@@ -152,7 +152,7 @@ class TestQueryOptimizationErrorHandling:
         )
 
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             return_value=mock_response,
         ) as mock_create:
@@ -207,7 +207,7 @@ class TestQueryOptimizationErrorHandling:
         )
 
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             return_value=mock_response,
         ):
@@ -219,7 +219,7 @@ class TestQueryOptimizationErrorHandling:
     async def test_optimization_with_model_rate_limit(self):
         """Test fallback when model API is rate limited."""
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             side_effect=Exception("Rate limit exceeded"),
         ):
@@ -238,7 +238,7 @@ class TestQueryOptimizationErrorHandling:
         mock_settings.min_optimized_query_length = 3
 
         with patch(
-            "agent_memory_server.llm_client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
             new_callable=AsyncMock,
             side_effect=Exception("Model not found"),
         ) as mock_create:

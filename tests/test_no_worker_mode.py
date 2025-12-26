@@ -47,9 +47,7 @@ async def test_no_worker_mode_runs_tasks_inline(mock_vectorstore_adapter):
             results = search_response.json()
             # The memory should be found because it was indexed inline
             assert len(results["memories"]) > 0
-            found = any(
-                m["id"] == "test-no-worker-123" for m in results["memories"]
-            )
+            found = any(m["id"] == "test-no-worker-123" for m in results["memories"])
             assert found, "Memory should have been indexed inline in no-worker mode"
 
     finally:
