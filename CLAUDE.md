@@ -110,6 +110,9 @@ query = VectorQuery(vector=embedding, vector_field_name="vector", return_fields=
 
 ## Critical Rules
 
+### Import Placement
+Place all imports at the top of modules, not inside functions. Inline imports should only be used when strictly necessary (e.g., avoiding circular dependencies, optional dependencies, or significant startup performance concerns).
+
 ### Authentication
 - **PRODUCTION**: Never set `DISABLE_AUTH=true` in production
 - **DEVELOPMENT**: Use `DISABLE_AUTH=true` for local testing only
