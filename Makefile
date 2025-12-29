@@ -67,4 +67,3 @@ clean:  ## Clean up generated files and caches
 	find . -type d -name .ruff_cache -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	rm -rf .coverage htmlcov/ 2>/dev/null || true
-
