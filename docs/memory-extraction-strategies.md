@@ -1,19 +1,17 @@
 # Memory Extraction Strategies
 
-The Redis Agent Memory Server supports configurable memory extraction strategies that determine how memories are extracted from conversations when they are promoted from working memory to long-term storage.
-
-## Overview
-
-Memory strategies allow you to customize the extraction behavior for different use cases:
-
-- **Discrete Strategy**: Extract individual facts and preferences (default)
-- **Summary Strategy**: Create conversation summaries
-- **Preferences Strategy**: Focus on user preferences and characteristics
-- **Custom Strategy**: Use domain-specific extraction prompts
-
-Each strategy produces different types of memories optimized for specific applications.
+This reference documents the configurable extraction strategies that determine how memories are extracted from conversations during [background extraction](memory-integration-patterns.md#pattern-3-background-extraction-automatic).
 
 ## Available Strategies
+
+| Strategy | Description | Best For |
+|----------|-------------|----------|
+| **Discrete** (default) | Extract individual facts and preferences | General chat, factual information |
+| **Summary** | Create conversation summaries | Meeting notes, long conversations |
+| **Preferences** | Focus on user preferences and characteristics | Personalization, user profiles |
+| **Custom** | Use domain-specific extraction prompts | Technical, legal, medical domains |
+
+## Strategy Reference
 
 ### 1. Discrete Memory Strategy (Default)
 
@@ -214,121 +212,11 @@ else:
 !!! info "Full Security Documentation"
     For comprehensive security guidance, attack examples, and production recommendations, see the [Security Guide](security-custom-prompts.md).
 
-## Strategy-Aware MCP Tools
-
-Each working memory session can generate MCP tools that understand its configured strategy:
-
-```python
-# Get strategy-specific tool description
-tool_description = working_memory.get_create_long_term_memory_tool_description()
-
-# Create strategy-aware MCP tool
-create_memories_tool = working_memory.create_long_term_memory_tool()
-```
-
-The generated tools include strategy-specific guidance in their descriptions, helping LLMs understand the expected extraction behavior.
-
-**Example Tool Descriptions:**
-
-=== "Discrete Strategy"
-    ```
-    Create long-term memories by extracting discrete semantic and episodic facts.
-    Focus on individual facts, user preferences, and specific events.
-    ```
-
-=== "Summary Strategy"
-    ```
-    Create long-term memories by summarizing conversation content.
-    Generate concise summaries capturing key discussion points.
-    ```
-
-=== "Custom Strategy"
-    ```
-    Create long-term memories using custom extraction focused on:
-    - Technology choices made
-    - Architecture decisions
-    - Implementation details
-    ```
-
-## Usage Examples
-
-### Basic Strategy Configuration
-
-```python
-from agent_memory_client import MemoryAPIClient
-from agent_memory_server.models import MemoryStrategyConfig
-
-client = MemoryAPIClient()
-
-# Configure strategy for technical discussions
-tech_strategy = MemoryStrategyConfig(
-    strategy="custom",
-    config={
-        "custom_prompt": """
-        Extract technical decisions from: {message}
-        Focus on technology choices, architecture, and implementation details.
-        Return JSON with memories array.
-        """
-    }
-)
-
-# Apply to working memory
-working_memory = await client.set_working_memory(
-    session_id="tech-session",
-    messages=[
-        {"role": "user", "content": "Let's use PostgreSQL for the database and Redis for caching"},
-        {"role": "assistant", "content": "Good choices! That architecture will scale well."}
-    ],
-    long_term_memory_strategy=tech_strategy
-)
-```
-
-### Strategy Selection by Use Case
-
-```python
-def get_strategy_for_domain(domain: str) -> MemoryStrategyConfig:
-    """Select appropriate strategy based on application domain."""
-
-    if domain == "customer_support":
-        return MemoryStrategyConfig(
-            strategy="preferences",
-            config={}
-        )
-
-    elif domain == "meeting_notes":
-        return MemoryStrategyConfig(
-            strategy="summary",
-            config={"max_summary_length": 800}
-        )
-
-    elif domain == "technical_consulting":
-        return MemoryStrategyConfig(
-            strategy="custom",
-            config={
-                "custom_prompt": """
-                Extract technical recommendations from: {message}
-                Focus on: technology stack, architecture patterns, best practices.
-                Format as JSON memories.
-                """
-            }
-        )
-
-    else:
-        # Default to discrete strategy
-        return MemoryStrategyConfig(
-            strategy="discrete",
-            config={}
-        )
-
-# Use domain-specific strategy
-strategy = get_strategy_for_domain("technical_consulting")
-```
-
-### REST API Integration
+## REST API Usage
 
 ```bash
 # Configure memory strategy via REST API
-curl -X POST "http://localhost:8000/v1/working-memory/" \
+curl -X PUT "http://localhost:8000/v1/working-memory/my-session" \
   -H "Content-Type: application/json" \
   -d '{
     "session_id": "api-session",
@@ -341,6 +229,8 @@ curl -X POST "http://localhost:8000/v1/working-memory/" \
     }
   }'
 ```
+
+For more comprehensive integration examples, see [Memory Integration Patterns](memory-integration-patterns.md).
 
 ## Best Practices
 

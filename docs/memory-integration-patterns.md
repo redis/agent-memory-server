@@ -458,54 +458,53 @@ await store_conversation_with_auto_extraction(
 # - "User is vegetarian" (semantic)
 ```
 
-### Structured Memory Addition
+### Custom Extraction Prompts
+
+When you need more control over exactly which details are extracted during background extraction, use the `long_term_memory_strategy` option with a custom prompt. This is useful when you want to extract granular, domain-specific details that the default extraction might miss.
+
+**Example: Extracting detailed vehicle preferences**
 
 ```python
-async def add_structured_memories_for_extraction(
-    session_id: str,
-    structured_memories: list[dict],
-    user_id: str
-):
-    """Add structured memories that will be promoted to long-term storage"""
+from agent_memory_client.models import WorkingMemory, MemoryMessage, MemoryStrategyConfig
 
-    # Convert to MemoryRecord objects
-    memory_records = [
-        MemoryRecord(**memory_data, user_id=user_id)
-        for memory_data in structured_memories
-    ]
-
-    # Add to working memory for automatic promotion
-    working_memory = WorkingMemory(
-        session_id=session_id,
-        memories=memory_records,
-        user_id=user_id
-    )
-
-    await client.set_working_memory(session_id, working_memory)
-
-# Usage
-await add_structured_memories_for_extraction(
-    session_id="alice_profile_setup",
-    structured_memories=[
-        {
-            "text": "User has 5 years experience in product management",
-            "memory_type": "semantic",
-            "topics": ["experience", "career", "product_management"],
-            "entities": ["5 years", "product management"]
-        },
-        {
-            "text": "User completed MBA at Stanford in 2019",
-            "memory_type": "episodic",
-            "event_date": "2019-06-15T00:00:00Z",
-            "topics": ["education", "mba", "stanford"],
-            "entities": ["MBA", "Stanford", "2019"]
-        }
+# Configure custom extraction for granular vehicle preferences
+working_memory = WorkingMemory(
+    session_id="car_shopping_session",
+    messages=[
+        MemoryMessage(role="user", content="I'm looking for a car. I really like the Tesla Model 3 in midnight blue, but I'm also considering a BMW i4 in white."),
+        MemoryMessage(role="assistant", content="Both are great electric vehicles! The Model 3 offers excellent range while the i4 has that classic BMW driving feel.")
     ],
-    user_id="alice"
+    user_id="alice",
+    long_term_memory_strategy=MemoryStrategyConfig(
+        strategy="custom",
+        config={
+            "custom_prompt": """Extract detailed user preferences from the conversation.
+
+For vehicle preferences, extract specific details including:
+- Brand preferences (e.g., Tesla, BMW, Ford)
+- Model preferences (e.g., Model 3, i4, Mustang)
+- Color preferences (e.g., midnight blue, white, red)
+- Feature preferences (e.g., electric, AWD, leather seats)
+- Budget constraints if mentioned
+
+Format each preference as a separate memory with specific entities.
+Current datetime: {current_datetime}
+Conversation: {message}"""
+        }
+    )
 )
+
+await client.set_working_memory("car_shopping_session", working_memory)
+
+# With custom extraction, the system extracts granular memories like:
+# - "User is interested in Tesla Model 3 in midnight blue color"
+# - "User is considering BMW i4 in white color"
+# - "User is shopping for electric vehicles"
 ```
 
-### Long-Running Learning System
+For complete details on extraction strategies (discrete, summary, preferences, custom) and security considerations, see [Memory Extraction Strategies](memory-extraction-strategies.md).
+
+### Continuous Learning Agent
 
 ```python
 class AutoLearningAgent:
@@ -606,10 +605,9 @@ print("System learned:", learned_info)
 - **Scales naturally**: Works with any conversation volume
 
 ### Disadvantages
-- **Less control**: Can't control exactly what gets remembered
 - **Delayed availability**: Extraction happens in background, not immediately
-- **Potential noise**: Might extract irrelevant information
-- **Requires conversation**: Needs conversational context to work well
+- **Potential noise**: Default extraction might capture irrelevant information (use custom prompts for more control)
+- **Requires conversation context**: Works best with rich conversational data
 
 ### Best Practices
 
