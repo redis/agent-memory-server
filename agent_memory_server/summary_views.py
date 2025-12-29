@@ -12,6 +12,7 @@ import logging
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import quote, unquote
 
 import tiktoken
 from docket import Perpetual
@@ -57,18 +58,38 @@ def encode_partition_key(group: dict[str, str]) -> str:
     """Create a stable key representation from group_by values.
 
     Keys are sorted alphabetically so the same group always produces the
-    same identifier. The resulting string is treated as an opaque key –
-    we never parse it back into a dict. Because the allowed group_by
-    fields are a small fixed set without the '|' or '=' characters,
-    this encoding is stable and effectively collision-free for our use
-    case even if values contain those delimiters.
+    same identifier. Both keys and values are URL-encoded to handle any
+    special characters (including '|' and '=') that could otherwise cause
+    ambiguous or colliding partition keys.
+
+    The resulting string is treated as an opaque key; use
+    decode_partition_key() if you need to reverse the encoding.
     """
 
     parts: list[str] = []
     for key in sorted(group.keys()):
-        value = group[key]
-        parts.append(f"{key}={value}")
+        encoded_key = quote(key, safe="")
+        encoded_value = quote(group[key], safe="")
+        parts.append(f"{encoded_key}={encoded_value}")
     return "|".join(parts)
+
+
+def decode_partition_key(partition_key: str) -> dict[str, str]:
+    """Decode a partition key back into a group dictionary.
+
+    This reverses the URL-encoding applied by encode_partition_key().
+    """
+
+    if not partition_key:
+        return {}
+
+    result: dict[str, str] = {}
+    for part in partition_key.split("|"):
+        if "=" not in part:
+            continue
+        encoded_key, encoded_value = part.split("=", 1)
+        result[unquote(encoded_key)] = unquote(encoded_value)
+    return result
 
 
 def _matches_group_filter(group: dict[str, str], group_filter: dict[str, str]) -> bool:
@@ -550,10 +571,24 @@ async def refresh_summary_view(view_id: str, task_id: str | None = None) -> None
         # Nothing to do; already handled task status above if needed.
         return
 
+    # Threshold above which we log a warning about large memory sets.
+    # This helps operators identify views that may benefit from tighter
+    # filters or time windows.
+    large_memory_threshold = 5000
+
     try:
         if view.source == "long_term":
             # Fetch all relevant memories and partition them.
             memories = await _fetch_long_term_memories_for_view(view)
+
+            if len(memories) >= large_memory_threshold:
+                logger.warning(
+                    "refresh_summary_view: fetched %d memories for view %s; "
+                    "consider adding filters or a time_window_days to reduce volume.",
+                    len(memories),
+                    view.id,
+                )
+
             partitions = _partition_memories_by_group(view, memories)
 
             for key, mems in partitions.items():

@@ -242,3 +242,37 @@ async def test_fetch_long_term_memories_for_view_paginates(monkeypatch):
     assert calls[1] == (1000, 1000)
     # The final page only needs 100 records to reach 2100.
     assert calls[2] == (100, 2000)
+
+
+def test_encode_partition_key_handles_special_characters():
+    """encode_partition_key should URL-encode special characters in values."""
+
+    from agent_memory_server.summary_views import (
+        decode_partition_key,
+        encode_partition_key,
+    )
+
+    # Values containing the delimiter characters '|' and '='
+    group = {"user_id": "alice|bob", "namespace": "test=value"}
+
+    encoded = encode_partition_key(group)
+
+    # The encoded key should not have raw '|' or '=' from values
+    # (keys are sorted alphabetically, so namespace comes first)
+    assert "alice%7Cbob" in encoded  # %7C is URL-encoded '|'
+    assert "test%3Dvalue" in encoded  # %3D is URL-encoded '='
+
+    # Decoding should restore the original values
+    decoded = decode_partition_key(encoded)
+    assert decoded == group
+
+
+def test_encode_partition_key_is_stable():
+    """encode_partition_key should produce the same key regardless of dict order."""
+
+    from agent_memory_server.summary_views import encode_partition_key
+
+    group1 = {"user_id": "alice", "namespace": "chat"}
+    group2 = {"namespace": "chat", "user_id": "alice"}
+
+    assert encode_partition_key(group1) == encode_partition_key(group2)
