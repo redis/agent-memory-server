@@ -17,7 +17,7 @@ import java.util.stream.StreamSupport;
  * Service for long-term memory operations.
  */
 public class LongTermMemoryService extends BaseService {
-    
+
     public LongTermMemoryService(
             @NotNull String baseUrl,
             @NotNull OkHttpClient httpClient,
@@ -27,7 +27,7 @@ public class LongTermMemoryService extends BaseService {
             @Nullable Integer defaultContextWindowMax) {
         super(baseUrl, httpClient, objectMapper, defaultNamespace, defaultModelName, defaultContextWindowMax);
     }
-    
+
     /**
      * Create long-term memories.
      *
@@ -38,31 +38,31 @@ public class LongTermMemoryService extends BaseService {
     public AckResponse createLongTermMemories(@NotNull List<MemoryRecord> memories) throws MemoryClientException {
         Map<String, Object> payload = new HashMap<>();
         payload.put("memories", memories);
-        
+
         try {
             String json = objectMapper.writeValueAsString(payload);
             RequestBody body = RequestBody.create(json, JSON);
-            
+
             Request request = new Request.Builder()
                     .url(baseUrl + "/v1/long-term-memory/")
                     .post(body)
                     .build();
-            
+
             try (Response response = httpClient.newCall(request).execute()) {
                 handleHttpError(response);
-                
+
                 ResponseBody responseBody = response.body();
                 if (responseBody == null) {
                     throw new MemoryClientException("Empty response body");
                 }
-                
+
                 return objectMapper.readValue(responseBody.string(), AckResponse.class);
             }
         } catch (IOException e) {
             throw new MemoryClientException("Failed to create long-term memories", e);
         }
     }
-    
+
     /**
      * Search long-term memories.
      *
@@ -76,7 +76,7 @@ public class LongTermMemoryService extends BaseService {
         payload.put("text", request.getText());
         payload.put("limit", request.getLimit());
         payload.put("offset", request.getOffset());
-        
+
         // Add filters if present
         if (request.getSessionId() != null) {
             payload.put("session_id", Map.of("eq", request.getSessionId()));
@@ -89,38 +89,38 @@ public class LongTermMemoryService extends BaseService {
         } else if (defaultNamespace != null) {
             payload.put("namespace", Map.of("eq", defaultNamespace));
         }
-        
+
         if (request.getTopics() != null && !request.getTopics().isEmpty()) {
             payload.put("topics", Map.of("any", request.getTopics()));
         }
         if (request.getEntities() != null && !request.getEntities().isEmpty()) {
             payload.put("entities", Map.of("any", request.getEntities()));
         }
-        
+
         try {
             String json = objectMapper.writeValueAsString(payload);
             RequestBody body = RequestBody.create(json, JSON);
-            
+
             Request httpRequest = new Request.Builder()
                     .url(baseUrl + "/v1/long-term-memory/search")
                     .post(body)
                     .build();
-            
+
             try (Response response = httpClient.newCall(httpRequest).execute()) {
                 handleHttpError(response);
-                
+
                 ResponseBody responseBody = response.body();
                 if (responseBody == null) {
                     throw new MemoryClientException("Empty response body");
                 }
-                
+
                 return objectMapper.readValue(responseBody.string(), MemoryRecordResults.class);
             }
         } catch (IOException e) {
             throw new MemoryClientException("Failed to search long-term memories", e);
         }
     }
-    
+
     /**
      * Search long-term memories with simple text query.
      */
@@ -130,7 +130,7 @@ public class LongTermMemoryService extends BaseService {
                 .build();
         return searchLongTermMemories(request);
     }
-    
+
     /**
      * Get a single long-term memory by ID.
      *
@@ -143,15 +143,15 @@ public class LongTermMemoryService extends BaseService {
                 .url(baseUrl + "/v1/long-term-memory/" + memoryId)
                 .get()
                 .build();
-        
+
         try (Response response = httpClient.newCall(request).execute()) {
             handleHttpError(response);
-            
+
             ResponseBody body = response.body();
             if (body == null) {
                 throw new MemoryClientException("Empty response body");
             }
-            
+
             return objectMapper.readValue(body.string(), MemoryRecord.class);
         } catch (IOException e) {
             throw new MemoryClientException("Failed to get long-term memory", e);
@@ -462,4 +462,3 @@ public class LongTermMemoryService extends BaseService {
         );
     }
 }
-

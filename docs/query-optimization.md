@@ -64,10 +64,11 @@ QUERY_OPTIMIZATION_MODEL=gpt-4o-mini
 # Use a more powerful model for memory extraction and other tasks
 GENERATION_MODEL=gpt-4o
 
-# Supported models include:
-# - gpt-4o, gpt-4o-mini
-# - claude-3-5-sonnet-20241022, claude-3-haiku-20240307
-# - Any model supported by your LLM provider
+    # Supported models include:
+    # - gpt-5.2-chat-latest, gpt-5.1-chat-latest, gpt-5-mini, gpt-5-nano
+    # - gpt-4o, gpt-4o-mini
+    # - claude-3-5-sonnet-20241022, claude-3-haiku-20240307
+    # - Any model supported by your LLM provider
 ```
 
 ## Usage Examples

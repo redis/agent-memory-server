@@ -194,4 +194,3 @@ class EndToEndIntegrationTest extends BaseIntegrationTest {
         assertEquals("2", retrieved2.getData().get("session"));
     }
 }
-

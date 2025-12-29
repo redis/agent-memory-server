@@ -19,11 +19,11 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests for HealthService functionality.
  */
 class HealthServiceTest {
-    
+
     private MockWebServer mockServer;
     private MemoryAPIClient client;
     private ObjectMapper objectMapper;
-    
+
     @BeforeEach
     void setUp() throws IOException {
         mockServer = new MockWebServer();
@@ -38,13 +38,13 @@ class HealthServiceTest {
         objectMapper.registerModule(new JavaTimeModule());
         objectMapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
-    
+
     @AfterEach
     void tearDown() throws Exception {
         client.close();
         mockServer.shutdown();
     }
-    
+
     @Test
     void testHealthCheck() throws Exception {
         // Mock response
@@ -68,4 +68,3 @@ class HealthServiceTest {
         assertTrue(request.getPath().contains("/v1/health"));
     }
 }
-

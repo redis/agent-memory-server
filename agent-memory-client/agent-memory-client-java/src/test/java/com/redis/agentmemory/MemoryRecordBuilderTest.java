@@ -56,7 +56,7 @@ class MemoryRecordBuilderTest {
     void testMemoryRecordDefaultConstructor() {
         // Test that default constructor still uses old defaults (for deserialization)
         MemoryRecord memory = new MemoryRecord();
-        
+
         assertNotNull(memory.getId());
         assertEquals("f", memory.getDiscreteMemoryExtracted()); // Should be "f" for default constructor
         assertEquals(MemoryType.MESSAGE, memory.getMemoryType()); // Should be MESSAGE for default constructor
@@ -66,10 +66,9 @@ class MemoryRecordBuilderTest {
     void testMemoryRecordConstructorWithText() {
         // Test that text constructor uses old defaults (for deserialization)
         MemoryRecord memory = new MemoryRecord("Test text");
-        
+
         assertEquals("Test text", memory.getText());
         assertEquals("f", memory.getDiscreteMemoryExtracted());
         assertEquals(MemoryType.MESSAGE, memory.getMemoryType());
     }
 }
-

@@ -141,4 +141,3 @@ public abstract class BaseIntegrationTest {
         return objectMapper;
     }
 }
-

@@ -73,7 +73,7 @@ class MemoryHydrationIntegrationTest extends BaseIntegrationTest {
 
         assertNotNull(result);
         assertTrue(result.containsKey("messages"));
-        
+
         // The result should include the conversation history
         Object resultMessages = result.get("messages");
         assertNotNull(resultMessages);
@@ -205,4 +205,3 @@ class MemoryHydrationIntegrationTest extends BaseIntegrationTest {
         }
     }
 }
-

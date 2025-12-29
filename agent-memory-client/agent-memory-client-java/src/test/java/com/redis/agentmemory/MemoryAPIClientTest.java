@@ -19,11 +19,11 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MemoryAPIClientTest {
-    
+
     private MockWebServer mockServer;
     private MemoryAPIClient client;
     private ObjectMapper objectMapper;
-    
+
     @BeforeEach
     void setUp() throws IOException {
         mockServer = new MockWebServer();
@@ -38,13 +38,13 @@ class MemoryAPIClientTest {
         objectMapper.registerModule(new JavaTimeModule());
         objectMapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
-    
+
     @AfterEach
     void tearDown() throws Exception {
         client.close();
         mockServer.shutdown();
     }
-    
+
 
     @Test
     void testNotFoundError() {

@@ -299,4 +299,3 @@ class WorkingMemoryIntegrationTest extends BaseIntegrationTest {
         assertEquals("active", response.getData().get("status"));  // Should still exist
     }
 }
-

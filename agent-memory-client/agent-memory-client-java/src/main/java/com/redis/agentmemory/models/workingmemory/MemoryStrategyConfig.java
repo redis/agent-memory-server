@@ -10,37 +10,37 @@ import java.util.Map;
  * Configuration for memory extraction strategy.
  */
 public class MemoryStrategyConfig {
-    
+
     @NotNull
     private String strategy;
-    
+
     @NotNull
     private Map<String, Object> config;
-    
+
     public MemoryStrategyConfig() {
         this.strategy = "discrete";
         this.config = new HashMap<>();
     }
-    
+
     public MemoryStrategyConfig(@NotNull String strategy) {
         this.strategy = strategy;
         this.config = new HashMap<>();
     }
-    
+
     public MemoryStrategyConfig(@NotNull String strategy, @NotNull Map<String, Object> config) {
         this.strategy = strategy;
         this.config = config;
     }
-    
+
     @NotNull
     public String getStrategy() {
         return strategy;
     }
-    
+
     public void setStrategy(@NotNull String strategy) {
         this.strategy = strategy;
     }
-    
+
     @NotNull
     public Map<String, Object> getConfig() {
         return config;
@@ -122,4 +122,3 @@ public class MemoryStrategyConfig {
         }
     }
 }
-

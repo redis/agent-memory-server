@@ -17,7 +17,7 @@ import java.util.*;
  * Service for working memory operations.
  */
 public class WorkingMemoryService extends BaseService {
-    
+
     public WorkingMemoryService(
             @NotNull String baseUrl,
             @NotNull OkHttpClient httpClient,
@@ -27,10 +27,10 @@ public class WorkingMemoryService extends BaseService {
             @Nullable Integer defaultContextWindowMax) {
         super(baseUrl, httpClient, objectMapper, defaultNamespace, defaultModelName, defaultContextWindowMax);
     }
-    
+
     /**
      * List available sessions with optional pagination and filtering.
-     * 
+     *
      * @param limit Maximum number of sessions to return
      * @param offset Offset for pagination
      * @param namespace Optional namespace filter
@@ -48,43 +48,43 @@ public class WorkingMemoryService extends BaseService {
                 .newBuilder()
                 .addQueryParameter("limit", String.valueOf(limit))
                 .addQueryParameter("offset", String.valueOf(offset));
-        
+
         if (namespace != null) {
             urlBuilder.addQueryParameter("namespace", namespace);
         } else if (defaultNamespace != null) {
             urlBuilder.addQueryParameter("namespace", defaultNamespace);
         }
-        
+
         if (userId != null) {
             urlBuilder.addQueryParameter("user_id", userId);
         }
-        
+
         Request request = new Request.Builder()
                 .url(urlBuilder.build())
                 .get()
                 .build();
-        
+
         try (Response response = httpClient.newCall(request).execute()) {
             handleHttpError(response);
-            
+
             ResponseBody body = response.body();
             if (body == null) {
                 throw new MemoryClientException("Empty response body");
             }
-            
+
             return objectMapper.readValue(body.string(), SessionListResponse.class);
         } catch (IOException e) {
             throw new MemoryClientException("Failed to list sessions", e);
         }
     }
-    
+
     /**
      * List sessions with default pagination.
      */
     public SessionListResponse listSessions() throws MemoryClientException {
         return listSessions(100, 0, null, null);
     }
-    
+
     /**
      * Get working memory for a session.
      *
@@ -106,42 +106,42 @@ public class WorkingMemoryService extends BaseService {
         HttpUrl.Builder urlBuilder = HttpUrl.parse(
                 baseUrl + "/v1/working-memory/" + sessionId
         ).newBuilder();
-        
+
         if (userId != null) {
             urlBuilder.addQueryParameter("user_id", userId);
         }
-        
+
         if (namespace != null) {
             urlBuilder.addQueryParameter("namespace", namespace);
         } else if (defaultNamespace != null) {
             urlBuilder.addQueryParameter("namespace", defaultNamespace);
         }
-        
+
         String effectiveModelName = modelName != null ? modelName : defaultModelName;
         if (effectiveModelName != null) {
             urlBuilder.addQueryParameter("model_name", effectiveModelName);
         }
-        
+
         Integer effectiveContextWindowMax = contextWindowMax != null
                 ? contextWindowMax
                 : defaultContextWindowMax;
         if (effectiveContextWindowMax != null) {
             urlBuilder.addQueryParameter("context_window_max", String.valueOf(effectiveContextWindowMax));
         }
-        
+
         Request request = new Request.Builder()
                 .url(urlBuilder.build())
                 .get()
                 .build();
-        
+
         try (Response response = httpClient.newCall(request).execute()) {
             handleHttpError(response);
-            
+
             ResponseBody body = response.body();
             if (body == null) {
                 throw new MemoryClientException("Empty response body");
             }
-            
+
             return objectMapper.readValue(body.string(), WorkingMemoryResponse.class);
         } catch (IOException e) {
             throw new MemoryClientException("Failed to get working memory", e);

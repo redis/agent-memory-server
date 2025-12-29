@@ -12,66 +12,66 @@ import java.util.List;
  * A memory record in the system.
  */
 public class MemoryRecord {
-    
+
     @NotNull
     private String id;
-    
+
     @NotNull
     private String text;
-    
+
     @Nullable
     @JsonProperty("session_id")
     private String sessionId;
-    
+
     @Nullable
     @JsonProperty("user_id")
     private String userId;
-    
+
     @Nullable
     private String namespace;
-    
+
     @NotNull
     @JsonProperty("last_accessed")
     private Instant lastAccessed;
-    
+
     @NotNull
     @JsonProperty("created_at")
     private Instant createdAt;
-    
+
     @NotNull
     @JsonProperty("updated_at")
     private Instant updatedAt;
-    
+
     @Nullable
     private List<String> topics;
-    
+
     @Nullable
     private List<String> entities;
-    
+
     @Nullable
     @JsonProperty("memory_hash")
     private String memoryHash;
-    
+
     @NotNull
     @JsonProperty("discrete_memory_extracted")
     private String discreteMemoryExtracted;
-    
+
     @NotNull
     @JsonProperty("memory_type")
     private MemoryType memoryType;
-    
+
     @Nullable
     @JsonProperty("persisted_at")
     private Instant persistedAt;
-    
+
     @Nullable
     @JsonProperty("extracted_from")
     private List<String> extractedFrom;
-    
+
     @Nullable
     @JsonProperty("event_date")
     private Instant eventDate;
-    
+
     public MemoryRecord() {
         this.id = UlidCreator.getUlid().toString();
         Instant now = Instant.now();
@@ -81,68 +81,68 @@ public class MemoryRecord {
         this.discreteMemoryExtracted = "f";
         this.memoryType = MemoryType.MESSAGE;
     }
-    
+
     public MemoryRecord(@NotNull String text) {
         this();
         this.text = text;
     }
-    
+
     // Getters and setters
-    
+
     @NotNull
     public String getId() {
         return id;
     }
-    
+
     public void setId(@NotNull String id) {
         this.id = id;
     }
-    
+
     @NotNull
     public String getText() {
         return text;
     }
-    
+
     public void setText(@NotNull String text) {
         this.text = text;
     }
-    
+
     @Nullable
     public String getSessionId() {
         return sessionId;
     }
-    
+
     public void setSessionId(@Nullable String sessionId) {
         this.sessionId = sessionId;
     }
-    
+
     @Nullable
     public String getUserId() {
         return userId;
     }
-    
+
     public void setUserId(@Nullable String userId) {
         this.userId = userId;
     }
-    
+
     @Nullable
     public String getNamespace() {
         return namespace;
     }
-    
+
     public void setNamespace(@Nullable String namespace) {
         this.namespace = namespace;
     }
-    
+
     @NotNull
     public Instant getLastAccessed() {
         return lastAccessed;
     }
-    
+
     public void setLastAccessed(@NotNull Instant lastAccessed) {
         this.lastAccessed = lastAccessed;
     }
-    
+
     @NotNull
     public Instant getCreatedAt() {
         return createdAt;
@@ -510,4 +510,3 @@ public class MemoryRecord {
         }
     }
 }
-

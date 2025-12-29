@@ -11,87 +11,87 @@ import java.time.Instant;
  * A message in the memory system.
  */
 public class MemoryMessage {
-    
+
     @NotNull
     private String role;
-    
+
     @NotNull
     private String content;
-    
+
     @NotNull
     private String id;
-    
+
     @NotNull
     @JsonProperty("created_at")
     private Instant createdAt;
-    
+
     @Nullable
     @JsonProperty("persisted_at")
     private Instant persistedAt;
-    
+
     @NotNull
     @JsonProperty("discrete_memory_extracted")
     private String discreteMemoryExtracted;
-    
+
     public MemoryMessage() {
         this.id = UlidCreator.getUlid().toString();
         this.createdAt = Instant.now();
         this.discreteMemoryExtracted = "f";
     }
-    
+
     public MemoryMessage(@NotNull String role, @NotNull String content) {
         this();
         this.role = role;
         this.content = content;
     }
-    
+
     // Getters and setters
-    
+
     @NotNull
     public String getRole() {
         return role;
     }
-    
+
     public void setRole(@NotNull String role) {
         this.role = role;
     }
-    
+
     @NotNull
     public String getContent() {
         return content;
     }
-    
+
     public void setContent(@NotNull String content) {
         this.content = content;
     }
-    
+
     @NotNull
     public String getId() {
         return id;
     }
-    
+
     public void setId(@NotNull String id) {
         this.id = id;
     }
-    
+
     @NotNull
     public Instant getCreatedAt() {
         return createdAt;
     }
-    
+
     public void setCreatedAt(@NotNull Instant createdAt) {
         this.createdAt = createdAt;
     }
-    
+
     @Nullable
     public Instant getPersistedAt() {
         return persistedAt;
     }
-    
+
     public void setPersistedAt(@Nullable Instant persistedAt) {
         this.persistedAt = persistedAt;
     }
-    
+
     @NotNull
     public String getDiscreteMemoryExtracted() {
         return discreteMemoryExtracted;
@@ -223,4 +223,3 @@ public class MemoryMessage {
         }
     }
 }
-
