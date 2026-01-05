@@ -24,6 +24,8 @@ from agent_memory_server.llm.types import (
 
 
 if TYPE_CHECKING:
+    from langchain_core.embeddings import Embeddings
+
     from agent_memory_server.config import ModelConfig, ModelProvider
 
 
@@ -211,6 +213,154 @@ class LLMClient:
             total_tokens=response.usage.total_tokens,
             model=response.model,
         )
+
+    @classmethod
+    def create_embeddings(cls) -> Embeddings:
+        """Create a LangChain Embeddings instance based on configuration.
+
+        This method returns a LangChain-compatible Embeddings object that can be
+        passed to vector stores. It centralizes all embedding provider configuration
+        in LLMClient, making it the single entry point for embedding instances.
+
+        The provider is determined from `settings.embedding_model_config`. If not
+        configured, defaults to OpenAI.
+
+        Supported providers:
+            - OpenAI: Uses langchain_openai.OpenAIEmbeddings
+            - Anthropic: Falls back to OpenAI (Anthropic has no embedding models)
+            - AWS Bedrock: Uses langchain_aws.BedrockEmbeddings
+
+        Returns:
+            A LangChain Embeddings instance compatible with vector stores.
+
+        Raises:
+            ImportError: If required provider package is not installed.
+            APIKeyMissingError: If required API key is not configured.
+            ValueError: If provider is unsupported or Bedrock model doesn't exist.
+
+        Example:
+            >>> from agent_memory_server.llm import LLMClient
+            >>> embeddings = LLMClient.create_embeddings()
+            >>> # Use with a vector store
+            >>> from langchain_redis import RedisVectorStore
+            >>> vectorstore = RedisVectorStore(embeddings=embeddings, ...)
+        """
+        from agent_memory_server.config import ModelProvider, settings
+
+        embedding_config = settings.embedding_model_config
+        provider = (
+            embedding_config.provider if embedding_config else ModelProvider.OPENAI
+        )
+
+        if provider == ModelProvider.OPENAI:
+            return cls._create_openai_embeddings(
+                model=settings.embedding_model,
+                api_key=settings.openai_api_key,
+            )
+
+        if provider == ModelProvider.ANTHROPIC:
+            # Anthropic doesn't provide embedding models, fall back to OpenAI
+            logger.warning(
+                f"Anthropic embedding model '{settings.embedding_model}' specified, "
+                "but Anthropic doesn't provide embedding models. "
+                "Falling back to OpenAI text-embedding-3-small."
+            )
+            return cls._create_openai_embeddings(
+                model="text-embedding-3-small",
+                api_key=settings.openai_api_key,
+            )
+
+        if provider == ModelProvider.AWS_BEDROCK:
+            return cls._create_bedrock_embeddings(
+                model=settings.embedding_model,
+                region=settings.aws_region,
+            )
+
+        raise ValueError(
+            f"Unsupported embedding provider: {provider}. "
+            f"Supported providers: {', '.join(p.value for p in ModelProvider)}. "
+            f"Provider '{ModelProvider.ANTHROPIC.value}' falls back to "
+            f"'{ModelProvider.OPENAI.value}'."
+        )
+
+    @classmethod
+    def _create_openai_embeddings(
+        cls,
+        model: str,
+        api_key: str | None = None,
+    ) -> Embeddings:
+        """Create OpenAI embeddings instance.
+
+        Args:
+            model: OpenAI embedding model name (e.g., "text-embedding-3-small")
+            api_key: Optional API key. If None, uses OPENAI_API_KEY env var.
+
+        Returns:
+            OpenAIEmbeddings instance.
+
+        Raises:
+            ImportError: If langchain-openai is not installed.
+        """
+        try:
+            from langchain_openai import OpenAIEmbeddings
+        except ImportError:
+            logger.error(
+                "langchain-openai not installed. Install with: pip install langchain-openai"
+            )
+            raise
+
+        if api_key is not None:
+            from pydantic.types import SecretStr
+
+            return OpenAIEmbeddings(model=model, api_key=SecretStr(api_key))
+
+        # Let OpenAIEmbeddings read from OPENAI_API_KEY env var
+        return OpenAIEmbeddings(model=model)
+
+    @classmethod
+    def _create_bedrock_embeddings(
+        cls,
+        model: str,
+        region: str | None = None,
+    ) -> Embeddings:
+        """Create AWS Bedrock embeddings instance.
+
+        Args:
+            model: Bedrock model ID (e.g., "amazon.titan-embed-text-v2:0")
+            region: AWS region. If None, uses default from AWS config.
+
+        Returns:
+            BedrockEmbeddings instance.
+
+        Raises:
+            ImportError: If langchain-aws or AWS dependencies are not installed.
+            ValueError: If the model doesn't exist in the specified region.
+        """
+        try:
+            from langchain_aws import BedrockEmbeddings
+
+            from agent_memory_server._aws.clients import create_bedrock_runtime_client
+            from agent_memory_server._aws.utils import bedrock_embedding_model_exists
+        except ImportError:
+            err_msg = (
+                "AWS-related dependencies might be missing. "
+                "Try to install with: pip install agent-memory-server[aws]."
+            )
+            logger.exception(err_msg)
+            raise
+
+        if not bedrock_embedding_model_exists(model, region_name=region):
+            err_msg = (
+                f"Bedrock embedding model {model} not found in region {region}. "
+                "Please ensure that the model ID is valid, that the model is "
+                "available in the given AWS region, and that your AWS role has "
+                "the correct permissions to invoke it."
+            )
+            logger.error(err_msg)
+            raise ValueError(err_msg)
+
+        bedrock_runtime_client = create_bedrock_runtime_client()
+        return BedrockEmbeddings(model_id=model, client=bedrock_runtime_client)
 
     @classmethod
     def _map_provider(cls, litellm_provider: str) -> ModelProvider:

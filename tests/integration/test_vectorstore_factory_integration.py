@@ -109,7 +109,7 @@ class TestEmbeddingsCreation:
             assert result == mock_instance
             mock_openai.assert_called_once()
 
-    @patch("agent_memory_server.vectorstore_factory.settings")
+    @patch("agent_memory_server.config.settings")
     def test_create_embeddings_unsupported_provider(self, mock_settings):
         """Test embeddings creation with unsupported provider."""
 
