@@ -631,12 +631,18 @@ class TestVectorStoreAdapter:
 
 
 class TestCreateEmbeddings:
-    """Test cases for the create_embeddings function."""
+    """Test cases for the create_embeddings function.
+
+    Note: The embedding creation logic is now in LLMClient.create_embeddings(),
+    so we patch agent_memory_server.config.settings.
+    """
 
     def test_create_embeddings_aws_bedrock_success(self):
         """Test creating AWS Bedrock embeddings successfully."""
+        from agent_memory_server.config import ModelProvider
+
         mock_model_config = MagicMock()
-        mock_model_config.provider = "aws-bedrock"
+        mock_model_config.provider = ModelProvider.AWS_BEDROCK
 
         # Create mock for BedrockEmbeddings
         mock_bedrock_embeddings_class = MagicMock()
@@ -649,7 +655,7 @@ class TestCreateEmbeddings:
         mock_model_exists = MagicMock(return_value=True)
 
         with (
-            patch("agent_memory_server.vectorstore_factory.settings") as mock_settings,
+            patch("agent_memory_server.config.settings") as mock_settings,
             patch(
                 "agent_memory_server._aws.clients.create_bedrock_runtime_client",
                 mock_create_runtime_client,
@@ -680,8 +686,10 @@ class TestCreateEmbeddings:
 
     def test_create_embeddings_aws_bedrock_model_not_found(self):
         """Test error when Bedrock embedding model doesn't exist."""
+        from agent_memory_server.config import ModelProvider
+
         mock_model_config = MagicMock()
-        mock_model_config.provider = "aws-bedrock"
+        mock_model_config.provider = ModelProvider.AWS_BEDROCK
 
         # Create mock module for langchain_aws (needed for import)
         mock_langchain_aws = MagicMock()
@@ -691,7 +699,7 @@ class TestCreateEmbeddings:
         mock_aws_utils.bedrock_embedding_model_exists = mock_model_exists
 
         with (
-            patch("agent_memory_server.vectorstore_factory.settings") as mock_settings,
+            patch("agent_memory_server.config.settings") as mock_settings,
             patch.dict(
                 sys.modules,
                 {
@@ -713,11 +721,13 @@ class TestCreateEmbeddings:
 
     def test_create_embeddings_aws_bedrock_import_error(self):
         """Test error when AWS dependencies are not installed."""
+        from agent_memory_server.config import ModelProvider
+
         mock_model_config = MagicMock()
-        mock_model_config.provider = "aws-bedrock"
+        mock_model_config.provider = ModelProvider.AWS_BEDROCK
 
         with (
-            patch("agent_memory_server.vectorstore_factory.settings") as mock_settings,
+            patch("agent_memory_server.config.settings") as mock_settings,
             patch.dict(sys.modules, {"langchain_aws": None}),  # Simulate missing module
         ):
             mock_settings.embedding_model_config = mock_model_config

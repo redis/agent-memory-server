@@ -24,10 +24,9 @@ import logging
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
 from langchain_redis.config import RedisConfig
-from pydantic.types import SecretStr
 
-# RedisVL uses the same python-ulid library as this project, so no patching needed
-from agent_memory_server.config import ModelProvider, settings
+from agent_memory_server.config import settings
+from agent_memory_server.llm import LLMClient
 from agent_memory_server.vectorstore_adapter import (
     LangChainVectorStoreAdapter,
     MemoryRedisVectorStore,
@@ -42,106 +41,13 @@ logger = logging.getLogger(__name__)
 def create_embeddings() -> Embeddings:
     """Create an embeddings instance based on configuration.
 
+    Delegates to LLMClient.create_embeddings() which centralizes all
+    embedding provider configuration.
+
     Returns:
-        An Embeddings instance
+        A LangChain Embeddings instance
     """
-    embedding_config = settings.embedding_model_config
-    # Only support ModelConfig objects
-    provider = embedding_config.provider if embedding_config else "openai"
-
-    if provider == "openai":
-        try:
-            from langchain_openai import OpenAIEmbeddings
-
-            if settings.openai_api_key is not None:
-                api_key = SecretStr(settings.openai_api_key)
-                return OpenAIEmbeddings(
-                    model=settings.embedding_model,
-                    api_key=api_key,
-                )
-            # Default: handle API key from environment
-            return OpenAIEmbeddings(
-                model=settings.embedding_model,
-            )
-        except ImportError:
-            logger.error(
-                "langchain-openai not installed. Install with: pip install langchain-openai"
-            )
-            raise
-        except Exception as e:
-            logger.error(f"Error creating OpenAI embeddings: {e}")
-            raise
-
-    elif provider == "anthropic":
-        # Note: Anthropic doesn't currently provide embedding models
-        # Fall back to OpenAI embeddings for now
-        logger.warning(
-            f"Anthropic embedding model '{settings.embedding_model}' specified, "
-            "but Anthropic doesn't provide embedding models. Falling back to OpenAI text-embedding-3-small."
-        )
-        try:
-            from langchain_openai import OpenAIEmbeddings
-
-            if settings.openai_api_key is not None:
-                api_key = SecretStr(settings.openai_api_key)
-                return OpenAIEmbeddings(
-                    model="text-embedding-3-small",
-                    api_key=api_key,
-                )
-            return OpenAIEmbeddings(
-                model="text-embedding-3-small",
-            )
-        except ImportError:
-            logger.error(
-                "langchain-openai not installed. Install with: pip install langchain-openai"
-            )
-            raise
-        except Exception as e:
-            logger.error(f"Error creating fallback OpenAI embeddings: {e}")
-            raise
-
-    elif provider == "aws-bedrock":
-        try:
-            from langchain_aws import BedrockEmbeddings
-
-            from agent_memory_server._aws.clients import create_bedrock_runtime_client
-            from agent_memory_server._aws.utils import bedrock_embedding_model_exists
-        except ImportError:
-            err_msg: str = (
-                "AWS-related dependencies might be missing. "
-                "Try to install with: pip install agent-memory-server[aws]."
-            )
-            logger.exception(err_msg)
-            raise
-
-        # Instantiation-time check to catch misconfigurations early
-        bedrock_model_id: str = settings.embedding_model
-        if not bedrock_embedding_model_exists(
-            bedrock_model_id,
-            region_name=settings.aws_region,
-        ):
-            err_msg = (
-                f"Bedrock embedding model {bedrock_model_id} not found in region {settings.aws_region}. "
-                "Please ensure that the model ID is valid, "
-                "that the model is available in the given AWS region, "
-                "and that your AWS role has the correct permissions to invoke it."
-            )
-            logger.error(err_msg)
-            raise ValueError(err_msg)
-
-        # Create a bedrock-runtime client (not bedrock control plane)
-        # BedrockEmbeddings uses bedrock-runtime for actual inference
-        bedrock_runtime_client = create_bedrock_runtime_client()
-        return BedrockEmbeddings(
-            model_id=bedrock_model_id, client=bedrock_runtime_client
-        )
-
-    else:
-        raise ValueError(
-            f"Unsupported embedding provider: {provider}. "
-            f"Supported providers: {', '.join(ModelProvider.__members__.keys())}. "
-            f"Provider '{ModelProvider.ANTHROPIC}' falls back to '{ModelProvider.OPENAI}'."
-        )
+    return LLMClient.create_embeddings()
 
 
 def _import_and_call_factory(
