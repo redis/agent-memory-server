@@ -105,39 +105,6 @@ class TestEmbeddingResponse:
 
 
 # TODO: Gateway tests disabled pending integration test setup.
-# These tests will be re-enabled when gateway functionality is implemented.
-# See agent_memory_server/llm/client.py for the gateway design.
-#
-# class TestLLMClientGatewayConfiguration:
-#     """Tests for gateway configuration."""
-#
-#     def test_configure_gateway(self):
-#         """configure_gateway should set gateway URL and API key."""
-#         LLMClient.configure_gateway(
-#             base_url="https://gateway.example.com/v1",
-#             api_key="gateway-key",
-#         )
-#         assert LLMClient._gateway_base_url == "https://gateway.example.com/v1"
-#         assert LLMClient._gateway_api_key == "gateway-key"
-#
-#     def test_reset_gateway(self):
-#         """reset_gateway should clear gateway configuration."""
-#         LLMClient.configure_gateway("https://gateway.example.com/v1", "key")
-#         LLMClient.reset_gateway()
-#         assert LLMClient._gateway_base_url is None
-#         assert LLMClient._gateway_api_key is None
-#
-#     def test_reset_clears_all(self):
-#         """reset() should clear backend and gateway."""
-#         mock = MockLLMBackend()
-#         LLMClient.set_backend(mock)
-#         LLMClient.configure_gateway("https://gateway.example.com/v1", "key")
-#         LLMClient.reset()
-#         assert LLMClient._backend is None
-#         assert LLMClient._gateway_base_url is None
-#         assert LLMClient._gateway_api_key is None
-
-
 class TestLLMClientReset:
     """Tests for reset functionality."""
 

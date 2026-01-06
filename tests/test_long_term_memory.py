@@ -26,9 +26,6 @@ from agent_memory_server.models import (
 from agent_memory_server.utils.recency import generate_memory_hash
 
 
-# from agent_memory_server.utils.redis import ensure_search_index_exists  # Not used currently
-
-
 class TestLongTermMemory:
     @pytest.mark.asyncio
     async def test_index_memories(self, mock_async_redis_client, session):
@@ -752,8 +749,6 @@ class TestLongTermMemoryIntegration:
     @pytest.mark.asyncio
     async def test_search_messages(self, async_redis_client):
         """Test searching messages"""
-        # await ensure_search_index_exists(async_redis_client)  # Let LangChain handle index
-
         long_term_memories = [
             MemoryRecord(
                 id="memory-1", text="Paris is the capital of France", session_id="123"
@@ -785,8 +780,6 @@ class TestLongTermMemoryIntegration:
     @pytest.mark.asyncio
     async def test_search_messages_with_distance_threshold(self, async_redis_client):
         """Test searching messages with a distance threshold"""
-        # await ensure_search_index_exists(async_redis_client)  # Let LangChain handle index
-
         long_term_memories = [
             MemoryRecord(
                 id="memory-1", text="Paris is the capital of France", session_id="123"

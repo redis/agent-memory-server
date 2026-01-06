@@ -1103,7 +1103,7 @@ class TestMemoryPromptEndpoint:
         assert data["messages"][0]["content"]["text"] == query
 
     @patch("agent_memory_server.api.working_memory.get_working_memory")
-    @patch("agent_memory_server.api.get_model_config")
+    @patch("agent_memory_server.api.LLMClient.get_model_config")
     @pytest.mark.asyncio
     async def test_memory_prompt_with_model_name(
         self, mock_get_model_config, mock_get_working_memory, client

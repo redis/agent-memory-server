@@ -33,9 +33,6 @@ from agent_memory_server.utils.keys import Keys
 from agent_memory_server.vectorstore_adapter import VectorStoreAdapter
 
 
-# from agent_memory_server.utils.redis import ensure_search_index_exists  # Not used currently
-
-
 load_dotenv()
 
 
@@ -87,9 +84,6 @@ async def search_index(async_redis_client):
         except Exception as e:
             if "unknown index name".lower() not in str(e).lower():
                 pass
-
-        # Skip ensure_search_index_exists for now - let LangChain handle it
-        # await ensure_search_index_exists(async_redis_client)
 
     except Exception:
         raise
