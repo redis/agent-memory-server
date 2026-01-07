@@ -1,9 +1,11 @@
 """
 Unit tests for the LLMClient facade.
 
-These tests use a mock backend to verify the facade's behavior
+These tests use standard mocking to verify the facade's behavior
 without making actual API calls.
 """
+
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -12,47 +14,6 @@ from agent_memory_server.llm import (
     EmbeddingResponse,
     LLMClient,
 )
-
-
-class MockLLMBackend:
-    """Mock backend for testing LLMClient."""
-
-    def __init__(
-        self,
-        chat_response: ChatCompletionResponse | None = None,
-        embedding_response: EmbeddingResponse | None = None,
-    ):
-        self.chat_response = chat_response or ChatCompletionResponse(
-            content="Mock response",
-            finish_reason="stop",
-            prompt_tokens=10,
-            completion_tokens=5,
-            total_tokens=15,
-            model="mock-model",
-        )
-        self.embedding_response = embedding_response or EmbeddingResponse(
-            embeddings=[[0.1, 0.2, 0.3]],
-            total_tokens=5,
-            model="mock-embedding-model",
-        )
-        self.chat_calls: list[dict] = []
-        self.embedding_calls: list[dict] = []
-
-    async def create_chat_completion(self, **kwargs) -> ChatCompletionResponse:
-        self.chat_calls.append(kwargs)
-        return self.chat_response
-
-    async def create_embedding(self, **kwargs) -> EmbeddingResponse:
-        self.embedding_calls.append(kwargs)
-        return self.embedding_response
-
-
-@pytest.fixture(autouse=True)
-def reset_llm_client():
-    """Reset LLMClient state before and after each test."""
-    LLMClient.reset()
-    yield
-    LLMClient.reset()
 
 
 class TestChatCompletionResponse:
@@ -108,16 +69,44 @@ class TestEmbeddingResponse:
 # See dev_docs/litellm_redundancy_analysis.md for details.
 
 
-# TODO: Gateway tests disabled pending integration test setup.
-class TestLLMClientReset:
-    """Tests for reset functionality."""
+def _create_mock_litellm_chat_response(
+    content: str = "Mock response",
+    finish_reason: str = "stop",
+    prompt_tokens: int = 10,
+    completion_tokens: int = 5,
+    model: str = "gpt-4o",
+) -> MagicMock:
+    """Create a mock LiteLLM chat completion response."""
+    mock_response = MagicMock()
+    mock_response.choices = [
+        MagicMock(
+            message=MagicMock(content=content),
+            finish_reason=finish_reason,
+        )
+    ]
+    mock_response.usage = MagicMock(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=prompt_tokens + completion_tokens,
+    )
+    mock_response.model = model
+    return mock_response
 
-    def test_reset_clears_backend(self):
-        """reset() should clear the backend."""
-        mock = MockLLMBackend()
-        LLMClient.set_backend(mock)
-        LLMClient.reset()
-        assert LLMClient._backend is None
+
+def _create_mock_litellm_embedding_response(
+    embeddings: list[list[float]] | None = None,
+    total_tokens: int = 5,
+    model: str = "text-embedding-3-small",
+) -> MagicMock:
+    """Create a mock LiteLLM embedding response."""
+    if embeddings is None:
+        embeddings = [[0.1, 0.2, 0.3]]
+    mock_response = MagicMock()
+    # LiteLLM returns data as list of dicts with "embedding" key
+    mock_response.data = [{"embedding": emb} for emb in embeddings]
+    mock_response.usage = MagicMock(total_tokens=total_tokens)
+    mock_response.model = model
+    return mock_response
 
 
 class TestLLMClientChatCompletion:
@@ -125,61 +114,76 @@ class TestLLMClientChatCompletion:
 
     @pytest.mark.asyncio
     async def test_basic_chat_completion(self):
-        """Basic chat completion should work with mock backend."""
-        mock = MockLLMBackend()
-        LLMClient.set_backend(mock)
+        """Basic chat completion should work with mocked LiteLLM."""
+        mock_response = _create_mock_litellm_chat_response()
 
-        response = await LLMClient.create_chat_completion(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": "Hello"}],
-        )
+        with patch(
+            "agent_memory_server.llm.client.acompletion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_acompletion:
+            response = await LLMClient.create_chat_completion(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": "Hello"}],
+            )
 
-        assert response.content == "Mock response"
-        assert response.finish_reason == "stop"
-        assert response.total_tokens == 15
-        assert len(mock.chat_calls) == 1
-        assert mock.chat_calls[0]["model"] == "gpt-4o"
-        assert mock.chat_calls[0]["messages"] == [{"role": "user", "content": "Hello"}]
+            assert response.content == "Mock response"
+            assert response.finish_reason == "stop"
+            assert response.total_tokens == 15
+            mock_acompletion.assert_called_once()
+            call_kwargs = mock_acompletion.call_args.kwargs
+            assert call_kwargs["model"] == "gpt-4o"
+            assert call_kwargs["messages"] == [{"role": "user", "content": "Hello"}]
 
     @pytest.mark.asyncio
     async def test_chat_completion_with_parameters(self):
-        """Chat completion should pass all parameters to backend."""
-        mock = MockLLMBackend()
-        LLMClient.set_backend(mock)
+        """Chat completion should pass all parameters to LiteLLM."""
+        mock_response = _create_mock_litellm_chat_response()
 
-        await LLMClient.create_chat_completion(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": "Hello"}],
-            temperature=0.5,
-            max_tokens=100,
-            response_format={"type": "json_object"},
-            api_base="https://custom.api.com",
-            api_key="custom-key",
-        )
+        with patch(
+            "agent_memory_server.llm.client.acompletion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_acompletion:
+            await LLMClient.create_chat_completion(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": "Hello"}],
+                temperature=0.5,
+                max_tokens=100,
+                response_format={"type": "json_object"},
+                api_base="https://custom.api.com",
+                api_key="custom-key",
+            )
 
-        call = mock.chat_calls[0]
-        assert call["temperature"] == 0.5
-        assert call["max_tokens"] == 100
-        assert call["response_format"] == {"type": "json_object"}
-        assert call["api_base"] == "https://custom.api.com"
-        assert call["api_key"] == "custom-key"
+            call_kwargs = mock_acompletion.call_args.kwargs
+            assert call_kwargs["temperature"] == 0.5
+            assert call_kwargs["max_tokens"] == 100
+            assert call_kwargs["response_format"] == {"type": "json_object"}
+            assert call_kwargs["api_base"] == "https://custom.api.com"
+            assert call_kwargs["api_key"] == "custom-key"
 
     @pytest.mark.asyncio
     async def test_chat_completion_kwargs_passthrough(self):
-        """Extra kwargs should be passed through to backend."""
-        mock = MockLLMBackend()
-        LLMClient.set_backend(mock)
+        """Extra kwargs should be passed through to LiteLLM."""
+        mock_response = _create_mock_litellm_chat_response()
 
-        await LLMClient.create_chat_completion(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": "Hello"}],
-            tools=[{"type": "function", "function": {"name": "test"}}],
-            tool_choice="auto",
-        )
+        with patch(
+            "agent_memory_server.llm.client.acompletion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_acompletion:
+            await LLMClient.create_chat_completion(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": "Hello"}],
+                tools=[{"type": "function", "function": {"name": "test"}}],
+                tool_choice="auto",
+            )
 
-        call = mock.chat_calls[0]
-        assert call["tools"] == [{"type": "function", "function": {"name": "test"}}]
-        assert call["tool_choice"] == "auto"
+            call_kwargs = mock_acompletion.call_args.kwargs
+            assert call_kwargs["tools"] == [
+                {"type": "function", "function": {"name": "test"}}
+            ]
+            assert call_kwargs["tool_choice"] == "auto"
 
 
 class TestLLMClientEmbedding:
@@ -187,94 +191,180 @@ class TestLLMClientEmbedding:
 
     @pytest.mark.asyncio
     async def test_basic_embedding(self):
-        """Basic embedding should work with mock backend."""
-        mock = MockLLMBackend()
-        LLMClient.set_backend(mock)
+        """Basic embedding should work with mocked LiteLLM."""
+        mock_response = _create_mock_litellm_embedding_response()
 
-        response = await LLMClient.create_embedding(
-            model="text-embedding-3-small",
-            input_texts=["Hello world"],
-        )
+        with patch(
+            "agent_memory_server.llm.client.aembedding",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_aembedding:
+            response = await LLMClient.create_embedding(
+                model="text-embedding-3-small",
+                input_texts=["Hello world"],
+            )
 
-        assert response.embeddings == [[0.1, 0.2, 0.3]]
-        assert response.total_tokens == 5
-        assert len(mock.embedding_calls) == 1
-        assert mock.embedding_calls[0]["model"] == "text-embedding-3-small"
-        assert mock.embedding_calls[0]["input_texts"] == ["Hello world"]
+            assert response.embeddings == [[0.1, 0.2, 0.3]]
+            assert response.total_tokens == 5
+            mock_aembedding.assert_called_once()
+            call_kwargs = mock_aembedding.call_args.kwargs
+            assert call_kwargs["model"] == "text-embedding-3-small"
+            assert call_kwargs["input"] == ["Hello world"]
 
     @pytest.mark.asyncio
     async def test_embedding_with_custom_endpoint(self):
         """Embedding should support custom API endpoints."""
-        mock = MockLLMBackend()
-        LLMClient.set_backend(mock)
+        mock_response = _create_mock_litellm_embedding_response()
 
-        await LLMClient.create_embedding(
-            model="text-embedding-3-small",
-            input_texts=["Hello"],
-            api_base="https://custom.api.com",
-            api_key="custom-key",
-        )
+        with patch(
+            "agent_memory_server.llm.client.aembedding",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_aembedding:
+            await LLMClient.create_embedding(
+                model="text-embedding-3-small",
+                input_texts=["Hello"],
+                api_base="https://custom.api.com",
+                api_key="custom-key",
+            )
 
-        call = mock.embedding_calls[0]
-        assert call["api_base"] == "https://custom.api.com"
-        assert call["api_key"] == "custom-key"
+            call_kwargs = mock_aembedding.call_args.kwargs
+            assert call_kwargs["api_base"] == "https://custom.api.com"
+            assert call_kwargs["api_key"] == "custom-key"
 
     @pytest.mark.asyncio
     async def test_embedding_multiple_texts(self):
         """Embedding should handle multiple input texts."""
-        mock = MockLLMBackend(
-            embedding_response=EmbeddingResponse(
-                embeddings=[[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]],
-                total_tokens=15,
+        mock_response = _create_mock_litellm_embedding_response(
+            embeddings=[[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]],
+            total_tokens=15,
+        )
+
+        with patch(
+            "agent_memory_server.llm.client.aembedding",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            response = await LLMClient.create_embedding(
                 model="text-embedding-3-small",
+                input_texts=["Text 1", "Text 2", "Text 3"],
             )
-        )
-        LLMClient.set_backend(mock)
 
-        response = await LLMClient.create_embedding(
-            model="text-embedding-3-small",
-            input_texts=["Text 1", "Text 2", "Text 3"],
-        )
-
-        assert len(response.embeddings) == 3
-        assert response.total_tokens == 15
+            assert len(response.embeddings) == 3
+            assert response.total_tokens == 15
 
 
-class TestLLMClientBackendInjection:
-    """Tests for backend injection (testing utilities)."""
+# =============================================================================
+# Tests for create_embeddings and _map_provider
+# =============================================================================
 
-    @pytest.mark.asyncio
-    async def test_set_backend(self):
-        """set_backend should inject custom backend."""
-        mock = MockLLMBackend()
-        LLMClient.set_backend(mock)
 
-        await LLMClient.create_chat_completion(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": "Test"}],
-        )
+class TestCreateEmbeddings:
+    """Tests for LLMClient.create_embeddings() factory method."""
 
-        assert len(mock.chat_calls) == 1
+    def test_unknown_embedding_model_raises_error(self):
+        """create_embeddings should raise ModelValidationError for unknown models."""
+        from unittest.mock import patch
 
-    @pytest.mark.asyncio
-    async def test_backend_receives_all_params(self):
-        """Backend should receive all parameters passed to LLMClient."""
-        mock = MockLLMBackend()
-        LLMClient.set_backend(mock)
+        from agent_memory_server.llm.exceptions import ModelValidationError
 
-        await LLMClient.create_chat_completion(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": "Test"}],
-            temperature=0.7,
-            max_tokens=50,
-            custom_param="custom_value",
-        )
+        with patch("agent_memory_server.config.settings") as mock_settings:
+            mock_settings.embedding_model = "unknown-embedding-model"
+            mock_settings.embedding_model_config = None  # Unknown model returns None
 
-        call = mock.chat_calls[0]
-        assert call["model"] == "gpt-4o"
-        assert call["temperature"] == 0.7
-        assert call["max_tokens"] == 50
-        assert call["custom_param"] == "custom_value"
+            with pytest.raises(ModelValidationError, match="Unknown embedding model"):
+                LLMClient.create_embeddings()
+
+    def test_anthropic_embedding_raises_error(self):
+        """create_embeddings should raise ModelValidationError for Anthropic models."""
+        from unittest.mock import MagicMock, patch
+
+        from agent_memory_server.config import ModelProvider
+        from agent_memory_server.llm.exceptions import ModelValidationError
+
+        with patch("agent_memory_server.config.settings") as mock_settings:
+            mock_config = MagicMock()
+            mock_config.provider = ModelProvider.ANTHROPIC
+            mock_settings.embedding_model = "claude-3-embedding"
+            mock_settings.embedding_model_config = mock_config
+
+            with pytest.raises(
+                ModelValidationError,
+                match="Anthropic does not provide embedding models",
+            ):
+                LLMClient.create_embeddings()
+
+    def test_openai_embedding_returns_embeddings_instance(self):
+        """create_embeddings should return OpenAIEmbeddings for OpenAI provider."""
+        from unittest.mock import MagicMock, patch
+
+        from agent_memory_server.config import ModelProvider
+
+        with patch("agent_memory_server.config.settings") as mock_settings:
+            mock_config = MagicMock()
+            mock_config.provider = ModelProvider.OPENAI
+            mock_settings.embedding_model = "text-embedding-3-small"
+            mock_settings.embedding_model_config = mock_config
+            mock_settings.openai_api_key = "test-key"
+
+            embeddings = LLMClient.create_embeddings()
+
+            # Should return a LangChain Embeddings instance
+            from langchain_core.embeddings import Embeddings
+
+            assert isinstance(embeddings, Embeddings)
+
+
+class TestMapProvider:
+    """Tests for LLMClient._map_provider() method."""
+
+    def test_map_provider_openai(self):
+        """_map_provider should map 'openai' to ModelProvider.OPENAI."""
+        from agent_memory_server.config import ModelProvider
+
+        result = LLMClient._map_provider("openai")
+        assert result == ModelProvider.OPENAI
+
+    def test_map_provider_anthropic(self):
+        """_map_provider should map 'anthropic' to ModelProvider.ANTHROPIC."""
+        from agent_memory_server.config import ModelProvider
+
+        result = LLMClient._map_provider("anthropic")
+        assert result == ModelProvider.ANTHROPIC
+
+    def test_map_provider_bedrock(self):
+        """_map_provider should map 'bedrock' to ModelProvider.AWS_BEDROCK."""
+        from agent_memory_server.config import ModelProvider
+
+        result = LLMClient._map_provider("bedrock")
+        assert result == ModelProvider.AWS_BEDROCK
+
+    def test_map_provider_azure_maps_to_openai(self):
+        """_map_provider should map 'azure' to ModelProvider.OPENAI."""
+        from agent_memory_server.config import ModelProvider
+
+        result = LLMClient._map_provider("azure")
+        assert result == ModelProvider.OPENAI
+
+    def test_map_provider_unsupported_raises_error(self):
+        """_map_provider should raise ModelValidationError for unsupported providers."""
+        from agent_memory_server.llm.exceptions import ModelValidationError
+
+        with pytest.raises(ModelValidationError, match="Unsupported LiteLLM provider"):
+            LLMClient._map_provider("unsupported_provider")
+
+    def test_map_provider_error_lists_supported_providers(self):
+        """_map_provider error message should list supported providers."""
+        from agent_memory_server.llm.exceptions import ModelValidationError
+
+        with pytest.raises(ModelValidationError) as exc_info:
+            LLMClient._map_provider("vertex_ai")
+
+        error_message = str(exc_info.value)
+        assert "openai" in error_message
+        assert "anthropic" in error_message
+        assert "bedrock" in error_message
+        assert "azure" in error_message
 
 
 # =============================================================================
