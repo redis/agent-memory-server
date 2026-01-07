@@ -6,13 +6,15 @@ This module defines the data structures and protocols used by the LLM client.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Protocol
 
+from pydantic import BaseModel, ConfigDict
 
-@dataclass(frozen=True)
-class ChatCompletionResponse:
+
+class ChatCompletionResponse(BaseModel):
     """Standardized response from chat completion APIs."""
+
+    model_config = ConfigDict(frozen=True)
 
     content: str
     finish_reason: str | None
@@ -23,9 +25,10 @@ class ChatCompletionResponse:
     raw_response: Any = None  # Original response for debugging
 
 
-@dataclass(frozen=True)
-class EmbeddingResponse:
+class EmbeddingResponse(BaseModel):
     """Standardized response from embedding APIs."""
+
+    model_config = ConfigDict(frozen=True)
 
     embeddings: list[list[float]]
     total_tokens: int
