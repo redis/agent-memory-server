@@ -230,11 +230,12 @@ class TestSummarizeSession:
     @pytest.mark.asyncio
     async def test_configurable_summarization_prompt(self, mock_openai_client):
         """Test that the summarization prompt can be configured"""
+        from unittest.mock import patch
+
         model = "gpt-3.5-turbo"
         context = "Previous context"
         messages = ["User: Hello", "Assistant: Hi there"]
 
-        # Create a custom prompt template
         custom_prompt = "Custom prompt: {prev_summary} | {messages_joined}"
 
         mock_response = MagicMock()
@@ -246,11 +247,7 @@ class TestSummarizeSession:
 
         mock_openai_client.create_chat_completion.return_value = mock_response
 
-        # Temporarily override the prompt setting
-        original_prompt = settings.progressive_summarization_prompt
-        try:
-            settings.progressive_summarization_prompt = custom_prompt
-
+        with patch.object(settings, "progressive_summarization_prompt", custom_prompt):
             summary, tokens_used = await _incremental_summary(
                 model, mock_openai_client, context, messages
             )
@@ -258,14 +255,10 @@ class TestSummarizeSession:
             assert summary == "Custom summary"
             assert tokens_used == 100
 
-            # Verify the custom prompt was used
             mock_openai_client.create_chat_completion.assert_called_once()
             args = mock_openai_client.create_chat_completion.call_args[0]
             assert "Custom prompt:" in args[1]
             assert "Previous context" in args[1]
-        finally:
-            # Restore original prompt
-            settings.progressive_summarization_prompt = original_prompt
 
     def test_prompt_validation_missing_prev_summary(self):
         """Test that validation fails when {prev_summary} is missing"""
