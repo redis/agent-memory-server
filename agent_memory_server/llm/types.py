@@ -6,7 +6,7 @@ This module defines the data structures and protocols used by the LLM client.
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -33,11 +33,3 @@ class EmbeddingResponse(BaseModel):
     embeddings: list[list[float]]
     total_tokens: int
     model: str
-
-
-class LLMBackend(Protocol):
-    """Protocol for testing - allows injecting mock backends."""
-
-    async def create_chat_completion(self, **kwargs: Any) -> ChatCompletionResponse: ...
-
-    async def create_embedding(self, **kwargs: Any) -> EmbeddingResponse: ...

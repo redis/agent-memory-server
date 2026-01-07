@@ -20,7 +20,6 @@ from agent_memory_server.llm.exceptions import ModelValidationError
 from agent_memory_server.llm.types import (
     ChatCompletionResponse,
     EmbeddingResponse,
-    LLMBackend,
 )
 
 
@@ -52,14 +51,7 @@ class LLMClient:
             model="gpt-4o",
             messages=[{"role": "user", "content": "Hello"}],
         )
-
-    Testing:
-        LLMClient.set_backend(MockBackend())
-        # ... run tests ...
-        LLMClient.reset()
     """
-
-    _backend: LLMBackend | None = None  # For testing injection
 
     # -------------------------------------------------------------------------
     # Gateway/Proxy Configuration
@@ -109,19 +101,6 @@ class LLMClient:
         Returns:
             ChatCompletionResponse with normalized content and usage
         """
-        # Allow test backend injection
-        if cls._backend is not None:
-            return await cls._backend.create_chat_completion(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                response_format=response_format,
-                api_base=api_base,
-                api_key=api_key,
-                **kwargs,
-            )
-
         # LiteLLM automatically detects the provider from the model name.
         # No need for explicit provider prefixes (e.g., "openai/gpt-4o").
         # See: https://docs.litellm.ai/docs/providers
@@ -179,16 +158,6 @@ class LLMClient:
         Returns:
             EmbeddingResponse with embedding vectors
         """
-        # Allow test backend injection
-        if cls._backend is not None:
-            return await cls._backend.create_embedding(
-                model=model,
-                input_texts=input_texts,
-                api_base=api_base,
-                api_key=api_key,
-                **kwargs,
-            )
-
         # LiteLLM automatically detects the provider from the model name.
         # No need for explicit provider prefixes (e.g., "openai/text-embedding-3-small").
 
@@ -489,19 +458,6 @@ class LLMClient:
             logger.warning(f"Failed to optimize query '{query}': {e}")
             # Return original query if optimization fails
             return query
-
-    @classmethod
-    def set_backend(cls, backend: LLMBackend) -> None:
-        """Set a custom backend (useful for testing)."""
-        cls._backend = backend
-
-    @classmethod
-    def reset(cls) -> None:
-        """Reset the backend to default (useful for testing)."""
-        cls._backend = None
-        # TODO: When gateway is enabled, also reset:
-        # cls._gateway_base_url = None
-        # cls._gateway_api_key = None
 
 
 def get_model_config(model_name: str) -> ModelConfig:

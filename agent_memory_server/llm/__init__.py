@@ -26,7 +26,6 @@ from agent_memory_server.llm.exceptions import (
 from agent_memory_server.llm.types import (
     ChatCompletionResponse,
     EmbeddingResponse,
-    LLMBackend,
 )
 
 
@@ -43,5 +42,4 @@ __all__ = [
     # Types
     "ChatCompletionResponse",
     "EmbeddingResponse",
-    "LLMBackend",
 ]
