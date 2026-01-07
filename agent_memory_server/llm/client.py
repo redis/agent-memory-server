@@ -220,7 +220,7 @@ class LLMClient:
         embedding_config = settings.embedding_model_config
         if embedding_config is None:
             raise ModelValidationError(
-                f"Unknown embedding model: '{settings.embedding_model}'. "
+                f"Unknown embedding model: {settings.embedding_model!r}. "
                 "Please configure a supported embedding model in EMBEDDING_MODEL."
             )
         provider = embedding_config.provider
@@ -342,7 +342,7 @@ class LLMClient:
         }
         if litellm_provider not in provider_map:
             raise ModelValidationError(
-                f"Unsupported LiteLLM provider: '{litellm_provider}'. "
+                f"Unsupported LiteLLM provider: {litellm_provider!r}. "
                 f"Supported providers: {', '.join(provider_map.keys())}"
             )
         return provider_map[litellm_provider]
@@ -391,7 +391,7 @@ class LLMClient:
 
         # Final fallback to gpt-4o-mini defaults
         logger.warning(
-            f"Model '{model_name}' not found in LLMClient model database or MODEL_CONFIGS. "
+            f"Model {model_name!r} not found in LLMClient model database or MODEL_CONFIGS. "
             "Using gpt-4o-mini defaults."
         )
         return MODEL_CONFIGS.get(
@@ -451,11 +451,11 @@ class LLMClient:
                 logger.warning(f"Query optimization failed for: {query}")
                 return query
 
-            logger.debug(f"Optimized query: '{query}' -> '{optimized}'")
+            logger.debug(f"Optimized query: {query!r} -> {optimized!r}")
             return optimized
 
         except Exception as e:
-            logger.warning(f"Failed to optimize query '{query}': {e}")
+            logger.warning(f"Failed to optimize query {query!r}: {e}")
             # Return original query if optimization fails
             return query
 
