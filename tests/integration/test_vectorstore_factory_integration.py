@@ -120,7 +120,11 @@ class TestEmbeddingsCreation:
         )
         mock_settings.embedding_model_config = mock_config
 
-        with pytest.raises(ValueError, match="Unsupported embedding provider"):
+        from agent_memory_server.llm import ModelValidationError
+
+        with pytest.raises(
+            ModelValidationError, match="Unsupported embedding provider"
+        ):
             create_embeddings()
 
 

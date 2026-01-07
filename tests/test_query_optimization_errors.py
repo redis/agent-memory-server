@@ -49,19 +49,27 @@ class TestQueryOptimizationErrorHandling:
 
     async def test_optimization_with_none_content_response(self):
         """Test handling when model returns None content."""
-        mock_response = ChatCompletionResponse(
-            content=None,
-            finish_reason="stop",
+        from unittest.mock import MagicMock
+
+        # Mock at the LiteLLM level to simulate None content from the API
+        mock_litellm_response = MagicMock()
+        mock_litellm_response.choices = [
+            MagicMock(
+                message=MagicMock(content=None),
+                finish_reason="stop",
+            )
+        ]
+        mock_litellm_response.usage = MagicMock(
             prompt_tokens=50,
             completion_tokens=0,
             total_tokens=50,
-            model="gpt-4o-mini",
         )
+        mock_litellm_response.model = "gpt-4o-mini"
 
         with patch(
-            "agent_memory_server.llm.client.LLMClient.create_chat_completion",
+            "agent_memory_server.llm.client.acompletion",
             new_callable=AsyncMock,
-            return_value=mock_response,
+            return_value=mock_litellm_response,
         ):
             original_query = "Find my user settings"
             result = await optimize_query_for_vector_search(original_query)
