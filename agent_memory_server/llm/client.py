@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from litellm import acompletion, aembedding
 
+from agent_memory_server.llm.exceptions import ModelValidationError
 from agent_memory_server.llm.types import (
     ChatCompletionResponse,
     EmbeddingResponse,
@@ -248,9 +249,12 @@ class LLMClient:
         from agent_memory_server.config import ModelProvider, settings
 
         embedding_config = settings.embedding_model_config
-        provider = (
-            embedding_config.provider if embedding_config else ModelProvider.OPENAI
-        )
+        if embedding_config is None:
+            raise ModelValidationError(
+                f"Unknown embedding model: '{settings.embedding_model}'. "
+                "Please configure a supported embedding model in EMBEDDING_MODEL."
+            )
+        provider = embedding_config.provider
 
         if provider == ModelProvider.OPENAI:
             return cls._create_openai_embeddings(
@@ -259,15 +263,10 @@ class LLMClient:
             )
 
         if provider == ModelProvider.ANTHROPIC:
-            # Anthropic doesn't provide embedding models, fall back to OpenAI
-            logger.warning(
-                f"Anthropic embedding model '{settings.embedding_model}' specified, "
-                "but Anthropic doesn't provide embedding models. "
-                "Falling back to OpenAI text-embedding-3-small."
-            )
-            return cls._create_openai_embeddings(
-                model="text-embedding-3-small",
-                api_key=settings.openai_api_key,
+            raise ModelValidationError(
+                "Anthropic does not provide embedding models. "
+                "Please configure a different embedding provider (e.g., OpenAI) "
+                "by setting EMBEDDING_MODEL to an OpenAI model like 'text-embedding-3-small'."
             )
 
         if provider == ModelProvider.AWS_BEDROCK:
@@ -276,11 +275,10 @@ class LLMClient:
                 region=settings.aws_region,
             )
 
-        raise ValueError(
+        raise ModelValidationError(
             f"Unsupported embedding provider: {provider}. "
-            f"Supported providers: {', '.join(p.value for p in ModelProvider)}. "
-            f"Provider '{ModelProvider.ANTHROPIC.value}' falls back to "
-            f"'{ModelProvider.OPENAI.value}'."
+            f"Supported providers: openai, aws-bedrock. "
+            f"Note: Anthropic does not provide embedding models."
         )
 
     @classmethod
@@ -371,11 +369,14 @@ class LLMClient:
             "openai": ModelProvider.OPENAI,
             "anthropic": ModelProvider.ANTHROPIC,
             "bedrock": ModelProvider.AWS_BEDROCK,
-            "azure": ModelProvider.OPENAI,  # Azure OpenAI maps to OpenAI
-            "vertex_ai": ModelProvider.OPENAI,  # Default fallback
-            "gemini": ModelProvider.OPENAI,  # Default fallback
+            "azure": ModelProvider.OPENAI,  # Azure OpenAI uses OpenAI-compatible API
         }
-        return provider_map.get(litellm_provider, ModelProvider.OPENAI)
+        if litellm_provider not in provider_map:
+            raise ModelValidationError(
+                f"Unsupported LiteLLM provider: '{litellm_provider}'. "
+                f"Supported providers: {', '.join(provider_map.keys())}"
+            )
+        return provider_map[litellm_provider]
 
     @classmethod
     def get_model_config(cls, model_name: str) -> ModelConfig:
