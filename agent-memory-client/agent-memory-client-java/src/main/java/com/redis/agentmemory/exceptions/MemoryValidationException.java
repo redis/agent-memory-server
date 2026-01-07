@@ -7,13 +7,12 @@ package com.redis.agentmemory.exceptions;
  * requests to the server, allowing for early error detection.
  */
 public class MemoryValidationException extends MemoryClientException {
-    
+
     public MemoryValidationException(String message) {
         super(message);
     }
-    
+
     public MemoryValidationException(String message, Throwable cause) {
         super(message, cause);
     }
 }
-

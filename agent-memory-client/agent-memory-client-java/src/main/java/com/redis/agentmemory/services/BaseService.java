@@ -17,16 +17,16 @@ import java.io.IOException;
  * Base service class providing common functionality for all service classes.
  */
 public abstract class BaseService {
-    
+
     protected static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
-    
+
     protected final String baseUrl;
     protected final OkHttpClient httpClient;
     protected final ObjectMapper objectMapper;
     protected final String defaultNamespace;
     protected final String defaultModelName;
     protected final Integer defaultContextWindowMax;
-    
+
     protected BaseService(
             @NotNull String baseUrl,
             @NotNull OkHttpClient httpClient,
@@ -41,7 +41,7 @@ public abstract class BaseService {
         this.defaultModelName = defaultModelName;
         this.defaultContextWindowMax = defaultContextWindowMax;
     }
-    
+
     /**
      * Handle HTTP errors and throw appropriate exceptions.
      */
@@ -82,4 +82,3 @@ public abstract class BaseService {
         }
     }
 }
-

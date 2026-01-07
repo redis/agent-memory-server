@@ -142,7 +142,7 @@ public class MemoryAPIClient implements AutoCloseable {
         httpClient.dispatcher().executorService().shutdown();
         httpClient.connectionPool().evictAll();
     }
-    
+
     /**
      * Creates a new builder for MemoryAPIClient.
      * @param baseUrl the base URL of the memory server
