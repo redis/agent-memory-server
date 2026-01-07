@@ -8,7 +8,7 @@ A memory layer for AI agents.
   **[Documentation](https://redis.github.io/agent-memory-server/)** • **[GitHub](https://github.com/redis/agent-memory-server)** • **[Docker](https://hub.docker.com/r/redislabs/agent-memory-server)**
 
 </div>
-  
+
 ## Features
 - **Dual Interface**: REST API and Model Context Protocol (MCP) server
 - **Two-Tier Memory**: Working memory (session-scoped) and long-term memory (persistent)

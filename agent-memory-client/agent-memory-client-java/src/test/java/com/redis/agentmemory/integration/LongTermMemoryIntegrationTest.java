@@ -437,4 +437,3 @@ class LongTermMemoryIntegrationTest extends BaseIntegrationTest {
         assertTrue(count >= 0);
     }
 }
-

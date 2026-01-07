@@ -15,44 +15,44 @@ import java.util.Map;
  * Working memory for a session - contains both messages and structured memory records.
  */
 public class WorkingMemory {
-    
+
     @NotNull
     private List<MemoryMessage> messages;
-    
+
     @NotNull
     private List<MemoryRecord> memories;
-    
+
     @Nullable
     private Map<String, Object> data;
-    
+
     @Nullable
     private String context;
-    
+
     @Nullable
     @JsonProperty("user_id")
     private String userId;
-    
+
     private int tokens;
-    
+
     @NotNull
     @JsonProperty("session_id")
     private String sessionId;
-    
+
     @Nullable
     private String namespace;
-    
+
     @NotNull
     @JsonProperty("long_term_memory_strategy")
     private MemoryStrategyConfig longTermMemoryStrategy;
-    
+
     @Nullable
     @JsonProperty("ttl_seconds")
     private Integer ttlSeconds;
-    
+
     @NotNull
     @JsonProperty("last_accessed")
     private Instant lastAccessed;
-    
+
     public WorkingMemory() {
         this.messages = new ArrayList<>();
         this.memories = new ArrayList<>();
@@ -61,85 +61,85 @@ public class WorkingMemory {
         this.longTermMemoryStrategy = new MemoryStrategyConfig();
         this.lastAccessed = Instant.now();
     }
-    
+
     public WorkingMemory(@NotNull String sessionId) {
         this();
         this.sessionId = sessionId;
     }
-    
+
     // Getters and setters
-    
+
     @NotNull
     public List<MemoryMessage> getMessages() {
         return messages;
     }
-    
+
     public void setMessages(@NotNull List<MemoryMessage> messages) {
         this.messages = messages;
     }
-    
+
     @NotNull
     public List<MemoryRecord> getMemories() {
         return memories;
     }
-    
+
     public void setMemories(@NotNull List<MemoryRecord> memories) {
         this.memories = memories;
     }
-    
+
     @Nullable
     public Map<String, Object> getData() {
         return data;
     }
-    
+
     public void setData(@Nullable Map<String, Object> data) {
         this.data = data;
     }
-    
+
     @Nullable
     public String getContext() {
         return context;
     }
-    
+
     public void setContext(@Nullable String context) {
         this.context = context;
     }
-    
+
     @Nullable
     public String getUserId() {
         return userId;
     }
-    
+
     public void setUserId(@Nullable String userId) {
         this.userId = userId;
     }
-    
+
     public int getTokens() {
         return tokens;
     }
-    
+
     public void setTokens(int tokens) {
         this.tokens = tokens;
     }
-    
+
     @NotNull
     public String getSessionId() {
         return sessionId;
     }
-    
+
     public void setSessionId(@NotNull String sessionId) {
         this.sessionId = sessionId;
     }
-    
+
     @Nullable
     public String getNamespace() {
         return namespace;
     }
-    
+
     public void setNamespace(@Nullable String namespace) {
         this.namespace = namespace;
     }
-    
+
     @NotNull
     public MemoryStrategyConfig getLongTermMemoryStrategy() {
         return longTermMemoryStrategy;
@@ -388,4 +388,3 @@ public class WorkingMemory {
         }
     }
 }
-

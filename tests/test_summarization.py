@@ -176,7 +176,7 @@ class TestSummarizeSession:
     @pytest.mark.asyncio
     @patch("agent_memory_server.summarization._incremental_summary")
     async def test_handle_summarization_no_messages(
-        self, mock_summarization, mock_async_redis_client
+        self, mock_summarization, mock_openai_client, mock_async_redis_client
     ):
         """Test summarize_session when no messages need summarization"""
         session_id = "test-session"
