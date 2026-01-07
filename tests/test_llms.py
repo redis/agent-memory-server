@@ -200,9 +200,9 @@ class TestQueryOptimization:
             assert result == original_query
 
     async def test_optimize_query_none_content_fallback(self):
-        """Test fallback when model response has None content."""
+        """Test fallback when model response has empty content."""
         mock_response = ChatCompletionResponse(
-            content=None,  # None content
+            content="",  # Empty content triggers fallback
             finish_reason="stop",
             prompt_tokens=50,
             completion_tokens=0,

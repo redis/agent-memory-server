@@ -56,10 +56,12 @@ def reset_llm_client():
 
 
 class TestChatCompletionResponse:
-    """Tests for ChatCompletionResponse dataclass."""
+    """Tests for ChatCompletionResponse Pydantic model."""
 
-    def test_frozen_dataclass(self):
+    def test_frozen_model(self):
         """ChatCompletionResponse should be immutable."""
+        from pydantic import ValidationError
+
         response = ChatCompletionResponse(
             content="test",
             finish_reason="stop",
@@ -68,7 +70,7 @@ class TestChatCompletionResponse:
             total_tokens=15,
             model="gpt-4o",
         )
-        with pytest.raises(AttributeError):
+        with pytest.raises(ValidationError, match="frozen"):
             response.content = "modified"
 
     def test_default_raw_response(self):
@@ -85,16 +87,18 @@ class TestChatCompletionResponse:
 
 
 class TestEmbeddingResponse:
-    """Tests for EmbeddingResponse dataclass."""
+    """Tests for EmbeddingResponse Pydantic model."""
 
-    def test_frozen_dataclass(self):
+    def test_frozen_model(self):
         """EmbeddingResponse should be immutable."""
+        from pydantic import ValidationError
+
         response = EmbeddingResponse(
             embeddings=[[0.1, 0.2]],
             total_tokens=5,
             model="text-embedding-3-small",
         )
-        with pytest.raises(AttributeError):
+        with pytest.raises(ValidationError, match="frozen"):
             response.model = "modified"
 
 
