@@ -511,3 +511,80 @@ class TestLLMClientIntegrationErrorHandling:
                 model="gpt-4o-mini",
                 messages=[],
             )
+
+
+@pytest.mark.requires_api_keys
+class TestLLMClientIntegrationHuggingFace:
+    """Integration tests for LLMClient with HuggingFace via LiteLLM.
+
+    These tests require HF_TOKEN to be set in the environment.
+    Run with: uv run pytest tests/test_llm_client.py --run-api-tests
+    """
+
+    @pytest.mark.asyncio
+    async def test_huggingface_chat_completion(self):
+        """Test HuggingFace chat completion via LiteLLM serverless inference."""
+        import os
+
+        if not os.environ.get("HF_TOKEN"):
+            pytest.skip("HF_TOKEN not set")
+
+        response = await LLMClient.create_chat_completion(
+            model="huggingface/meta-llama/Llama-3.3-70B-Instruct",
+            messages=[{"role": "user", "content": "Say 'hello' and nothing else."}],
+            temperature=0.0,
+            max_tokens=10,
+        )
+
+        assert response.content is not None
+        assert len(response.content) > 0
+        assert response.finish_reason in ("stop", "length", "eos")
+        assert response.total_tokens > 0
+
+    @pytest.mark.asyncio
+    async def test_huggingface_embedding(self):
+        """Test HuggingFace embedding via LiteLLM."""
+        import os
+
+        if not os.environ.get("HF_TOKEN"):
+            pytest.skip("HF_TOKEN not set")
+
+        response = await LLMClient.create_embedding(
+            model="huggingface/microsoft/codebert-base",
+            input_texts=["Hello, world!", "This is a test."],
+        )
+
+        assert len(response.embeddings) == 2
+        assert len(response.embeddings[0]) > 0  # Has dimensions
+        assert len(response.embeddings[1]) > 0
+        assert response.total_tokens >= 0  # Some providers return 0
+
+
+@pytest.mark.requires_api_keys
+class TestLLMClientIntegrationGemini:
+    """Integration tests for LLMClient with Google Gemini via LiteLLM.
+
+    These tests require GEMINI_API_KEY to be set in the environment.
+    Run with: uv run pytest tests/test_llm_client.py --run-api-tests
+    """
+
+    @pytest.mark.asyncio
+    async def test_gemini_chat_completion(self):
+        """Test Gemini chat completion via LiteLLM."""
+        import os
+
+        if not os.environ.get("GEMINI_API_KEY"):
+            pytest.skip("GEMINI_API_KEY not set")
+
+        response = await LLMClient.create_chat_completion(
+            model="gemini/gemini-1.5-flash",
+            messages=[{"role": "user", "content": "Say 'hello' and nothing else."}],
+            temperature=0.0,
+            max_tokens=10,
+        )
+
+        assert response.content is not None
+        assert len(response.content) > 0
+        assert response.finish_reason in ("stop", "length", "STOP")
+        assert response.total_tokens > 0
+        assert "gemini" in response.model.lower()
