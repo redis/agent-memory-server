@@ -110,6 +110,9 @@ query = VectorQuery(vector=embedding, vector_field_name="vector", return_fields=
 
 ## Critical Rules
 
+### Import Placement
+Place all imports at the top of modules, not inside functions. Inline imports should only be used when strictly necessary (e.g., avoiding circular dependencies, optional dependencies, or significant startup performance concerns).
+
 ### Authentication
 - **PRODUCTION**: Never set `DISABLE_AUTH=true` in production
 - **DEVELOPMENT**: Use `DISABLE_AUTH=true` for local testing only
@@ -149,7 +152,11 @@ agent_memory_server/
 ├── summarization.py     # Conversation summarization
 ├── extraction.py        # Topic and entity extraction
 ├── filters.py           # Search filtering logic
-├── llms.py              # LLM provider integrations
+├── llm/                 # LLM client package (LiteLLM-based)
+│   ├── __init__.py      # Re-exports for clean imports
+│   ├── client.py        # LLMClient class with chat/embedding methods
+│   ├── types.py         # ChatCompletionResponse, EmbeddingResponse, LLMBackend
+│   └── exceptions.py    # LLMClientError, ModelValidationError, APIKeyMissingError
 ├── migrations.py        # Database schema migrations
 ├── docket_tasks.py      # Background task definitions
 ├── cli.py               # Command-line interface

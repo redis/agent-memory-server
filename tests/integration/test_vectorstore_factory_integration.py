@@ -109,7 +109,7 @@ class TestEmbeddingsCreation:
             assert result == mock_instance
             mock_openai.assert_called_once()
 
-    @patch("agent_memory_server.vectorstore_factory.settings")
+    @patch("agent_memory_server.config.settings")
     def test_create_embeddings_unsupported_provider(self, mock_settings):
         """Test embeddings creation with unsupported provider."""
 
@@ -120,7 +120,11 @@ class TestEmbeddingsCreation:
         )
         mock_settings.embedding_model_config = mock_config
 
-        with pytest.raises(ValueError, match="Unsupported embedding provider"):
+        from agent_memory_server.llm import ModelValidationError
+
+        with pytest.raises(
+            ModelValidationError, match="Unsupported embedding provider"
+        ):
             create_embeddings()
 
 

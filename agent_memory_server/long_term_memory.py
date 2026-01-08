@@ -29,13 +29,7 @@ from agent_memory_server.filters import (
     Topics,
     UserId,
 )
-from agent_memory_server.llms import (
-    AnthropicClientWrapper,
-    BedrockClientWrapper,
-    OpenAIClientWrapper,
-    get_model_client,
-    optimize_query_for_vector_search,
-)
+from agent_memory_server.llm import LLMClient, optimize_query_for_vector_search
 from agent_memory_server.models import (
     ExtractedMemoryRecord,
     MemoryRecord,
@@ -192,10 +186,6 @@ async def extract_memories_from_session_thread(
     session_id: str,
     namespace: str | None = None,
     user_id: str | None = None,
-    llm_client: OpenAIClientWrapper
-    | AnthropicClientWrapper
-    | BedrockClientWrapper
-    | None = None,
 ) -> list[MemoryRecord]:
     """
     Extract memories from the entire conversation thread in working memory.
@@ -207,7 +197,6 @@ async def extract_memories_from_session_thread(
         session_id: The session ID to extract memories from
         namespace: Optional namespace for the memories
         user_id: Optional user ID for the memories
-        llm_client: Optional LLM client for extraction
 
     Returns:
         List of extracted memory records with proper contextual grounding
@@ -298,14 +287,13 @@ async def extract_memory_structure(memory: MemoryRecord):
 
 
 async def merge_memories_with_llm(
-    memories: list[MemoryRecord], llm_client: Any = None
+    memories: list[MemoryRecord],
 ) -> MemoryRecord:
     """
     Use an LLM to merge similar or duplicate memories.
 
     Args:
         memories: List of MemoryRecord objects to merge
-        llm_client: Optional LLM client to use for merging
 
     Returns:
         A merged memory
@@ -354,29 +342,13 @@ async def merge_memories_with_llm(
 
     model_name = "gpt-4o-mini"
 
-    if not llm_client:
-        model_client: (
-            OpenAIClientWrapper | AnthropicClientWrapper | BedrockClientWrapper
-        ) = await get_model_client(model_name)
-    else:
-        model_client = llm_client
-
-    response = await model_client.create_chat_completion(
+    response = await LLMClient.create_chat_completion(
         model=model_name,
-        prompt=prompt,  # type: ignore
+        messages=[{"role": "user", "content": prompt}],
     )
 
     # Extract the merged content
-    merged_text = ""
-    if response.choices and len(response.choices) > 0:
-        # Handle different response formats
-        if hasattr(response.choices[0], "message"):
-            merged_text = response.choices[0].message.content
-        elif hasattr(response.choices[0], "text"):
-            merged_text = response.choices[0].text
-        else:
-            # Fallback if the structure is different
-            merged_text = str(response.choices[0])
+    merged_text = response.content or ""
 
     def coerce_to_float(m: MemoryRecord, key: str) -> float:
         try:
@@ -430,10 +402,6 @@ async def compact_long_term_memories(
     namespace: str | None = None,
     user_id: str | None = None,
     session_id: str | None = None,
-    llm_client: OpenAIClientWrapper
-    | AnthropicClientWrapper
-    | BedrockClientWrapper
-    | None = None,
     redis_client: Redis | None = None,
     vector_distance_threshold: float = 0.2,
     compact_hash_duplicates: bool = True,
@@ -453,9 +421,6 @@ async def compact_long_term_memories(
     """
     if not redis_client:
         redis_client = await get_redis_conn()
-
-    if not llm_client:
-        llm_client = await get_model_client(model_name="gpt-4o-mini")
 
     logger.info(
         f"Starting memory compaction: namespace={namespace}, "
@@ -696,7 +661,6 @@ async def compact_long_term_memories(
                     ) = await deduplicate_by_semantic_search(
                         memory=memory_obj,
                         redis_client=redis_client,
-                        llm_client=llm_client,
                         namespace=namespace,
                         user_id=user_id,
                         session_id=session_id,
@@ -746,7 +710,6 @@ async def index_long_term_memories(
     redis_client: Redis | None = None,
     deduplicate: bool = False,
     vector_distance_threshold: float = 0.12,
-    llm_client: Any = None,
 ) -> None:
     """
     Index long-term memories using the pluggable VectorStore adapter.
@@ -756,7 +719,6 @@ async def index_long_term_memories(
         redis_client: Optional Redis client (kept for compatibility, may be unused depending on backend)
         deduplicate: Whether to deduplicate memories before indexing
         vector_distance_threshold: Threshold for semantic similarity
-        llm_client: Optional LLM client for semantic merging
     """
     background_tasks = get_background_tasks()
 
@@ -765,9 +727,6 @@ async def index_long_term_memories(
     if deduplicate:
         # Get Redis client for deduplication operations (still needed for existing dedup logic)
         redis = redis_client or await get_redis_conn()
-        model_client = llm_client or await get_model_client(
-            model_name=settings.generation_model
-        )
 
         for memory in memories:
             current_memory = memory
@@ -803,7 +762,6 @@ async def index_long_term_memories(
                 deduped_memory, was_merged = await deduplicate_by_semantic_search(
                     memory=current_memory,
                     redis_client=redis,
-                    llm_client=model_client,
                     vector_distance_threshold=vector_distance_threshold,
                 )
                 if was_merged:
@@ -1177,7 +1135,6 @@ async def deduplicate_by_id(
 async def deduplicate_by_semantic_search(
     memory: MemoryRecord,
     redis_client: Redis | None = None,
-    llm_client: Any = None,
     namespace: str | None = None,
     user_id: str | None = None,
     session_id: str | None = None,
@@ -1192,7 +1149,6 @@ async def deduplicate_by_semantic_search(
     Args:
         memory: The memory to check for semantic duplicates
         redis_client: Optional Redis client
-        llm_client: Optional LLM client for merging
         namespace: Optional namespace filter
         user_id: Optional user ID filter
         session_id: Optional session ID filter
@@ -1203,9 +1159,6 @@ async def deduplicate_by_semantic_search(
     """
     if not redis_client:
         redis_client = await get_redis_conn()
-
-    if not llm_client:
-        llm_client = await get_model_client(model_name="gpt-4o-mini")
 
     # Use vector store adapter to find semantically similar memories
     adapter = await get_vectorstore_adapter()
@@ -1252,7 +1205,6 @@ async def deduplicate_by_semantic_search(
         # Merge the memories
         merged_memory = await merge_memories_with_llm(
             [memory] + vector_search_result,
-            llm_client=llm_client,
         )
 
         # Delete the similar memories using the adapter
