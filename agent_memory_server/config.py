@@ -178,7 +178,32 @@ MODEL_CONFIGS = {
         max_tokens=200000,
         embedding_dimensions=1536,
     ),
-    # AWS Bedrock Embedding Models
+    # AWS Bedrock Embedding Models (with bedrock/ prefix - recommended)
+    "bedrock/amazon.titan-embed-text-v2:0": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="bedrock/amazon.titan-embed-text-v2:0",
+        max_tokens=8192,
+        embedding_dimensions=1024,
+    ),
+    "bedrock/amazon.titan-embed-text-v1": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="bedrock/amazon.titan-embed-text-v1",
+        max_tokens=8192,
+        embedding_dimensions=1536,
+    ),
+    "bedrock/cohere.embed-english-v3": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="bedrock/cohere.embed-english-v3",
+        max_tokens=8192,
+        embedding_dimensions=1024,
+    ),
+    "bedrock/cohere.embed-multilingual-v3": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="bedrock/cohere.embed-multilingual-v3",
+        max_tokens=8192,
+        embedding_dimensions=1024,
+    ),
+    # AWS Bedrock Embedding Models (legacy - without prefix, deprecated)
     "amazon.titan-embed-text-v2:0": ModelConfig(
         provider=ModelProvider.AWS_BEDROCK,
         name="amazon.titan-embed-text-v2:0",
