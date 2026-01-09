@@ -328,6 +328,11 @@ class Settings(BaseSettings):
     # skipping the startup scan and per-read type checks for better performance.
     working_memory_migration_complete: bool = False
 
+    # Long-term memory extraction settings
+    # Debounce period (in seconds) for thread-aware memory extraction.
+    # Prevents constant re-extraction as new messages arrive in a conversation.
+    extraction_debounce_seconds: int = 300  # 5 minutes
+
     # Query optimization settings
     query_optimization_prompt_template: str = """Transform this natural language query into an optimized version for semantic search. The goal is to make it more effective for finding semantically similar content while preserving the original intent.
 
