@@ -15,6 +15,9 @@ services:
   # =============================================================================
   api:
     profiles: ["standard", ""]
+    build:
+      context: .
+      target: standard
     image: redislabs/agent-memory-server:${REDIS_AGENT_MEMORY_VERSION:-latest}
     ports:
       - "8000:8000"
@@ -44,6 +47,9 @@ services:
 
   mcp:
     profiles: ["standard", ""]
+    build:
+      context: .
+      target: standard
     image: redislabs/agent-memory-server:${REDIS_AGENT_MEMORY_VERSION:-latest}
     env_file:
       - path: .env
@@ -67,6 +73,9 @@ services:
 
   task-worker:
     profiles: ["standard", ""]
+    build:
+      context: .
+      target: standard
     image: redislabs/agent-memory-server:${REDIS_AGENT_MEMORY_VERSION:-latest}
     env_file:
       - path: .env
