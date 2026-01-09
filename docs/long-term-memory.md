@@ -21,7 +21,7 @@ Long-term memory provides persistent storage that survives server restarts and s
 
 - **Cross-Session**: Accessible from any session
 - **Persistent**: Survives server restarts and session expiration
-- **Vector Indexed**: Semantic search with OpenAI embeddings
+- **Vector Indexed**: Semantic search with configurable embeddings (OpenAI, Bedrock, Ollama, and more via [LiteLLM](llm-providers.md))
 - **Deduplication**: Automatic hash-based and semantic deduplication
 - **Rich Metadata**: Topics, entities, timestamps, memory types
 - **Compaction**: Automatic cleanup and merging of duplicates
@@ -275,7 +275,7 @@ INDEX_ALL_MESSAGES_IN_LONG_TERM_MEMORY=false  # Index messages in long-term memo
 GENERATION_MODEL=gpt-4o-mini                  # Model for summarization/extraction
 
 # Vector search settings
-EMBEDDING_MODEL=text-embedding-3-small  # OpenAI embedding model
+EMBEDDING_MODEL=text-embedding-3-small  # Embedding model (see LLM Providers for options)
 DISTANCE_THRESHOLD=0.8                  # Similarity threshold for search
 ```
 
@@ -286,4 +286,5 @@ For complete configuration options, see the [Configuration Guide](configuration.
 - [Working Memory](working-memory.md) - Session-scoped memory storage for conversations
 - [Memory Integration Patterns](memory-integration-patterns.md) - How to integrate memory with your applications
 - [Memory Extraction Strategies](memory-extraction-strategies.md) - Different approaches to memory extraction and storage
+- [LLM Providers](llm-providers.md) - Configure OpenAI, Anthropic, AWS Bedrock, Ollama, and more
 - [Vector Store Backends](vector-store-backends.md) - Configuring different vector storage backends

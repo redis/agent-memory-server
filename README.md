@@ -15,6 +15,7 @@ A memory layer for AI agents.
 - **Configurable Memory Strategies**: Customize how memories are extracted (discrete, summary, preferences, custom)
 - **Semantic Search**: Vector-based similarity search with metadata filtering
 - **Flexible Backends**: Pluggable vector store factory system
+- **Multi-Provider LLM Support**: OpenAI, Anthropic, AWS Bedrock, Ollama, Azure, Gemini via [LiteLLM](https://docs.litellm.ai/)
 - **AI Integration**: Automatic topic extraction, entity recognition, and conversation summarization
 - **Python SDK**: Easy integration with AI applications
 
@@ -204,6 +205,36 @@ Notes:
   - If not on PATH, set `"command"` to the absolute path (e.g., `/opt/homebrew/bin/uvx` on Apple Silicon, `/usr/local/bin/uvx` on Intel macOS). On Linux, `~/.local/bin/uvx` is common. See https://docs.astral.sh/uv/getting-started/
 - For production, remove `DISABLE_AUTH` and configure proper authentication.
 
+## LLM Provider Configuration
+
+The server uses [LiteLLM](https://docs.litellm.ai/) to support 100+ LLM providers. Configure via environment variables:
+
+```bash
+# OpenAI (default)
+export OPENAI_API_KEY=sk-...
+export GENERATION_MODEL=gpt-4o
+export EMBEDDING_MODEL=text-embedding-3-small
+
+# Anthropic
+export ANTHROPIC_API_KEY=sk-ant-...
+export GENERATION_MODEL=claude-3-5-sonnet-20241022
+export EMBEDDING_MODEL=text-embedding-3-small  # Use OpenAI for embeddings
+
+# AWS Bedrock
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_REGION_NAME=us-east-1
+export GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
+export EMBEDDING_MODEL=bedrock/amazon.titan-embed-text-v2:0  # Note: bedrock/ prefix required
+
+# Ollama (local)
+export OLLAMA_API_BASE=http://localhost:11434
+export GENERATION_MODEL=ollama/llama2
+export EMBEDDING_MODEL=ollama/nomic-embed-text
+export REDISVL_VECTOR_DIMENSIONS=768  # Required for Ollama
+```
+
+See **[LLM Providers](https://redis.github.io/agent-memory-server/llm-providers/)** for complete configuration options.
 
 ## Documentation
 
@@ -214,6 +245,8 @@ Notes:
 - **[Quick Start Guide](https://redis.github.io/agent-memory-server/quick-start/)** - Get up and running in minutes
 - **[Python SDK](https://redis.github.io/agent-memory-server/python-sdk/)** - Complete SDK reference with examples
 - **[LangChain Integration](https://redis.github.io/agent-memory-server/langchain-integration/)** - Automatic tool conversion for LangChain
+- **[LLM Providers](https://redis.github.io/agent-memory-server/llm-providers/)** - Configure OpenAI, Anthropic, AWS Bedrock, Ollama, and more
+- **[Embedding Providers](https://redis.github.io/agent-memory-server/embedding-providers/)** - Configure embedding models for semantic search
 - **[Vector Store Backends](https://redis.github.io/agent-memory-server/vector-store-backends/)** - Configure different vector databases
 - **[Authentication](https://redis.github.io/agent-memory-server/authentication/)** - OAuth2/JWT setup for production
 - **[Memory Types](https://redis.github.io/agent-memory-server/long-term-memory/#memory-types)** - Understanding semantic vs episodic memory

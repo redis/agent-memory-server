@@ -188,25 +188,20 @@ class LLMClient:
     def create_embeddings(cls) -> Embeddings:
         """Create a LangChain Embeddings instance based on configuration.
 
-        This method returns a LangChain-compatible Embeddings object that can be
-        passed to vector stores. It centralizes all embedding provider configuration
-        in LLMClient, making it the single entry point for embedding instances.
-
-        The provider is determined from `settings.embedding_model_config`. If not
-        configured, defaults to OpenAI.
-
-        Supported providers:
-            - OpenAI: Uses langchain_openai.OpenAIEmbeddings
-            - Anthropic: Falls back to OpenAI (Anthropic has no embedding models)
-            - AWS Bedrock: Uses langchain_aws.BedrockEmbeddings
+        This method returns a LangChain-compatible Embeddings object that uses
+        LiteLLM internally, enabling support for any embedding provider:
+        - OpenAI (text-embedding-3-small, text-embedding-3-large)
+        - AWS Bedrock (bedrock/amazon.titan-embed-text-v2:0)
+        - Ollama (ollama/nomic-embed-text)
+        - HuggingFace (huggingface/BAAI/bge-large-en)
+        - Cohere (cohere/embed-english-v3.0)
+        - And many more...
 
         Returns:
-            A LangChain Embeddings instance compatible with vector stores.
+            A LiteLLMEmbeddings instance compatible with LangChain vector stores.
 
         Raises:
-            ImportError: If required provider package is not installed.
-            APIKeyMissingError: If required API key is not configured.
-            ValueError: If provider is unsupported or Bedrock model doesn't exist.
+            ModelValidationError: If Anthropic is configured (no embedding models).
 
         Example:
             >>> from agent_memory_server.llm import LLMClient
@@ -215,119 +210,57 @@ class LLMClient:
             >>> from langchain_redis import RedisVectorStore
             >>> vectorstore = RedisVectorStore(embeddings=embeddings, ...)
         """
+        import warnings
+
         from agent_memory_server.config import ModelProvider, settings
+        from agent_memory_server.llm.embeddings import LiteLLMEmbeddings
 
+        model = settings.embedding_model
         embedding_config = settings.embedding_model_config
-        if embedding_config is None:
-            raise ModelValidationError(
-                f"Unknown embedding model: {settings.embedding_model!r}. "
-                "Please configure a supported embedding model in EMBEDDING_MODEL."
-            )
-        provider = embedding_config.provider
 
-        if provider == ModelProvider.OPENAI:
-            return cls._create_openai_embeddings(
-                model=settings.embedding_model,
-                api_key=settings.openai_api_key,
-            )
-
-        if provider == ModelProvider.ANTHROPIC:
+        # Check for Anthropic - they don't have embedding models
+        if embedding_config and embedding_config.provider == ModelProvider.ANTHROPIC:
             raise ModelValidationError(
                 "Anthropic does not provide embedding models. "
                 "Please configure a different embedding provider (e.g., OpenAI) "
                 "by setting EMBEDDING_MODEL to an OpenAI model like 'text-embedding-3-small'."
             )
 
-        if provider == ModelProvider.AWS_BEDROCK:
-            return cls._create_bedrock_embeddings(
-                model=settings.embedding_model,
-                region=settings.aws_region,
+        # Handle Bedrock models without prefix - add prefix and warn
+        if (
+            embedding_config
+            and embedding_config.provider == ModelProvider.AWS_BEDROCK
+            and not model.startswith("bedrock/")
+        ):
+            warnings.warn(
+                f"Bedrock embedding model '{model}' should use 'bedrock/' prefix "
+                f"(e.g., 'bedrock/{model}'). Unprefixed Bedrock models are deprecated "
+                "and will require the prefix in a future version.",
+                DeprecationWarning,
+                stacklevel=2,
             )
+            model = f"bedrock/{model}"
 
-        raise ModelValidationError(
-            f"Unsupported embedding provider: {provider}. "
-            f"Supported providers: openai, aws-bedrock. "
-            f"Note: Anthropic does not provide embedding models."
-        )
+        # Get dimensions from config or let LiteLLMEmbeddings auto-detect
+        dimensions = None
+        if embedding_config:
+            dimensions = embedding_config.embedding_dimensions
+        elif settings.redisvl_vector_dimensions:
+            # Fallback to explicit REDISVL_VECTOR_DIMENSIONS setting
+            dimensions = settings.redisvl_vector_dimensions
 
-    @classmethod
-    def _create_openai_embeddings(
-        cls,
-        model: str,
-        api_key: str | None = None,
-    ) -> Embeddings:
-        """Create OpenAI embeddings instance.
+        # Build kwargs for the embeddings instance
+        kwargs: dict = {}
 
-        Args:
-            model: OpenAI embedding model name (e.g., "text-embedding-3-small")
-            api_key: Optional API key. If None, uses OPENAI_API_KEY env var.
+        # Pass API key if available (for OpenAI)
+        if settings.openai_api_key:
+            kwargs["api_key"] = settings.openai_api_key
 
-        Returns:
-            OpenAIEmbeddings instance.
+        # Pass API base if configured
+        if settings.openai_api_base:
+            kwargs["api_base"] = settings.openai_api_base
 
-        Raises:
-            ImportError: If langchain-openai is not installed.
-        """
-        try:
-            from langchain_openai import OpenAIEmbeddings
-        except ImportError:
-            logger.error(
-                "langchain-openai not installed. Install with: pip install langchain-openai"
-            )
-            raise
-
-        if api_key is not None:
-            from pydantic.types import SecretStr
-
-            return OpenAIEmbeddings(model=model, api_key=SecretStr(api_key))
-
-        # Let OpenAIEmbeddings read from OPENAI_API_KEY env var
-        return OpenAIEmbeddings(model=model)
-
-    @classmethod
-    def _create_bedrock_embeddings(
-        cls,
-        model: str,
-        region: str | None = None,
-    ) -> Embeddings:
-        """Create AWS Bedrock embeddings instance.
-
-        Args:
-            model: Bedrock model ID (e.g., "amazon.titan-embed-text-v2:0")
-            region: AWS region. If None, uses default from AWS config.
-
-        Returns:
-            BedrockEmbeddings instance.
-
-        Raises:
-            ImportError: If langchain-aws or AWS dependencies are not installed.
-            ValueError: If the model doesn't exist in the specified region.
-        """
-        try:
-            from langchain_aws import BedrockEmbeddings
-
-            from agent_memory_server._aws.clients import create_bedrock_runtime_client
-            from agent_memory_server._aws.utils import bedrock_embedding_model_exists
-        except ImportError:
-            err_msg = (
-                "AWS-related dependencies might be missing. "
-                "Try to install with: pip install agent-memory-server[aws]."
-            )
-            logger.exception(err_msg)
-            raise
-
-        if not bedrock_embedding_model_exists(model, region_name=region):
-            err_msg = (
-                f"Bedrock embedding model {model} not found in region {region}. "
-                "Please ensure that the model ID is valid, that the model is "
-                "available in the given AWS region, and that your AWS role has "
-                "the correct permissions to invoke it."
-            )
-            logger.error(err_msg)
-            raise ValueError(err_msg)
-
-        bedrock_runtime_client = create_bedrock_runtime_client()
-        return BedrockEmbeddings(model_id=model, client=bedrock_runtime_client)
+        return LiteLLMEmbeddings(model=model, dimensions=dimensions, **kwargs)
 
     @classmethod
     def _map_provider(cls, litellm_provider: str) -> ModelProvider:
