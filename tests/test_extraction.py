@@ -6,7 +6,8 @@ import ulid
 
 from agent_memory_server.config import settings
 from agent_memory_server.extraction import (
-    extract_entities,
+    extract_entities_bert,
+    extract_entities_llm,
     extract_topics_bertopic,
     extract_topics_llm,
     handle_extraction,
@@ -101,36 +102,49 @@ class TestTopicExtraction:
 @pytest.mark.asyncio
 class TestEntityExtraction:
     @patch("agent_memory_server.extraction.get_ner_model")
-    async def test_extract_entities_success(self, mock_get_ner_model, mock_ner):
-        """Test successful entity extraction"""
+    async def test_extract_entities_bert_success(self, mock_get_ner_model, mock_ner):
+        """Test successful entity extraction with BERT"""
         mock_get_ner_model.return_value = mock_ner
         text = "John works at Google in Mountain View"
 
-        entities = extract_entities(text)
+        entities = extract_entities_bert(text)
 
         assert set(entities) == {"John", "Google", "MountainView"}
         mock_ner.assert_called_once_with(text)
 
     @patch("agent_memory_server.extraction.get_ner_model")
-    async def test_extract_entities_error(self, mock_get_ner_model):
+    async def test_extract_entities_bert_error(self, mock_get_ner_model):
         """Test handling of NER model error"""
         mock_get_ner_model.side_effect = Exception("Model error")
 
-        entities = extract_entities("Test message")
+        entities = extract_entities_bert("Test message")
 
         assert entities == []
+
+    @patch("agent_memory_server.extraction.LLMClient.create_chat_completion")
+    async def test_extract_entities_llm_success(self, mock_llm):
+        """Test successful entity extraction with LLM"""
+        mock_llm.return_value = Mock(
+            content='{"entities": ["John", "Google", "Mountain View"]}'
+        )
+        text = "John works at Google in Mountain View"
+
+        entities = await extract_entities_llm(text)
+
+        assert set(entities) == {"John", "Google", "Mountain View"}
+        mock_llm.assert_called_once()
 
 
 @pytest.mark.asyncio
 class TestHandleExtraction:
     @patch("agent_memory_server.extraction.extract_topics_llm")
-    @patch("agent_memory_server.extraction.extract_entities")
+    @patch("agent_memory_server.extraction.extract_entities_llm")
     async def test_handle_extraction(
-        self, mock_extract_entities, mock_extract_topics_llm
+        self, mock_extract_entities_llm, mock_extract_topics_llm
     ):
-        """Test extraction with topics/entities"""
+        """Test extraction with topics/entities (LLM mode - default)"""
         mock_extract_topics_llm.return_value = ["AI", "business"]
-        mock_extract_entities.return_value = ["John", "Sarah", "Google"]
+        mock_extract_entities_llm.return_value = ["John", "Sarah", "Google"]
 
         topics, entities = await handle_extraction(
             "John and Sarah discussed AI at Google."
@@ -142,14 +156,14 @@ class TestHandleExtraction:
         assert len(topics) == 2
 
         # Check that entities are as expected
-        assert mock_extract_entities.called
+        assert mock_extract_entities_llm.called
         assert set(entities) == {"John", "Sarah", "Google"}
         assert len(entities) == 3
 
     @patch("agent_memory_server.extraction.extract_topics_llm")
-    @patch("agent_memory_server.extraction.extract_entities")
+    @patch("agent_memory_server.extraction.extract_entities_llm")
     async def test_handle_extraction_disabled_features(
-        self, mock_extract_entities, mock_extract_topics_llm
+        self, mock_extract_entities_llm, mock_extract_topics_llm
     ):
         """Test when features are disabled"""
         # Temporarily disable features
@@ -164,7 +178,7 @@ class TestHandleExtraction:
             assert topics == []
             assert entities == []
             mock_extract_topics_llm.assert_not_called()
-            mock_extract_entities.assert_not_called()
+            mock_extract_entities_llm.assert_not_called()
         finally:
             # Restore settings
             settings.enable_topic_extraction = original_topic_setting
@@ -189,7 +203,7 @@ class TestTopicExtractionIntegration:
         original_enable_ner = settings.enable_ner
         settings.enable_topic_extraction = True
         settings.enable_ner = True
-        settings.topic_model_source = "BERTopic"
+        settings.topic_model_source = "BERT"
         settings.topic_model = "MaartenGr/BERTopic_Wikipedia"
 
         sample_text = (
@@ -241,21 +255,25 @@ class TestTopicExtractionIntegration:
 class TestHandleExtractionPathSelection:
     @patch("agent_memory_server.extraction.extract_topics_bertopic")
     @patch("agent_memory_server.extraction.extract_topics_llm")
-    @patch("agent_memory_server.extraction.extract_entities")
-    async def test_handle_extraction_path_selection(
+    @patch("agent_memory_server.extraction.extract_entities_bert")
+    @patch("agent_memory_server.extraction.extract_entities_llm")
+    async def test_handle_extraction_topic_path_selection(
         self,
-        mock_extract_entities,
+        mock_extract_entities_llm,
+        mock_extract_entities_bert,
         mock_extract_topics_llm,
         mock_extract_topics_bertopic,
     ):
-        """Test that handle_extraction selects the correct extraction method"""
+        """Test that handle_extraction selects the correct topic extraction method"""
 
-        # Test BERTopic path
-        original_source = settings.topic_model_source
-        settings.topic_model_source = "BERTopic"
+        # Test BERT path for topics
+        original_topic_source = settings.topic_model_source
+        original_ner_source = settings.ner_model_source
+        settings.topic_model_source = "BERT"
+        settings.ner_model_source = "LLM"
 
         mock_extract_topics_bertopic.return_value = ["AI", "technology"]
-        mock_extract_entities.return_value = ["OpenAI"]
+        mock_extract_entities_llm.return_value = ["OpenAI"]
 
         try:
             topics, entities = await handle_extraction("OpenAI develops AI")
@@ -264,9 +282,10 @@ class TestHandleExtractionPathSelection:
             mock_extract_topics_llm.assert_not_called()
 
         finally:
-            settings.topic_model_source = original_source
+            settings.topic_model_source = original_topic_source
+            settings.ner_model_source = original_ner_source
 
-        # Test LLM path
+        # Test LLM path for topics
         settings.topic_model_source = "LLM"
         mock_extract_topics_bertopic.reset_mock()
         mock_extract_topics_llm.reset_mock()
@@ -276,8 +295,48 @@ class TestHandleExtractionPathSelection:
             topics, entities = await handle_extraction("OpenAI develops AI")
 
             mock_extract_topics_llm.assert_called_once()
-            # BERTopic should not be called for LLM path
             mock_extract_topics_bertopic.assert_not_called()
 
         finally:
-            settings.topic_model_source = original_source
+            settings.topic_model_source = original_topic_source
+
+    @patch("agent_memory_server.extraction.extract_topics_llm")
+    @patch("agent_memory_server.extraction.extract_entities_bert")
+    @patch("agent_memory_server.extraction.extract_entities_llm")
+    async def test_handle_extraction_ner_path_selection(
+        self,
+        mock_extract_entities_llm,
+        mock_extract_entities_bert,
+        mock_extract_topics_llm,
+    ):
+        """Test that handle_extraction selects the correct NER method"""
+
+        original_topic_source = settings.topic_model_source
+        original_ner_source = settings.ner_model_source
+        settings.topic_model_source = "LLM"
+        mock_extract_topics_llm.return_value = ["AI"]
+
+        try:
+            # Test BERT path for NER
+            settings.ner_model_source = "BERT"
+            mock_extract_entities_bert.return_value = ["OpenAI"]
+
+            topics, entities = await handle_extraction("OpenAI develops AI")
+
+            mock_extract_entities_bert.assert_called_once()
+            mock_extract_entities_llm.assert_not_called()
+
+            # Test LLM path for NER
+            mock_extract_entities_bert.reset_mock()
+            mock_extract_entities_llm.reset_mock()
+            settings.ner_model_source = "LLM"
+            mock_extract_entities_llm.return_value = ["OpenAI"]
+
+            topics, entities = await handle_extraction("OpenAI develops AI")
+
+            mock_extract_entities_llm.assert_called_once()
+            mock_extract_entities_bert.assert_not_called()
+
+        finally:
+            settings.topic_model_source = original_topic_source
+            settings.ner_model_source = original_ner_source

@@ -8,7 +8,7 @@ Usage:
     from agent_memory_server.llm import LLMClient, ChatCompletionResponse
 
     response = await LLMClient.create_chat_completion(
-        model="gpt-4o",
+        model="gpt-5",
         messages=[{"role": "user", "content": "Hello"}],
     )
 """

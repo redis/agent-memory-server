@@ -71,7 +71,19 @@ MODEL_CONFIGS = {
         max_tokens=128000,
         embedding_dimensions=1536,
     ),
-    # Newer reasoning models
+    "gpt-5": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="gpt-5",
+        max_tokens=128000,
+        embedding_dimensions=1536,
+    ),
+    "gpt-5-mini": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="gpt-5-mini",
+        max_tokens=128000,
+        embedding_dimensions=1536,
+    ),
+    # Reasoning models
     "o1": ModelConfig(
         provider=ModelProvider.OPENAI,
         name="o1",
@@ -254,7 +266,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     openai_api_base: str | None = None
     anthropic_api_base: str | None = None
-    generation_model: str = "gpt-4o"
+    generation_model: str = "gpt-5"
     embedding_model: str = "text-embedding-3-small"
 
     # Cloud
@@ -267,9 +279,9 @@ class Settings(BaseSettings):
     aws_session_token: str | None = None
 
     # Model selection for query optimization
-    slow_model: str = "gpt-4o"  # Slower, more capable model for complex tasks
+    slow_model: str = "gpt-5"  # Slower, more capable model for complex tasks
     fast_model: str = (
-        "gpt-4o-mini"  # Faster, smaller model for quick tasks like query optimization
+        "gpt-5-mini"  # Faster, smaller model for quick tasks like query optimization
     )
     port: int = 8000
     mcp_port: int = 9000
@@ -294,14 +306,16 @@ class Settings(BaseSettings):
     enable_discrete_memory_extraction: bool = True
 
     # Topic modeling
-    topic_model_source: Literal["BERTopic", "LLM"] = "LLM"
-    # If using BERTopic, use a supported model, such as
+    topic_model_source: Literal["BERT", "LLM"] = "LLM"
+    # If using BERT (BERTopic), use a supported model, such as
     # "MaartenGr/BERTopic_Wikipedia"
-    topic_model: str = "gpt-4o-mini"
+    topic_model: str = "MaartenGr/BERTopic_Wikipedia"
     enable_topic_extraction: bool = True
     top_k_topics: int = 3
 
-    # Used for extracting entities from text
+    # Named Entity Recognition (NER)
+    ner_model_source: Literal["BERT", "LLM"] = "LLM"
+    # If using BERT, specify a HuggingFace NER model (requires PyTorch)
     ner_model: str = "dbmdz/bert-large-cased-finetuned-conll03-english"
     enable_ner: bool = True
     index_all_messages_in_long_term_memory: bool = False
