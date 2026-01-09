@@ -11,7 +11,9 @@ import logging
 from typing import Any
 
 from langchain_core.embeddings import Embeddings
-from litellm import aembedding, embedding, get_model_info
+from litellm import aembedding, embedding
+from litellm.exceptions import NotFoundError as LiteLLMNotFoundError
+from litellm.utils import get_model_info
 
 
 logger = logging.getLogger(__name__)
@@ -71,26 +73,66 @@ class LiteLLMEmbeddings(Embeddings):
         self.model = model
         self.api_base = api_base
         self.api_key = api_key
-        self._dimensions = dimensions
         self._extra_kwargs = kwargs
 
-    @property
-    def dimensions(self) -> int | None:
-        """Get embedding dimensions, auto-detecting if not set."""
-        if self._dimensions is not None:
-            return self._dimensions
+        # Detect dimensions at construction time
+        self._dimensions = dimensions or self._detect_dimensions()
 
-        # Try to get from LiteLLM model info
+        if self._dimensions is None:
+            logger.warning(
+                "Could not determine embedding dimensions for model %r. "
+                "Vector stores requiring explicit dimensions may fail. "
+                "Consider specifying dimensions explicitly.",
+                self.model,
+            )
+
+    def _detect_dimensions(self) -> int | None:
+        """
+        Detect embedding dimensions using fallback chain.
+
+        Order of precedence:
+        1. Our MODEL_CONFIGS (most reliable, we control it)
+        2. LiteLLM's model registry (fallback for unknown models)
+
+        Returns:
+            Detected dimensions or None if unknown.
+        """
+        # Import here to avoid circular dependency
+        from agent_memory_server.config import MODEL_CONFIGS
+
+        # 1. Check our known config first (most reliable)
+        if self.model in MODEL_CONFIGS:
+            dims = MODEL_CONFIGS[self.model].embedding_dimensions
+            logger.debug(
+                "Detected dimensions=%d for model %r from MODEL_CONFIGS",
+                dims,
+                self.model,
+            )
+            return dims
+
+        # 2. Try LiteLLM's registry as fallback
         try:
             info = get_model_info(self.model)
             dims = info.get("output_vector_size")
             if dims is not None:
-                self._dimensions = dims
+                logger.debug(
+                    "Detected dimensions=%d for model %r from LiteLLM registry",
+                    dims,
+                    self.model,
+                )
                 return dims
-        except Exception:
-            pass
+        except LiteLLMNotFoundError:
+            logger.debug(
+                "Model %r not found in LiteLLM registry",
+                self.model,
+            )
 
         return None
+
+    @property
+    def dimensions(self) -> int | None:
+        """Get embedding dimensions."""
+        return self._dimensions
 
     def _build_call_kwargs(self, input_texts: list[str]) -> dict[str, Any]:
         """Build kwargs for LiteLLM embedding call."""
