@@ -48,7 +48,7 @@ class LLMClient:
 
     Usage:
         response = await LLMClient.create_chat_completion(
-            model="gpt-4o",
+            model="gpt-5",
             messages=[{"role": "user", "content": "Hello"}],
         )
     """
@@ -68,7 +68,7 @@ class LLMClient:
 
     # TODO: Model alias support is available in LiteLLM via litellm.model_alias_map
     # Example:
-    #   litellm.model_alias_map = {"fast": "gpt-4o-mini", "smart": "gpt-4o"}
+    #   litellm.model_alias_map = {"fast": "gpt-5-mini", "smart": "gpt-5"}
     # This could be used for settings.fast_model and settings.generation_model
     # but is not implemented yet.
 
@@ -89,7 +89,7 @@ class LLMClient:
         Create a chat completion.
 
         Args:
-            model: Model identifier (e.g., "gpt-4o", "claude-3-sonnet")
+            model: Model identifier (e.g., "gpt-5", "claude-3-sonnet")
             messages: List of message dicts with 'role' and 'content' keys
             api_base: Custom API endpoint (for Ollama, vLLM, Azure, or gateways)
             api_key: Override API key (for custom endpoints or gateways)
@@ -102,7 +102,7 @@ class LLMClient:
             ChatCompletionResponse with normalized content and usage
         """
         # LiteLLM automatically detects the provider from the model name.
-        # No need for explicit provider prefixes (e.g., "openai/gpt-4o").
+        # No need for explicit provider prefixes (e.g., "openai/gpt-5").
         # See: https://docs.litellm.ai/docs/providers
 
         # Build kwargs for LiteLLM call
@@ -355,10 +355,10 @@ class LLMClient:
         Resolution order:
         1. MODEL_CONFIGS (custom overrides)
         2. LLMClient's internal model database
-        3. Fallback to gpt-4o-mini defaults with warning
+        3. Fallback to gpt-5-mini defaults with warning
 
         Args:
-            model_name: Name of the model (e.g., "gpt-4o", "claude-3-sonnet-20240229")
+            model_name: Name of the model (e.g., "gpt-5", "claude-3-sonnet-20240229")
 
         Returns:
             ModelConfig with provider, name, max_tokens, and embedding_dimensions
@@ -389,13 +389,13 @@ class LLMClient:
         except Exception as e:
             logger.debug(f"Failed to resolve model configuration for {model_name}: {e}")
 
-        # Final fallback to gpt-4o-mini defaults
+        # Final fallback to gpt-5-mini defaults
         logger.warning(
             f"Model {model_name!r} not found in LLMClient model database or MODEL_CONFIGS. "
-            "Using gpt-4o-mini defaults."
+            "Using gpt-5-mini defaults."
         )
         return MODEL_CONFIGS.get(
-            "gpt-4o-mini",
+            "gpt-5-mini",
             ModelConfig(
                 provider=cls._map_provider("openai"),
                 name=model_name,

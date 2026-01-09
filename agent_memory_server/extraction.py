@@ -79,11 +79,11 @@ def get_ner_model() -> Any:
     return hf_pipeline("ner", model=_ner_model, tokenizer=_ner_tokenizer)
 
 
-def extract_entities(text: str) -> list[str]:
+def extract_entities_bert(text: str) -> list[str]:
     """
-    Extract named entities from text using the NER model.
+    Extract named entities from text using a BERT-based NER model.
 
-    TODO: Cache this output.
+    Requires PyTorch and transformers to be installed.
 
     Args:
         text: The text to extract entities from
@@ -116,8 +116,46 @@ def extract_entities(text: str) -> list[str]:
         return list(set(entities))  # Remove duplicates
 
     except Exception as e:
-        logger.error(f"Error extracting entities: {e}")
+        logger.error(f"Error extracting entities with BERT: {e}")
         return []
+
+
+async def extract_entities_llm(text: str) -> list[str]:
+    """
+    Extract named entities from text using an LLM.
+
+    Args:
+        text: The text to extract entities from
+
+    Returns:
+        List of unique entity names (people, organizations, locations, etc.)
+    """
+    prompt = f"""Extract named entities (people, organizations, locations, products, etc.) from the following text.
+
+Text:
+{text}
+
+Return a JSON object with an "entities" array containing the entity names as strings.
+Example: {{"entities": ["John Smith", "Apple Inc.", "New York"]}}
+"""
+    entities: list[str] = []
+
+    async for attempt in AsyncRetrying(stop=stop_after_attempt(3)):
+        with attempt:
+            response = await LLMClient.create_chat_completion(
+                model=settings.fast_model,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+            )
+            try:
+                entities = json.loads(response.content).get("entities", [])
+            except (json.JSONDecodeError, KeyError):
+                logger.error(f"Error decoding NER JSON: {response.content}")
+                entities = []
+            if entities:
+                break
+
+    return list(set(entities))  # Remove duplicates
 
 
 async def extract_topics_llm(
@@ -125,35 +163,37 @@ async def extract_topics_llm(
     num_topics: int | None = None,
 ) -> list[str]:
     """
-    Extract topics from text using the LLM model.
+    Extract topics from text using an LLM.
+
+    Uses settings.fast_model for efficient extraction.
     """
     _num_topics = num_topics if num_topics is not None else settings.top_k_topics
 
-    prompt = f"""
-    Extract the topic {_num_topics} topics from the following text:
-    {text}
+    prompt = f"""Extract the top {_num_topics} topics from the following text.
 
-    Return a list of topics in JSON format, for example:
-    {{
-        "topics": ["topic1", "topic2", "topic3"]
-    }}
-    """
-    topics = []
+Text:
+{text}
+
+Return a JSON object with a "topics" array containing topic strings.
+Example: {{"topics": ["machine learning", "data science", "python"]}}
+"""
+    topics: list[str] = []
 
     async for attempt in AsyncRetrying(stop=stop_after_attempt(3)):
         with attempt:
             response = await LLMClient.create_chat_completion(
-                model=settings.generation_model,
+                model=settings.fast_model,
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
             )
             try:
-                topics = json.loads(response.content)["topics"]
+                topics = json.loads(response.content).get("topics", [])
             except (json.JSONDecodeError, KeyError):
-                logger.error(f"Error decoding JSON: {response.content}")
+                logger.error(f"Error decoding topics JSON: {response.content}")
                 topics = []
             if topics:
                 topics = topics[:_num_topics]
+                break
 
     return topics
 
@@ -203,19 +243,22 @@ async def handle_extraction(text: str) -> tuple[list[str], list[str]]:
         Tuple of extracted topics and entities
     """
     # Extract topics if enabled
-    topics = []
+    topics: list[str] = []
     if settings.enable_topic_extraction:
-        if settings.topic_model_source == "BERTopic":
+        if settings.topic_model_source == "BERT":
             topics = extract_topics_bertopic(text)
         else:
             topics = await extract_topics_llm(text)
 
     # Extract entities if enabled
-    entities = []
+    entities: list[str] = []
     if settings.enable_ner:
-        entities = extract_entities(text)
+        if settings.ner_model_source == "BERT":
+            entities = extract_entities_bert(text)
+        else:
+            entities = await extract_entities_llm(text)
 
-    # Merge with existing topics and entities
+    # Deduplicate
     if topics:
         topics = list(set(topics))
     if entities:
