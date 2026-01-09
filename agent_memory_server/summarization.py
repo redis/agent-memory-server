@@ -5,13 +5,7 @@ import tiktoken
 from redis import WatchError
 
 from agent_memory_server.config import settings
-from agent_memory_server.llms import (
-    AnthropicClientWrapper,
-    BedrockClientWrapper,
-    OpenAIClientWrapper,
-    get_model_client,
-    get_model_config,
-)
+from agent_memory_server.llm import LLMClient, get_model_config
 from agent_memory_server.models import MemoryMessage
 from agent_memory_server.utils.keys import Keys
 from agent_memory_server.utils.redis import get_redis_conn
@@ -22,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 async def _incremental_summary(
     model: str,
-    client: OpenAIClientWrapper | AnthropicClientWrapper | BedrockClientWrapper,
     context: str | None,
     messages: list[str],
 ) -> tuple[str, int]:
@@ -30,8 +23,7 @@ async def _incremental_summary(
     Incrementally summarize messages, building upon a previous summary.
 
     Args:
-        model: The model to use (OpenAI or Anthropic)
-        client: The client wrapper (OpenAI or Anthropic)
+        model: The model to use for summarization
         context: Previous summary, if any
         messages: New messages to summarize
 
@@ -43,63 +35,20 @@ async def _incremental_summary(
     messages_joined = "\n".join(messages)
     prev_summary = context or ""
 
-    # Prompt template for progressive summarization
-    progressive_prompt = f"""
-You are a precise summarization assistant. Your task is to progressively
-summarize conversation history while maintaining critical context and accuracy.
-
-INSTRUCTIONS:
-1. Build upon the previous summary by incorporating new information chronologically
-2. Preserve key details: names, technical terms, code references, and important decisions
-3. Maintain the temporal sequence of events and discussions
-4. For technical discussions, keep specific terms, versions, and implementation details
-5. For code-related content, preserve function names, file paths, and important parameters
-6. If the new content is irrelevant or doesn't add value, return "NONE"
-7. Keep the summary concise but complete - aim for 2-3 sentences unless more detail is crucial
-8. Use neutral, factual language
-
-EXAMPLE
-Current summary:
-The user inquires about retirement investment options, specifically comparing
-traditional IRAs and Roth IRAs. The assistant explains the key differences in
-tax treatment, with traditional IRAs offering immediate tax deductions and Roth
-IRAs providing tax-free withdrawals in retirement.
-
-New lines of conversation:
-Human: What factors should I consider when deciding between the two?
-Assistant: Several key factors influence this decision: 1) Your current tax
-bracket vs. expected retirement tax bracket, 2) Time horizon until retirement,
-3) Current income and eligibility for Roth IRA contributions, and 4) Desire for
-flexibility in retirement withdrawals. For example, if you expect to be in a
-higher tax bracket during retirement, a Roth IRA might be more advantageous
-since qualified withdrawals are tax-free. Additionally, Roth IRAs don't have
-required minimum distributions (RMDs) during your lifetime, offering more
-flexibility in estate planning.
-
-New summary:
-The discussion covers retirement investment options, comparing traditional and
-Roth IRAs' tax implications, with traditional IRAs offering immediate deductions
-and Roth IRAs providing tax-free withdrawals. The conversation expands to cover
-decision factors including current vs. future tax brackets, retirement timeline,
-income eligibility, and withdrawal flexibility, with specific emphasis on Roth
-IRA advantages for those expecting higher retirement tax brackets and the
-benefit of no required minimum distributions. END OF EXAMPLE
-
-Current summary:
-{prev_summary}
-
-New lines of conversation:
-{messages_joined}
-
-New summary:
-"""
+    # Use configurable prompt template for progressive summarization
+    progressive_prompt = settings.progressive_summarization_prompt.format(
+        prev_summary=prev_summary, messages_joined=messages_joined
+    )
 
     try:
-        # Get completion from client
-        response = await client.create_chat_completion(model, progressive_prompt)
+        # Get completion from LLMClient
+        response = await LLMClient.create_chat_completion(
+            model=model,
+            messages=[{"role": "user", "content": progressive_prompt}],
+        )
 
         # Extract completion text
-        completion = response.choices[0].message.content
+        completion = response.content
 
         # Get token usage
         tokens_used = response.total_tokens
@@ -131,7 +80,6 @@ async def summarize_session(
     """
     logger.debug(f"Summarizing session {session_id}")
     redis = await get_redis_conn()
-    client = await get_model_client(settings.generation_model)
 
     messages_key = Keys.messages_key(session_id)
     metadata_key = Keys.metadata_key(session_id)
@@ -253,7 +201,6 @@ async def summarize_session(
 
                 summary, summary_tokens_used = await _incremental_summary(
                     model,
-                    client,
                     context,
                     messages_to_summarize,
                 )

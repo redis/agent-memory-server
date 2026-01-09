@@ -12,7 +12,7 @@ from agent_memory_server.auth import UserInfo, get_current_user
 from agent_memory_server.config import settings
 from agent_memory_server.dependencies import HybridBackgroundTasks
 from agent_memory_server.filters import SessionId, UserId
-from agent_memory_server.llms import get_model_client, get_model_config
+from agent_memory_server.llm import LLMClient
 from agent_memory_server.logging import get_logger
 from agent_memory_server.models import (
     AckResponse,
@@ -119,7 +119,7 @@ def _get_effective_token_limit(
         return context_window_max
     # If model_name is provided, get its max_tokens from our config
     if model_name is not None:
-        model_config = get_model_config(model_name)
+        model_config = LLMClient.get_model_config(model_name)
         return model_config.max_tokens
     # Otherwise use a conservative default (GPT-3.5 context window)
     return 16000  # Conservative default
@@ -256,9 +256,8 @@ async def _summarize_working_memory(
     if current_tokens <= token_threshold:
         return memory
 
-    # Get model client for summarization
-    client = await get_model_client(model)
-    model_config = get_model_config(model)
+    # Get model config for summarization
+    model_config = LLMClient.get_model_config(model)
     summarization_max_tokens = model_config.max_tokens
 
     # Token allocation for summarization (same logic as original summarize_session)
@@ -323,7 +322,6 @@ async def _summarize_working_memory(
     # Generate summary
     summary, summary_tokens_used = await _incremental_summary(
         model,
-        client,
         memory.context,  # Use existing context as base
         messages_to_summarize,
     )

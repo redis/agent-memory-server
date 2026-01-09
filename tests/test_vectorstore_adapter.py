@@ -1,7 +1,6 @@
 """Tests for the VectorStore adapter functionality."""
 
 import asyncio
-import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -631,97 +630,73 @@ class TestVectorStoreAdapter:
 
 
 class TestCreateEmbeddings:
-    """Test cases for the create_embeddings function."""
+    """Test cases for the create_embeddings function.
 
-    def test_create_embeddings_aws_bedrock_success(self):
-        """Test creating AWS Bedrock embeddings successfully."""
+    Note: The embedding creation logic is now in LLMClient.create_embeddings(),
+    which returns LiteLLMEmbeddings for all providers.
+    """
+
+    def test_create_embeddings_returns_litellm_embeddings(self):
+        """Test that create_embeddings returns LiteLLMEmbeddings."""
+        from agent_memory_server.config import ModelProvider
+        from agent_memory_server.llm.embeddings import LiteLLMEmbeddings
+
         mock_model_config = MagicMock()
-        mock_model_config.provider = "aws-bedrock"
+        mock_model_config.provider = ModelProvider.OPENAI
+        mock_model_config.embedding_dimensions = 1536
 
-        # Create mock for BedrockEmbeddings
-        mock_bedrock_embeddings_class = MagicMock()
-        mock_embeddings_instance = MagicMock()
-        mock_bedrock_embeddings_class.return_value = mock_embeddings_instance
-
-        # Mock the runtime client (not control plane client)
-        mock_runtime_client = MagicMock()
-        mock_create_runtime_client = MagicMock(return_value=mock_runtime_client)
-        mock_model_exists = MagicMock(return_value=True)
-
-        with (
-            patch("agent_memory_server.vectorstore_factory.settings") as mock_settings,
-            patch(
-                "agent_memory_server._aws.clients.create_bedrock_runtime_client",
-                mock_create_runtime_client,
-            ),
-            patch(
-                "agent_memory_server._aws.utils.bedrock_embedding_model_exists",
-                mock_model_exists,
-            ),
-            patch.dict(sys.modules, {"langchain_aws": MagicMock()}),
-        ):
-            # Setup the langchain_aws mock properly
-            import langchain_aws
-
-            langchain_aws.BedrockEmbeddings = mock_bedrock_embeddings_class
-
+        with patch("agent_memory_server.config.settings") as mock_settings:
             mock_settings.embedding_model_config = mock_model_config
-            mock_settings.embedding_model = "amazon.titan-embed-text-v2:0"
-            mock_settings.aws_region = "us-east-1"
+            mock_settings.embedding_model = "text-embedding-3-small"
+            mock_settings.openai_api_key = "test-key"
+            mock_settings.openai_api_base = None
 
             result = create_embeddings()
 
-            assert result == mock_embeddings_instance
-            mock_create_runtime_client.assert_called_once()
-            mock_model_exists.assert_called_once_with(
-                "amazon.titan-embed-text-v2:0",
-                region_name="us-east-1",
-            )
+            assert isinstance(result, LiteLLMEmbeddings)
+            assert result.model == "text-embedding-3-small"
 
-    def test_create_embeddings_aws_bedrock_model_not_found(self):
-        """Test error when Bedrock embedding model doesn't exist."""
+    def test_create_embeddings_aws_bedrock_adds_prefix(self):
+        """Test that Bedrock models get bedrock/ prefix added."""
+        import warnings
+
+        from agent_memory_server.config import ModelProvider
+        from agent_memory_server.llm.embeddings import LiteLLMEmbeddings
+
         mock_model_config = MagicMock()
-        mock_model_config.provider = "aws-bedrock"
+        mock_model_config.provider = ModelProvider.AWS_BEDROCK
+        mock_model_config.embedding_dimensions = 1024
 
-        # Create mock module for langchain_aws (needed for import)
-        mock_langchain_aws = MagicMock()
-        mock_model_exists = MagicMock(return_value=False)
-        mock_aws_clients = MagicMock()
-        mock_aws_utils = MagicMock()
-        mock_aws_utils.bedrock_embedding_model_exists = mock_model_exists
-
-        with (
-            patch("agent_memory_server.vectorstore_factory.settings") as mock_settings,
-            patch.dict(
-                sys.modules,
-                {
-                    "langchain_aws": mock_langchain_aws,
-                    "agent_memory_server._aws.clients": mock_aws_clients,
-                    "agent_memory_server._aws.utils": mock_aws_utils,
-                },
-            ),
-        ):
-            mock_settings.embedding_model_config = mock_model_config
-            mock_settings.embedding_model = "invalid-model-id"
-            mock_settings.aws_region = "us-east-1"
-
-            with pytest.raises(ValueError) as exc_info:
-                create_embeddings()
-
-            assert "invalid-model-id" in str(exc_info.value)
-            assert "not found" in str(exc_info.value)
-
-    def test_create_embeddings_aws_bedrock_import_error(self):
-        """Test error when AWS dependencies are not installed."""
-        mock_model_config = MagicMock()
-        mock_model_config.provider = "aws-bedrock"
-
-        with (
-            patch("agent_memory_server.vectorstore_factory.settings") as mock_settings,
-            patch.dict(sys.modules, {"langchain_aws": None}),  # Simulate missing module
-        ):
+        with patch("agent_memory_server.config.settings") as mock_settings:
             mock_settings.embedding_model_config = mock_model_config
             mock_settings.embedding_model = "amazon.titan-embed-text-v2:0"
+            mock_settings.openai_api_key = None
+            mock_settings.openai_api_base = None
 
-            with pytest.raises(ImportError):
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                result = create_embeddings()
+
+                # Should emit deprecation warning for unprefixed model
+                assert len(w) == 1
+                assert issubclass(w[0].category, DeprecationWarning)
+
+            assert isinstance(result, LiteLLMEmbeddings)
+            assert result.model == "bedrock/amazon.titan-embed-text-v2:0"
+
+    def test_create_embeddings_anthropic_raises_error(self):
+        """Test that Anthropic provider raises error (no embedding models)."""
+        from agent_memory_server.config import ModelProvider
+        from agent_memory_server.llm.exceptions import ModelValidationError
+
+        mock_model_config = MagicMock()
+        mock_model_config.provider = ModelProvider.ANTHROPIC
+
+        with patch("agent_memory_server.config.settings") as mock_settings:
+            mock_settings.embedding_model_config = mock_model_config
+            mock_settings.embedding_model = "claude-embedding"
+
+            with pytest.raises(
+                ModelValidationError, match="Anthropic does not provide embedding"
+            ):
                 create_embeddings()

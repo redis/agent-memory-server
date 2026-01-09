@@ -45,6 +45,7 @@ dependencies = [
     "bcrypt>=4.0.0",
     "langchain-community>=0.3.27",
     "cachetools>=6.2.2,<7.0.0",
+    "litellm>=1.80.11",
 ]
 
 [project.scripts]

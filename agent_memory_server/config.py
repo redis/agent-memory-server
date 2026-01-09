@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -253,7 +253,32 @@ MODEL_CONFIGS = {
         max_tokens=200000,
         embedding_dimensions=1536,
     ),
-    # AWS Bedrock Embedding Models
+    # AWS Bedrock Embedding Models (with bedrock/ prefix - recommended)
+    "bedrock/amazon.titan-embed-text-v2:0": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="bedrock/amazon.titan-embed-text-v2:0",
+        max_tokens=8192,
+        embedding_dimensions=1024,
+    ),
+    "bedrock/amazon.titan-embed-text-v1": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="bedrock/amazon.titan-embed-text-v1",
+        max_tokens=8192,
+        embedding_dimensions=1536,
+    ),
+    "bedrock/cohere.embed-english-v3": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="bedrock/cohere.embed-english-v3",
+        max_tokens=8192,
+        embedding_dimensions=1024,
+    ),
+    "bedrock/cohere.embed-multilingual-v3": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="bedrock/cohere.embed-multilingual-v3",
+        max_tokens=8192,
+        embedding_dimensions=1024,
+    ),
+    # AWS Bedrock Embedding Models (legacy - without prefix, deprecated)
     "amazon.titan-embed-text-v2:0": ModelConfig(
         provider=ModelProvider.AWS_BEDROCK,
         name="amazon.titan-embed-text-v2:0",
@@ -403,6 +428,11 @@ class Settings(BaseSettings):
     # skipping the startup scan and per-read type checks for better performance.
     working_memory_migration_complete: bool = False
 
+    # Long-term memory extraction settings
+    # Debounce period (in seconds) for thread-aware memory extraction.
+    # Prevents constant re-extraction as new messages arrive in a conversation.
+    extraction_debounce_seconds: int = 300  # 5 minutes
+
     # Query optimization settings
     query_optimization_prompt_template: str = """Transform this natural language query into an optimized version for semantic search. The goal is to make it more effective for finding semantically similar content while preserving the original intent.
 
@@ -433,6 +463,71 @@ Optimized query:"""
 
     # Compaction settings
     compaction_every_minutes: int = 10
+
+    # Progressive summarization prompt template
+    progressive_summarization_prompt: str = """You are a precise summarization assistant. Your task is to progressively
+summarize conversation history while maintaining critical context and accuracy.
+
+INSTRUCTIONS:
+1. Build upon the previous summary by incorporating new information chronologically
+2. Preserve key details: names, technical terms, code references, and important decisions
+3. Maintain the temporal sequence of events and discussions
+4. For technical discussions, keep specific terms, versions, and implementation details
+5. For code-related content, preserve function names, file paths, and important parameters
+6. If the new content is irrelevant or doesn't add value, return "NONE"
+7. Keep the summary concise but complete - aim for 2-3 sentences unless more detail is crucial
+8. Use neutral, factual language
+
+EXAMPLE
+Current summary:
+The user inquires about retirement investment options, specifically comparing
+traditional IRAs and Roth IRAs. The assistant explains the key differences in
+tax treatment, with traditional IRAs offering immediate tax deductions and Roth
+IRAs providing tax-free withdrawals in retirement.
+
+New lines of conversation:
+Human: What factors should I consider when deciding between the two?
+Assistant: Several key factors influence this decision: 1) Your current tax
+bracket vs. expected retirement tax bracket, 2) Time horizon until retirement,
+3) Current income and eligibility for Roth IRA contributions, and 4) Desire for
+flexibility in retirement withdrawals. For example, if you expect to be in a
+higher tax bracket during retirement, a Roth IRA might be more advantageous
+since qualified withdrawals are tax-free. Additionally, Roth IRAs don't have
+required minimum distributions (RMDs) during your lifetime, offering more
+flexibility in estate planning.
+
+New summary:
+The discussion covers retirement investment options, comparing traditional and
+Roth IRAs' tax implications, with traditional IRAs offering immediate deductions
+and Roth IRAs providing tax-free withdrawals. The conversation expands to cover
+decision factors including current vs. future tax brackets, retirement timeline,
+income eligibility, and withdrawal flexibility, with specific emphasis on Roth
+IRA advantages for those expecting higher retirement tax brackets and the
+benefit of no required minimum distributions. END OF EXAMPLE
+
+Current summary:
+{prev_summary}
+
+New lines of conversation:
+{messages_joined}
+
+New summary:
+"""
+
+    @field_validator("progressive_summarization_prompt")
+    @classmethod
+    def validate_progressive_summarization_prompt(cls, v: str) -> str:
+        """Validate that the progressive summarization prompt contains required placeholders."""
+        required_vars = ["prev_summary", "messages_joined"]
+        missing_vars = [var for var in required_vars if f"{{{var}}}" not in v]
+
+        if missing_vars:
+            raise ValueError(
+                f"progressive_summarization_prompt must contain the following placeholders: "
+                f"{', '.join(f'{{{var}}}' for var in missing_vars)}"
+            )
+
+        return v
 
     class Config:
         env_file = ".env"

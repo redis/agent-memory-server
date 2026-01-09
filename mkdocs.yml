@@ -84,6 +84,8 @@ nav:
     - Long-term Memory: long-term-memory.md
     - Memory Extraction Strategies: memory-extraction-strategies.md
     - Memory Lifecycle: memory-lifecycle.md
+    - LLM Providers: llm-providers.md
+    - Embedding Providers: embedding-providers.md
     - Vector Store Backends: vector-store-backends.md
     - AWS Bedrock: aws-bedrock.md
     - Authentication: authentication.md

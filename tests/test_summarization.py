@@ -2,7 +2,10 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
+from agent_memory_server.config import Settings, settings
+from agent_memory_server.llm import ChatCompletionResponse
 from agent_memory_server.summarization import (
     _incremental_summary,
     summarize_session,
@@ -12,7 +15,7 @@ from agent_memory_server.utils.keys import Keys
 
 @pytest.mark.asyncio
 class TestIncrementalSummarization:
-    async def test_incremental_summarization_no_context(self, mock_openai_client):
+    async def test_incremental_summarization_no_context(self):
         """Test incremental summarization without previous context"""
         model = "gpt-3.5-turbo"
         context = None
@@ -21,30 +24,34 @@ class TestIncrementalSummarization:
             json.dumps({"role": "assistant", "content": "How are you?"}),
         ]
 
-        mock_response = MagicMock()
-        mock_choices = MagicMock()
-        mock_choices.message = MagicMock()
-        mock_choices.message.content = "This is a summary"
-        mock_response.choices = [mock_choices]
-        mock_response.total_tokens = 150
-
-        mock_openai_client.create_chat_completion.return_value = mock_response
-
-        summary, tokens_used = await _incremental_summary(
-            model, mock_openai_client, context, messages
+        mock_response = ChatCompletionResponse(
+            content="This is a summary",
+            finish_reason="stop",
+            prompt_tokens=100,
+            completion_tokens=50,
+            total_tokens=150,
+            model=model,
         )
 
-        assert summary == "This is a summary"
-        assert tokens_used == 150
+        with patch(
+            "agent_memory_server.summarization.LLMClient.create_chat_completion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_create:
+            summary, tokens_used = await _incremental_summary(model, context, messages)
 
-        mock_openai_client.create_chat_completion.assert_called_once()
-        args = mock_openai_client.create_chat_completion.call_args[0]
+            assert summary == "This is a summary"
+            assert tokens_used == 150
 
-        assert args[0] == model
-        assert "How are you?" in args[1]
-        assert "Hello, world!" in args[1]
+            mock_create.assert_called_once()
+            call_kwargs = mock_create.call_args[1]
+            assert call_kwargs["model"] == model
+            # Check that messages are in the prompt
+            prompt = call_kwargs["messages"][0]["content"]
+            assert "How are you?" in prompt
+            assert "Hello, world!" in prompt
 
-    async def test_incremental_summarization_with_context(self, mock_openai_client):
+    async def test_incremental_summarization_with_context(self):
         """Test incremental summarization with previous context"""
         model = "gpt-3.5-turbo"
         context = "Previous summary"
@@ -53,38 +60,39 @@ class TestIncrementalSummarization:
             json.dumps({"role": "assistant", "content": "How are you?"}),
         ]
 
-        # Create a response that matches our new ChatResponse format
-        mock_response = MagicMock()
-        mock_choices = MagicMock()
-        mock_choices.message = MagicMock()
-        mock_choices.message.content = "Updated summary"
-        mock_response.choices = [mock_choices]
-        mock_response.total_tokens = 200
-
-        mock_openai_client.create_chat_completion.return_value = mock_response
-
-        summary, tokens_used = await _incremental_summary(
-            model, mock_openai_client, context, messages
+        mock_response = ChatCompletionResponse(
+            content="Updated summary",
+            finish_reason="stop",
+            prompt_tokens=150,
+            completion_tokens=50,
+            total_tokens=200,
+            model=model,
         )
 
-        assert summary == "Updated summary"
-        assert tokens_used == 200
+        with patch(
+            "agent_memory_server.summarization.LLMClient.create_chat_completion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_create:
+            summary, tokens_used = await _incremental_summary(model, context, messages)
 
-        mock_openai_client.create_chat_completion.assert_called_once()
-        args = mock_openai_client.create_chat_completion.call_args[0]
+            assert summary == "Updated summary"
+            assert tokens_used == 200
 
-        assert args[0] == model
-        assert "Previous summary" in args[1]
-        assert "How are you?" in args[1]
-        assert "Hello, world!" in args[1]
+            mock_create.assert_called_once()
+            call_kwargs = mock_create.call_args[1]
+            assert call_kwargs["model"] == model
+            # Check that context and messages are in the prompt
+            prompt = call_kwargs["messages"][0]["content"]
+            assert "Previous summary" in prompt
+            assert "How are you?" in prompt
+            assert "Hello, world!" in prompt
 
 
 class TestSummarizeSession:
     @pytest.mark.asyncio
     @patch("agent_memory_server.summarization._incremental_summary")
-    async def test_summarize_session(
-        self, mock_summarization, mock_openai_client, mock_async_redis_client
-    ):
+    async def test_summarize_session(self, mock_summarization, mock_async_redis_client):
         """Test summarize_session with mocked summarization"""
         session_id = "test-session"
         model = "gpt-3.5-turbo"
@@ -120,17 +128,10 @@ class TestSummarizeSession:
 
         mock_summarization.return_value = ("New summary", 300)
 
-        with (
-            patch(
-                "agent_memory_server.summarization.get_model_client"
-            ) as mock_get_model_client,
-            patch(
-                "agent_memory_server.summarization.get_redis_conn",
-                return_value=mock_async_redis_client,
-            ),
+        with patch(
+            "agent_memory_server.summarization.get_redis_conn",
+            return_value=mock_async_redis_client,
         ):
-            mock_get_model_client.return_value = mock_openai_client
-
             await summarize_session(
                 session_id,
                 model,
@@ -166,15 +167,15 @@ class TestSummarizeSession:
 
         mock_summarization.assert_called_once()
         assert mock_summarization.call_args[0][0] == model
-        assert mock_summarization.call_args[0][1] == mock_openai_client
-        assert mock_summarization.call_args[0][2] == "Previous summary"
+        # New signature: (model, context, messages) - no client parameter
+        assert mock_summarization.call_args[0][1] == "Previous summary"
         # Verify that some messages were passed for summarization
-        assert len(mock_summarization.call_args[0][3]) > 0
+        assert len(mock_summarization.call_args[0][2]) > 0
 
     @pytest.mark.asyncio
     @patch("agent_memory_server.summarization._incremental_summary")
     async def test_handle_summarization_no_messages(
-        self, mock_summarization, mock_openai_client, mock_async_redis_client
+        self, mock_summarization, mock_async_redis_client
     ):
         """Test summarize_session when no messages need summarization"""
         session_id = "test-session"
@@ -199,16 +200,10 @@ class TestSummarizeSession:
         pipeline_mock.ltrim = AsyncMock(return_value=True)
         pipeline_mock.execute = AsyncMock(return_value=True)
 
-        with (
-            patch(
-                "agent_memory_server.summarization.get_redis_conn",
-                return_value=mock_async_redis_client,
-            ),
-            patch(
-                "agent_memory_server.summarization.get_model_client"
-            ) as mock_get_model_client,
+        with patch(
+            "agent_memory_server.summarization.get_redis_conn",
+            return_value=mock_async_redis_client,
         ):
-            mock_get_model_client.return_value = mock_openai_client
             await summarize_session(
                 session_id,
                 model,
@@ -224,3 +219,74 @@ class TestSummarizeSession:
         assert pipeline_mock.hmset.call_count == 0
         assert pipeline_mock.ltrim.call_count == 0
         assert pipeline_mock.execute.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_configurable_summarization_prompt(self):
+        """Test that the summarization prompt can be configured"""
+        model = "gpt-3.5-turbo"
+        context = "Previous context"
+        messages = ["User: Hello", "Assistant: Hi there"]
+
+        custom_prompt = "Custom prompt: {prev_summary} | {messages_joined}"
+
+        mock_response = ChatCompletionResponse(
+            content="Custom summary",
+            finish_reason="stop",
+            prompt_tokens=50,
+            completion_tokens=50,
+            total_tokens=100,
+            model=model,
+        )
+
+        with (
+            patch.object(settings, "progressive_summarization_prompt", custom_prompt),
+            patch(
+                "agent_memory_server.summarization.LLMClient.create_chat_completion",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ) as mock_create,
+        ):
+            summary, tokens_used = await _incremental_summary(model, context, messages)
+
+            assert summary == "Custom summary"
+            assert tokens_used == 100
+
+            mock_create.assert_called_once()
+            call_kwargs = mock_create.call_args[1]
+            prompt = call_kwargs["messages"][0]["content"]
+            assert "Custom prompt:" in prompt
+            assert "Previous context" in prompt
+
+    def test_prompt_validation_missing_prev_summary(self):
+        """Test that validation fails when {prev_summary} is missing"""
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(
+                progressive_summarization_prompt="Template with {messages_joined} only"
+            )
+
+        assert "prev_summary" in str(exc_info.value)
+
+    def test_prompt_validation_missing_messages_joined(self):
+        """Test that validation fails when {messages_joined} is missing"""
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(
+                progressive_summarization_prompt="Template with {prev_summary} only"
+            )
+
+        assert "messages_joined" in str(exc_info.value)
+
+    def test_prompt_validation_missing_both_variables(self):
+        """Test that validation fails when both required variables are missing"""
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(progressive_summarization_prompt="Template with no variables")
+
+        error_str = str(exc_info.value)
+        assert "prev_summary" in error_str
+        assert "messages_joined" in error_str
+
+    def test_prompt_validation_with_both_variables(self):
+        """Test that validation passes when both variables are present"""
+        custom_prompt = "Summary: {prev_summary} Messages: {messages_joined}"
+        config = Settings(progressive_summarization_prompt=custom_prompt)
+
+        assert config.progressive_summarization_prompt == custom_prompt

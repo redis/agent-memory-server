@@ -86,9 +86,10 @@ class TestFactoryLoading:
 class TestEmbeddingsCreation:
     """Test embeddings creation."""
 
-    @patch("agent_memory_server.vectorstore_factory.settings")
+    @patch("agent_memory_server.config.settings")
     def test_create_openai_embeddings(self, mock_settings):
-        """Test OpenAI embeddings creation."""
+        """Test OpenAI embeddings creation returns LiteLLMEmbeddings."""
+        from agent_memory_server.llm.embeddings import LiteLLMEmbeddings
 
         # Configure mock settings with ModelConfig object
         mock_settings.embedding_model_config = ModelConfig(
@@ -99,28 +100,28 @@ class TestEmbeddingsCreation:
         )
         mock_settings.embedding_model = "text-embedding-3-small"
         mock_settings.openai_api_key = "test-key"
+        mock_settings.openai_api_base = None
 
-        with patch("langchain_openai.OpenAIEmbeddings") as mock_openai:
-            mock_instance = Mock()
-            mock_openai.return_value = mock_instance
+        result = create_embeddings()
 
-            result = create_embeddings()
+        assert isinstance(result, LiteLLMEmbeddings)
+        assert result.model == "text-embedding-3-small"
+        assert result._dimensions == 1536
 
-            assert result == mock_instance
-            mock_openai.assert_called_once()
+    @patch("agent_memory_server.config.settings")
+    def test_create_embeddings_anthropic_raises_error(self, mock_settings):
+        """Test embeddings creation with Anthropic raises error."""
+        from agent_memory_server.llm import ModelValidationError
 
-    @patch("agent_memory_server.vectorstore_factory.settings")
-    def test_create_embeddings_unsupported_provider(self, mock_settings):
-        """Test embeddings creation with unsupported provider."""
-
-        # Create a mock model config with unsupported provider
+        # Create a mock model config with Anthropic provider
         mock_config = Mock()
-        mock_config.provider = (
-            "unsupported"  # Set directly as string, bypassing enum validation
-        )
+        mock_config.provider = ModelProvider.ANTHROPIC
         mock_settings.embedding_model_config = mock_config
+        mock_settings.embedding_model = "claude-embedding"
 
-        with pytest.raises(ValueError, match="Unsupported embedding provider"):
+        with pytest.raises(
+            ModelValidationError, match="Anthropic does not provide embedding"
+        ):
             create_embeddings()
 
 

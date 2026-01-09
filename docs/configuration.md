@@ -66,19 +66,19 @@ SLOW_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
 ### AWS Bedrock Configuration
 ```bash
 # AWS Region (required for Bedrock)
-REGION_NAME=us-east-1
+AWS_REGION_NAME=us-east-1
 
 # AWS Credentials (optional - can use IAM roles, AWS CLI profiles, or credentials file)
 AWS_ACCESS_KEY_ID=your-access-key-id
 AWS_SECRET_ACCESS_KEY=your-secret-access-key
 AWS_SESSION_TOKEN=your-session-token  # Optional, for temporary credentials
 
-# Use a Bedrock embedding model
-EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
+# Use a Bedrock embedding model (note: bedrock/ prefix required)
+EMBEDDING_MODEL=bedrock/amazon.titan-embed-text-v2:0
 REDISVL_VECTOR_DIMENSIONS=1024  # Must match the embedding model dimensions
 ```
 
-For detailed AWS Bedrock setup, see [AWS Bedrock](aws-bedrock.md).
+For detailed AWS Bedrock setup, see [LLM Providers - AWS Bedrock](llm-providers.md#aws-bedrock).
 
 ### Server Ports
 ```bash
@@ -232,20 +232,20 @@ Pre-configured models:
 - `anthropic.claude-haiku-4-5-20251001-v1:0` - Claude 4.5 Haiku (Fast)
 - `anthropic.claude-opus-4-5-20251101-v1:0` - Claude 4.5 Opus (Most capable)
 
-The implementation uses `ChatBedrockConverse` which supports any Bedrock model via the Converse API. See [AWS Bedrock](aws-bedrock.md) for setup instructions and adding custom models.
+The server uses [LiteLLM](https://docs.litellm.ai/) internally, which supports any Bedrock model. See [LLM Providers](llm-providers.md#aws-bedrock) for setup instructions and adding custom models.
 
-### Embedding Models (OpenAI)
-- `text-embedding-3-small` - 1536 dimensions (recommended)
-- `text-embedding-3-large` - 3072 dimensions (higher accuracy)
-- `text-embedding-ada-002` - Legacy model (1536 dimensions)
+### Embedding Models
 
-### Embedding Models (AWS Bedrock)
-- `amazon.titan-embed-text-v2:0` - 1024 dimensions (recommended)
-- `amazon.titan-embed-text-v1` - 1536 dimensions
-- `cohere.embed-english-v3` - 1024 dimensions
-- `cohere.embed-multilingual-v3` - 1024 dimensions
+The server supports many embedding providers via LiteLLM:
 
-See [AWS Bedrock](aws-bedrock.md) for detailed setup instructions.
+- **OpenAI**: `text-embedding-3-small`, `text-embedding-3-large`
+- **AWS Bedrock**: `bedrock/amazon.titan-embed-text-v2:0`, `bedrock/cohere.embed-english-v3`
+- **Ollama**: `ollama/nomic-embed-text`, `ollama/mxbai-embed-large`
+- **HuggingFace**: `huggingface/BAAI/bge-large-en`
+- **Cohere**: `cohere/embed-english-v3.0`
+- **And more...**
+
+See [Embedding Providers](embedding-providers.md) for complete setup instructions, model formats, and dimension configuration.
 
 ## Configuration Examples
 

@@ -1,6 +1,5 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 
 from agent_memory_server.config import Settings
@@ -15,23 +14,35 @@ from agent_memory_server.models import (
 
 
 @pytest.fixture
-def mock_openai_client_wrapper():
-    """Create a mock OpenAIClientWrapper that doesn't need an API key"""
-    with patch("agent_memory_server.models.OpenAIClientWrapper") as mock_wrapper:
-        # Create a mock instance
-        mock_instance = AsyncMock()
-        mock_wrapper.return_value = mock_instance
+def mock_llm_client():
+    """Create a mock LLMClient that doesn't need an API key"""
+    from agent_memory_server.llm import ChatCompletionResponse, EmbeddingResponse
 
+    with (
+        patch(
+            "agent_memory_server.llm.client.LLMClient.create_chat_completion"
+        ) as mock_chat,
+        patch(
+            "agent_memory_server.llm.client.LLMClient.create_embedding"
+        ) as mock_embed,
+    ):
         # Mock the create_embedding and create_chat_completion methods
-        mock_instance.create_embedding.return_value = np.array(
-            [[0.1] * 1536], dtype=np.float32
+        mock_embed.return_value = EmbeddingResponse(
+            embeddings=[[0.1] * 1536],
+            total_tokens=10,
+            model="text-embedding-3-small",
         )
-        mock_instance.create_chat_completion.return_value = {
-            "choices": [{"message": {"content": "Test response"}}],
-            "usage": {"total_tokens": 100},
-        }
+        mock_chat.return_value = ChatCompletionResponse(
+            content="Test response",
+            finish_reason="stop",
+            prompt_tokens=50,
+            completion_tokens=50,
+            total_tokens=100,
+            model="gpt-4o-mini",
+            raw_response={},
+        )
 
-        yield mock_wrapper
+        yield mock_chat, mock_embed
 
 
 class TestHealthEndpoint:
@@ -1092,7 +1103,7 @@ class TestMemoryPromptEndpoint:
         assert data["messages"][0]["content"]["text"] == query
 
     @patch("agent_memory_server.api.working_memory.get_working_memory")
-    @patch("agent_memory_server.api.get_model_config")
+    @patch("agent_memory_server.api.LLMClient.get_model_config")
     @pytest.mark.asyncio
     async def test_memory_prompt_with_model_name(
         self, mock_get_model_config, mock_get_working_memory, client

@@ -64,12 +64,16 @@ QUERY_OPTIMIZATION_MODEL=gpt-4o-mini
 # Use a more powerful model for memory extraction and other tasks
 GENERATION_MODEL=gpt-4o
 
-    # Supported models include:
-    # - gpt-5.2-chat-latest, gpt-5.1-chat-latest, gpt-5-mini, gpt-5-nano
-    # - gpt-4o, gpt-4o-mini
-    # - claude-3-5-sonnet-20241022, claude-3-haiku-20240307
-    # - Any model supported by your LLM provider
+# Supported models include:
+# - gpt-5.2-chat-latest, gpt-5.1-chat-latest, gpt-5-mini, gpt-5-nano (OpenAI GPT-5)
+# - gpt-4o, gpt-4o-mini (OpenAI)
+# - claude-3-5-sonnet-20241022, claude-3-haiku-20240307 (Anthropic)
+# - anthropic.claude-sonnet-4-5-20250929-v1:0 (AWS Bedrock)
+# - ollama/llama2 (Ollama)
+# - Any model supported by LiteLLM (100+ providers)
 ```
+
+See [LLM Providers](llm-providers.md) for complete configuration options.
 
 ## Usage Examples
 
@@ -229,9 +233,9 @@ LOG_LEVEL=DEBUG
 ### Example Log Output
 
 ```
-DEBUG:agent_memory_server.llms:Optimizing query: "what do I like to eat"
-DEBUG:agent_memory_server.llms:Optimized query: "user food preferences dietary likes dislikes favorite meals"
-DEBUG:agent_memory_server.llms:Query optimization took 245ms
+DEBUG:agent_memory_server.llm:Optimizing query: "what do I like to eat"
+DEBUG:agent_memory_server.llm:Optimized query: "user food preferences dietary likes dislikes favorite meals"
+DEBUG:agent_memory_server.llm:Query optimization took 245ms
 ```
 
 ## Advanced Configuration

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_memory_server.llms import get_model_client
+from agent_memory_server.llm import LLMClient
 from tests.test_contextual_grounding_integration import (
     LLMContextualGroundingJudge,
 )
@@ -39,8 +39,6 @@ class MemoryExtractionJudge:
         expected_criteria: str = "",
     ) -> dict[str, float]:
         """Evaluate discrete memory extraction quality using LLM judge"""
-        client = await get_model_client(self.judge_model)
-
         memories_text = json.dumps(extracted_memories, indent=2)
 
         prompt = self.EXTRACTION_EVALUATION_PROMPT.format(
@@ -52,9 +50,9 @@ class MemoryExtractionJudge:
         # Add timeout for CI stability
         try:
             response = await asyncio.wait_for(
-                client.create_chat_completion(
+                LLMClient.create_chat_completion(
                     model=self.judge_model,
-                    prompt=prompt,
+                    messages=[{"role": "user", "content": prompt}],
                     response_format={"type": "json_object"},
                 ),
                 timeout=60.0,  # 60 second timeout
@@ -75,7 +73,7 @@ class MemoryExtractionJudge:
             }
 
         try:
-            evaluation = json.loads(response.choices[0].message.content)
+            evaluation = json.loads(response.content or "{}")
             return {
                 "relevance_score": evaluation.get("relevance_score", 0.0),
                 "classification_accuracy_score": evaluation.get(
@@ -94,9 +92,7 @@ class MemoryExtractionJudge:
                 "suggested_improvements": evaluation.get("suggested_improvements", ""),
             }
         except json.JSONDecodeError as e:
-            print(
-                f"Failed to parse judge response: {response.choices[0].message.content}"
-            )
+            print(f"Failed to parse judge response: {response.content}")
             raise e
 
 

@@ -19,7 +19,7 @@ from agent_memory_server.api import router as memory_router
 from agent_memory_server.config import settings
 from agent_memory_server.dependencies import HybridBackgroundTasks
 from agent_memory_server.healthcheck import router as health_router
-from agent_memory_server.llms import OpenAIClientWrapper
+from agent_memory_server.llm import LLMClient
 from agent_memory_server.models import (
     MemoryMessage,
     MemoryRecord,
@@ -31,9 +31,6 @@ from agent_memory_server.models import (
 from agent_memory_server.utils import redis as redis_utils_module
 from agent_memory_server.utils.keys import Keys
 from agent_memory_server.vectorstore_adapter import VectorStoreAdapter
-
-
-# from agent_memory_server.utils.redis import ensure_search_index_exists  # Not used currently
 
 
 load_dotenv()
@@ -57,9 +54,9 @@ def memory_messages():
 
 
 @pytest.fixture()
-def mock_openai_client():
-    """Create a mock OpenAI client"""
-    return AsyncMock(spec=OpenAIClientWrapper)
+def mock_llm_client():
+    """Create a mock LLM client"""
+    return AsyncMock(spec=LLMClient)
 
     # We won't set default side effects here, allowing tests to set their own mocks
     # This prevents conflicts with tests that need specific return values
@@ -87,9 +84,6 @@ async def search_index(async_redis_client):
         except Exception as e:
             if "unknown index name".lower() not in str(e).lower():
                 pass
-
-        # Skip ensure_search_index_exists for now - let LangChain handle it
-        # await ensure_search_index_exists(async_redis_client)
 
     except Exception:
         raise
@@ -495,18 +489,6 @@ async def client_with_mock_background_tasks(
             base_url="http://test",
         ) as client:
             yield client
-
-
-@pytest.fixture
-def mock_llm_client():
-    """Mock the LLM client for tests that don't need real LLM calls."""
-    mock_client = MagicMock()
-    mock_client.create_chat_completion = AsyncMock(
-        return_value=MagicMock(
-            choices=[MagicMock(message=MagicMock(content="test response"))]
-        )
-    )
-    return mock_client
 
 
 @pytest.fixture()

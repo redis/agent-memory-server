@@ -26,14 +26,9 @@ from agent_memory_server.models import (
 from agent_memory_server.utils.recency import generate_memory_hash
 
 
-# from agent_memory_server.utils.redis import ensure_search_index_exists  # Not used currently
-
-
 class TestLongTermMemory:
     @pytest.mark.asyncio
-    async def test_index_memories(
-        self, mock_openai_client, mock_async_redis_client, session
-    ):
+    async def test_index_memories(self, mock_async_redis_client, session):
         """Test indexing memories using vectorstore adapter"""
         long_term_memories = [
             MemoryRecord(
@@ -70,7 +65,7 @@ class TestLongTermMemory:
         assert memories_arg[1].text == "France is a country in Europe"
 
     @pytest.mark.asyncio
-    async def test_search_memories(self, mock_openai_client, mock_async_redis_client):
+    async def test_search_memories(self, mock_async_redis_client):
         """Test searching memories using vectorstore adapter"""
         from agent_memory_server.models import MemoryRecordResult, MemoryRecordResults
 
@@ -369,6 +364,9 @@ class TestLongTermMemory:
     async def test_merge_memories_with_llm(self):
         """Test merging memories with LLM"""
         from datetime import UTC, datetime
+        from unittest.mock import patch
+
+        from agent_memory_server.llm import ChatCompletionResponse
 
         memories = [
             MemoryRecord(
@@ -399,31 +397,37 @@ class TestLongTermMemory:
             ),
         ]
 
-        # Mock LLM client
-        mock_llm_client = AsyncMock()
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[
-            0
-        ].message.content = "User enjoys drinking coffee, especially in the morning"
-        mock_llm_client.create_chat_completion.return_value = mock_response
+        # Mock LLMClient.create_chat_completion
+        mock_response = ChatCompletionResponse(
+            content="User enjoys drinking coffee, especially in the morning",
+            finish_reason="stop",
+            prompt_tokens=100,
+            completion_tokens=20,
+            total_tokens=120,
+            model="gpt-4o-mini",
+        )
 
-        merged = await merge_memories_with_llm(memories, llm_client=mock_llm_client)
+        with patch(
+            "agent_memory_server.long_term_memory.LLMClient.create_chat_completion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            merged = await merge_memories_with_llm(memories)
 
-        # Check merged content
-        assert "coffee" in merged.text.lower()
-        assert merged.created_at == datetime.fromtimestamp(
-            1000, UTC
-        )  # Earliest timestamp
-        assert merged.last_accessed == datetime.fromtimestamp(
-            1600, UTC
-        )  # Latest timestamp
-        assert set(merged.topics) == {"coffee", "preferences", "morning"}
-        assert set(merged.entities) == {"user"}
-        assert merged.user_id == "user123"
-        assert merged.session_id == "session456"
-        assert merged.namespace == "test"
-        assert merged.memory_hash is not None
+            # Check merged content
+            assert "coffee" in merged.text.lower()
+            assert merged.created_at == datetime.fromtimestamp(
+                1000, UTC
+            )  # Earliest timestamp
+            assert merged.last_accessed == datetime.fromtimestamp(
+                1600, UTC
+            )  # Latest timestamp
+            assert set(merged.topics) == {"coffee", "preferences", "morning"}
+            assert set(merged.entities) == {"user"}
+            assert merged.user_id == "user123"
+            assert merged.session_id == "session456"
+            assert merged.namespace == "test"
+            assert merged.memory_hash is not None
 
         # Test single memory case
         single_memory = memories[0]
@@ -467,13 +471,7 @@ class TestLongTermMemory:
             side_effect=mock_execute_command
         )
 
-        # Mock LLM client
-        mock_llm_client = AsyncMock()
-
         with (
-            patch(
-                "agent_memory_server.long_term_memory.get_model_client"
-            ) as mock_get_client,
             patch(
                 "agent_memory_server.long_term_memory.merge_memories_with_llm"
             ) as mock_merge,
@@ -484,7 +482,6 @@ class TestLongTermMemory:
                 "agent_memory_server.long_term_memory.count_long_term_memories"
             ) as mock_count,
         ):
-            mock_get_client.return_value = mock_llm_client
             mock_merge.return_value = {
                 "text": "Merged: User enjoys coffee",
                 "id_": "merged-id",
@@ -509,7 +506,6 @@ class TestLongTermMemory:
             remaining_count = await compact_long_term_memories(
                 namespace="test",
                 redis_client=mock_async_redis_client,
-                llm_client=mock_llm_client,
                 compact_hash_duplicates=True,
                 compact_semantic_duplicates=False,  # Test hash duplicates only
             )
@@ -753,8 +749,6 @@ class TestLongTermMemoryIntegration:
     @pytest.mark.asyncio
     async def test_search_messages(self, async_redis_client):
         """Test searching messages"""
-        # await ensure_search_index_exists(async_redis_client)  # Let LangChain handle index
-
         long_term_memories = [
             MemoryRecord(
                 id="memory-1", text="Paris is the capital of France", session_id="123"
@@ -786,8 +780,6 @@ class TestLongTermMemoryIntegration:
     @pytest.mark.asyncio
     async def test_search_messages_with_distance_threshold(self, async_redis_client):
         """Test searching messages with a distance threshold"""
-        # await ensure_search_index_exists(async_redis_client)  # Let LangChain handle index
-
         long_term_memories = [
             MemoryRecord(
                 id="memory-1", text="Paris is the capital of France", session_id="123"
