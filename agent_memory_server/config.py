@@ -35,6 +35,18 @@ class ModelConfig(BaseModel):
 # Model configuration mapping
 MODEL_CONFIGS = {
     # OpenAI Models
+    "gpt-4.1": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="gpt-4.1",
+        max_tokens=128000,
+        embedding_dimensions=1536,
+    ),
+    "gpt-4.1-mini": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="gpt-4.1-mini",
+        max_tokens=128000,
+        embedding_dimensions=1536,
+    ),
     "gpt-3.5-turbo": ModelConfig(
         provider=ModelProvider.OPENAI,
         name="gpt-3.5-turbo",
@@ -102,6 +114,31 @@ MODEL_CONFIGS = {
         max_tokens=200000,
         embedding_dimensions=1536,
     ),
+    # GPT-5 family
+    "gpt-5-mini": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="gpt-5-mini",
+        max_tokens=400000,
+        embedding_dimensions=1536,
+    ),
+    "gpt-5-nano": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="gpt-5-nano",
+        max_tokens=400000,
+        embedding_dimensions=1536,
+    ),
+    "gpt-5.1-chat-latest": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="gpt-5.1-chat-latest",
+        max_tokens=128000,
+        embedding_dimensions=1536,
+    ),
+    "gpt-5.2-chat-latest": ModelConfig(
+        provider=ModelProvider.OPENAI,
+        name="gpt-5.2-chat-latest",
+        max_tokens=128000,
+        embedding_dimensions=1536,
+    ),
     # Embedding models
     "text-embedding-ada-002": ModelConfig(
         provider=ModelProvider.OPENAI,
@@ -146,7 +183,26 @@ MODEL_CONFIGS = {
         max_tokens=200000,
         embedding_dimensions=1536,
     ),
-    # Latest Anthropic Models
+    # Claude 4.5 family (direct Anthropic API IDs)
+    "claude-sonnet-4-5-20250929": ModelConfig(
+        provider=ModelProvider.ANTHROPIC,
+        name="claude-sonnet-4-5-20250929",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    "claude-haiku-4-5-20251001": ModelConfig(
+        provider=ModelProvider.ANTHROPIC,
+        name="claude-haiku-4-5-20251001",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    "claude-opus-4-5-20251101": ModelConfig(
+        provider=ModelProvider.ANTHROPIC,
+        name="claude-opus-4-5-20251101",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    # Latest Anthropic Models (Claude 3.x family)
     "claude-3-7-sonnet-20250219": ModelConfig(
         provider=ModelProvider.ANTHROPIC,
         name="claude-3-7-sonnet-20250219",
@@ -187,6 +243,25 @@ MODEL_CONFIGS = {
     "claude-3-opus-latest": ModelConfig(
         provider=ModelProvider.ANTHROPIC,
         name="claude-3-opus-20240229",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    # Aliases for Claude 4.5 family
+    "claude-sonnet-4-5": ModelConfig(
+        provider=ModelProvider.ANTHROPIC,
+        name="claude-sonnet-4-5-20250929",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    "claude-haiku-4-5": ModelConfig(
+        provider=ModelProvider.ANTHROPIC,
+        name="claude-haiku-4-5-20251001",
+        max_tokens=200000,
+        embedding_dimensions=1536,
+    ),
+    "claude-opus-4-5": ModelConfig(
+        provider=ModelProvider.ANTHROPIC,
+        name="claude-opus-4-5-20251101",
         max_tokens=200000,
         embedding_dimensions=1536,
     ),

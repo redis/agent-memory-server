@@ -326,13 +326,19 @@ def use_test_redis_connection(redis_url: str):
     import agent_memory_server.vectorstore_factory
 
     with (
+        # Core Redis helper
         patch("agent_memory_server.utils.redis.get_redis_conn", mock_get_redis_conn),
-        patch("docket.docket.Docket.__init__", patched_docket_init),
-        patch("agent_memory_server.working_memory.get_redis_conn", mock_get_redis_conn),
+        # Modules that imported get_redis_conn directly must also be patched
         patch("agent_memory_server.api.get_redis_conn", mock_get_redis_conn),
+        patch("agent_memory_server.working_memory.get_redis_conn", mock_get_redis_conn),
         patch(
             "agent_memory_server.long_term_memory.get_redis_conn", mock_get_redis_conn
         ),
+        patch("agent_memory_server.summary_views.get_redis_conn", mock_get_redis_conn),
+        patch("agent_memory_server.tasks.get_redis_conn", mock_get_redis_conn),
+        # Ensure Docket uses the test Redis URL
+        patch("docket.docket.Docket.__init__", patched_docket_init),
+        # Point settings.redis_url at the testcontainer Redis
         patch.object(settings, "redis_url", redis_url),
     ):
         # Reset global state to force recreation with test Redis

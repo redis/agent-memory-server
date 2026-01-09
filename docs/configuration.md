@@ -207,8 +207,12 @@ uv run agent-memory task-worker --concurrency 5 --redelivery-timeout 60
 ## Supported Models
 
 ### Generation Models (OpenAI)
-- `gpt-4o` - Latest GPT-4 Optimized (recommended)
-- `gpt-4o-mini` - Faster, smaller GPT-4 (good for fast_model)
+- `gpt-5.2-chat-latest` - Latest GPT-5.2 Chat snapshot used in ChatGPT (recommended when available)
+- `gpt-5.1-chat-latest` - GPT-5.1 Chat snapshot (fast, chat-optimized)
+- `gpt-5-mini` - Smaller GPT-5 model (good candidate for `FAST_MODEL`)
+- `gpt-5-nano` - Smallest GPT-5 model (ultra fast, cost efficient)
+- `gpt-4o` - GPT-4 Optimized (default in this project)
+- `gpt-4o-mini` - Faster, smaller GPT-4 (good for `FAST_MODEL`)
 - `gpt-4` - Previous GPT-4 version
 - `gpt-3.5-turbo` - Older, faster model
 - `o1` - OpenAI o1 reasoning model

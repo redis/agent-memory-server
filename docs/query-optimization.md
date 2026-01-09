@@ -65,6 +65,7 @@ QUERY_OPTIMIZATION_MODEL=gpt-4o-mini
 GENERATION_MODEL=gpt-4o
 
 # Supported models include:
+# - gpt-5.2-chat-latest, gpt-5.1-chat-latest, gpt-5-mini, gpt-5-nano (OpenAI GPT-5)
 # - gpt-4o, gpt-4o-mini (OpenAI)
 # - claude-3-5-sonnet-20241022, claude-3-haiku-20240307 (Anthropic)
 # - anthropic.claude-sonnet-4-5-20250929-v1:0 (AWS Bedrock)
