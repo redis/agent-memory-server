@@ -144,7 +144,6 @@ Extracted memories:
 logger = logging.getLogger(__name__)
 
 # Debounce configuration for thread-aware extraction
-EXTRACTION_DEBOUNCE_TTL = 300  # 5 minutes
 EXTRACTION_DEBOUNCE_KEY_PREFIX = "extraction_debounce"
 
 
@@ -169,9 +168,10 @@ async def should_extract_session_thread(session_id: str, redis: Redis) -> bool:
     exists = await redis.exists(debounce_key)
     if not exists:
         # Set debounce key with TTL to prevent extraction for the next period
-        await redis.setex(debounce_key, EXTRACTION_DEBOUNCE_TTL, "extracting")
+        debounce_ttl = settings.extraction_debounce_seconds
+        await redis.setex(debounce_key, debounce_ttl, "extracting")
         logger.info(
-            f"Starting thread-aware extraction for session {session_id} (debounce set for {EXTRACTION_DEBOUNCE_TTL}s)"
+            f"Starting thread-aware extraction for session {session_id} (debounce set for {debounce_ttl}s)"
         )
         return True
 

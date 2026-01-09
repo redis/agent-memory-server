@@ -18,6 +18,7 @@ from agent_memory_server.llm.client import (
     get_model_config,
     optimize_query_for_vector_search,
 )
+from agent_memory_server.llm.embeddings import LiteLLMEmbeddings
 from agent_memory_server.llm.exceptions import (
     APIKeyMissingError,
     LLMClientError,
@@ -32,6 +33,8 @@ from agent_memory_server.llm.types import (
 __all__ = [
     # Client
     "LLMClient",
+    # Embeddings
+    "LiteLLMEmbeddings",
     # Convenience functions
     "get_model_config",
     "optimize_query_for_vector_search",

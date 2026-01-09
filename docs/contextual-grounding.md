@@ -125,6 +125,8 @@ Contextual grounding works with any supported language model, but performance va
 - **claude-3-5-sonnet**: Excellent at contextual understanding
 - **claude-3-haiku**: Fast, good for simple grounding
 
+See [LLM Providers](llm-providers.md) for complete model configuration options.
+
 ## Usage Examples
 
 ### Automatic Memory Extraction

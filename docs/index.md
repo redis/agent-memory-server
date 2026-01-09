@@ -41,6 +41,7 @@ Redis Agent Memory Server is a production-ready memory system for AI agents and 
 - **🔍 Finds relevant context**: Uses semantic search to surface the right information at the right time
 - **📈 Gets smarter over time**: Automatically extracts, organizes, and deduplicates memories from interactions
 - **🔌 Works with any AI model**: REST API and MCP interfaces compatible with OpenAI, Anthropic, and others
+- **🌐 Multi-provider support**: Use [100+ LLM providers](llm-providers.md) via LiteLLM (OpenAI, Anthropic, AWS Bedrock, Ollama, Azure, Gemini, and more)
 
 ## Why Use It?
 

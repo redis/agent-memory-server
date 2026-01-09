@@ -262,18 +262,25 @@ class TestLLMClientEmbedding:
 class TestCreateEmbeddings:
     """Tests for LLMClient.create_embeddings() factory method."""
 
-    def test_unknown_embedding_model_raises_error(self):
-        """create_embeddings should raise ModelValidationError for unknown models."""
+    def test_unknown_embedding_model_returns_litellm_embeddings(self):
+        """create_embeddings should return LiteLLMEmbeddings for unknown models."""
         from unittest.mock import patch
 
-        from agent_memory_server.llm.exceptions import ModelValidationError
+        from agent_memory_server.llm.embeddings import LiteLLMEmbeddings
 
         with patch("agent_memory_server.config.settings") as mock_settings:
             mock_settings.embedding_model = "unknown-embedding-model"
             mock_settings.embedding_model_config = None  # Unknown model returns None
+            mock_settings.openai_api_key = None
+            mock_settings.openai_api_base = None
+            mock_settings.redisvl_vector_dimensions = 768
 
-            with pytest.raises(ModelValidationError, match="Unknown embedding model"):
-                LLMClient.create_embeddings()
+            embeddings = LLMClient.create_embeddings()
+
+            # Should return LiteLLMEmbeddings (LiteLLM handles unknown models)
+            assert isinstance(embeddings, LiteLLMEmbeddings)
+            assert embeddings.model == "unknown-embedding-model"
+            assert embeddings._dimensions == 768
 
     def test_anthropic_embedding_raises_error(self):
         """create_embeddings should raise ModelValidationError for Anthropic models."""
@@ -294,25 +301,89 @@ class TestCreateEmbeddings:
             ):
                 LLMClient.create_embeddings()
 
-    def test_openai_embedding_returns_embeddings_instance(self):
-        """create_embeddings should return OpenAIEmbeddings for OpenAI provider."""
+    def test_openai_embedding_returns_litellm_embeddings(self):
+        """create_embeddings should return LiteLLMEmbeddings for OpenAI provider."""
         from unittest.mock import MagicMock, patch
 
         from agent_memory_server.config import ModelProvider
+        from agent_memory_server.llm.embeddings import LiteLLMEmbeddings
 
         with patch("agent_memory_server.config.settings") as mock_settings:
             mock_config = MagicMock()
             mock_config.provider = ModelProvider.OPENAI
+            mock_config.embedding_dimensions = 1536
             mock_settings.embedding_model = "text-embedding-3-small"
             mock_settings.embedding_model_config = mock_config
             mock_settings.openai_api_key = "test-key"
+            mock_settings.openai_api_base = None
 
             embeddings = LLMClient.create_embeddings()
 
-            # Should return a LangChain Embeddings instance
-            from langchain_core.embeddings import Embeddings
+            # Should return LiteLLMEmbeddings
+            assert isinstance(embeddings, LiteLLMEmbeddings)
+            assert embeddings.model == "text-embedding-3-small"
+            assert embeddings._dimensions == 1536
 
-            assert isinstance(embeddings, Embeddings)
+    def test_bedrock_embedding_adds_prefix_with_warning(self):
+        """create_embeddings should add bedrock/ prefix and warn for unprefixed models."""
+        import warnings
+        from unittest.mock import MagicMock, patch
+
+        from agent_memory_server.config import ModelProvider
+        from agent_memory_server.llm.embeddings import LiteLLMEmbeddings
+
+        with patch("agent_memory_server.config.settings") as mock_settings:
+            mock_config = MagicMock()
+            mock_config.provider = ModelProvider.AWS_BEDROCK
+            mock_config.embedding_dimensions = 1024
+            mock_settings.embedding_model = "amazon.titan-embed-text-v2:0"
+            mock_settings.embedding_model_config = mock_config
+            mock_settings.openai_api_key = None
+            mock_settings.openai_api_base = None
+
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                embeddings = LLMClient.create_embeddings()
+
+                # Should have emitted a deprecation warning
+                assert len(w) == 1
+                assert issubclass(w[0].category, DeprecationWarning)
+                assert "bedrock/" in str(w[0].message)
+
+            # Should return LiteLLMEmbeddings with prefixed model
+            assert isinstance(embeddings, LiteLLMEmbeddings)
+            assert embeddings.model == "bedrock/amazon.titan-embed-text-v2:0"
+
+    def test_bedrock_embedding_with_prefix_no_warning(self):
+        """create_embeddings should not warn for properly prefixed Bedrock models."""
+        import warnings
+        from unittest.mock import MagicMock, patch
+
+        from agent_memory_server.config import ModelProvider
+        from agent_memory_server.llm.embeddings import LiteLLMEmbeddings
+
+        with patch("agent_memory_server.config.settings") as mock_settings:
+            mock_config = MagicMock()
+            mock_config.provider = ModelProvider.AWS_BEDROCK
+            mock_config.embedding_dimensions = 1024
+            mock_settings.embedding_model = "bedrock/amazon.titan-embed-text-v2:0"
+            mock_settings.embedding_model_config = mock_config
+            mock_settings.openai_api_key = None
+            mock_settings.openai_api_base = None
+
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                embeddings = LLMClient.create_embeddings()
+
+                # Should NOT have emitted a deprecation warning
+                deprecation_warnings = [
+                    x for x in w if issubclass(x.category, DeprecationWarning)
+                ]
+                assert len(deprecation_warnings) == 0
+
+            # Should return LiteLLMEmbeddings with model unchanged
+            assert isinstance(embeddings, LiteLLMEmbeddings)
+            assert embeddings.model == "bedrock/amazon.titan-embed-text-v2:0"
 
 
 class TestMapProvider:

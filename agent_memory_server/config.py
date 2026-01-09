@@ -190,7 +190,32 @@ MODEL_CONFIGS = {
         max_tokens=200000,
         embedding_dimensions=1536,
     ),
-    # AWS Bedrock Embedding Models
+    # AWS Bedrock Embedding Models (with bedrock/ prefix - recommended)
+    "bedrock/amazon.titan-embed-text-v2:0": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="bedrock/amazon.titan-embed-text-v2:0",
+        max_tokens=8192,
+        embedding_dimensions=1024,
+    ),
+    "bedrock/amazon.titan-embed-text-v1": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="bedrock/amazon.titan-embed-text-v1",
+        max_tokens=8192,
+        embedding_dimensions=1536,
+    ),
+    "bedrock/cohere.embed-english-v3": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="bedrock/cohere.embed-english-v3",
+        max_tokens=8192,
+        embedding_dimensions=1024,
+    ),
+    "bedrock/cohere.embed-multilingual-v3": ModelConfig(
+        provider=ModelProvider.AWS_BEDROCK,
+        name="bedrock/cohere.embed-multilingual-v3",
+        max_tokens=8192,
+        embedding_dimensions=1024,
+    ),
+    # AWS Bedrock Embedding Models (legacy - without prefix, deprecated)
     "amazon.titan-embed-text-v2:0": ModelConfig(
         provider=ModelProvider.AWS_BEDROCK,
         name="amazon.titan-embed-text-v2:0",
@@ -341,6 +366,11 @@ class Settings(BaseSettings):
     # When True, the server assumes all working memory keys are in JSON format,
     # skipping the startup scan and per-read type checks for better performance.
     working_memory_migration_complete: bool = False
+
+    # Long-term memory extraction settings
+    # Debounce period (in seconds) for thread-aware memory extraction.
+    # Prevents constant re-extraction as new messages arrive in a conversation.
+    extraction_debounce_seconds: int = 300  # 5 minutes
 
     # Query optimization settings
     query_optimization_prompt_template: str = """Transform this natural language query into an optimized version for semantic search. The goal is to make it more effective for finding semantically similar content while preserving the original intent.

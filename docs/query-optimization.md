@@ -65,10 +65,14 @@ QUERY_OPTIMIZATION_MODEL=gpt-4o-mini
 GENERATION_MODEL=gpt-4o
 
 # Supported models include:
-# - gpt-4o, gpt-4o-mini
-# - claude-3-5-sonnet-20241022, claude-3-haiku-20240307
-# - Any model supported by your LLM provider
+# - gpt-4o, gpt-4o-mini (OpenAI)
+# - claude-3-5-sonnet-20241022, claude-3-haiku-20240307 (Anthropic)
+# - anthropic.claude-sonnet-4-5-20250929-v1:0 (AWS Bedrock)
+# - ollama/llama2 (Ollama)
+# - Any model supported by LiteLLM (100+ providers)
 ```
+
+See [LLM Providers](llm-providers.md) for complete configuration options.
 
 ## Usage Examples
 
