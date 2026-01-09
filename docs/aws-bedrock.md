@@ -1,6 +1,19 @@
 # AWS Bedrock Models
 
+> **Note:** This documentation has been consolidated into [LLM Providers](llm-providers.md#aws-bedrock).
+> This page is kept for reference but the LLM Providers guide is the authoritative source.
+
 The Redis Agent Memory Server supports [Amazon Bedrock](https://aws.amazon.com/bedrock/) for both **embedding models** and **LLM generation models**. This allows you to use AWS-native AI models while keeping your data within the AWS ecosystem.
+
+## Quick Reference
+
+For complete AWS Bedrock configuration, see [LLM Providers - AWS Bedrock](llm-providers.md#aws-bedrock).
+
+**Key points:**
+- All LLM operations use [LiteLLM](https://docs.litellm.ai/) internally
+- Bedrock embedding models require the `bedrock/` prefix (e.g., `bedrock/amazon.titan-embed-text-v2:0`)
+- Bedrock generation models do not need a prefix (e.g., `anthropic.claude-sonnet-4-5-20250929-v1:0`)
+- The `[aws]` extra installs `boto3` and `botocore` for AWS authentication
 
 ## Overview
 
@@ -11,12 +24,14 @@ Amazon Bedrock provides access to a wide variety of foundation models from leadi
 
 ### Supported Embedding Models
 
+> **Important:** Use the `bedrock/` prefix for embedding models.
+
 | Model ID | Provider | Dimensions | Description |
 |----------|----------|------------|-------------|
-| `amazon.titan-embed-text-v2:0` | Amazon | 1024 | Latest Titan embedding model |
-| `amazon.titan-embed-text-v1` | Amazon | 1536 | Original Titan embedding model |
-| `cohere.embed-english-v3` | Cohere | 1024 | English-focused embeddings |
-| `cohere.embed-multilingual-v3` | Cohere | 1024 | Multilingual embeddings |
+| `bedrock/amazon.titan-embed-text-v2:0` | Amazon | 1024 | Latest Titan embedding model |
+| `bedrock/amazon.titan-embed-text-v1` | Amazon | 1536 | Original Titan embedding model |
+| `bedrock/cohere.embed-english-v3` | Cohere | 1024 | English-focused embeddings |
+| `bedrock/cohere.embed-multilingual-v3` | Cohere | 1024 | Multilingual embeddings |
 
 ### Pre-configured LLM Generation Models
 
@@ -38,7 +53,6 @@ pip install agent-memory-server[aws]
 
 This installs:
 
-- `langchain-aws` - LangChain integration for AWS services
 - `boto3` - AWS SDK for Python
 - `botocore` - Low-level AWS client library
 
@@ -50,16 +64,14 @@ Configure the following environment variables to use Bedrock models:
 
 ```bash
 # Required: AWS region where Bedrock is available
-REGION_NAME=us-east-1
+AWS_REGION_NAME=us-east-1
 
-# For Bedrock Embedding Models
-EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
+# For Bedrock Embedding Models (note: bedrock/ prefix required)
+EMBEDDING_MODEL=bedrock/amazon.titan-embed-text-v2:0
 
-# For Bedrock LLM Generation Models (optional)
+# For Bedrock LLM Generation Models (no prefix needed)
 GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
 FAST_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
-SLOW_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
-TOPIC_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
 
 # AWS Credentials (choose one method below)
 ```
@@ -137,11 +149,11 @@ Create a `.env` file with your credentials and configuration:
 # Docker build target
 DOCKER_TARGET=aws
 
-# Embedding model
-EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
+# Embedding model (note: bedrock/ prefix required)
+EMBEDDING_MODEL=bedrock/amazon.titan-embed-text-v2:0
 
 # AWS credentials
-REGION_NAME=us-east-1
+AWS_REGION_NAME=us-east-1
 AWS_ACCESS_KEY_ID=your-access-key-id
 AWS_SECRET_ACCESS_KEY=your-secret-access-key
 AWS_SESSION_TOKEN=your-session-token  # Optional
@@ -212,11 +224,11 @@ REDISVL_VECTOR_DIMENSIONS=1536
 ### Example 1: Bedrock Embeddings with OpenAI Generation
 
 ```bash
-# Embedding model (Bedrock)
-EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
+# Embedding model (Bedrock - note: bedrock/ prefix required)
+EMBEDDING_MODEL=bedrock/amazon.titan-embed-text-v2:0
 
 # AWS Configuration
-REGION_NAME=us-east-1
+AWS_REGION_NAME=us-east-1
 AWS_ACCESS_KEY_ID=your-access-key-id
 AWS_SECRET_ACCESS_KEY=your-secret-access-key
 
@@ -235,15 +247,15 @@ REDIS_URL=redis://localhost:6379
 
 ```bash
 # AWS Configuration
-REGION_NAME=us-east-1
+AWS_REGION_NAME=us-east-1
 AWS_ACCESS_KEY_ID=your-access-key-id
 AWS_SECRET_ACCESS_KEY=your-secret-access-key
 
-# Embedding model (Bedrock Titan)
-EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
+# Embedding model (Bedrock Titan - note: bedrock/ prefix required)
+EMBEDDING_MODEL=bedrock/amazon.titan-embed-text-v2:0
 REDISVL_VECTOR_DIMENSIONS=1024
 
-# Generation models (Bedrock Claude)
+# Generation models (Bedrock Claude - no prefix needed)
 GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
 FAST_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
 SLOW_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
@@ -298,9 +310,9 @@ You can mix and match providers for different use cases:
 ### Bedrock Embeddings with OpenAI Generation
 
 ```bash
-# Embeddings via Bedrock
-EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
-REGION_NAME=us-east-1
+# Embeddings via Bedrock (note: bedrock/ prefix required)
+EMBEDDING_MODEL=bedrock/amazon.titan-embed-text-v2:0
+AWS_REGION_NAME=us-east-1
 
 # Generation via OpenAI
 GENERATION_MODEL=gpt-4o
@@ -311,17 +323,15 @@ OPENAI_API_KEY=your-openai-key
 
 ```bash
 # All AWS - keep everything within your AWS environment
-REGION_NAME=us-east-1
+AWS_REGION_NAME=us-east-1
 
-# Embeddings via Bedrock
-EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
+# Embeddings via Bedrock (note: bedrock/ prefix required)
+EMBEDDING_MODEL=bedrock/amazon.titan-embed-text-v2:0
 REDISVL_VECTOR_DIMENSIONS=1024
 
-# Generation via Bedrock Claude
+# Generation via Bedrock Claude (no prefix needed)
 GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
 FAST_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
-SLOW_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
-TOPIC_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
 ```
 
 ### OpenAI Embeddings with Bedrock Generation
@@ -332,7 +342,7 @@ EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_API_KEY=your-openai-key
 
 # Generation via Bedrock
-REGION_NAME=us-east-1
+AWS_REGION_NAME=us-east-1
 GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
 ```
 
@@ -351,12 +361,12 @@ Install the AWS extras:
 pip install agent-memory-server[aws]
 ```
 
-### "Missing environment variable 'REGION_NAME'"
+### "Missing environment variable 'AWS_REGION_NAME'"
 
 Set the AWS region:
 
 ```bash
-export REGION_NAME=us-east-1
+export AWS_REGION_NAME=us-east-1
 ```
 
 ### "Bedrock embedding model not found"
@@ -393,7 +403,9 @@ If you see authentication errors:
 
 **Model IDs**: Ensure you're using the Bedrock-specific model IDs (e.g., `anthropic.claude-sonnet-4-5-20250929-v1:0`) not the direct provider API model IDs.
 
-**Converse API**: The implementation uses `ChatBedrockConverse` from `langchain-aws`, which provides a unified interface for all Bedrock models via the Converse API. Model-specific formatting is handled automatically.
+**Embedding Model Prefix**: Bedrock embedding models require the `bedrock/` prefix (e.g., `bedrock/amazon.titan-embed-text-v2:0`). Unprefixed names will work but emit a deprecation warning.
+
+**LiteLLM Backend**: All Bedrock operations use [LiteLLM](https://docs.litellm.ai/) internally, which provides a unified interface for all Bedrock models. Model-specific formatting is handled automatically.
 
 ## Performance Considerations
 
@@ -404,6 +416,8 @@ If you see authentication errors:
 
 ## Related Documentation
 
+- [LLM Providers](llm-providers.md) - Comprehensive LLM provider guide (recommended)
+- [Embedding Providers](embedding-providers.md) - Embedding model configuration
 - [Configuration](configuration.md) - Full configuration reference
 - [Vector Store Backends](vector-store-backends.md) - Custom vector store setup
 - [Getting Started](getting-started.md) - Initial setup guide
