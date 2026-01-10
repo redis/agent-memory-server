@@ -17,7 +17,7 @@ from agent_memory_server.llm import (
         ("gpt-4o", "openai", 128000),
         ("claude-3-sonnet-20240229", "anthropic", 200000),
         ("anthropic.claude-sonnet-4-5-20250929-v1:0", "aws-bedrock", 200000),
-        ("nonexistent-model", "openai", 128000),  # Should default to GPT-4o-mini
+        ("nonexistent-model", "openai", 400000),  # Should default to gpt-5-mini
     ],
 )
 def test_get_model_config(model_name, expected_provider, expected_max_tokens):

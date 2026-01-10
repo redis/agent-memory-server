@@ -89,12 +89,6 @@ MODEL_CONFIGS = {
         max_tokens=128000,
         embedding_dimensions=1536,
     ),
-    "gpt-5-mini": ModelConfig(
-        provider=ModelProvider.OPENAI,
-        name="gpt-5-mini",
-        max_tokens=128000,
-        embedding_dimensions=1536,
-    ),
     # Reasoning models
     "o1": ModelConfig(
         provider=ModelProvider.OPENAI,

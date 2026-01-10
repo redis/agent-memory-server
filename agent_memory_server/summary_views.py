@@ -360,9 +360,7 @@ def _build_long_term_summary_prompt(
     max_prompt_tokens = max(prompt_budget - reserved_completion_tokens, 1024)
 
     base_prefix = (
-        f"{instructions}\n\n"
-        f"GROUP: {json.dumps(group, sort_keys=True)}\n\n"
-        "MEMORIES:\n"
+        f"{instructions}\n\nGROUP: {json.dumps(group, sort_keys=True)}\n\nMEMORIES:\n"
     )
     base_tokens = len(encoding.encode(base_prefix))
 
