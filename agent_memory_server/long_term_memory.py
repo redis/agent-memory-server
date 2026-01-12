@@ -397,6 +397,292 @@ async def merge_memories_with_llm(
     return merged_memory
 
 
+# =============================================================================
+# Tier 2: Load-Time Deduplication
+# =============================================================================
+# These functions deduplicate search results before returning them to the agent.
+# This handles legacy duplicates and edge cases that slip through store-time dedup.
+
+
+async def cluster_memories_by_similarity(
+    memories: list[MemoryRecordResult],
+    distance_threshold: float = 0.4,
+) -> list[list[MemoryRecordResult]]:
+    """
+    Group memories into clusters based on semantic similarity.
+
+    Uses a simple greedy clustering algorithm:
+    1. Start with the first memory as a cluster seed
+    2. For each subsequent memory, check if it's similar to any existing cluster
+    3. If similar, add to that cluster; otherwise, start a new cluster
+
+    Args:
+        memories: List of memory search results to cluster
+        distance_threshold: Maximum distance to consider memories similar (default 0.4)
+
+    Returns:
+        List of clusters, where each cluster is a list of similar memories
+    """
+    if not memories:
+        return []
+
+    if len(memories) == 1:
+        return [[memories[0]]]
+
+    # Get embeddings for all memories to compute pairwise distances
+    from agent_memory_server.llm import LLMClient
+
+    embeddings_model = LLMClient.create_embeddings()
+    texts = [m.text for m in memories]
+
+    try:
+        embeddings = await embeddings_model.aembed_documents(texts)
+    except Exception as e:
+        logger.warning(f"Failed to get embeddings for clustering: {e}")
+        # Fall back to treating each memory as its own cluster
+        return [[m] for m in memories]
+
+    # Compute cosine distances between all pairs
+    import numpy as np
+
+    embeddings_array = np.array(embeddings)
+    # Normalize for cosine similarity
+    norms = np.linalg.norm(embeddings_array, axis=1, keepdims=True)
+    normalized = embeddings_array / (norms + 1e-10)
+
+    # Greedy clustering
+    clusters: list[list[int]] = []  # Store indices
+    assigned = set()
+
+    for i in range(len(memories)):
+        if i in assigned:
+            continue
+
+        # Start a new cluster with this memory
+        cluster = [i]
+        assigned.add(i)
+
+        # Find all similar memories not yet assigned
+        for j in range(i + 1, len(memories)):
+            if j in assigned:
+                continue
+
+            # Compute cosine distance
+            similarity = np.dot(normalized[i], normalized[j])
+            distance = 1.0 - similarity
+
+            if distance <= distance_threshold:
+                cluster.append(j)
+                assigned.add(j)
+
+        clusters.append(cluster)
+
+    # Convert indices back to memories
+    return [[memories[idx] for idx in cluster] for cluster in clusters]
+
+
+async def verify_duplicates_with_llm(
+    cluster: list[MemoryRecordResult],
+) -> list[list[MemoryRecordResult]]:
+    """
+    Use LLM to verify which memories in a cluster represent the same fact.
+
+    The LLM analyzes the memories and groups them by the facts they represent.
+    This catches cases where vector similarity groups unrelated memories.
+
+    Args:
+        cluster: List of potentially duplicate memories
+
+    Returns:
+        List of sub-clusters, where each sub-cluster contains memories
+        that the LLM confirmed represent the same fact
+    """
+    if len(cluster) <= 1:
+        return [cluster]
+
+    memory_texts = [f"{i+1}. {m.text}" for i, m in enumerate(cluster)]
+    memory_list = "\n".join(memory_texts)
+
+    prompt = f"""You are a memory deduplication assistant. Analyze these memories and group them by the facts they represent.
+
+Memories:
+{memory_list}
+
+For each unique fact, list which memory numbers represent that fact.
+Return a JSON object with a "groups" array, where each group is an array of memory numbers.
+
+Example response:
+{{"groups": [[1, 3], [2], [4, 5]]}}
+
+This means memories 1 and 3 represent the same fact, memory 2 is unique, and memories 4 and 5 represent another shared fact.
+
+If all memories represent the same fact, return: {{"groups": [[1, 2, 3, ...]]}}
+If all memories are distinct, return: {{"groups": [[1], [2], [3], ...]}}
+
+Analyze the memories and return the JSON:"""
+
+    try:
+        response = await LLMClient.create_chat_completion(
+            model=settings.fast_model,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+        )
+
+        import json
+
+        result = json.loads(response.content)
+        groups = result.get("groups", [])
+
+        # Convert memory numbers back to MemoryRecordResult objects
+        verified_clusters = []
+        for group in groups:
+            sub_cluster = []
+            for num in group:
+                idx = num - 1  # Convert 1-indexed to 0-indexed
+                if 0 <= idx < len(cluster):
+                    sub_cluster.append(cluster[idx])
+            if sub_cluster:
+                verified_clusters.append(sub_cluster)
+
+        return verified_clusters if verified_clusters else [cluster]
+
+    except Exception as e:
+        logger.warning(f"LLM verification failed, keeping original cluster: {e}")
+        return [cluster]
+
+
+async def merge_memory_cluster_for_display(
+    cluster: list[MemoryRecordResult],
+) -> MemoryRecordResult:
+    """
+    Merge a cluster of duplicate memories into one for display.
+
+    Unlike merge_memories_with_llm (which creates a new MemoryRecord for storage),
+    this creates a MemoryRecordResult for display purposes only.
+
+    Args:
+        cluster: List of duplicate memories to merge
+
+    Returns:
+        A single merged MemoryRecordResult
+    """
+    if len(cluster) == 1:
+        return cluster[0]
+
+    # Use LLM to merge the text
+    memory_texts = [m.text for m in cluster]
+    memory_list = "\n".join([f"{i+1}. {text}" for i, text in enumerate(memory_texts)])
+
+    prompt = f"""Merge these duplicate memories into a single, coherent statement that preserves all unique information:
+
+{memory_list}
+
+Return only the merged memory text, nothing else:"""
+
+    try:
+        response = await LLMClient.create_chat_completion(
+            model=settings.fast_model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        merged_text = response.content.strip()
+    except Exception as e:
+        logger.warning(f"LLM merge failed, using first memory: {e}")
+        merged_text = cluster[0].text
+
+    # Use the best distance (lowest) from the cluster
+    best_dist = min(m.dist for m in cluster)
+
+    # Combine topics and entities from all memories
+    all_topics = set()
+    all_entities = set()
+    for m in cluster:
+        if m.topics:
+            all_topics.update(m.topics)
+        if m.entities:
+            all_entities.update(m.entities)
+
+    # Use metadata from the first memory (typically the best match)
+    first = cluster[0]
+
+    return MemoryRecordResult(
+        id=first.id,  # Keep the ID of the best match
+        text=merged_text,
+        dist=best_dist,
+        session_id=first.session_id,
+        user_id=first.user_id,
+        namespace=first.namespace,
+        created_at=min(m.created_at for m in cluster if m.created_at),
+        last_accessed=max(m.last_accessed for m in cluster if m.last_accessed),
+        updated_at=first.updated_at,
+        topics=list(all_topics) if all_topics else None,
+        entities=list(all_entities) if all_entities else None,
+        memory_hash=first.memory_hash,
+        discrete_memory_extracted=first.discrete_memory_extracted,
+        memory_type=first.memory_type,
+        persisted_at=first.persisted_at,
+        extracted_from=first.extracted_from,
+        event_date=first.event_date,
+    )
+
+
+async def deduplicate_search_results(
+    memories: list[MemoryRecordResult],
+    distance_threshold: float = 0.4,
+    use_llm_verification: bool = True,
+) -> list[MemoryRecordResult]:
+    """
+    Deduplicate search results before returning to the agent.
+
+    This is Tier 2 (Load-Time) deduplication that handles:
+    - Legacy duplicates that existed before store-time dedup was fixed
+    - Edge cases that slip through store-time dedup
+
+    Process:
+    1. Cluster memories by vector similarity
+    2. (Optional) Use LLM to verify which memories represent the same fact
+    3. Merge each cluster into a single memory for display
+
+    Args:
+        memories: List of memory search results
+        distance_threshold: Maximum distance to consider memories similar (default 0.4)
+        use_llm_verification: Whether to use LLM to verify duplicates (default True)
+
+    Returns:
+        Deduplicated list of memories
+    """
+    if len(memories) <= 1:
+        return memories
+
+    # Step 1: Cluster by vector similarity
+    clusters = await cluster_memories_by_similarity(memories, distance_threshold)
+
+    deduplicated = []
+
+    for cluster in clusters:
+        if len(cluster) == 1:
+            # Single memory, no deduplication needed
+            deduplicated.append(cluster[0])
+        else:
+            # Multiple memories in cluster
+            if use_llm_verification:
+                # Step 2: LLM verification to split false positives
+                verified_subclusters = await verify_duplicates_with_llm(cluster)
+
+                # Step 3: Merge each verified subcluster
+                for subcluster in verified_subclusters:
+                    merged = await merge_memory_cluster_for_display(subcluster)
+                    deduplicated.append(merged)
+            else:
+                # Skip LLM verification, just merge the cluster
+                merged = await merge_memory_cluster_for_display(cluster)
+                deduplicated.append(merged)
+
+    # Sort by distance (best matches first)
+    deduplicated.sort(key=lambda m: m.dist)
+
+    return deduplicated
+
+
 async def compact_long_term_memories(
     limit: int = 1000,
     namespace: str | None = None,
@@ -709,7 +995,7 @@ async def index_long_term_memories(
     memories: list[MemoryRecord | ExtractedMemoryRecord],
     redis_client: Redis | None = None,
     deduplicate: bool = False,
-    vector_distance_threshold: float = 0.12,
+    vector_distance_threshold: float | None = None,
 ) -> None:
     """
     Index long-term memories using the pluggable VectorStore adapter.
@@ -718,7 +1004,8 @@ async def index_long_term_memories(
         memories: List of long-term memories to index
         redis_client: Optional Redis client (kept for compatibility, may be unused depending on backend)
         deduplicate: Whether to deduplicate memories before indexing
-        vector_distance_threshold: Threshold for semantic similarity
+        vector_distance_threshold: Threshold for semantic similarity.
+            If None, uses settings.deduplication_distance_threshold (default 0.35)
     """
     background_tasks = get_background_tasks()
 
@@ -827,6 +1114,9 @@ async def search_long_term_memories(
     limit: int = 10,
     offset: int = 0,
     optimize_query: bool = False,
+    deduplicate: bool | None = None,
+    dedup_threshold: float | None = None,
+    dedup_use_llm: bool | None = None,
 ) -> MemoryRecordResults:
     """
     Search for long-term memories using the pluggable VectorStore adapter.
@@ -847,6 +1137,9 @@ async def search_long_term_memories(
         limit: Maximum number of results
         offset: Offset for pagination
         optimize_query: Whether to optimize the query for vector search using a fast model (default: False)
+        deduplicate: Whether to deduplicate results before returning (default: settings.enable_load_time_deduplication)
+        dedup_threshold: Distance threshold for clustering similar memories (default: settings.load_time_dedup_threshold)
+        dedup_use_llm: Whether to use LLM to verify duplicates (default: settings.load_time_dedup_use_llm)
 
     Returns:
         MemoryRecordResults containing matching memories
@@ -930,6 +1223,44 @@ async def search_long_term_memories(
     except Exception:
         # Best-effort fallback; return the original results on any error
         pass
+
+    # Apply load-time deduplication if enabled
+    should_deduplicate = (
+        deduplicate
+        if deduplicate is not None
+        else settings.enable_load_time_deduplication
+    )
+
+    if should_deduplicate and results.memories:
+        threshold = (
+            dedup_threshold
+            if dedup_threshold is not None
+            else settings.load_time_dedup_threshold
+        )
+        use_llm = (
+            dedup_use_llm
+            if dedup_use_llm is not None
+            else settings.load_time_dedup_use_llm
+        )
+
+        try:
+            deduplicated_memories = await deduplicate_search_results(
+                memories=results.memories,
+                distance_threshold=threshold,
+                use_llm_verification=use_llm,
+            )
+
+            # Return deduplicated results, respecting the original limit
+            return MemoryRecordResults(
+                memories=deduplicated_memories[:limit],
+                total=len(deduplicated_memories),
+                next_offset=None,  # Pagination is complex with deduplication
+            )
+        except Exception as e:
+            logger.warning(
+                f"Load-time deduplication failed, returning raw results: {e}"
+            )
+            # Fall through to return original results
 
     return results
 
@@ -1138,7 +1469,7 @@ async def deduplicate_by_semantic_search(
     namespace: str | None = None,
     user_id: str | None = None,
     session_id: str | None = None,
-    vector_distance_threshold: float = 0.2,
+    vector_distance_threshold: float | None = None,
 ) -> tuple[MemoryRecord | None, bool]:
     """
     Check if a memory has semantic duplicates and merge if found.
@@ -1146,13 +1477,19 @@ async def deduplicate_by_semantic_search(
     Unlike deduplicate_by_id, this function does not overwrite any existing
     memories. Instead, all semantically similar duplicates are merged.
 
+    Uses vector similarity search to find semantically similar memories.
+    The distance threshold determines how similar memories must be to be
+    considered duplicates. A threshold of 0.35 works well for catching
+    paraphrased content while avoiding false positives.
+
     Args:
         memory: The memory to check for semantic duplicates
         redis_client: Optional Redis client
         namespace: Optional namespace filter
         user_id: Optional user ID filter
         session_id: Optional session ID filter
-        vector_distance_threshold: Distance threshold for semantic similarity
+        vector_distance_threshold: Distance threshold for semantic similarity.
+            If None, uses settings.deduplication_distance_threshold (default 0.35)
 
     Returns:
         Tuple of (memory to save (potentially merged), was_merged)
@@ -1162,6 +1499,10 @@ async def deduplicate_by_semantic_search(
 
     # Use vector store adapter to find semantically similar memories
     adapter = await get_vectorstore_adapter()
+
+    # Get threshold from settings if not provided
+    if vector_distance_threshold is None:
+        vector_distance_threshold = settings.deduplication_distance_threshold
 
     # Convert filters to adapter format
     namespace_filter = None
@@ -1182,10 +1523,11 @@ async def deduplicate_by_semantic_search(
 
         session_id_filter = SessionId(eq=session_id or memory.session_id)
 
-    # Use the vectorstore adapter for semantic search
-    # TODO: Paginate through results?
+    # Use vector-only search for deduplication
+    # Vector search with proper threshold (0.35) is sufficient for catching
+    # paraphrased duplicates. Hybrid search adds complexity without benefit here.
     search_result = await adapter.search_memories(
-        query=memory.text,  # Use memory text for semantic search
+        query=memory.text,
         namespace=namespace_filter,
         user_id=user_id_filter,
         session_id=session_id_filter,
@@ -1330,7 +1672,7 @@ async def promote_working_memory_to_long_term(
             await index_long_term_memories(
                 [current_memory],
                 redis_client=redis,
-                deduplicate=False,  # Already deduplicated by id
+                deduplicate=True,  # Enable hash and semantic deduplication
             )
 
             promoted_count += 1
@@ -1410,7 +1752,7 @@ async def promote_working_memory_to_long_term(
             await index_long_term_memories(
                 message_records_to_index,
                 redis_client=redis,
-                deduplicate=False,  # Already deduplicated by ID
+                deduplicate=True,  # Enable hash and semantic deduplication
             )
     else:
         count_persisted_messages = 0
