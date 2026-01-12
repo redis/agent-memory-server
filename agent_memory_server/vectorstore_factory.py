@@ -139,6 +139,9 @@ def create_redis_vectorstore(embeddings: Embeddings) -> VectorStore:
     """
     try:
         # Define metadata schema to match our existing schema
+        # Note: langchain-redis automatically creates a "text" field (content_field)
+        # with type "text" for full-text search, so we don't need to add it here.
+        # The content field is already indexed for BM25 hybrid queries.
         metadata_schema = [
             {"name": "session_id", "type": "tag"},
             {"name": "user_id", "type": "tag"},
