@@ -396,6 +396,22 @@ class Settings(BaseSettings):
     redisvl_index_prefix: str = "memory_idx"
     redisvl_indexing_algorithm: str = "HNSW"
 
+    # Deduplication Settings (Store-Time - Tier 1)
+    # Distance threshold for semantic similarity when deduplicating at store time
+    # 0.35 works well for catching paraphrased content while avoiding false positives
+    # Lower values are stricter (fewer matches), higher values are looser (more matches)
+    deduplication_distance_threshold: float = 0.35
+
+    # Load-time deduplication settings (Tier 2)
+    # When enabled, search results are deduplicated before returning to the agent
+    enable_load_time_deduplication: bool = True
+    # Distance threshold for clustering similar memories at load time
+    # Slightly higher than store-time threshold to catch edge cases
+    load_time_dedup_threshold: float = 0.4
+    # Whether to use LLM to verify that clustered memories represent the same fact
+    # This reduces false positives but adds latency and cost
+    load_time_dedup_use_llm: bool = True
+
     # Docket settings
     docket_name: str = "memory-server"
     use_docket: bool = True
