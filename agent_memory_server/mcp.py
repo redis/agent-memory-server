@@ -401,6 +401,9 @@ async def search_long_term_memory(
     limit: int = 10,
     offset: int = 0,
     optimize_query: bool = False,
+    deduplicate: bool | None = None,
+    dedup_threshold: float | None = None,
+    dedup_use_llm: bool | None = None,
 ) -> MemoryRecordResults:
     """
     Search for memories related to a query for vector search.
@@ -497,6 +500,9 @@ async def search_long_term_memory(
         limit: Maximum number of results
         offset: Offset for pagination
         optimize_query: Whether to optimize the query for vector search (default: False - LLMs typically provide already optimized queries)
+        deduplicate: Enable load-time deduplication of search results (default: uses server setting)
+        dedup_threshold: Distance threshold for clustering similar memories (default: uses server setting)
+        dedup_use_llm: Use LLM to verify duplicates (default: uses server setting)
 
     Returns:
         MemoryRecordResults containing matched memories sorted by relevance
@@ -520,6 +526,9 @@ async def search_long_term_memory(
             distance_threshold=distance_threshold,
             limit=limit,
             offset=offset,
+            deduplicate=deduplicate,
+            dedup_threshold=dedup_threshold,
+            dedup_use_llm=dedup_use_llm,
         )
         # Create a background tasks instance for the MCP call
         from agent_memory_server.dependencies import HybridBackgroundTasks

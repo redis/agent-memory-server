@@ -719,6 +719,9 @@ async def search_long_term_memory(
         "limit": payload.limit,
         "offset": payload.offset,
         "optimize_query": optimize_query,
+        "deduplicate": payload.deduplicate,
+        "dedup_threshold": payload.dedup_threshold,
+        "dedup_use_llm": payload.dedup_use_llm,
         **filters,
     }
 
