@@ -753,6 +753,20 @@ class SearchRequest(BaseModel):
         description="If true, attempt server-side recency-aware re-ranking when supported by backend",
     )
 
+    # Load-time deduplication controls (Tier 2)
+    deduplicate: bool | None = Field(
+        default=None,
+        description="Enable load-time deduplication of search results (defaults to settings.enable_load_time_deduplication)",
+    )
+    dedup_threshold: float | None = Field(
+        default=None,
+        description="Distance threshold for clustering similar memories (defaults to settings.load_time_dedup_threshold)",
+    )
+    dedup_use_llm: bool | None = Field(
+        default=None,
+        description="Use LLM to verify duplicates (defaults to settings.load_time_dedup_use_llm)",
+    )
+
     def get_filters(self):
         """Get all filter objects as a dictionary"""
         filters = {}
