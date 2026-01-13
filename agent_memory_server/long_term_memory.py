@@ -709,7 +709,7 @@ async def index_long_term_memories(
     memories: list[MemoryRecord | ExtractedMemoryRecord],
     redis_client: Redis | None = None,
     deduplicate: bool = False,
-    vector_distance_threshold: float = 0.12,
+    vector_distance_threshold: float | None = None,
 ) -> None:
     """
     Index long-term memories using the pluggable VectorStore adapter.
@@ -718,7 +718,8 @@ async def index_long_term_memories(
         memories: List of long-term memories to index
         redis_client: Optional Redis client (kept for compatibility, may be unused depending on backend)
         deduplicate: Whether to deduplicate memories before indexing
-        vector_distance_threshold: Threshold for semantic similarity
+        vector_distance_threshold: Threshold for semantic similarity.
+            If None, uses settings.deduplication_distance_threshold (default 0.35)
     """
     background_tasks = get_background_tasks()
 
@@ -1138,7 +1139,7 @@ async def deduplicate_by_semantic_search(
     namespace: str | None = None,
     user_id: str | None = None,
     session_id: str | None = None,
-    vector_distance_threshold: float = 0.2,
+    vector_distance_threshold: float | None = None,
 ) -> tuple[MemoryRecord | None, bool]:
     """
     Check if a memory has semantic duplicates and merge if found.
@@ -1146,13 +1147,19 @@ async def deduplicate_by_semantic_search(
     Unlike deduplicate_by_id, this function does not overwrite any existing
     memories. Instead, all semantically similar duplicates are merged.
 
+    Uses vector similarity search to find semantically similar memories.
+    The distance threshold determines how similar memories must be to be
+    considered duplicates. A threshold of 0.35 works well for catching
+    paraphrased content while avoiding false positives.
+
     Args:
         memory: The memory to check for semantic duplicates
         redis_client: Optional Redis client
         namespace: Optional namespace filter
         user_id: Optional user ID filter
         session_id: Optional session ID filter
-        vector_distance_threshold: Distance threshold for semantic similarity
+        vector_distance_threshold: Distance threshold for semantic similarity.
+            If None, uses settings.deduplication_distance_threshold (default 0.35)
 
     Returns:
         Tuple of (memory to save (potentially merged), was_merged)
@@ -1162,6 +1169,10 @@ async def deduplicate_by_semantic_search(
 
     # Use vector store adapter to find semantically similar memories
     adapter = await get_vectorstore_adapter()
+
+    # Get threshold from settings if not provided
+    if vector_distance_threshold is None:
+        vector_distance_threshold = settings.deduplication_distance_threshold
 
     # Convert filters to adapter format
     namespace_filter = None
@@ -1330,7 +1341,7 @@ async def promote_working_memory_to_long_term(
             await index_long_term_memories(
                 [current_memory],
                 redis_client=redis,
-                deduplicate=False,  # Already deduplicated by id
+                deduplicate=True,  # Enable hash and semantic deduplication
             )
 
             promoted_count += 1
@@ -1410,7 +1421,7 @@ async def promote_working_memory_to_long_term(
             await index_long_term_memories(
                 message_records_to_index,
                 redis_client=redis,
-                deduplicate=False,  # Already deduplicated by ID
+                deduplicate=True,  # Enable hash and semantic deduplication
             )
     else:
         count_persisted_messages = 0
