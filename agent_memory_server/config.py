@@ -396,6 +396,12 @@ class Settings(BaseSettings):
     redisvl_index_prefix: str = "memory_idx"
     redisvl_indexing_algorithm: str = "HNSW"
 
+    # Deduplication Settings (Store-Time)
+    # Distance threshold for semantic similarity when deduplicating at store time
+    # 0.35 works well for catching paraphrased content while avoiding false positives
+    # Lower values are stricter (fewer matches), higher values are looser (more matches)
+    deduplication_distance_threshold: float = 0.35
+
     # Docket settings
     docket_name: str = "memory-server"
     use_docket: bool = True
