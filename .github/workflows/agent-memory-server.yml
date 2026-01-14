@@ -77,6 +77,81 @@ jobs:
         with:
           packages-dir: dist/
 
+  publish-docker:
+    name: Publish Docker Images
+    needs: publish-pypi
+    if: startsWith(github.ref, 'refs/tags/server/') && !contains(github.ref, '-test')
+    runs-on: ubuntu-latest
+    environment: docker
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          # Tag format: server/v1.2.3
+          VERSION="${GITHUB_REF#refs/tags/server/v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            redislabs/agent-memory-server:${{ steps.version.outputs.version }}
+            redislabs/agent-memory-server:latest
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Server v${{ steps.version.outputs.version }}
+          body: |
+            ## Agent Memory Server v${{ steps.version.outputs.version }}
+
+            ### Installation
+
+            **PyPI:**
+            ```bash
+            pip install agent-memory-server==${{ steps.version.outputs.version }}
+            ```
+
+            **Docker:**
+            ```bash
+            docker pull redislabs/agent-memory-server:${{ steps.version.outputs.version }}
+            # or
+            docker pull ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
+            ```
+          draft: false
+          prerelease: false
+
 # Tag Format Guide:
 # - For TestPyPI (testing): server/v1.0.0-test
 # - For PyPI (production): server/v1.0.0
