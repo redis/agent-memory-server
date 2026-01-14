@@ -100,10 +100,10 @@ class TestDeduplicationE2E:
 
         await asyncio.sleep(1)
 
-        # Create third paraphrased memory
+        # Create third paraphrased memory (mirrors original issue description)
         memory3 = MemoryRecord(
             id=str(ulid.ULID()),
-            text="Coffee is a favorite, especially flat white",
+            text="User loves coffee, especially flat white",
             namespace=unique_namespace,
             user_id=unique_user_id,
             memory_type="semantic",
@@ -285,7 +285,7 @@ class TestDeduplicationE2E:
         )
 
         # Test with strict threshold (0.12) - should NOT detect duplicate
-        result_strict, was_merged_strict = await deduplicate_by_semantic_search(
+        await deduplicate_by_semantic_search(
             memory=memory2,
             redis_client=use_test_redis_connection,
             namespace=unique_namespace,
@@ -340,7 +340,9 @@ class TestDeduplicationE2E:
             await index_long_term_memories(
                 [memory],
                 redis_client=use_test_redis_connection,
-                deduplicate=(i > 0),  # First memory doesn't need dedup check
+                # In this test, we know the first insert sees an empty namespace,
+                # so we skip dedup for it as an optimization only
+                deduplicate=(i > 0),
             )
 
             await asyncio.sleep(1)

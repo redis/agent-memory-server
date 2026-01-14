@@ -720,6 +720,12 @@ async def index_long_term_memories(
         deduplicate: Whether to deduplicate memories before indexing
         vector_distance_threshold: Threshold for semantic similarity.
             If None, uses settings.deduplication_distance_threshold (default 0.35)
+
+    Note:
+        Breaking change in v0.x: The default threshold changed from 0.12 to 0.35
+        (via settings.deduplication_distance_threshold). The new threshold better
+        catches paraphrased content. To restore the old strict behavior, explicitly
+        pass vector_distance_threshold=0.12.
     """
     background_tasks = get_background_tasks()
 
@@ -1338,6 +1344,7 @@ async def promote_working_memory_to_long_term(
             )
 
             # Index the memory in long-term storage
+            # Fix for Issue #110 - this path previously bypassed deduplication
             await index_long_term_memories(
                 [current_memory],
                 redis_client=redis,
@@ -1416,6 +1423,7 @@ async def promote_working_memory_to_long_term(
             updated_messages.append(msg)
 
         # Batch index all new memory records for messages
+        # Fix for Issue #110 - this path previously bypassed deduplication
         if message_records_to_index:
             count_persisted_messages = len(message_records_to_index)
             await index_long_term_memories(
