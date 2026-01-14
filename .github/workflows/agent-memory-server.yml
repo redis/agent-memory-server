@@ -13,6 +13,11 @@ on:
         description: 'Version to build and push Docker image for (e.g., 0.12.7)'
         required: true
         type: string
+      tag_latest:
+        description: 'Also tag as latest'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -206,6 +211,8 @@ jobs:
           tags: |
             redislabs/agent-memory-server:${{ steps.version.outputs.version }}
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
+            ${{ inputs.tag_latest && 'redislabs/agent-memory-server:latest' || '' }}
+            ${{ inputs.tag_latest && format('ghcr.io/{0}:latest', github.repository) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
