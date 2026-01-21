@@ -82,6 +82,7 @@ nav:
     - Memory Integration Patterns: memory-integration-patterns.md
     - Working Memory: working-memory.md
     - Long-term Memory: long-term-memory.md
+    - Summary Views: summary-views.md
     - Memory Extraction Strategies: memory-extraction-strategies.md
     - Memory Lifecycle: memory-lifecycle.md
     - LLM Providers: llm-providers.md
