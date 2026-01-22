@@ -20,6 +20,12 @@ from tests.test_contextual_grounding_integration import (
 )
 
 
+def skip_if_timeout(evaluation: dict) -> None:
+    """Skip test if LLM evaluation timed out (external service issue)."""
+    if evaluation.get("explanation") == "Evaluation timed out":
+        pytest.skip("LLM evaluation timed out - external service issue")
+
+
 class MemoryExtractionJudge:
     """LLM-as-a-Judge system for evaluating discrete memory extraction quality"""
 
@@ -280,6 +286,9 @@ class TestLLMJudgeEvaluation:
         print(f"Grounded: {good_grounded_text}")
         print(f"Scores: {evaluation}")
 
+        # Skip if LLM call timed out (external service issue)
+        skip_if_timeout(evaluation)
+
         # Good grounding should score well
         assert evaluation["pronoun_resolution_score"] >= 0.7
         assert evaluation["overall_score"] >= 0.6
@@ -295,6 +304,9 @@ class TestLLMJudgeEvaluation:
         )
 
         print(f"\nPoor grounding scores: {poor_evaluation}")
+
+        # Skip if LLM call timed out (external service issue)
+        skip_if_timeout(poor_evaluation)
 
         # Poor grounding should score lower
         assert (
@@ -330,6 +342,9 @@ class TestLLMJudgeEvaluation:
         print(f"Grounded: {good_grounded_text}")
         print(f"Scores: {evaluation}")
 
+        # Skip if LLM call timed out (external service issue)
+        skip_if_timeout(evaluation)
+
         assert evaluation["temporal_grounding_score"] >= 0.7
         assert evaluation["overall_score"] >= 0.6
 
@@ -361,6 +376,9 @@ class TestLLMJudgeEvaluation:
         print(f"Original: {original_text}")
         print(f"Grounded: {good_grounded_text}")
         print(f"Scores: {evaluation}")
+
+        # Skip if LLM call timed out (external service issue)
+        skip_if_timeout(evaluation)
 
         assert evaluation["spatial_grounding_score"] >= 0.7
         assert evaluation["overall_score"] >= 0.6
@@ -440,6 +458,9 @@ class TestLLMJudgeEvaluation:
         print("\n=== Consistency Test ===")
         print(f"Overall score: {evaluations[0]['overall_score']:.3f}")
 
+        # Skip if LLM call timed out (external service issue)
+        skip_if_timeout(evaluations[0])
+
         # Single evaluation should recognize this as reasonably good grounding
         # Lowered threshold to account for LLM judge variability
         assert evaluations[0]["overall_score"] >= 0.4
@@ -483,6 +504,9 @@ class TestMemoryExtractionEvaluation:
         print(f"Extracted: {good_extraction}")
         print(f"Scores: {evaluation}")
 
+        # Skip if LLM call timed out (external service issue)
+        skip_if_timeout(evaluation)
+
         # Good extraction should score well
         assert evaluation["relevance_score"] >= 0.7
         assert evaluation["classification_accuracy_score"] >= 0.7
@@ -505,6 +529,9 @@ class TestMemoryExtractionEvaluation:
         )
 
         print(f"\nPoor extraction scores: {poor_evaluation}")
+
+        # Skip if LLM call timed out (external service issue)
+        skip_if_timeout(poor_evaluation)
 
         # Poor extraction should score lower on classification and completeness
         assert (
@@ -547,6 +574,9 @@ class TestMemoryExtractionEvaluation:
         print(f"Conversation: {example['conversation']}")
         print(f"Extracted: {good_extraction}")
         print(f"Scores: {evaluation}")
+
+        # Skip if LLM call timed out (external service issue)
+        skip_if_timeout(evaluation)
 
         assert evaluation["relevance_score"] >= 0.7
         assert evaluation["classification_accuracy_score"] >= 0.7
@@ -593,6 +623,9 @@ class TestMemoryExtractionEvaluation:
         print(f"Scores: {evaluation}")
         print(f"Explanation: {evaluation.get('explanation', 'N/A')}")
 
+        # Skip if LLM call timed out (external service issue)
+        skip_if_timeout(evaluation)
+
         # Mixed content is challenging, so lower thresholds
         # Further lowered to account for LLM judge variability
         assert evaluation["classification_accuracy_score"] >= 0.5
@@ -619,6 +652,9 @@ class TestMemoryExtractionEvaluation:
         print(f"Extracted: {good_extraction}")
         print(f"Scores: {evaluation}")
 
+        # Skip if LLM call timed out (external service issue)
+        skip_if_timeout(evaluation)
+
         # Should score well for recognizing irrelevant content
         assert evaluation["relevance_score"] >= 0.7
         assert evaluation["overall_score"] >= 0.6
@@ -640,6 +676,9 @@ class TestMemoryExtractionEvaluation:
         )
 
         print(f"\nOver-extraction scores: {poor_evaluation}")
+
+        # Skip if LLM call timed out (external service issue)
+        skip_if_timeout(poor_evaluation)
 
         # Over-extraction should score poorly on relevance
         assert poor_evaluation["relevance_score"] < evaluation["relevance_score"]
@@ -707,6 +746,9 @@ class TestMemoryExtractionEvaluation:
         print(f"\nExplanation: {evaluation.get('explanation', 'N/A')}")
         print(f"Suggestions: {evaluation.get('suggested_improvements', 'N/A')}")
 
+        # Skip if LLM call timed out (external service issue)
+        skip_if_timeout(evaluation)
+
         # Should perform reasonably well on this complex example
         assert evaluation["overall_score"] >= 0.4
         assert evaluation["classification_accuracy_score"] >= 0.5
@@ -766,6 +808,9 @@ class TestMemoryExtractionEvaluation:
             f"Redundancy avoidance score: {evaluation['redundancy_avoidance_score']:.3f}"
         )
         print(f"Overall score: {evaluation['overall_score']:.3f}")
+
+        # Skip if LLM call timed out (external service issue)
+        skip_if_timeout(evaluation)
 
         # Should detect redundancy and score accordingly
         # Allow some variance in AI model scoring while still expecting penalty for obvious redundancy
