@@ -20,7 +20,7 @@ Understand the fundamentals:
 
 ## ✨ Advanced Features
 
-**New in v0.10.0** - Powerful features for intelligent memory management:
+Powerful features for intelligent memory management:
 
 - **[Query Optimization](query-optimization.md)** - AI-powered query refinement for better search accuracy
 - **[Contextual Grounding](contextual-grounding.md)** - Resolve pronouns and references in extracted memories
