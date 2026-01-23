@@ -498,9 +498,9 @@ class TestToolSchemaGeneration:
         )
         assert anthropic_schema["input_schema"]["required"] == ["param1"]
 
-    def test_eagerly_create_long_term_memory_tool_schema(self):
+    def test_get_eagerly_create_long_term_memory_tool_schema(self):
         """Test eagerly_create_long_term_memory tool schema in OpenAI format."""
-        schema = MemoryAPIClient.eagerly_create_long_term_memory_tool_schema()
+        schema = MemoryAPIClient.get_eagerly_create_long_term_memory_tool_schema()
 
         assert schema["type"] == "function"
         assert schema["function"]["name"] == "eagerly_create_long_term_memory"
@@ -553,7 +553,7 @@ class TestToolSchemaGeneration:
 
     def test_add_memory_tool_schema_excludes_message_type(self):
         """Test that lazily_create_long_term_memory schema excludes 'message' type."""
-        schema = MemoryAPIClient.lazily_create_long_term_memory_tool_schema()
+        schema = MemoryAPIClient.get_lazily_create_long_term_memory_tool_schema()
 
         params = schema["function"]["parameters"]
         memory_type_prop = params["properties"]["memory_type"]

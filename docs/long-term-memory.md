@@ -242,7 +242,7 @@ Your LLM can use the `eagerly_create_long_term_memory` tool for immediate storag
 
 ```python
 # LLM tool call for eager memory creation
-tools = [client.eagerly_create_long_term_memory_tool_schema()]
+tools = [client.get_eagerly_create_long_term_memory_tool_schema()]
 
 # LLM can call:
 # eagerly_create_long_term_memory(

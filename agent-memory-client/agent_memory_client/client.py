@@ -1512,7 +1512,7 @@ class MemoryAPIClient:
         )
 
     @classmethod
-    def lazily_create_long_term_memory_tool_schema(cls) -> ToolSchema:
+    def get_lazily_create_long_term_memory_tool_schema(cls) -> ToolSchema:
         """
         Get OpenAI-compatible tool schema for lazily creating long-term memories.
 
@@ -1700,7 +1700,7 @@ class MemoryAPIClient:
         )
 
     @classmethod
-    def eagerly_create_long_term_memory_tool_schema(cls) -> ToolSchema:
+    def get_eagerly_create_long_term_memory_tool_schema(cls) -> ToolSchema:
         """
         Get OpenAI-compatible tool schema for eagerly creating long-term memories.
 
@@ -1824,10 +1824,10 @@ class MemoryAPIClient:
             [
                 cls.get_memory_search_tool_schema(),
                 cls.get_working_memory_tool_schema(),
-                cls.lazily_create_long_term_memory_tool_schema(),
+                cls.get_lazily_create_long_term_memory_tool_schema(),
                 cls.get_update_memory_data_tool_schema(),
                 cls.get_long_term_memory_tool_schema(),
-                cls.eagerly_create_long_term_memory_tool_schema(),
+                cls.get_eagerly_create_long_term_memory_tool_schema(),
                 cls.edit_long_term_memory_tool_schema(),
                 cls.delete_long_term_memories_tool_schema(),
                 cls.get_current_datetime_tool_schema(),
@@ -1862,10 +1862,10 @@ class MemoryAPIClient:
             [
                 cls.get_memory_search_tool_schema_anthropic(),
                 cls.get_working_memory_tool_schema_anthropic(),
-                cls.lazily_create_long_term_memory_tool_schema_anthropic(),
+                cls.get_lazily_create_long_term_memory_tool_schema_anthropic(),
                 cls.get_update_memory_data_tool_schema_anthropic(),
                 cls.get_long_term_memory_tool_schema_anthropic(),
-                cls.eagerly_create_long_term_memory_tool_schema_anthropic(),
+                cls.get_eagerly_create_long_term_memory_tool_schema_anthropic(),
                 cls.edit_long_term_memory_tool_schema_anthropic(),
                 cls.delete_long_term_memories_tool_schema_anthropic(),
                 cls.get_current_datetime_tool_schema_anthropic(),
@@ -1911,9 +1911,9 @@ class MemoryAPIClient:
         return cls._convert_openai_to_anthropic_schema(openai_schema)
 
     @classmethod
-    def lazily_create_long_term_memory_tool_schema_anthropic(cls) -> ToolSchema:
+    def get_lazily_create_long_term_memory_tool_schema_anthropic(cls) -> ToolSchema:
         """Get lazily create long-term memory tool schema in Anthropic format."""
-        openai_schema = cls.lazily_create_long_term_memory_tool_schema()
+        openai_schema = cls.get_lazily_create_long_term_memory_tool_schema()
         return cls._convert_openai_to_anthropic_schema(openai_schema)
 
     @classmethod
@@ -1929,9 +1929,9 @@ class MemoryAPIClient:
         return cls._convert_openai_to_anthropic_schema(openai_schema)
 
     @classmethod
-    def eagerly_create_long_term_memory_tool_schema_anthropic(cls) -> ToolSchema:
+    def get_eagerly_create_long_term_memory_tool_schema_anthropic(cls) -> ToolSchema:
         """Get eagerly create long-term memory tool schema in Anthropic format."""
-        openai_schema = cls.eagerly_create_long_term_memory_tool_schema()
+        openai_schema = cls.get_eagerly_create_long_term_memory_tool_schema()
         return cls._convert_openai_to_anthropic_schema(openai_schema)
 
     @classmethod
