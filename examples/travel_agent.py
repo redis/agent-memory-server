@@ -83,7 +83,7 @@ SYSTEM_PROMPT = {
     2. **Memory Management Tools** (always available):
        - **search_memory**: Look up previous conversations and stored information
        - **get_or_create_working_memory**: Check current session context
-       - **add_memory_to_working_memory**: Store important preferences or information
+       - **lazily_create_long_term_memory**: Store important preferences or information
        - **update_working_memory_data**: Save session-specific data
 
     **Guidelines**:

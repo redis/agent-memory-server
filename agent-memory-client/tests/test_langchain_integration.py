@@ -78,10 +78,10 @@ class TestLangChainIntegration:
         expected_names = {
             "search_memory",
             "get_or_create_working_memory",
-            "add_memory_to_working_memory",
+            "lazily_create_long_term_memory",
             "update_working_memory_data",
             "get_long_term_memory",
-            "create_long_term_memory",
+            "eagerly_create_long_term_memory",
             "edit_long_term_memory",
             "delete_long_term_memories",
             "get_current_datetime",
@@ -100,14 +100,14 @@ class TestLangChainIntegration:
             memory_client=client,
             session_id="test_session",
             user_id="test_user",
-            tools=["search_memory", "create_long_term_memory"],
+            tools=["search_memory", "eagerly_create_long_term_memory"],
         )
 
         # Should return only 2 tools
         assert len(tools) == 2
 
         tool_names = {tool.name for tool in tools}
-        assert tool_names == {"search_memory", "create_long_term_memory"}
+        assert tool_names == {"search_memory", "eagerly_create_long_term_memory"}
 
     @pytest.mark.skipif(not _langchain_available(), reason="LangChain not installed")
     def test_get_memory_tools_invalid_tool_name(self):
@@ -168,7 +168,7 @@ class TestLangChainIntegration:
     @pytest.mark.skipif(not _langchain_available(), reason="LangChain not installed")
     @pytest.mark.asyncio
     async def test_add_memory_tool_execution(self):
-        """Test that add_memory_to_working_memory tool executes correctly."""
+        """Test that lazily_create_long_term_memory tool executes correctly."""
         from agent_memory_client.integrations.langchain import get_memory_tools
 
         client = _create_mock_client()
@@ -183,7 +183,7 @@ class TestLangChainIntegration:
             memory_client=client,
             session_id="test_session",
             user_id="test_user",
-            tools=["add_memory_to_working_memory"],
+            tools=["lazily_create_long_term_memory"],
         )
 
         add_tool = tools[0]
@@ -209,7 +209,7 @@ class TestLangChainIntegration:
     @pytest.mark.skipif(not _langchain_available(), reason="LangChain not installed")
     @pytest.mark.asyncio
     async def test_create_long_term_memory_tool_execution(self):
-        """Test that create_long_term_memory tool executes correctly."""
+        """Test that eagerly_create_long_term_memory tool executes correctly."""
         from agent_memory_client.integrations.langchain import get_memory_tools
 
         client = _create_mock_client()
@@ -224,7 +224,7 @@ class TestLangChainIntegration:
             memory_client=client,
             session_id="test_session",
             user_id="test_user",
-            tools=["create_long_term_memory"],
+            tools=["eagerly_create_long_term_memory"],
         )
 
         create_tool = tools[0]
@@ -242,13 +242,13 @@ class TestLangChainIntegration:
         # Verify resolve_function_call was called correctly
         client.resolve_function_call.assert_called_once()
         call_kwargs = client.resolve_function_call.call_args.kwargs
-        assert call_kwargs["function_name"] == "create_long_term_memory"
+        assert call_kwargs["function_name"] == "eagerly_create_long_term_memory"
         assert len(call_kwargs["function_arguments"]["memories"]) == 2
 
     @pytest.mark.skipif(not _langchain_available(), reason="LangChain not installed")
     @pytest.mark.asyncio
     async def test_create_long_term_memory_accepts_single_object(self):
-        """Test that create_long_term_memory accepts a single memory object (not just array)."""
+        """Test that eagerly_create_long_term_memory accepts a single memory object (not just array)."""
         from agent_memory_client.integrations.langchain import get_memory_tools
 
         client = _create_mock_client()
@@ -263,7 +263,7 @@ class TestLangChainIntegration:
             memory_client=client,
             session_id="test_session",
             user_id="test_user",
-            tools=["create_long_term_memory"],
+            tools=["eagerly_create_long_term_memory"],
         )
 
         create_tool = tools[0]

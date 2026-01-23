@@ -78,7 +78,7 @@ await client.set_working_memory("user_session", working_memory)
 For real-time memory creation or when working without sessions:
 
 ```python
-# LLM can use create_long_term_memory tool directly
+# LLM can use eagerly_create_long_term_memory tool directly
 await client.create_long_term_memories([
     {
         "text": "User completed advanced Python certification course",

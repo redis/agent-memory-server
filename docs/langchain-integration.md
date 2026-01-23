@@ -178,7 +178,7 @@ async def main():
         memory_client=memory_client,
         session_id="chat_session",
         user_id="alice",
-        tools=["search_memory", "create_long_term_memory"]
+        tools=["search_memory", "eagerly_create_long_term_memory"]
     )
 
 

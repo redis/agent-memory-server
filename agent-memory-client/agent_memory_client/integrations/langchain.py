@@ -89,10 +89,10 @@ def get_memory_tools(
                Available tools:
                - "search_memory"
                - "get_or_create_working_memory"
-               - "add_memory_to_working_memory"
+               - "lazily_create_long_term_memory"
                - "update_working_memory_data"
                - "get_long_term_memory"
-               - "create_long_term_memory"
+               - "eagerly_create_long_term_memory"
                - "edit_long_term_memory"
                - "delete_long_term_memories"
                - "get_current_datetime"
@@ -117,7 +117,7 @@ def get_memory_tools(
             memory_client=client,
             session_id="chat_session",
             user_id="alice",
-            tools=["search_memory", "create_long_term_memory"]
+            tools=["search_memory", "eagerly_create_long_term_memory"]
         )
         ```
     """
@@ -137,9 +137,9 @@ def get_memory_tools(
                 memory_client, session_id, namespace, user_id
             ),
         },
-        "add_memory_to_working_memory": {
-            "name": "add_memory_to_working_memory",
-            "description": "Store new important information as a structured memory. Use this when users share preferences, facts, or important details that should be remembered for future conversations. The system automatically promotes important memories to long-term storage.",
+        "lazily_create_long_term_memory": {
+            "name": "lazily_create_long_term_memory",
+            "description": "Store new important information as a structured memory that will be promoted to long-term storage. Use this when users share preferences, facts, or important details that should be remembered for future conversations. The system automatically promotes important memories to long-term storage (lazy creation).",
             "func": _create_add_memory_func(
                 memory_client, session_id, namespace, user_id
             ),
@@ -156,9 +156,9 @@ def get_memory_tools(
             "description": "Retrieve a specific long-term memory by its unique ID to see full details. Use this when you have a memory ID from search_memory results and need complete information.",
             "func": _create_get_long_term_memory_func(memory_client),
         },
-        "create_long_term_memory": {
-            "name": "create_long_term_memory",
-            "description": "Create long-term memories directly for immediate storage and retrieval. Use this for important information that should be permanently stored without going through working memory. You can pass a single memory object or a list of memory objects. Each memory needs: text (string), memory_type ('episodic' or 'semantic'), and optionally topics (list), entities (list), event_date (ISO string).",
+        "eagerly_create_long_term_memory": {
+            "name": "eagerly_create_long_term_memory",
+            "description": "Create long-term memories directly for immediate storage and retrieval (eager creation). Use this for important information that should be permanently stored and searchable right away. You can pass a single memory object or a list of memory objects. Each memory needs: text (string), memory_type ('episodic' or 'semantic'), and optionally topics (list), entities (list), event_date (ISO string).",
             "func": _create_create_long_term_memory_func(
                 memory_client, namespace, user_id
             ),
@@ -272,9 +272,9 @@ def _create_add_memory_func(
     namespace: str | None,
     user_id: str | None,
 ) -> Any:
-    """Create add_memory_to_working_memory function."""
+    """Create lazily_create_long_term_memory function."""
 
-    async def add_memory_to_working_memory(
+    async def lazily_create_long_term_memory(
         text: str,
         memory_type: Literal["episodic", "semantic"],
         topics: list[str] | None = None,
@@ -292,7 +292,7 @@ def _create_add_memory_func(
         )
         return str(result.get("summary", str(result)))
 
-    return add_memory_to_working_memory
+    return lazily_create_long_term_memory
 
 
 def _create_update_memory_data_func(
@@ -343,9 +343,9 @@ def _create_create_long_term_memory_func(
     namespace: str | None,
     user_id: str | None,
 ) -> Any:
-    """Create create_long_term_memory function."""
+    """Create eagerly_create_long_term_memory function."""
 
-    async def create_long_term_memory(
+    async def eagerly_create_long_term_memory(
         memories: list[dict[str, Any]] | dict[str, Any],
     ) -> str:
         """Create long-term memories directly for immediate storage.
@@ -358,7 +358,7 @@ def _create_create_long_term_memory_func(
             memories = [memories]
 
         result = await client.resolve_function_call(
-            function_name="create_long_term_memory",
+            function_name="eagerly_create_long_term_memory",
             function_arguments={"memories": memories},
             session_id="",  # Not needed for direct long-term memory creation
             namespace=namespace,
@@ -369,7 +369,7 @@ def _create_create_long_term_memory_func(
         else:
             return f"Error: {result.get('error', 'Unknown error')}"
 
-    return create_long_term_memory
+    return eagerly_create_long_term_memory
 
 
 def _create_edit_long_term_memory_func(client: MemoryAPIClient) -> Any:
