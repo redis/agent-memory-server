@@ -23,9 +23,9 @@ class TestToolSchemaStructure:
         assert "query" in schema["function"]["parameters"]["properties"]
         assert "query" in schema["function"]["parameters"]["required"]
 
-    def test_get_add_memory_tool_schema(self):
+    def test_lazily_create_long_term_memory_tool_schema(self):
         """Test lazily_create_long_term_memory tool schema structure."""
-        schema = MemoryAPIClient.get_add_memory_tool_schema()
+        schema = MemoryAPIClient.lazily_create_long_term_memory_tool_schema()
 
         assert schema["type"] == "function"
         assert schema["function"]["name"] == "lazily_create_long_term_memory"
@@ -39,9 +39,9 @@ class TestToolSchemaStructure:
         assert "text" in params["required"]
         assert "memory_type" in params["required"]
 
-    def test_create_long_term_memory_tool_schema(self):
+    def test_eagerly_create_long_term_memory_tool_schema(self):
         """Test eagerly_create_long_term_memory tool schema structure."""
-        schema = MemoryAPIClient.create_long_term_memory_tool_schema()
+        schema = MemoryAPIClient.eagerly_create_long_term_memory_tool_schema()
 
         assert schema["type"] == "function"
         assert schema["function"]["name"] == "eagerly_create_long_term_memory"
@@ -123,7 +123,7 @@ class TestMemoryTypeEnumExclusion:
 
     def test_add_memory_excludes_message_type(self):
         """Test that lazily_create_long_term_memory excludes 'message' type."""
-        schema = MemoryAPIClient.get_add_memory_tool_schema()
+        schema = MemoryAPIClient.lazily_create_long_term_memory_tool_schema()
 
         params = schema["function"]["parameters"]
         memory_type_prop = params["properties"]["memory_type"]
@@ -134,7 +134,7 @@ class TestMemoryTypeEnumExclusion:
 
     def test_create_long_term_memory_excludes_message_type(self):
         """Test that eagerly_create_long_term_memory excludes 'message' type."""
-        schema = MemoryAPIClient.create_long_term_memory_tool_schema()
+        schema = MemoryAPIClient.eagerly_create_long_term_memory_tool_schema()
 
         params = schema["function"]["parameters"]
         memory_items = params["properties"]["memories"]["items"]
@@ -234,9 +234,9 @@ class TestAnthropicSchemas:
         assert "query" in schema["input_schema"]["properties"]
         assert "query" in schema["input_schema"]["required"]
 
-    def test_create_long_term_memory_tool_schema_anthropic(self):
+    def test_eagerly_create_long_term_memory_tool_schema_anthropic(self):
         """Test eagerly_create_long_term_memory tool schema in Anthropic format."""
-        schema = MemoryAPIClient.create_long_term_memory_tool_schema_anthropic()
+        schema = MemoryAPIClient.eagerly_create_long_term_memory_tool_schema_anthropic()
 
         assert schema["name"] == "eagerly_create_long_term_memory"
         assert "description" in schema
