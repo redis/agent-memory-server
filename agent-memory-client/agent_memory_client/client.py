@@ -1496,7 +1496,11 @@ class MemoryAPIClient:
     @classmethod
     def get_add_memory_tool_schema(cls) -> ToolSchema:
         """
-        Get OpenAI-compatible tool schema for adding memories to working memory.
+        Get OpenAI-compatible tool schema for lazily creating long-term memories.
+
+        This tool adds memories to working memory, which are then automatically
+        promoted to long-term storage. This is the "lazy" approach compared to
+        eagerly_create_long_term_memory which writes directly to long-term storage.
 
         Returns:
             ToolSchema object with customizable description and parameters
@@ -1505,10 +1509,12 @@ class MemoryAPIClient:
             {
                 "type": "function",
                 "function": {
-                    "name": "add_memory_to_working_memory",
+                    "name": "lazily_create_long_term_memory",
                     "description": (
-                        "Store new important information as a structured memory. Use this when users share preferences, facts, or important details that should be remembered for future conversations. "
-                        "Examples: 'User is vegetarian', 'Lives in Seattle', 'Works as a software engineer', 'Prefers morning meetings'. The system automatically promotes important memories to long-term storage. "
+                        "Store new important information as a structured memory that will be promoted to long-term storage. "
+                        "Use this when users share preferences, facts, or important details that should be remembered for future conversations. "
+                        "Examples: 'User is vegetarian', 'Lives in Seattle', 'Works as a software engineer', 'Prefers morning meetings'. "
+                        "The system automatically promotes these memories to long-term storage (lazy creation). "
                         "For time-bound (episodic) information, include a grounded date phrase in the text (e.g., 'on August 14, 2025') and call get_current_datetime to resolve relative expressions like 'today'/'yesterday'; the backend will set the structured event_date during extraction/promotion. "
                         "Always check if similar information already exists before creating new memories."
                     ),
@@ -1678,7 +1684,11 @@ class MemoryAPIClient:
     @classmethod
     def create_long_term_memory_tool_schema(cls) -> ToolSchema:
         """
-        Get OpenAI-compatible tool schema for creating long-term memories directly.
+        Get OpenAI-compatible tool schema for eagerly creating long-term memories.
+
+        This tool creates memories directly in long-term storage for immediate
+        retrieval. This is the "eager" approach compared to lazily_create_long_term_memory
+        which goes through working memory first.
 
         Returns:
             ToolSchema object with customizable description and parameters
@@ -1687,12 +1697,11 @@ class MemoryAPIClient:
             {
                 "type": "function",
                 "function": {
-                    "name": "create_long_term_memory",
+                    "name": "eagerly_create_long_term_memory",
                     "description": (
-                        "Create long-term memories directly for immediate storage and retrieval. "
-                        "Use this for important information that should be permanently stored without going through working memory. "
-                        "This is the 'eager' approach - memories are created immediately in long-term storage. "
-                        "Examples: User preferences, important facts, key events that need to be searchable right away. "
+                        "Create long-term memories directly for immediate storage and retrieval (eager creation). "
+                        "Use this for important information that should be permanently stored and searchable right away. "
+                        "Examples: User preferences, important facts, key events that need to be immediately retrievable. "
                         "For episodic memories, include event_date in ISO format."
                     ),
                     "parameters": {
@@ -2282,7 +2291,10 @@ class MemoryAPIClient:
                     session_id, effective_namespace, user_id
                 )
 
-            elif function_name == "add_memory_to_working_memory":
+            elif function_name in (
+                "lazily_create_long_term_memory",
+                "add_memory_to_working_memory",  # Deprecated alias
+            ):
                 result = await self._resolve_add_memory(
                     args, session_id, effective_namespace, user_id
                 )
@@ -2295,7 +2307,10 @@ class MemoryAPIClient:
             elif function_name == "get_long_term_memory":
                 result = await self._resolve_get_long_term_memory(args)
 
-            elif function_name == "create_long_term_memory":
+            elif function_name in (
+                "eagerly_create_long_term_memory",
+                "create_long_term_memory",  # Deprecated alias
+            ):
                 result = await self._resolve_create_long_term_memory(
                     args, effective_namespace, user_id
                 )

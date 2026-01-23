@@ -83,7 +83,7 @@ async def main():
                 "system",
                 "You are a helpful assistant with persistent memory. "
                 "Use the memory tools to remember important information and recall past conversations. "
-                "When users share preferences or important facts, store them using add_memory_to_working_memory. "
+                "When users share preferences or important facts, store them using lazily_create_long_term_memory. "
                 "When you need to recall information, use search_memory.",
             ),
             ("human", "{input}"),
@@ -152,7 +152,7 @@ async def selective_tools_example():
         memory_client=memory_client,
         session_id="selective_demo",
         user_id="demo_user",
-        tools=["search_memory", "create_long_term_memory"],  # Only these two
+        tools=["search_memory", "eagerly_create_long_term_memory"],  # Only these two
     )
 
     print(f"✅ Created {len(tools)} selected tools:")

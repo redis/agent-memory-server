@@ -447,7 +447,7 @@ class TestToolSchemaGeneration:
         required = {
             "search_memory",
             "get_or_create_working_memory",
-            "add_memory_to_working_memory",
+            "lazily_create_long_term_memory",
             "update_working_memory_data",
             "get_current_datetime",
         }
@@ -462,7 +462,7 @@ class TestToolSchemaGeneration:
         required = {
             "search_memory",
             "get_or_create_working_memory",
-            "add_memory_to_working_memory",
+            "lazily_create_long_term_memory",
             "update_working_memory_data",
             "get_current_datetime",
         }
@@ -499,11 +499,11 @@ class TestToolSchemaGeneration:
         assert anthropic_schema["input_schema"]["required"] == ["param1"]
 
     def test_create_long_term_memory_tool_schema(self):
-        """Test create_long_term_memory tool schema in OpenAI format."""
+        """Test eagerly_create_long_term_memory tool schema in OpenAI format."""
         schema = MemoryAPIClient.create_long_term_memory_tool_schema()
 
         assert schema["type"] == "function"
-        assert schema["function"]["name"] == "create_long_term_memory"
+        assert schema["function"]["name"] == "eagerly_create_long_term_memory"
         assert "description" in schema["function"]
         assert "parameters" in schema["function"]
 
@@ -552,7 +552,7 @@ class TestToolSchemaGeneration:
         assert "memory_ids" in params["required"]
 
     def test_add_memory_tool_schema_excludes_message_type(self):
-        """Test that add_memory_to_working_memory schema excludes 'message' type."""
+        """Test that lazily_create_long_term_memory schema excludes 'message' type."""
         schema = MemoryAPIClient.get_add_memory_tool_schema()
 
         params = schema["function"]["parameters"]
@@ -573,8 +573,8 @@ class TestToolSchemaGeneration:
 
         # Tools that should NOT expose message type (creation/editing tools)
         restricted_tools = {
-            "add_memory_to_working_memory",
-            "create_long_term_memory",
+            "lazily_create_long_term_memory",
+            "eagerly_create_long_term_memory",
             "edit_long_term_memory",
         }
 
@@ -591,7 +591,7 @@ class TestToolSchemaGeneration:
                         "message" not in memory_type_prop.get("enum", [])
                     ), f"Creation/editing tool {function_name} should not expose 'message' memory type"
 
-            # Check nested properties (like in create_long_term_memory)
+            # Check nested properties (like in eagerly_create_long_term_memory)
             if "memories" in params["properties"]:
                 items = params["properties"]["memories"].get("items", {})
                 if "properties" in items and "memory_type" in items["properties"]:

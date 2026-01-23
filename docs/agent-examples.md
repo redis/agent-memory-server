@@ -22,9 +22,14 @@ The travel agent automatically discovers and uses all memory tools:
 
 1. **search_memory** - Search through previous conversations and stored information
 2. **get_or_create_working_memory** - Check current working memory session
-3. **lazily_create_long_term_memory** - Store important information as structured memories lazily
+3. **lazily_create_long_term_memory** - Store important information as structured memories (promoted to long-term storage later)
 4. **update_working_memory_data** - Store/update session-specific data like trip plans
-5. **web_search** (optional) - Search the internet for current travel information
+5. **get_long_term_memory** - Retrieve a specific long-term memory by ID
+6. **eagerly_create_long_term_memory** - Create long-term memories directly for immediate storage
+7. **edit_long_term_memory** - Update existing long-term memories
+8. **delete_long_term_memories** - Remove long-term memories
+9. **get_current_datetime** - Get current UTC datetime for grounding relative time expressions
+10. **web_search** (optional) - Search the internet for current travel information
 
 ### Usage Examples
 
@@ -132,10 +137,13 @@ Demonstrates comprehensive memory editing capabilities through natural conversat
 
 1. **search_memory** - Find existing memories using natural language
 2. **get_long_term_memory** - Retrieve specific memories by ID
-3. **lazily_create_long_term_memory** - Store new information lazily
-4. **edit_long_term_memory** - Update existing memories
-5. **delete_long_term_memories** - Remove outdated information
-6. **get_or_create_working_memory** - Check current working memory session
+3. **lazily_create_long_term_memory** - Store new information (promoted to long-term storage later)
+4. **eagerly_create_long_term_memory** - Create long-term memories directly for immediate storage
+5. **edit_long_term_memory** - Update existing memories
+6. **delete_long_term_memories** - Remove outdated information
+7. **get_or_create_working_memory** - Check current working memory session
+8. **update_working_memory_data** - Store/update session-specific data
+9. **get_current_datetime** - Get current UTC datetime for grounding relative time expressions
 
 ### Common Editing Scenarios
 

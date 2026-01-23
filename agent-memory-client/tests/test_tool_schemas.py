@@ -24,11 +24,11 @@ class TestToolSchemaStructure:
         assert "query" in schema["function"]["parameters"]["required"]
 
     def test_get_add_memory_tool_schema(self):
-        """Test add_memory_to_working_memory tool schema structure."""
+        """Test lazily_create_long_term_memory tool schema structure."""
         schema = MemoryAPIClient.get_add_memory_tool_schema()
 
         assert schema["type"] == "function"
-        assert schema["function"]["name"] == "add_memory_to_working_memory"
+        assert schema["function"]["name"] == "lazily_create_long_term_memory"
         assert "description" in schema["function"]
         assert "parameters" in schema["function"]
 
@@ -40,11 +40,11 @@ class TestToolSchemaStructure:
         assert "memory_type" in params["required"]
 
     def test_create_long_term_memory_tool_schema(self):
-        """Test create_long_term_memory tool schema structure."""
+        """Test eagerly_create_long_term_memory tool schema structure."""
         schema = MemoryAPIClient.create_long_term_memory_tool_schema()
 
         assert schema["type"] == "function"
-        assert schema["function"]["name"] == "create_long_term_memory"
+        assert schema["function"]["name"] == "eagerly_create_long_term_memory"
         assert "description" in schema["function"]
         assert "parameters" in schema["function"]
 
@@ -102,10 +102,10 @@ class TestToolSchemaStructure:
         expected_tools = {
             "search_memory",
             "get_or_create_working_memory",
-            "add_memory_to_working_memory",
+            "lazily_create_long_term_memory",
             "update_working_memory_data",
             "get_long_term_memory",
-            "create_long_term_memory",
+            "eagerly_create_long_term_memory",
             "edit_long_term_memory",
             "delete_long_term_memories",
             "get_current_datetime",
@@ -122,7 +122,7 @@ class TestMemoryTypeEnumExclusion:
     """
 
     def test_add_memory_excludes_message_type(self):
-        """Test that add_memory_to_working_memory excludes 'message' type."""
+        """Test that lazily_create_long_term_memory excludes 'message' type."""
         schema = MemoryAPIClient.get_add_memory_tool_schema()
 
         params = schema["function"]["parameters"]
@@ -133,7 +133,7 @@ class TestMemoryTypeEnumExclusion:
         assert "message" not in memory_type_prop["enum"]
 
     def test_create_long_term_memory_excludes_message_type(self):
-        """Test that create_long_term_memory excludes 'message' type."""
+        """Test that eagerly_create_long_term_memory excludes 'message' type."""
         schema = MemoryAPIClient.create_long_term_memory_tool_schema()
 
         params = schema["function"]["parameters"]
@@ -178,8 +178,8 @@ class TestMemoryTypeEnumExclusion:
 
         # Tools that should NOT expose message type (creation/editing tools)
         restricted_tools = {
-            "add_memory_to_working_memory",
-            "create_long_term_memory",
+            "lazily_create_long_term_memory",
+            "eagerly_create_long_term_memory",
             "edit_long_term_memory",
         }
 
@@ -205,7 +205,7 @@ class TestMemoryTypeEnumExclusion:
                         # These tools are allowed to have message in enum for filtering
                         pass
 
-            # Check nested properties (like in create_long_term_memory)
+            # Check nested properties (like in eagerly_create_long_term_memory)
             if "memories" in params["properties"]:
                 items = params["properties"]["memories"].get("items", {})
                 if (
@@ -235,10 +235,10 @@ class TestAnthropicSchemas:
         assert "query" in schema["input_schema"]["required"]
 
     def test_create_long_term_memory_tool_schema_anthropic(self):
-        """Test create_long_term_memory tool schema in Anthropic format."""
+        """Test eagerly_create_long_term_memory tool schema in Anthropic format."""
         schema = MemoryAPIClient.create_long_term_memory_tool_schema_anthropic()
 
-        assert schema["name"] == "create_long_term_memory"
+        assert schema["name"] == "eagerly_create_long_term_memory"
         assert "description" in schema
         assert "input_schema" in schema
         assert schema["input_schema"]["type"] == "object"
@@ -270,8 +270,8 @@ class TestAnthropicSchemas:
 
         # Tools that should NOT expose message type (creation/editing tools)
         restricted_tools = {
-            "add_memory_to_working_memory",
-            "create_long_term_memory",
+            "lazily_create_long_term_memory",
+            "eagerly_create_long_term_memory",
             "edit_long_term_memory",
         }
 
@@ -498,5 +498,5 @@ class TestToolSchemaCollectionCustomization:
         names = collection.names()
         assert isinstance(names, list)
         assert "search_memory" in names
-        assert "create_long_term_memory" in names
+        assert "eagerly_create_long_term_memory" in names
         assert len(names) == 9

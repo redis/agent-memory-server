@@ -238,14 +238,14 @@ await client.create_long_term_memories([
 
 #### LLM Tool Usage (Eager Creation)
 
-Your LLM can use the `create_long_term_memory` tool for immediate storage:
+Your LLM can use the `eagerly_create_long_term_memory` tool for immediate storage:
 
 ```python
 # LLM tool call for eager memory creation
 tools = [client.create_long_term_memory_tool_schema()]
 
 # LLM can call:
-# create_long_term_memory(
+# eagerly_create_long_term_memory(
 #     memories=[
 #         {
 #             "text": "User works as a software engineer at TechCorp",

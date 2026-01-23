@@ -57,9 +57,9 @@ The travel agent automatically discovers and uses all memory tools available fro
 
 1. **search_memory** - Search through previous conversations and stored information
 2. **get_or_create_working_memory** - Check current working memory session
-3. **add_memory_to_working_memory** - Add a memory to working memory for later promotion to long-term storage
+3. **lazily_create_long_term_memory** - Store memories that will be promoted to long-term storage later
 4. **update_working_memory_data** - Store/update session-specific data like trip plans
-5. **create_long_term_memory** - Create long-term memories directly
+5. **eagerly_create_long_term_memory** - Create long-term memories directly for immediate storage
 6. **get_long_term_memory** - Retrieve specific memories by ID
 7. **edit_long_term_memory** - Update existing memories
 8. **delete_long_term_memories** - Remove memories
@@ -147,8 +147,8 @@ The memory editing agent uses all memory tools to demonstrate comprehensive memo
 
 1. **search_memory** - Find existing memories using natural language queries
 2. **get_long_term_memory** - Retrieve specific memories by ID for detailed review
-3. **add_memory_to_working_memory** - Add a memory to working memory for later promotion to long-term storage
-4. **create_long_term_memory** - Create long-term memories directly
+3. **lazily_create_long_term_memory** - Store memories that will be promoted to long-term storage later
+4. **eagerly_create_long_term_memory** - Create long-term memories directly for immediate storage
 5. **edit_long_term_memory** - Update existing memories with corrections or new information
 6. **delete_long_term_memories** - Remove memories that are no longer relevant or accurate
 7. **get_or_create_working_memory** - Check current working memory session
