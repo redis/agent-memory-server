@@ -2,6 +2,45 @@
 
 This directory contains example implementations showing how to use the Agent Memory Server.
 
+## Prerequisites
+
+### Install Dependencies
+
+The examples require additional dependencies not included in the base installation. Install them with:
+
+```bash
+uv sync --group examples
+```
+
+Or if you're using pip:
+
+```bash
+pip install openai langchain langchain-core langchain-openai langchain-community python-dotenv tavily-python redis
+```
+
+### Environment Variables
+
+All examples require:
+- `OPENAI_API_KEY` - Required for OpenAI ChatGPT
+
+Some examples use additional environment variables documented in their sections below.
+
+### Running the Memory Server
+
+Examples expect the Agent Memory Server to be running. Start it with:
+
+```bash
+uv run agent-memory api
+```
+
+Or using Docker:
+
+```bash
+docker-compose up
+```
+
+---
+
 ## Travel Agent (`travel_agent.py`)
 
 A comprehensive travel assistant that demonstrates:
@@ -18,8 +57,13 @@ The travel agent automatically discovers and uses all memory tools available fro
 
 1. **search_memory** - Search through previous conversations and stored information
 2. **get_or_create_working_memory** - Check current working memory session
-3. **lazily_create_long_term_memory** - Lazily create a long-term memory by adding it to working memory (does not require an immediate network request; does require saving working memory afterward)
+3. **add_memory_to_working_memory** - Add a memory to working memory for later promotion to long-term storage
 4. **update_working_memory_data** - Store/update session-specific data like trip plans
+5. **create_long_term_memory** - Create long-term memories directly
+6. **get_long_term_memory** - Retrieve specific memories by ID
+7. **edit_long_term_memory** - Update existing memories
+8. **delete_long_term_memories** - Remove memories
+9. **get_current_datetime** - Get current date/time for temporal context
 
 Plus optional:
 - **web_search** - Search the internet for current travel information (requires TAVILY_API_KEY)
@@ -103,11 +147,13 @@ The memory editing agent uses all memory tools to demonstrate comprehensive memo
 
 1. **search_memory** - Find existing memories using natural language queries
 2. **get_long_term_memory** - Retrieve specific memories by ID for detailed review
-3. **lazily_create_long_term_memory** - Lazily create a long-term memory by adding it to working memory (does not require an immediate network request; does require saving working memory afterward)
-4. **edit_long_term_memory** - Update existing memories with corrections or new information
-5. **delete_long_term_memories** - Remove memories that are no longer relevant or accurate
-6. **get_or_create_working_memory** - Check current working memory session
-7. **update_working_memory_data** - Store session-specific data
+3. **add_memory_to_working_memory** - Add a memory to working memory for later promotion to long-term storage
+4. **create_long_term_memory** - Create long-term memories directly
+5. **edit_long_term_memory** - Update existing memories with corrections or new information
+6. **delete_long_term_memories** - Remove memories that are no longer relevant or accurate
+7. **get_or_create_working_memory** - Check current working memory session
+8. **update_working_memory_data** - Store session-specific data
+9. **get_current_datetime** - Get current date/time for temporal context
 
 ### Common Memory Editing Scenarios
 - **Corrections**: "Actually, I work at Microsoft, not Google" → Search for job memory, edit company name
@@ -154,38 +200,6 @@ The automated demo shows a realistic conversation where the agent:
 7. **Memory Management**: User requests specific memory operations (show/delete specific memories)
 
 This example provides a complete reference for implementing memory editing in conversational AI applications.
-
-## Meeting Memory Orchestrator (`meeting_memory_orchestrator.py`)
-
-Demonstrates episodic memories for meetings: ingest transcripts, extract action items and decisions, store with `event_date`, and query by time/topic. Supports marking tasks done via memory edits.
-
-### Usage
-
-```bash
-python meeting_memory_orchestrator.py --demo
-python meeting_memory_orchestrator.py --user-id alice --session-id team_sync
-```
-
-### Highlights
-- **Episodic storage**: Each item saved with `topics=["meeting", kind, topic]` and `event_date`
-- **Queries**: List decisions, open tasks, and topic/time filters
-- **Edits**: Mark tasks done by updating memory text
-
-## Shopping Assistant (`shopping_assistant.py`)
-
-Stores durable user preferences as long-term semantic memories and keeps a session cart in working memory `data`. Generates simple recommendations from remembered preferences.
-
-### Usage
-
-```bash
-python shopping_assistant.py --demo
-python shopping_assistant.py --user-id shopper --session-id cart123
-```
-
-### Highlights
-- **Preferences**: `topics=["preferences"]`, empty-text recall lists "what do you remember about me?"
-- **Cart**: Session-scoped cart via working memory `data`
-- **Recommendations**: Use preferences + request constraints
 
 ## AI Tutor (`ai_tutor.py`)
 
