@@ -505,6 +505,9 @@ async def delete_working_memory(
 
     try:
         await redis_client.delete(key)
+        # Remove session from sorted set index
+        sessions_key = Keys.sessions_key(namespace=namespace)
+        await redis_client.zrem(sessions_key, session_id)
         logger.info(f"Deleted working memory for session {session_id}")
 
     except Exception as e:
