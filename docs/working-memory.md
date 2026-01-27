@@ -1,55 +1,114 @@
 # Working Memory
 
-Working memory is **session-scoped**, **durable** storage designed for active conversation state and session data. It's the "scratch pad" where an AI agent keeps track of the current conversation context for a particular session.
+Working memory stores the **current conversation** for a session. It holds messages, tracks context, and automatically summarizes old messages when the conversation gets too long.
 
-## Overview
+## What Working Memory Does
 
-Working memory provides durable storage for a single conversation session. It's optimized for storing conversation messages, session-specific data, and structured memories that may later be promoted to long-term storage. By default, working memory persists to maintain conversation history, but you can set TTL expiration if your application doesn't need persistent conversation history.
+1. **Stores conversation messages** — The chat history for a session
+2. **Tracks session data** — Arbitrary key-value data that lives only in this session
+3. **Automatically summarizes** — When messages exceed the token limit, older messages are summarized and removed
+4. **Promotes memories** — Structured memories added here get indexed in long-term storage
+
+## Quick Reference
 
 | Feature | Details |
 |---------|---------|
-| **Scope** | Session-scoped |
-| **Lifespan** | Durable by default, optional TTL |
-| **Storage** | Redis key-value with JSON |
-| **Search** | Simple text matching |
-| **Capacity** | Limited by window size |
-| **Use Case** | Active conversation state |
-| **Indexing** | None |
-| **Deduplication** | None |
-
-## Characteristics
-
-- **Session Scoped**: Each session has its own isolated working memory
-- **Durable by Default**: Persists conversation history unless TTL is explicitly set
-- **Optional TTL**: Can be configured to expire if conversation history isn't needed
-- **Window Management**: Automatically summarizes when message count exceeds limits
-- **Mixed Content**: Stores both conversation messages and structured memory records
-- **No Indexing**: Simple JSON storage in Redis
-- **Promotion**: Structured memories can be promoted to long-term storage
+| **Scope** | One session |
+| **Lifespan** | Persistent (default) or TTL-based |
+| **Storage** | Redis JSON |
+| **Key Feature** | Automatic summarization |
+| **Search** | None (use long-term memory for search) |
 
 ## Data Structure
 
 Working memory contains:
 
-- **Messages**: Conversation history (role/content pairs)
-- **Memories**: Structured memory records awaiting promotion
-- **Context**: Summary of past conversation when truncated
-- **Data**: Arbitrary JSON key-value storage
-- **Metadata**: User ID, timestamps, TTL settings
+| Field | Description |
+|-------|-------------|
+| `messages` | Conversation history (role/content pairs) |
+| `context` | **Summary of older messages** (populated by auto-summarization) |
+| `memories` | Structured memory records that get promoted to long-term storage |
+| `data` | Arbitrary JSON key-value storage for the session |
+| `user_id` | Owner of this session |
+| `namespace` | Logical grouping |
+| `ttl_seconds` | Optional expiration time |
 
-## When to Use Working Memory
+## Automatic Summarization
 
-### 1. Conversation Messages
+When your conversation exceeds the model's context window, working memory automatically:
 
-The primary use of working memory is storing conversation messages to maintain context across turns:
+1. **Summarizes older messages** into a compact summary
+2. **Stores the summary** in the `context` field
+3. **Removes the summarized messages** to free space
+4. **Keeps recent messages** intact
+
+This happens transparently—you don't need to trigger it.
+
+### How It Works
+
+The server tracks token usage against your model's context window. When messages exceed a threshold (default: 70% of the context window), summarization kicks in:
+
+```
+Messages: [msg1, msg2, msg3, msg4, msg5, msg6, msg7, msg8, msg9, msg10]
+                  ↓ (exceeds threshold)
+                  ↓ summarize older messages
+Context:  "User discussed trip planning to Paris, preferences for museums..."
+Messages: [msg8, msg9, msg10]  ← recent messages preserved
+```
+
+### Finding the Summary
+
+The summary is stored in the `context` field of working memory:
 
 ```python
-import ulid
-from datetime import datetime, UTC
+# After summarization has occurred
+working_memory = await get_working_memory("session_123")
 
-# Store conversation messages for context continuity
-# IMPORTANT: Provide created_at timestamps that reflect actual message creation times
-# In real usage, each message would have its own timestamp from when it was created
+print(working_memory.context)
+# "User discussed trip planning to Paris, preferences for museums and food,
+#  budget constraints around $3000, and interest in Impressionist art..."
+
+print(working_memory.messages)
+# [recent messages only]
+```
+
+### Monitoring Summarization
+
+The `WorkingMemoryResponse` includes fields to track context usage:
+
+```python
+response = await get_working_memory("session_123")
+
+# How much of the total context window is used (0-100%)
+print(response.context_percentage_total_used)  # e.g., 45.2
+
+# How close to triggering summarization (0-100%)
+print(response.context_percentage_until_summarization)  # e.g., 64.5
+# When this hits 100%, summarization triggers
+```
+
+### Configuring Summarization
+
+| Environment Variable | Default | Description |
+|---------------------|---------|-------------|
+| `SUMMARIZATION_THRESHOLD` | `0.7` | Fraction of context window that triggers summarization |
+| `GENERATION_MODEL` | `gpt-4o-mini` | Model used for summarization |
+| `PROGRESSIVE_SUMMARIZATION_PROMPT` | (see below) | Custom prompt for summarization |
+
+The summarization prompt can be customized. It must include `{prev_summary}` and `{messages_joined}` placeholders:
+
+```bash
+PROGRESSIVE_SUMMARIZATION_PROMPT="Your custom prompt with {prev_summary} and {messages_joined}..."
+```
+
+## Storing Messages
+
+The primary use of working memory is storing conversation messages:
+
+```python
+from datetime import datetime, UTC
+import ulid
+
 working_memory = WorkingMemory(
     session_id="chat_123",
     messages=[
@@ -57,65 +116,41 @@ working_memory = WorkingMemory(
             role="user",
             content="I'm planning a trip to Paris next month",
             id=ulid.ULID(),
-            created_at=datetime.fromisoformat("2024-01-15T10:30:00+00:00")
+            created_at=datetime.now(UTC)
         ),
         MemoryMessage(
             role="assistant",
-            content="That sounds exciting! What type of activities are you interested in?",
+            content="What type of activities interest you?",
             id=ulid.ULID(),
-            created_at=datetime.fromisoformat("2024-01-15T10:30:05+00:00")
+            created_at=datetime.now(UTC)
         ),
-        MemoryMessage(
-            role="user",
-            content="I love museums and good food",
-            id=ulid.ULID(),
-            created_at=datetime.fromisoformat("2024-01-15T10:30:30+00:00")
-        )
     ]
 )
-
-# On the next turn, the assistant can access this context:
-# - User is planning a Paris trip
-# - Trip is next month
-# - User likes museums and food
-# This enables coherent, context-aware responses
 ```
 
-> **⚠️ Important: Message Timestamps**
+> **⚠️ Always provide `created_at` timestamps**
 >
-> Always provide `created_at` timestamps for your messages. This ensures:
-> - Accurate message ordering by recency
-> - Correct temporal context when promoting to long-term memory
-> - Proper recency scoring in semantic search
->
-> If you omit `created_at`, the server will auto-generate it at deserialization time and log a deprecation warning. In a future major version, `created_at` will become required.
+> This ensures correct message ordering and proper temporal context when promoting to long-term memory. Omitting `created_at` triggers a deprecation warning—it will become required in a future version.
 
-### 2. Session-Specific Data
+## Session-Specific Data
 
-Use the `data` field for temporary session information that doesn't need to persist across conversations:
+Use the `data` field for temporary information that doesn't need to persist across conversations:
 
 ```python
-# Store session-specific facts and configuration
 working_memory = WorkingMemory(
     session_id="chat_123",
     data={
-        "temp_trip_info": {
-            "destination": "Paris",
-            "travel_month": "next month",
-            "planning_stage": "initial"
-        },
-        "user_preferences": {"temperature_unit": "celsius"},
-        "conversation_mode": "casual"
+        "current_topic": "trip_planning",
+        "user_timezone": "America/New_York",
     }
 )
 ```
 
-### 3. Structured Memories for Long-Term Storage
+## Structured Memories
 
-Use the `memories` field for important facts that should be remembered across all future conversations:
+Use the `memories` field for facts that should persist beyond this session:
 
 ```python
-# Important facts that should persist beyond this session
 working_memory = WorkingMemory(
     session_id="chat_123",
     memories=[
@@ -123,31 +158,31 @@ working_memory = WorkingMemory(
             text="User is planning a trip to Paris next month",
             id="trip_planning_paris",
             memory_type="episodic",
-            topics=["travel", "planning"],
+            topics=["travel"],
             entities=["Paris"]
         )
     ]
 )
-# This memory will be automatically promoted to long-term storage
 ```
 
-> **🔑 Key Distinction**:
-> - Use `data` field for **session-specific** facts that stay only in the session
-> - Use `memories` field for **important** facts that should be promoted to long-term storage
-> - Anything in the `memories` field will automatically become persistent and searchable across all future sessions
+These are automatically promoted to long-term storage and become searchable across all sessions.
+
+> **Key distinction:**
+> - `data` → session-only, not searchable, not persisted beyond session
+> - `memories` → promoted to long-term storage, searchable, persistent
 
 ## Memory Promotion to Long-Term Storage
 
-Working memory can automatically promote important information to long-term storage using configurable extraction strategies.
+Memories added to the `memories` field are automatically promoted to long-term storage:
 
-**Two approaches:**
+1. Server identifies memories with `persisted_at=null`
+2. Generates vector embeddings
+3. Indexes in long-term storage
+4. Updates working memory with `persisted_at` timestamps
 
-1. **Background extraction** (server-side): The memory server automatically analyzes conversation content and extracts memories. Configure this using the `long_term_memory_strategy` field on working memory.
-
-2. **Client-side extraction** (LLM tools): Your LLM uses tools to add memories to the `memories` field of working memory. These are batched and promoted to long-term storage efficiently.
+You can also configure **background extraction** to automatically extract memories from conversation messages:
 
 ```python
-# Background extraction with a custom strategy
 working_memory = WorkingMemory(
     session_id="chat_123",
     messages=[...],
@@ -155,170 +190,65 @@ working_memory = WorkingMemory(
         strategy="discrete",  # or "summary", "preferences", "custom"
         config={}
     ),
-    user_id="alice"
 )
 ```
 
-For detailed guidance on when to use each approach, see [Memory Integration Patterns](memory-integration-patterns.md).
+See [Memory Extraction Strategies](memory-extraction-strategies.md) for configuration options.
 
-For configuration options for each extraction strategy (discrete, summary, preferences, custom), see [Memory Extraction Strategies](memory-extraction-strategies.md).
-
-## API Endpoints
+## API Reference
 
 ```http
-# Get working memory for a session
+# Get working memory
 GET /v1/working-memory/{session_id}?namespace=demo&model_name=gpt-4o
 
-# Set working memory (replaces existing, with optional TTL)
+# Set working memory (replaces existing)
 PUT /v1/working-memory/{session_id}?ttl_seconds=3600
 
 # Delete working memory
 DELETE /v1/working-memory/{session_id}?namespace=demo
 ```
 
-## Automatic Promotion
-
-When structured memories in working memory are stored, they are automatically promoted to long-term storage in the background:
-
-1. Memories with `persisted_at=null` are identified
-2. Server assigns unique IDs and timestamps
-3. Memories are indexed in long-term storage with vector embeddings
-4. Working memory is updated with `persisted_at` timestamps
-
-
-
-## Memory Lifecycle
-
-### 1. Creation in Working Memory
-```python
-# Client creates structured memory
-memory = MemoryRecord(
-    text="User likes Italian food",
-    id="client_generated_id",
-    memory_type="semantic"
-)
-
-# Add to working memory
-working_memory = WorkingMemory(
-    session_id="current_session",
-    memories=[memory]
-)
-```
-
-### 2. Automatic Promotion
-```python
-# Server promotes to long-term storage (background)
-# - Assigns persisted_at timestamp
-# - Generates vector embeddings
-# - Indexes for search
-# - Updates working memory with timestamps
-```
-
-## Best Practices
-
-### Working Memory Usage
-- Keep conversation state and session-specific data
-- Use for session-specific configuration and context
-- Store structured memories that should become long-term
-- Set TTL only if conversation history doesn't need to persist
-- Let automatic promotion handle long-term memory persistence
-
-### Memory Design
-- Use `data` field for session-specific facts that stay only in the session
-- Use `memories` field for important facts that should be promoted to long-term storage
-- Design memory text for LLM consumption
-- Include relevant topics and entities for better search
-
 ## TTL and Persistence
 
-Working memory is **durable by default** to preserve conversation history. However, you can configure TTL (time-to-live) expiration if your application doesn't need persistent conversation history:
+Working memory is **persistent by default**. Set `ttl_seconds` to auto-expire:
 
 ```python
-# Durable working memory (default behavior)
-working_memory = WorkingMemory(
-    session_id="chat_123",
-    messages=[...],
-    # No TTL - memory persists until explicitly deleted
-)
+# Persistent (default)
+working_memory = WorkingMemory(session_id="chat_123", messages=[...])
 
-# Working memory with TTL expiration
-working_memory = WorkingMemory(
-    session_id="chat_123",
-    messages=[...],
-    ttl_seconds=3600  # Expires after 1 hour
-)
+# Expires after 1 hour
+working_memory = WorkingMemory(session_id="chat_123", messages=[...], ttl_seconds=3600)
 ```
 
-```http
-# Set working memory with TTL via REST API
-PUT /v1/working-memory/chat_123?ttl_seconds=3600
-```
+**Use TTL for:** temporary sessions, privacy requirements, resource constraints.
 
-**When to use TTL:**
-- Temporary chat sessions that don't need history
-- Privacy-sensitive applications requiring automatic cleanup
-- Resource-constrained environments
+**Keep persistent for:** conversation history, multi-turn context, support applications.
 
-**When to keep durable (default):**
-- Applications that need conversation history
-- Multi-turn conversations that reference past context
-- Customer support or assistant applications
+## Reconstruction from Long-Term Memory
 
-## Transparent Reconstruction from Long-Term Memory
+With `INDEX_ALL_MESSAGES_IN_LONG_TERM_MEMORY=true`, working memory can be reconstructed after TTL expiration:
 
-When `index_all_messages_in_long_term_memory` is enabled, working memory can be transparently reconstructed from long-term storage. This allows you to use TTL expiration while still maintaining conversation continuity.
+1. Messages are indexed in long-term memory as they flow through
+2. When working memory expires, messages remain in long-term storage
+3. Requesting an expired session reconstructs it from long-term memory
 
-**How it works:**
-1. Set `index_all_messages_in_long_term_memory=true` in configuration
-2. Messages are automatically indexed in long-term memory as they flow through working memory
-3. When working memory expires (TTL), the messages remain in long-term storage
-4. If you request a session that doesn't exist in working memory, the system automatically searches long-term memory for messages from that session and reconstructs the working memory
+This lets you use TTL to save Redis memory while maintaining conversation continuity.
 
-**Example workflow:**
-```python
-# 1. Store working memory with TTL (expires after 1 hour)
-working_memory = WorkingMemory(
-    session_id="chat_123",
-    messages=[
-        MemoryMessage(role="user", content="Hello"),
-        MemoryMessage(role="assistant", content="Hi there!"),
-    ],
-    ttl_seconds=3600  # 1 hour expiration
-)
+## Configuration Reference
 
-# 2. Messages are automatically indexed in long-term memory
-# 3. After 1 hour, working memory expires and is deleted
-# 4. Later, when you request the session:
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SUMMARIZATION_THRESHOLD` | `0.7` | Fraction of context window that triggers summarization |
+| `GENERATION_MODEL` | `gpt-4o-mini` | Model for summarization |
+| `PROGRESSIVE_SUMMARIZATION_PROMPT` | (built-in) | Custom summarization prompt |
+| `LONG_TERM_MEMORY` | `true` | Enable long-term memory features |
+| `INDEX_ALL_MESSAGES_IN_LONG_TERM_MEMORY` | `false` | Index messages for reconstruction |
 
-# GET /v1/working-memory/chat_123
-# System automatically reconstructs from long-term memory
-# Returns working memory with original messages
-```
-
-This feature is perfect for applications that want to:
-- Reduce Redis memory usage with TTL expiration
-- Maintain conversation continuity across sessions
-- Automatically handle session restoration without manual intervention
-
-## Configuration
-
-Working memory behavior can be configured through environment variables:
-
-```bash
-# Working memory settings
-WINDOW_SIZE=50                    # Message window before summarization
-LONG_TERM_MEMORY=true            # Enable long-term memory features
-
-# Long-term memory settings
-ENABLE_DISCRETE_MEMORY_EXTRACTION=true  # Extract memories from messages
-GENERATION_MODEL=gpt-4o-mini     # Model for summarization/extraction
-```
-
-For complete configuration options, see the [Configuration Guide](configuration.md).
+See the [Configuration Guide](configuration.md) for all options.
 
 ## Related Documentation
 
-- [Long-term Memory](long-term-memory.md) - Persistent, cross-session memory storage
-- [Memory Integration Patterns](memory-integration-patterns.md) - How to integrate memory with your applications
-- [Memory Extraction Strategies](memory-extraction-strategies.md) - Different approaches to memory extraction and storage
-- [LLM Providers](llm-providers.md) - Configure OpenAI, Anthropic, AWS Bedrock, Ollama, and more
+- [Long-term Memory](long-term-memory.md) — Persistent, cross-session storage
+- [Memory Integration Patterns](memory-integration-patterns.md) — How to integrate memory
+- [Memory Extraction Strategies](memory-extraction-strategies.md) — Automatic memory extraction
+- [LLM Providers](llm-providers.md) — Configure OpenAI, Anthropic, Bedrock, Ollama
