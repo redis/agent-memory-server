@@ -704,3 +704,27 @@ class TestWorkingMemory:
         # Clean up
         await async_redis_client.delete(key)
         monkeypatch.setattr(config.settings, "working_memory_migration_complete", False)
+
+    @pytest.mark.asyncio
+    async def test_set_working_memory_indexes_session(self, async_redis_client):
+        """Test that set_working_memory adds session to the sessions sorted set."""
+        session_id = "test_session_index_123"
+        namespace = "test_namespace_index"
+
+        # Create working memory
+        working_mem = WorkingMemory(
+            session_id=session_id,
+            namespace=namespace,
+            messages=[],
+            memories=[],
+        )
+
+        # Save working memory
+        await set_working_memory(working_mem, redis_client=async_redis_client)
+
+        # Verify session is in sorted set
+        sessions_key = Keys.sessions_key(namespace=namespace)
+        score = await async_redis_client.zscore(sessions_key, session_id)
+
+        assert score is not None, "Session should be indexed in sorted set"
+        assert score > 0, "Score should be a positive timestamp"
