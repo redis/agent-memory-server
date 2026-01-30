@@ -459,10 +459,7 @@ async def set_working_memory(
 
         # Index session in sorted set for listing
         sessions_key = Keys.sessions_key(namespace=working_memory.namespace)
-        await redis_client.zadd(
-            sessions_key,
-            {working_memory.session_id: time.time()}
-        )
+        await redis_client.zadd(sessions_key, {working_memory.session_id: time.time()})
 
         if working_memory.ttl_seconds is not None:
             # Set TTL separately for JSON keys

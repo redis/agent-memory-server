@@ -731,7 +731,9 @@ class TestWorkingMemory:
         assert score > 0, "Score should be a positive timestamp"
 
     @pytest.mark.asyncio
-    async def test_delete_working_memory_removes_session_from_index(self, async_redis_client):
+    async def test_delete_working_memory_removes_session_from_index(
+        self, async_redis_client
+    ):
         """Test that delete_working_memory removes session from the sessions sorted set."""
         session_id = "test_session_to_delete"
         namespace = "test_namespace_delete"
@@ -751,7 +753,9 @@ class TestWorkingMemory:
         assert score_before is not None, "Session should be indexed before delete"
 
         # Delete working memory
-        await delete_working_memory(session_id, namespace=namespace, redis_client=async_redis_client)
+        await delete_working_memory(
+            session_id, namespace=namespace, redis_client=async_redis_client
+        )
 
         # Verify session is removed from index
         score_after = await async_redis_client.zscore(sessions_key, session_id)
@@ -782,4 +786,6 @@ class TestWorkingMemory:
         )
 
         assert total == 3, f"Expected 3 sessions, got {total}"
-        assert set(listed_sessions) == set(session_ids), f"Expected {session_ids}, got {listed_sessions}"
+        assert set(listed_sessions) == set(
+            session_ids
+        ), f"Expected {session_ids}, got {listed_sessions}"
