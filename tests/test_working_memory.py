@@ -10,6 +10,7 @@ from agent_memory_server.utils.keys import Keys
 from agent_memory_server.working_memory import (
     delete_working_memory,
     get_working_memory,
+    list_sessions,
     set_working_memory,
 )
 
@@ -704,3 +705,87 @@ class TestWorkingMemory:
         # Clean up
         await async_redis_client.delete(key)
         monkeypatch.setattr(config.settings, "working_memory_migration_complete", False)
+
+    @pytest.mark.asyncio
+    async def test_set_working_memory_indexes_session(self, async_redis_client):
+        """Test that set_working_memory adds session to the sessions sorted set."""
+        session_id = "test_session_index_123"
+        namespace = "test_namespace_index"
+
+        # Create working memory
+        working_mem = WorkingMemory(
+            session_id=session_id,
+            namespace=namespace,
+            messages=[],
+            memories=[],
+        )
+
+        # Save working memory
+        await set_working_memory(working_mem, redis_client=async_redis_client)
+
+        # Verify session is in sorted set
+        sessions_key = Keys.sessions_key(namespace=namespace)
+        score = await async_redis_client.zscore(sessions_key, session_id)
+
+        assert score is not None, "Session should be indexed in sorted set"
+        assert score > 0, "Score should be a positive timestamp"
+
+    @pytest.mark.asyncio
+    async def test_delete_working_memory_removes_session_from_index(
+        self, async_redis_client
+    ):
+        """Test that delete_working_memory removes session from the sessions sorted set."""
+        session_id = "test_session_to_delete"
+        namespace = "test_namespace_delete"
+
+        # Create and save working memory
+        working_mem = WorkingMemory(
+            session_id=session_id,
+            namespace=namespace,
+            messages=[],
+            memories=[],
+        )
+        await set_working_memory(working_mem, redis_client=async_redis_client)
+
+        # Verify session is indexed
+        sessions_key = Keys.sessions_key(namespace=namespace)
+        score_before = await async_redis_client.zscore(sessions_key, session_id)
+        assert score_before is not None, "Session should be indexed before delete"
+
+        # Delete working memory
+        await delete_working_memory(
+            session_id, namespace=namespace, redis_client=async_redis_client
+        )
+
+        # Verify session is removed from index
+        score_after = await async_redis_client.zscore(sessions_key, session_id)
+        assert score_after is None, "Session should be removed from index after delete"
+
+    @pytest.mark.asyncio
+    async def test_list_sessions_returns_indexed_sessions(self, async_redis_client):
+        """Test that list_sessions returns sessions that were indexed by set_working_memory."""
+        namespace = "list_test_namespace"
+        session_ids = ["session_a", "session_b", "session_c"]
+
+        # Create multiple sessions
+        for session_id in session_ids:
+            working_mem = WorkingMemory(
+                session_id=session_id,
+                namespace=namespace,
+                messages=[],
+                memories=[],
+            )
+            await set_working_memory(working_mem, redis_client=async_redis_client)
+
+        # List sessions
+        total, listed_sessions = await list_sessions(
+            redis=async_redis_client,
+            namespace=namespace,
+            limit=10,
+            offset=0,
+        )
+
+        assert total == 3, f"Expected 3 sessions, got {total}"
+        assert set(listed_sessions) == set(
+            session_ids
+        ), f"Expected {session_ids}, got {listed_sessions}"

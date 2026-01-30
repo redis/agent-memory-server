@@ -457,6 +457,10 @@ async def set_working_memory(
         # Use Redis native JSON storage
         await redis_client.json().set(key, "$", data)
 
+        # Index session in sorted set for listing
+        sessions_key = Keys.sessions_key(namespace=working_memory.namespace)
+        await redis_client.zadd(sessions_key, {working_memory.session_id: time.time()})
+
         if working_memory.ttl_seconds is not None:
             # Set TTL separately for JSON keys
             await redis_client.expire(key, working_memory.ttl_seconds)
@@ -498,6 +502,9 @@ async def delete_working_memory(
 
     try:
         await redis_client.delete(key)
+        # Remove session from sorted set index
+        sessions_key = Keys.sessions_key(namespace=namespace)
+        await redis_client.zrem(sessions_key, session_id)
         logger.info(f"Deleted working memory for session {session_id}")
 
     except Exception as e:
