@@ -217,6 +217,7 @@ class TestWorkingMemoryStorageWithStrategy:
         ) as mock_get_redis:
             mock_redis = MagicMock()
             mock_redis.expire = AsyncMock()
+            mock_redis.zadd = AsyncMock()  # For session indexing
             # json() is synchronous but returns an object with async methods
             mock_json = MagicMock()
             mock_json.set = AsyncMock()
