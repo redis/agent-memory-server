@@ -5,10 +5,38 @@ on:
     branches: [main]
     tags:
       - 'client/v*.*.*'
+      - 'client-js/v*.*.*'
   pull_request:
     branches: [main]
 
 jobs:
+  test-js:
+    name: Test (Node.js ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["18", "20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        working-directory: agent-memory-client/agent-memory-client-js
+        run: npm ci
+
+      - name: Run tests with coverage
+        working-directory: agent-memory-client/agent-memory-client-js
+        run: npm run test:coverage -- --run
+
+      - name: Build
+        working-directory: agent-memory-client/agent-memory-client-js
+        run: npm run build
+
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -102,9 +130,44 @@ jobs:
         with:
           packages-dir: agent-memory-client/dist/
 
+  publish-npm:
+    name: Publish to npm
+    needs: test-js
+    if: startsWith(github.ref, 'refs/tags/client-js/') && !contains(github.ref, '-test')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        working-directory: agent-memory-client/agent-memory-client-js
+        run: npm ci
+
+      - name: Build
+        working-directory: agent-memory-client/agent-memory-client-js
+        run: npm run build
+
+      - name: Publish to npm
+        working-directory: agent-memory-client/agent-memory-client-js
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
 # Tag Format Guide:
+# Python Client:
 # - For TestPyPI (testing): client/v1.0.0-test
 # - For PyPI (production): client/v1.0.0
+#
+# JavaScript/TypeScript Client:
+# - For npm (production): client-js/v1.0.0
 #
 # Use the script: python scripts/tag_and_push_client.py --test (for TestPyPI)
 #                 python scripts/tag_and_push_client.py (for PyPI)
@@ -115,6 +178,7 @@ jobs:
 # To do so, uncomment the sections below and add these secrets to your repository:
 # - TEST_PYPI_API_TOKEN (for TestPyPI)
 # - PYPI_API_TOKEN (for PyPI)
+# - NPM_TOKEN (for npm)
 #
 # For TestPyPI job, replace the publish step with:
 #       - name: Publish package to TestPyPI
