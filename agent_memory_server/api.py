@@ -947,7 +947,14 @@ async def memory_prompt(
     redis = await get_redis_conn()
     _messages = []
 
-    logger.debug(f"Memory prompt params: {params}")
+    # Debug: Log input parameters
+    logger.debug(
+        f"[memory_prompt] INPUT - query: {params.query!r}, "
+        f"session: {params.session.session_id if params.session else None}, "
+        f"namespace: {params.session.namespace if params.session else None}, "
+        f"user_id: {params.session.user_id if params.session else None}, "
+        f"long_term_search: {params.long_term_search is not None}"
+    )
 
     if params.session:
         # Use token limit for memory prompt - model info is required now
@@ -1087,6 +1094,22 @@ async def memory_prompt(
         base.UserMessage(
             content=TextContent(type="text", text=params.query),
         )
+    )
+
+    # Debug: Log output summary
+    message_summary = []
+    for msg in _messages:
+        role = msg.__class__.__name__.replace("Message", "").lower()
+        content_text = (
+            msg.content.text if hasattr(msg.content, "text") else str(msg.content)
+        )
+        # Truncate long content for logging
+        preview = (
+            content_text[:100] + "..." if len(content_text) > 100 else content_text
+        )
+        message_summary.append(f"{role}: {preview!r}")
+    logger.debug(
+        f"[memory_prompt] OUTPUT - {len(_messages)} messages: {message_summary}"
     )
 
     return MemoryPromptResponse(messages=_messages)
