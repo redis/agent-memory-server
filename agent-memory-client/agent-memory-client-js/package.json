@@ -1,5 +1,5 @@
 {
-  "name": "@redis/agent-memory-client",
+  "name": "agent-memory-client",
   "version": "0.2.0",
   "description": "JavaScript/TypeScript client for the Agent Memory Server REST API",
   "main": "dist/index.js",
