@@ -154,6 +154,9 @@ async def should_extract_session_thread(session_id: str, redis: Redis) -> bool:
     This implements a debounce mechanism to avoid constantly re-extracting memories
     from the same conversation thread as new messages arrive.
 
+    Note: This only checks if extraction should proceed. Call set_extraction_debounce()
+    after successful extraction to set the debounce key.
+
     Args:
         session_id: The session ID to check
         redis: Redis client
@@ -167,12 +170,7 @@ async def should_extract_session_thread(session_id: str, redis: Redis) -> bool:
     # Check if debounce key exists
     exists = await redis.exists(debounce_key)
     if not exists:
-        # Set debounce key with TTL to prevent extraction for the next period
-        debounce_ttl = settings.extraction_debounce_seconds
-        await redis.setex(debounce_key, debounce_ttl, "extracting")
-        logger.info(
-            f"Starting thread-aware extraction for session {session_id} (debounce set for {debounce_ttl}s)"
-        )
+        logger.info(f"Extraction allowed for session {session_id} (no debounce key)")
         return True
 
     remaining_ttl = await redis.ttl(debounce_key)
@@ -180,6 +178,23 @@ async def should_extract_session_thread(session_id: str, redis: Redis) -> bool:
         f"Skipping thread-aware extraction for session {session_id} (debounced, {remaining_ttl}s remaining)"
     )
     return False
+
+
+async def set_extraction_debounce(session_id: str, redis: Redis) -> None:
+    """
+    Set the debounce key after successful extraction.
+
+    This should be called after extraction completes successfully to prevent
+    re-extraction for the debounce period.
+
+    Args:
+        session_id: The session ID to set debounce for
+        redis: Redis client
+    """
+    debounce_key = f"{EXTRACTION_DEBOUNCE_KEY_PREFIX}:{session_id}"
+    debounce_ttl = settings.extraction_debounce_seconds
+    await redis.setex(debounce_key, debounce_ttl, "extracted")
+    logger.info(f"Set extraction debounce for session {session_id} ({debounce_ttl}s)")
 
 
 async def extract_memories_from_session_thread(
@@ -1294,21 +1309,32 @@ async def promote_working_memory_to_long_term(
     ]
 
     extracted_memories = []
+    extraction_ran_successfully = False
     if settings.enable_discrete_memory_extraction and unextracted_messages:
         # Check if we should run thread-aware extraction (debounced)
         if await should_extract_session_thread(session_id, redis):
             logger.info(
                 f"Running thread-aware extraction from {len(current_working_memory.messages)} total messages in session {session_id}"
             )
-            extracted_memories = await extract_memories_from_session_thread(
-                session_id=session_id,
-                namespace=namespace,
-                user_id=user_id,
-            )
+            try:
+                extracted_memories = await extract_memories_from_session_thread(
+                    session_id=session_id,
+                    namespace=namespace,
+                    user_id=user_id,
+                )
 
-            # Mark ALL messages in the session as extracted since we processed the full thread
-            for message in current_working_memory.messages:
-                message.discrete_memory_extracted = "t"
+                # Mark ALL messages in the session as extracted since we processed the full thread
+                for message in current_working_memory.messages:
+                    message.discrete_memory_extracted = "t"
+
+                # Only set debounce after successful extraction
+                await set_extraction_debounce(session_id, redis)
+                extraction_ran_successfully = True
+            except Exception as e:
+                logger.error(
+                    f"Error extracting memories from session thread {session_id}: {e}"
+                )
+                # Don't set debounce on failure - allow retry on next request
 
         else:
             logger.info(f"Skipping extraction for session {session_id} - debounced")
@@ -1435,12 +1461,8 @@ async def promote_working_memory_to_long_term(
         count_persisted_messages = 0
         updated_messages = current_working_memory.messages
 
-    # Check if any messages were marked as extracted
-    messages_marked_extracted = (
-        settings.enable_discrete_memory_extraction
-        and unextracted_messages
-        and await should_extract_session_thread(session_id, redis)
-    )
+    # Check if any messages were marked as extracted (based on whether extraction ran)
+    messages_marked_extracted = extraction_ran_successfully
 
     # Update working memory with the new persisted_at timestamps and extracted memories
     if (

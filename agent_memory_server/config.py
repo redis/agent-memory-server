@@ -445,7 +445,7 @@ class Settings(BaseSettings):
     # Long-term memory extraction settings
     # Debounce period (in seconds) for thread-aware memory extraction.
     # Prevents constant re-extraction as new messages arrive in a conversation.
-    extraction_debounce_seconds: int = 300  # 5 minutes
+    extraction_debounce_seconds: int = 30
 
     # Query optimization settings
     query_optimization_prompt_template: str = """Transform this natural language query into an optimized version for semantic search. The goal is to make it more effective for finding semantically similar content while preserving the original intent.
