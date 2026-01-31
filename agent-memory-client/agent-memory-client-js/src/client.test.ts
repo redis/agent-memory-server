@@ -4,6 +4,7 @@ import {
   MemoryClientError,
   MemoryNotFoundError,
   MemoryServerError,
+  MemoryValidationError,
 } from "./errors";
 
 // Mock fetch helper
@@ -165,6 +166,26 @@ describe("MemoryAPIClient", () => {
       await expect(client.healthCheck()).rejects.toThrow("Bad request");
     });
 
+    it("should handle non-JSON error response without body already read error", async () => {
+      // This tests the fix for "Body has already been read" error
+      // The client should read text first, then try to parse as JSON
+      client["fetchFn"] = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        text: vi.fn().mockResolvedValue("Internal Server Error"),
+      });
+      await expect(client.healthCheck()).rejects.toThrow("Internal Server Error");
+    });
+
+    it("should handle empty error response body", async () => {
+      client["fetchFn"] = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        text: vi.fn().mockResolvedValue(""),
+      });
+      await expect(client.healthCheck()).rejects.toThrow("HTTP 502");
+    });
+
     it("should handle timeout", async () => {
       const abortError = new Error("Aborted");
       abortError.name = "AbortError";
@@ -174,6 +195,38 @@ describe("MemoryAPIClient", () => {
         fetch: vi.fn().mockRejectedValue(abortError),
       });
       await expect(client.healthCheck()).rejects.toThrow("timeout");
+    });
+
+    it("should abort request when timeout expires", async () => {
+      // Use real timers but a very short timeout to actually trigger the abort callback
+      vi.useFakeTimers();
+
+      // Create a fetch that returns a promise we control
+      let rejectFetch: (error: Error) => void;
+      const fetchPromise = new Promise<Response>((_, reject) => {
+        rejectFetch = reject;
+      });
+
+      const client = new MemoryAPIClient({
+        baseUrl: "http://localhost:8000",
+        timeout: 100,
+        fetch: vi.fn().mockReturnValue(fetchPromise),
+      });
+
+      const healthCheckPromise = client.healthCheck();
+
+      // Advance timers to trigger the setTimeout callback
+      vi.advanceTimersByTime(100);
+
+      // The abort signal should now be triggered, causing the fetch to abort
+      // Simulate the AbortError that fetch throws when aborted
+      const abortError = new Error("The operation was aborted");
+      abortError.name = "AbortError";
+      rejectFetch!(abortError);
+
+      await expect(healthCheckPromise).rejects.toThrow("timeout");
+
+      vi.useRealTimers();
     });
 
     it("should handle network errors", async () => {
@@ -191,7 +244,7 @@ describe("MemoryAPIClient", () => {
       client["fetchFn"] = vi.fn().mockResolvedValue({
         ok: false,
         status: 500,
-        json: vi.fn().mockResolvedValue({ message: "Server message error" }),
+        text: vi.fn().mockResolvedValue(JSON.stringify({ message: "Server message error" })),
       });
       await expect(client.healthCheck()).rejects.toThrow("Server message error");
     });
@@ -200,7 +253,7 @@ describe("MemoryAPIClient", () => {
       client["fetchFn"] = vi.fn().mockResolvedValue({
         ok: false,
         status: 500,
-        json: vi.fn().mockResolvedValue({ code: 500, type: "error" }),
+        text: vi.fn().mockResolvedValue(JSON.stringify({ code: 500, type: "error" })),
       });
       await expect(client.healthCheck()).rejects.toThrow('{"code":500,"type":"error"}');
     });
@@ -209,7 +262,6 @@ describe("MemoryAPIClient", () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 500,
-        json: vi.fn().mockRejectedValue(new Error("Invalid JSON")),
         text: vi.fn().mockResolvedValue("Internal Server Error"),
       });
       client["fetchFn"] = mockFetch;
@@ -1110,6 +1162,208 @@ describe("MemoryAPIClient", () => {
       it("should re-throw non-404 errors", async () => {
         client["fetchFn"] = createErrorFetch(500, { detail: "Server error" });
         await expect(client.getTask("test")).rejects.toThrow(MemoryServerError);
+      });
+    });
+  });
+
+  describe("Utility Methods", () => {
+    describe("close", () => {
+      it("should be callable without error", () => {
+        expect(() => client.close()).not.toThrow();
+      });
+    });
+
+    describe("validateMemoryRecord", () => {
+      it("should pass for valid memory record", () => {
+        expect(() =>
+          client.validateMemoryRecord({ id: "01HN0000000000000000000000", text: "Valid text" })
+        ).not.toThrow();
+      });
+
+      it("should throw for empty text", () => {
+        expect(() => client.validateMemoryRecord({ text: "" })).toThrow(
+          "Memory text cannot be empty"
+        );
+      });
+
+      it("should throw for whitespace-only text", () => {
+        expect(() => client.validateMemoryRecord({ text: "   " })).toThrow(
+          "Memory text cannot be empty"
+        );
+      });
+
+      it("should throw for invalid memory type", () => {
+        expect(() =>
+          client.validateMemoryRecord({ text: "test", memory_type: "invalid" as "semantic" })
+        ).toThrow("Invalid memory type: invalid");
+      });
+
+      it("should accept valid memory types", () => {
+        expect(() =>
+          client.validateMemoryRecord({ text: "test", memory_type: "semantic" })
+        ).not.toThrow();
+        expect(() =>
+          client.validateMemoryRecord({ text: "test", memory_type: "episodic" })
+        ).not.toThrow();
+        expect(() =>
+          client.validateMemoryRecord({ text: "test", memory_type: "message" })
+        ).not.toThrow();
+      });
+
+      it("should throw for invalid ULID format", () => {
+        expect(() =>
+          client.validateMemoryRecord({ id: "invalid-id", text: "test" })
+        ).toThrow("Invalid ID format: invalid-id");
+      });
+
+      it("should accept valid ULID format", () => {
+        expect(() =>
+          client.validateMemoryRecord({ id: "01HN0000000000000000000000", text: "test" })
+        ).not.toThrow();
+      });
+    });
+
+    describe("validateSearchFilters", () => {
+      it("should pass for valid filters", () => {
+        expect(() =>
+          client.validateSearchFilters({ limit: 10, offset: 0, distanceThreshold: 0.5 })
+        ).not.toThrow();
+      });
+
+      it("should throw for non-positive limit", () => {
+        expect(() => client.validateSearchFilters({ limit: 0 })).toThrow(
+          "Limit must be a positive integer"
+        );
+        expect(() => client.validateSearchFilters({ limit: -1 })).toThrow(
+          "Limit must be a positive integer"
+        );
+      });
+
+      it("should throw for negative offset", () => {
+        expect(() => client.validateSearchFilters({ offset: -1 })).toThrow(
+          "Offset must be a non-negative integer"
+        );
+      });
+
+      it("should allow zero offset", () => {
+        expect(() => client.validateSearchFilters({ offset: 0 })).not.toThrow();
+      });
+
+      it("should throw for negative distance threshold", () => {
+        expect(() => client.validateSearchFilters({ distanceThreshold: -0.5 })).toThrow(
+          "Distance threshold must be a non-negative number"
+        );
+      });
+
+      it("should allow zero distance threshold", () => {
+        expect(() => client.validateSearchFilters({ distanceThreshold: 0 })).not.toThrow();
+      });
+    });
+
+    describe("bulkCreateLongTermMemories", () => {
+      it("should process multiple batches", async () => {
+        mockFetch = createMockFetch({ status: "ok" });
+        client["fetchFn"] = mockFetch;
+
+        const batches = [
+          [{ text: "Memory 1" }, { text: "Memory 2" }],
+          [{ text: "Memory 3" }],
+        ];
+
+        const results = await client.bulkCreateLongTermMemories(batches, {
+          delayBetweenBatches: 0,
+        });
+
+        expect(results).toHaveLength(2);
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+      });
+
+      it("should split large batches by batchSize", async () => {
+        mockFetch = createMockFetch({ status: "ok" });
+        client["fetchFn"] = mockFetch;
+
+        // Create a batch larger than batchSize
+        const largeBatch = Array.from({ length: 5 }, (_, i) => ({
+          text: `Memory ${i}`,
+        }));
+
+        const results = await client.bulkCreateLongTermMemories([[...largeBatch]], {
+          batchSize: 2,
+          delayBetweenBatches: 0,
+        });
+
+        // Should split into 3 requests: 2 + 2 + 1
+        expect(results).toHaveLength(3);
+        expect(mockFetch).toHaveBeenCalledTimes(3);
+      });
+
+      it("should respect delay between batches", async () => {
+        mockFetch = createMockFetch({ status: "ok" });
+        client["fetchFn"] = mockFetch;
+
+        const batches = [[{ text: "Memory 1" }], [{ text: "Memory 2" }]];
+
+        const start = Date.now();
+        await client.bulkCreateLongTermMemories(batches, {
+          delayBetweenBatches: 50,
+        });
+        const elapsed = Date.now() - start;
+
+        // Should have at least 50ms delay (between 2 batches = 1 delay)
+        expect(elapsed).toBeGreaterThanOrEqual(45); // Allow some tolerance
+      });
+    });
+
+    describe("searchAllLongTermMemories", () => {
+      it("should iterate through all results", async () => {
+        const page1 = {
+          memories: [
+            { id: "1", text: "Memory 1" },
+            { id: "2", text: "Memory 2" },
+          ],
+          total: 3,
+        };
+        const page2 = {
+          memories: [{ id: "3", text: "Memory 3" }],
+          total: 3,
+        };
+
+        let callCount = 0;
+        client["fetchFn"] = vi.fn().mockImplementation(() => {
+          callCount++;
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(callCount === 1 ? page1 : page2),
+          });
+        });
+
+        const results: { id?: string; text: string }[] = [];
+        for await (const memory of client.searchAllLongTermMemories({
+          text: "test",
+          batchSize: 2,
+        })) {
+          results.push(memory);
+        }
+
+        expect(results).toHaveLength(3);
+        expect(results[0].id).toBe("1");
+        expect(results[2].id).toBe("3");
+      });
+
+      it("should stop when no more results", async () => {
+        client["fetchFn"] = vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ memories: [], total: 0 }),
+        });
+
+        const results: { id?: string; text: string }[] = [];
+        for await (const memory of client.searchAllLongTermMemories({ text: "test" })) {
+          results.push(memory);
+        }
+
+        expect(results).toHaveLength(0);
       });
     });
   });

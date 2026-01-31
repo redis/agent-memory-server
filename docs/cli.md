@@ -40,6 +40,15 @@ agent-memory api --port 8080 --reload --task-backend asyncio
 agent-memory api --port 8080
 ```
 
+!!! warning "Limitations of `--task-backend=asyncio`"
+    The `asyncio` backend is suitable for development and simple use cases, but has important limitations:
+
+    - **Periodic tasks don't run**: Scheduled maintenance tasks like memory compaction, periodic forgetting, and summary view refresh only execute when a Docket worker is running. These tasks use Docket's `Perpetual` scheduler.
+    - **No task persistence**: If the server restarts, pending background tasks are lost.
+    - **No distributed processing**: All tasks run in the API process; you cannot scale workers independently.
+
+    For production deployments, use the default `docket` backend with a separate `agent-memory task-worker` process.
+
 ### `mcp`
 
 Starts the Model Context Protocol (MCP) server.

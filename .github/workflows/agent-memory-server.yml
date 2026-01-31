@@ -125,7 +125,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and push Docker image (standard)
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -137,6 +137,21 @@ jobs:
             redislabs/agent-memory-server:latest
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
             ghcr.io/${{ github.repository }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Docker image (standalone)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.standalone
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            redislabs/agent-memory-server:${{ steps.version.outputs.version }}-standalone
+            redislabs/agent-memory-server:standalone
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}-standalone
+            ghcr.io/${{ github.repository }}:standalone
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -154,11 +169,23 @@ jobs:
             pip install agent-memory-server==${{ steps.version.outputs.version }}
             ```
 
-            **Docker:**
+            **Docker (standard - requires external Redis):**
             ```bash
             docker pull redislabs/agent-memory-server:${{ steps.version.outputs.version }}
             # or
             docker pull ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
+            ```
+
+            **Docker (standalone - all-in-one with embedded Redis):**
+            ```bash
+            docker pull redislabs/agent-memory-server:${{ steps.version.outputs.version }}-standalone
+            # or
+            docker pull ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}-standalone
+
+            # Run with persistent storage:
+            docker run -d -v ~/.agent-memory/data:/data -p 8000:8000 \
+              -e OPENAI_API_KEY=your-key \
+              redislabs/agent-memory-server:${{ steps.version.outputs.version }}-standalone
             ```
           draft: false
           prerelease: false
@@ -201,7 +228,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and push Docker image (standard)
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -213,6 +240,21 @@ jobs:
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
             ${{ inputs.tag_latest && 'redislabs/agent-memory-server:latest' || '' }}
             ${{ inputs.tag_latest && format('ghcr.io/{0}:latest', github.repository) || '' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Docker image (standalone)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.standalone
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            redislabs/agent-memory-server:${{ steps.version.outputs.version }}-standalone
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}-standalone
+            ${{ inputs.tag_latest && 'redislabs/agent-memory-server:standalone' || '' }}
+            ${{ inputs.tag_latest && format('ghcr.io/{0}:standalone', github.repository) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

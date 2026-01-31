@@ -1,0 +1,130 @@
+# ============================================
+# STANDALONE ALL-IN-ONE IMAGE
+# Contains Redis 8 + Agent Memory Server + Task Worker
+# ============================================
+#
+# This Dockerfile creates a self-contained image that runs:
+# - Redis 8 server with AOF persistence
+# - Agent Memory API server
+# - Docket task worker for background tasks
+#
+# Usage:
+#   docker run -d \
+#     -v ~/.agent-memory/data:/data \
+#     -p 8000:8000 \
+#     -e OPENAI_API_KEY=your-key \
+#     -e DISABLE_AUTH=true \
+#     redislabs/agent-memory-server:standalone
+#
+# ============================================
+# BUILDER STAGE - Build Python application
+# ============================================
+FROM python:3.12-slim-bookworm AS builder
+
+WORKDIR /app
+
+# Copy uv binary from official image
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+
+# Install build tools (only needed for compilation)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment explicitly
+RUN uv venv .venv
+
+# Copy dependency files first for better layer caching
+COPY pyproject.toml uv.lock ./
+COPY agent-memory-client ./agent-memory-client
+
+# Install dependencies into the venv (without the project)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    VIRTUAL_ENV=/app/.venv uv sync --frozen --no-install-project --no-dev
+
+# Copy source code
+COPY . /app
+
+# Install the client and project (not editable, so they work in runtime image)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    . .venv/bin/activate && \
+    uv pip install --no-deps ./agent-memory-client && \
+    uv pip install --no-deps .
+
+# ============================================
+# RUNTIME STAGE - Redis 8 + Python app
+# ============================================
+FROM redis:8.4 AS standalone
+
+# OCI labels
+LABEL org.opencontainers.image.title="Redis Agent Memory Server (Standalone)"
+LABEL org.opencontainers.image.description="All-in-one memory server with embedded Redis 8. Includes API server and background task worker."
+LABEL org.opencontainers.image.url="https://github.com/redis/agent-memory-server"
+LABEL org.opencontainers.image.source="https://github.com/redis/agent-memory-server"
+LABEL org.opencontainers.image.documentation="https://redis.github.io/agent-memory-server/"
+LABEL org.opencontainers.image.vendor="Redis"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+# Install supervisor and curl (Python comes from builder stage)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    supervisor \
+    curl \
+    libexpat1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory and user
+RUN groupadd -r agentmemory && useradd -r -g agentmemory agentmemory
+
+WORKDIR /app
+
+# Copy Python installation from builder (including shared libraries)
+COPY --from=builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
+COPY --from=builder /usr/local/lib/libpython3.12.so* /usr/local/lib/
+COPY --from=builder /usr/local/bin/python3.12 /usr/local/bin/python3.12
+COPY --from=builder /usr/local/bin/python3 /usr/local/bin/python3
+
+# Update library cache
+RUN ldconfig
+
+# Copy the virtual environment from builder
+COPY --from=builder /app/.venv /app/.venv
+
+# Create symlink for python in venv
+RUN ln -sf /usr/local/bin/python3.12 /app/.venv/bin/python3 && \
+    ln -sf /usr/local/bin/python3.12 /app/.venv/bin/python
+
+# Copy supervisor configuration
+COPY docker/standalone/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Copy entrypoint script
+COPY docker/standalone/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Set up Python path
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
+
+# Redis configuration for persistence
+ENV REDIS_URL=redis://localhost:6379
+
+# Default environment - auth disabled for simple local usage
+# Override in production!
+ENV DISABLE_AUTH=true
+
+# Expose API port (Redis runs internally on 6379)
+EXPOSE 8000
+
+# Health check for the API
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/v1/health || exit 1
+
+# Data volume for Redis persistence
+VOLUME ["/data"]
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

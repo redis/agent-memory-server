@@ -8,6 +8,7 @@ import {
   MemoryClientError,
   MemoryNotFoundError,
   MemoryServerError,
+  MemoryValidationError,
 } from "./errors";
 import {
   SessionId,
@@ -41,7 +42,7 @@ import {
   WorkingMemoryResponse,
 } from "./models";
 
-const VERSION = "0.1.0";
+const VERSION = "0.3.1";
 
 /**
  * Configuration for the Memory API Client
@@ -194,12 +195,14 @@ export class MemoryAPIClient {
    */
   private async handleHttpError(response: Response): Promise<never> {
     let message: string;
+    // Read body as text first to avoid "Body has already been read" errors
+    const text = await response.text();
     try {
-      const body = (await response.json()) as Record<string, unknown>;
+      const body = JSON.parse(text) as Record<string, unknown>;
       message =
         (body.detail as string) || (body.message as string) || JSON.stringify(body);
     } catch {
-      message = await response.text();
+      message = text || `HTTP ${response.status}`;
     }
 
     if (response.status === 404) {
@@ -660,5 +663,142 @@ export class MemoryAPIClient {
       }
       throw error;
     }
+  }
+
+  // ==================== Utility Methods ====================
+
+  /**
+   * Close the client and release any resources.
+   * This is a no-op for the fetch-based client but provided for API consistency.
+   */
+  close(): void {
+    // No-op for fetch-based client
+    // Provided for API compatibility with other clients
+  }
+
+  /**
+   * Validate a memory record before sending to the server.
+   * @throws MemoryValidationError if validation fails
+   */
+  validateMemoryRecord(memory: MemoryRecord): void {
+    if (!memory.text || !memory.text.trim()) {
+      throw new MemoryValidationError("Memory text cannot be empty");
+    }
+
+    const validMemoryTypes = ["episodic", "semantic", "message"];
+    if (memory.memory_type && !validMemoryTypes.includes(memory.memory_type)) {
+      throw new MemoryValidationError(`Invalid memory type: ${memory.memory_type}`);
+    }
+
+    if (memory.id && !this.isValidUlid(memory.id)) {
+      throw new MemoryValidationError(`Invalid ID format: ${memory.id}`);
+    }
+  }
+
+  /**
+   * Validate search filter parameters before API call.
+   * @throws MemoryValidationError if validation fails
+   */
+  validateSearchFilters(filters: {
+    limit?: number;
+    offset?: number;
+    distanceThreshold?: number;
+  }): void {
+    if (filters.limit !== undefined && (typeof filters.limit !== "number" || filters.limit <= 0)) {
+      throw new MemoryValidationError("Limit must be a positive integer");
+    }
+
+    if (filters.offset !== undefined && (typeof filters.offset !== "number" || filters.offset < 0)) {
+      throw new MemoryValidationError("Offset must be a non-negative integer");
+    }
+
+    if (
+      filters.distanceThreshold !== undefined &&
+      (typeof filters.distanceThreshold !== "number" || filters.distanceThreshold < 0)
+    ) {
+      throw new MemoryValidationError("Distance threshold must be a non-negative number");
+    }
+  }
+
+  /**
+   * Check if a string is a valid ULID.
+   */
+  private isValidUlid(id: string): boolean {
+    // ULID: 26 characters, Crockford Base32
+    const ulidRegex = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/i;
+    return ulidRegex.test(id);
+  }
+
+  /**
+   * Bulk create long-term memories with rate limiting.
+   * Useful for importing large datasets.
+   */
+  async bulkCreateLongTermMemories(
+    memoryBatches: MemoryRecord[][],
+    options: {
+      batchSize?: number;
+      delayBetweenBatches?: number;
+      namespace?: string;
+    } = {}
+  ): Promise<AckResponse[]> {
+    const { batchSize = 50, delayBetweenBatches = 100, namespace } = options;
+    const results: AckResponse[] = [];
+
+    for (const batch of memoryBatches) {
+      // Split large batches into smaller chunks
+      for (let i = 0; i < batch.length; i += batchSize) {
+        const chunk = batch.slice(i, i + batchSize);
+        const response = await this.createLongTermMemory(chunk, { namespace });
+        results.push(response);
+
+        // Rate limiting delay
+        if (delayBetweenBatches > 0) {
+          await this.sleep(delayBetweenBatches);
+        }
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Auto-paginating search that yields all matching long-term memory results.
+   * Automatically handles pagination to retrieve all results.
+   */
+  async *searchAllLongTermMemories(
+    options: Omit<SearchOptions, "limit" | "offset"> & { batchSize?: number }
+  ): AsyncGenerator<MemoryRecord, void, undefined> {
+    const { batchSize = 50, ...searchOptions } = options;
+    let offset = 0;
+
+    while (true) {
+      const results = await this.searchLongTermMemory({
+        ...searchOptions,
+        limit: batchSize,
+        offset,
+      });
+
+      if (!results.memories || results.memories.length === 0) {
+        break;
+      }
+
+      for (const memory of results.memories) {
+        yield memory;
+      }
+
+      // If we got fewer results than batchSize, we've reached the end
+      if (results.memories.length < batchSize) {
+        break;
+      }
+
+      offset += batchSize;
+    }
+  }
+
+  /**
+   * Sleep for a specified number of milliseconds.
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

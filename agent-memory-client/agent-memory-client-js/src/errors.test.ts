@@ -19,6 +19,25 @@ describe("MemoryClientError", () => {
     const error = new MemoryClientError("test error");
     expect(error.stack).toBeDefined();
   });
+
+  it("should work when Error.captureStackTrace is undefined", () => {
+    // Save the original
+    const originalCaptureStackTrace = Error.captureStackTrace;
+
+    // Remove captureStackTrace to simulate non-V8 environment
+    // @ts-expect-error - intentionally removing to test branch
+    delete Error.captureStackTrace;
+
+    try {
+      const error = new MemoryClientError("test error");
+      expect(error.message).toBe("test error");
+      expect(error.name).toBe("MemoryClientError");
+      expect(error).toBeInstanceOf(Error);
+    } finally {
+      // Restore the original
+      Error.captureStackTrace = originalCaptureStackTrace;
+    }
+  });
 });
 
 describe("MemoryValidationError", () => {

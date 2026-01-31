@@ -177,6 +177,31 @@ USE_DOCKET=true           # Enable background task processing (default: true)
 DOCKET_NAME=memory-server # Docket instance name (default: memory-server)
 ```
 
+### Task Backend Options
+
+The server supports two task backends, configured via the `--task-backend` CLI option:
+
+| Backend | Description | Use Case |
+|---------|-------------|----------|
+| `docket` | Tasks are queued in Redis and processed by a separate worker | Production deployments |
+| `asyncio` | Tasks run as coroutines in the same process | Development, simple setups |
+
+**Limitations of `asyncio` backend:**
+
+- **Periodic tasks don't run**: Scheduled maintenance tasks (memory compaction, periodic forgetting, summary view refresh) only execute with a Docket worker. These use Docket's `Perpetual` scheduler.
+- **No task persistence**: Pending tasks are lost on server restart.
+- **No distributed processing**: Cannot scale workers independently from the API.
+
+For production, use the default `docket` backend and run a separate worker:
+
+```bash
+# Start the API (uses docket by default)
+agent-memory api
+
+# In another terminal, start the worker
+agent-memory task-worker
+```
+
 ## Application Settings
 
 ### Logging

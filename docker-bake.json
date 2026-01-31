@@ -2,6 +2,9 @@
   "group": {
     "default": {
       "targets": ["aws", "standard"]
+    },
+    "all": {
+      "targets": ["aws", "standard", "standalone"]
     }
   },
   "target": {
@@ -20,6 +23,12 @@
       "dockerfile": "Dockerfile",
       "target": "standard",
       "tags": ["redislabs/agent-memory-server:${REDIS_AGENT_MEMORY_VERSION:-latest}"]
+    },
+    "standalone": {
+      "inherits": ["common"],
+      "dockerfile": "Dockerfile.standalone",
+      "target": "standalone",
+      "tags": ["redislabs/agent-memory-server:${REDIS_AGENT_MEMORY_VERSION:-latest}-standalone"]
     }
   }
 }
