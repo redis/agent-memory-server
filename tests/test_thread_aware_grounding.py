@@ -173,6 +173,8 @@ class TestThreadAwareContextualGrounding:
         """Test that the debounce mechanism prevents frequent re-extraction."""
         from redis.asyncio import Redis
 
+        from agent_memory_server.long_term_memory import set_extraction_debounce
+
         # Use testcontainer Redis instead of localhost:6379
         redis = Redis.from_url(redis_url)
         session_id = f"test-debounce-{ulid.ULID()}"
@@ -181,6 +183,9 @@ class TestThreadAwareContextualGrounding:
         # First call should allow extraction
         should_extract_1 = await should_extract_session_thread(session_id, redis)
         assert should_extract_1 is True, "First extraction attempt should be allowed"
+
+        # Simulate successful extraction by setting the debounce key
+        await set_extraction_debounce(session_id, redis)
 
         # Immediate second call should be debounced
         should_extract_2 = await should_extract_session_thread(session_id, redis)

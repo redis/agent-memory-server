@@ -882,3 +882,307 @@ class TestContextUsagePercentage:
         assert result.context_percentage_total_used == 33.3
         assert result.context_percentage_until_summarization == 47.5
         assert result.session_id == session_id
+
+
+# ==================== Forget Tests ====================
+
+
+class TestForgetLongTermMemories:
+    """Tests for the forget_long_term_memories method."""
+
+    @pytest.mark.asyncio
+    async def test_forget_long_term_memories_basic(self, enhanced_test_client):
+        """Test basic forget operation with policy."""
+        from agent_memory_client.models import ForgetPolicy, ForgetResponse
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "scanned": 100,
+            "deleted": 5,
+            "deleted_ids": ["mem-1", "mem-2", "mem-3", "mem-4", "mem-5"],
+            "dry_run": False,
+        }
+        mock_response.raise_for_status = Mock()
+        enhanced_test_client._client.post = AsyncMock(return_value=mock_response)
+
+        policy = ForgetPolicy(max_age_days=30)
+        result = await enhanced_test_client.forget_long_term_memories(policy=policy)
+
+        assert isinstance(result, ForgetResponse)
+        assert result.scanned == 100
+        assert result.deleted == 5
+        assert len(result.deleted_ids) == 5
+        assert result.dry_run is False
+
+    @pytest.mark.asyncio
+    async def test_forget_long_term_memories_dry_run(self, enhanced_test_client):
+        """Test forget operation in dry run mode."""
+        from agent_memory_client.models import ForgetPolicy, ForgetResponse
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "scanned": 50,
+            "deleted": 0,
+            "deleted_ids": [],
+            "dry_run": True,
+        }
+        mock_response.raise_for_status = Mock()
+        enhanced_test_client._client.post = AsyncMock(return_value=mock_response)
+
+        policy = ForgetPolicy(max_inactive_days=14)
+        result = await enhanced_test_client.forget_long_term_memories(
+            policy=policy, dry_run=True
+        )
+
+        assert isinstance(result, ForgetResponse)
+        assert result.dry_run is True
+
+    @pytest.mark.asyncio
+    async def test_forget_long_term_memories_with_filters(self, enhanced_test_client):
+        """Test forget operation with namespace and user filters."""
+        from agent_memory_client.models import ForgetPolicy, ForgetResponse
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "scanned": 10,
+            "deleted": 2,
+            "deleted_ids": ["mem-1", "mem-2"],
+            "dry_run": False,
+        }
+        mock_response.raise_for_status = Mock()
+        enhanced_test_client._client.post = AsyncMock(return_value=mock_response)
+
+        policy = ForgetPolicy(budget=100)
+        result = await enhanced_test_client.forget_long_term_memories(
+            policy=policy, namespace="test-ns", user_id="user-1", session_id="sess-1"
+        )
+
+        assert isinstance(result, ForgetResponse)
+        enhanced_test_client._client.post.assert_called_once()
+
+
+# ==================== Summary Views Tests ====================
+
+
+class TestSummaryViews:
+    """Tests for summary views methods."""
+
+    @pytest.mark.asyncio
+    async def test_list_summary_views(self, enhanced_test_client):
+        """Test listing all summary views."""
+        from agent_memory_client.models import SummaryView
+
+        mock_response = Mock()
+        mock_response.json.return_value = [
+            {
+                "id": "view-1",
+                "name": "View 1",
+                "source": "long_term",
+                "group_by": ["user_id"],
+            },
+            {
+                "id": "view-2",
+                "name": "View 2",
+                "source": "working_memory",
+                "group_by": ["session_id"],
+            },
+        ]
+        mock_response.raise_for_status = Mock()
+        enhanced_test_client._client.get = AsyncMock(return_value=mock_response)
+
+        result = await enhanced_test_client.list_summary_views()
+
+        assert len(result) == 2
+        assert all(isinstance(v, SummaryView) for v in result)
+        assert result[0].id == "view-1"
+        assert result[1].source == "working_memory"
+
+    @pytest.mark.asyncio
+    async def test_create_summary_view(self, enhanced_test_client):
+        """Test creating a summary view."""
+        from agent_memory_client.models import CreateSummaryViewRequest, SummaryView
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "id": "view-new",
+            "name": "New View",
+            "source": "long_term",
+            "group_by": ["namespace", "user_id"],
+            "continuous": True,
+        }
+        mock_response.raise_for_status = Mock()
+        enhanced_test_client._client.post = AsyncMock(return_value=mock_response)
+
+        request = CreateSummaryViewRequest(
+            name="New View",
+            source="long_term",
+            group_by=["namespace", "user_id"],
+            continuous=True,
+        )
+        result = await enhanced_test_client.create_summary_view(request)
+
+        assert isinstance(result, SummaryView)
+        assert result.id == "view-new"
+        assert result.continuous is True
+
+    @pytest.mark.asyncio
+    async def test_get_summary_view(self, enhanced_test_client):
+        """Test getting a summary view by ID."""
+        from agent_memory_client.models import SummaryView
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "id": "view-1",
+            "name": "Test View",
+            "source": "long_term",
+            "group_by": ["user_id"],
+        }
+        mock_response.raise_for_status = Mock()
+        enhanced_test_client._client.get = AsyncMock(return_value=mock_response)
+
+        result = await enhanced_test_client.get_summary_view("view-1")
+
+        assert isinstance(result, SummaryView)
+        assert result.id == "view-1"
+
+    @pytest.mark.asyncio
+    async def test_get_summary_view_not_found(self, enhanced_test_client):
+        """Test getting a non-existent summary view returns None."""
+        mock_response = Mock()
+        mock_response.status_code = 404
+        mock_response.json.return_value = {"detail": "Not found"}
+        enhanced_test_client._client.get = AsyncMock(
+            side_effect=httpx.HTTPStatusError(
+                "Not found", request=Mock(), response=mock_response
+            )
+        )
+
+        result = await enhanced_test_client.get_summary_view("nonexistent")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_delete_summary_view(self, enhanced_test_client):
+        """Test deleting a summary view."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"status": "ok"}
+        mock_response.raise_for_status = Mock()
+        enhanced_test_client._client.delete = AsyncMock(return_value=mock_response)
+
+        result = await enhanced_test_client.delete_summary_view("view-1")
+
+        assert result.status == "ok"
+
+    @pytest.mark.asyncio
+    async def test_run_summary_view_partition(self, enhanced_test_client):
+        """Test running a single summary view partition."""
+        from agent_memory_client.models import SummaryViewPartitionResult
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "view_id": "view-1",
+            "group": {"user_id": "user-1"},
+            "summary": "This is a summary of the user's memories.",
+            "memory_count": 42,
+        }
+        mock_response.raise_for_status = Mock()
+        enhanced_test_client._client.post = AsyncMock(return_value=mock_response)
+
+        result = await enhanced_test_client.run_summary_view_partition(
+            view_id="view-1", group={"user_id": "user-1"}
+        )
+
+        assert isinstance(result, SummaryViewPartitionResult)
+        assert result.view_id == "view-1"
+        assert result.memory_count == 42
+
+    @pytest.mark.asyncio
+    async def test_list_summary_view_partitions(self, enhanced_test_client):
+        """Test listing summary view partitions."""
+        from agent_memory_client.models import SummaryViewPartitionResult
+
+        mock_response = Mock()
+        mock_response.json.return_value = [
+            {
+                "view_id": "view-1",
+                "group": {"user_id": "user-1"},
+                "summary": "Summary 1",
+                "memory_count": 10,
+            },
+            {
+                "view_id": "view-1",
+                "group": {"user_id": "user-2"},
+                "summary": "Summary 2",
+                "memory_count": 20,
+            },
+        ]
+        mock_response.raise_for_status = Mock()
+        enhanced_test_client._client.get = AsyncMock(return_value=mock_response)
+
+        result = await enhanced_test_client.list_summary_view_partitions("view-1")
+
+        assert len(result) == 2
+        assert all(isinstance(p, SummaryViewPartitionResult) for p in result)
+
+    @pytest.mark.asyncio
+    async def test_run_summary_view(self, enhanced_test_client):
+        """Test running a full summary view (async task)."""
+        from agent_memory_client.models import Task
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "id": "task-1",
+            "type": "summary_view_full_run",
+            "status": "pending",
+            "view_id": "view-1",
+        }
+        mock_response.raise_for_status = Mock()
+        enhanced_test_client._client.post = AsyncMock(return_value=mock_response)
+
+        result = await enhanced_test_client.run_summary_view("view-1")
+
+        assert isinstance(result, Task)
+        assert result.id == "task-1"
+        assert result.status == "pending"
+
+
+# ==================== Tasks Tests ====================
+
+
+class TestTasks:
+    """Tests for tasks methods."""
+
+    @pytest.mark.asyncio
+    async def test_get_task(self, enhanced_test_client):
+        """Test getting a task by ID."""
+        from agent_memory_client.models import Task
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "id": "task-1",
+            "type": "summary_view_full_run",
+            "status": "completed",
+            "view_id": "view-1",
+        }
+        mock_response.raise_for_status = Mock()
+        enhanced_test_client._client.get = AsyncMock(return_value=mock_response)
+
+        result = await enhanced_test_client.get_task("task-1")
+
+        assert isinstance(result, Task)
+        assert result.id == "task-1"
+        assert result.status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_get_task_not_found(self, enhanced_test_client):
+        """Test getting a non-existent task returns None."""
+        mock_response = Mock()
+        mock_response.status_code = 404
+        mock_response.json.return_value = {"detail": "Not found"}
+        enhanced_test_client._client.get = AsyncMock(
+            side_effect=httpx.HTTPStatusError(
+                "Not found", request=Mock(), response=mock_response
+            )
+        )
+
+        result = await enhanced_test_client.get_task("nonexistent")
+        assert result is None

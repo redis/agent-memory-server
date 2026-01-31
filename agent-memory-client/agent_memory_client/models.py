@@ -397,3 +397,134 @@ class MemoryPromptResponse(BaseModel):
     """Response from memory prompt endpoint"""
 
     messages: list[dict[str, Any]]  # Simplified to avoid MCP dependencies
+
+
+# ==================== Forget ====================
+
+
+class ForgetPolicy(BaseModel):
+    """Policy for forgetting memories."""
+
+    max_age_days: int | None = Field(
+        default=None, description="Maximum age in days for memories to keep"
+    )
+    max_inactive_days: int | None = Field(
+        default=None, description="Maximum inactive days before forgetting"
+    )
+    budget: int | None = Field(
+        default=None, description="Budget limit for forgetting operation"
+    )
+    memory_type_allowlist: list[str] | None = Field(
+        default=None, description="Allowlist of memory types to consider for forgetting"
+    )
+
+
+class ForgetResponse(BaseModel):
+    """Response from forget operation."""
+
+    scanned: int = Field(description="Number of memories scanned")
+    deleted: int = Field(description="Number of memories deleted")
+    deleted_ids: list[str] = Field(description="IDs of deleted memories")
+    dry_run: bool = Field(description="Whether this was a dry run")
+
+
+# ==================== Summary Views ====================
+
+
+class SummaryViewSource(str, Enum):
+    """Source type for summary views."""
+
+    LONG_TERM = "long_term"
+    WORKING_MEMORY = "working_memory"
+
+
+class SummaryView(BaseModel):
+    """Summary view configuration."""
+
+    id: str = Field(description="Unique identifier for the view")
+    name: str | None = Field(default=None, description="Optional human-readable name")
+    source: str = Field(description="Memory source to summarize")
+    group_by: list[str] = Field(description="Fields to group by for partitioning")
+    filters: dict[str, Any] | None = Field(
+        default=None, description="Optional filters to apply"
+    )
+    time_window_days: int | None = Field(
+        default=None, description="Time window in days for filtering"
+    )
+    continuous: bool | None = Field(
+        default=None, description="Whether background workers refresh this view"
+    )
+    prompt: str | None = Field(default=None, description="Custom summarization prompt")
+    model_name: str | None = Field(
+        default=None, description="Model override for summarization"
+    )
+
+
+class CreateSummaryViewRequest(BaseModel):
+    """Request to create a summary view."""
+
+    name: str | None = Field(default=None, description="Optional human-readable name")
+    source: str = Field(description="Memory source to summarize")
+    group_by: list[str] = Field(description="Fields to group by for partitioning")
+    filters: dict[str, Any] | None = Field(
+        default=None, description="Optional filters to apply"
+    )
+    time_window_days: int | None = Field(
+        default=None, description="Time window in days for filtering"
+    )
+    continuous: bool | None = Field(
+        default=None, description="Whether background workers refresh this view"
+    )
+    prompt: str | None = Field(default=None, description="Custom summarization prompt")
+    model_name: str | None = Field(
+        default=None, description="Model override for summarization"
+    )
+
+
+class SummaryViewPartitionResult(BaseModel):
+    """Result of summarizing one partition."""
+
+    view_id: str = Field(description="ID of the SummaryView that produced this result")
+    group: dict[str, str] = Field(
+        description="Concrete values for the view's group_by fields"
+    )
+    summary: str = Field(description="Summarized text for this partition")
+    memory_count: int = Field(
+        description="Number of memories that contributed to this summary"
+    )
+    computed_at: str | None = Field(
+        default=None, description="When this summary was computed"
+    )
+
+
+# ==================== Tasks ====================
+
+
+class TaskStatus(str, Enum):
+    """Task status enum."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class Task(BaseModel):
+    """Background task representation."""
+
+    id: str = Field(description="Unique task identifier")
+    type: str = Field(description="Type of task")
+    status: str = Field(description="Current task status")
+    view_id: str | None = Field(
+        default=None, description="Associated SummaryView ID, if applicable"
+    )
+    created_at: str | None = Field(
+        default=None, description="When the task record was created"
+    )
+    started_at: str | None = Field(default=None, description="When execution started")
+    completed_at: str | None = Field(
+        default=None, description="When execution finished"
+    )
+    error_message: str | None = Field(
+        default=None, description="Error message if failed"
+    )

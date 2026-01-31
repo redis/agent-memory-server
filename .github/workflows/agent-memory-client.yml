@@ -5,10 +5,66 @@ on:
     branches: [main]
     tags:
       - 'client/v*.*.*'
+      - 'client-java/v*.*.*'
+      - 'client-js/v*.*.*'
   pull_request:
     branches: [main]
 
 jobs:
+  test-java:
+    name: Test (Java ${{ matrix.java-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java-version: ["17", "21"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java-version }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Run tests
+        working-directory: agent-memory-client/agent-memory-client-java
+        run: ./gradlew test
+
+      - name: Build
+        working-directory: agent-memory-client/agent-memory-client-java
+        run: ./gradlew build
+
+  test-js:
+    name: Test (Node.js ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["18", "20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        working-directory: agent-memory-client/agent-memory-client-js
+        run: npm ci
+
+      - name: Run tests with coverage
+        working-directory: agent-memory-client/agent-memory-client-js
+        run: npm run test:coverage -- --run
+
+      - name: Build
+        working-directory: agent-memory-client/agent-memory-client-js
+        run: npm run build
+
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -102,9 +158,77 @@ jobs:
         with:
           packages-dir: agent-memory-client/dist/
 
+  publish-npm:
+    name: Publish to npm
+    needs: test-js
+    if: startsWith(github.ref, 'refs/tags/client-js/') && !contains(github.ref, '-test')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        working-directory: agent-memory-client/agent-memory-client-js
+        run: npm ci
+
+      - name: Build
+        working-directory: agent-memory-client/agent-memory-client-js
+        run: npm run build
+
+      - name: Publish to npm
+        working-directory: agent-memory-client/agent-memory-client-js
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-maven:
+    name: Publish to Maven Central
+    needs: test-java
+    if: startsWith(github.ref, 'refs/tags/client-java/') && !contains(github.ref, '-test')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/client-java/v}" >> $GITHUB_OUTPUT
+
+      - name: Build and publish
+        working-directory: agent-memory-client/agent-memory-client-java
+        run: ./gradlew publish -Pversion=${{ steps.version.outputs.VERSION }}
+        env:
+          ORG_GRADLE_PROJECT_signingKey: ${{ secrets.GPG_SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.GPG_SIGNING_PASSWORD }}
+          ORG_GRADLE_PROJECT_ossrhUsername: ${{ secrets.OSSRH_USERNAME }}
+          ORG_GRADLE_PROJECT_ossrhPassword: ${{ secrets.OSSRH_PASSWORD }}
+
 # Tag Format Guide:
+# Python Client:
 # - For TestPyPI (testing): client/v1.0.0-test
 # - For PyPI (production): client/v1.0.0
+#
+# Java Client:
+# - For Maven Central (production): client-java/v1.0.0
+#
+# JavaScript/TypeScript Client:
+# - For npm (production): client-js/v1.0.0
 #
 # Use the script: python scripts/tag_and_push_client.py --test (for TestPyPI)
 #                 python scripts/tag_and_push_client.py (for PyPI)
@@ -115,6 +239,8 @@ jobs:
 # To do so, uncomment the sections below and add these secrets to your repository:
 # - TEST_PYPI_API_TOKEN (for TestPyPI)
 # - PYPI_API_TOKEN (for PyPI)
+# - NPM_TOKEN (for npm)
+# - GPG_SIGNING_KEY, GPG_SIGNING_PASSWORD, OSSRH_USERNAME, OSSRH_PASSWORD (for Maven Central)
 #
 # For TestPyPI job, replace the publish step with:
 #       - name: Publish package to TestPyPI

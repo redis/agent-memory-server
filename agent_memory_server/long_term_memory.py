@@ -48,6 +48,11 @@ from agent_memory_server.utils.redis import get_redis_conn
 from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
 
 
+# Track pending extraction tasks to prevent garbage collection
+# This is only used when running without Docket (asyncio mode)
+_pending_extraction_tasks: set = set()
+
+
 def _parse_extraction_response_with_fallback(content: str, logger) -> dict:
     """
     Parse JSON response with fallback mechanisms for malformed responses.
@@ -143,16 +148,19 @@ Extracted memories:
 
 logger = logging.getLogger(__name__)
 
-# Debounce configuration for thread-aware extraction
+# Debounce configuration for thread-aware extraction (trailing-edge)
+# We use a "pending extraction" key to track when extraction should run
+EXTRACTION_PENDING_KEY_PREFIX = "extraction_pending"
 EXTRACTION_DEBOUNCE_KEY_PREFIX = "extraction_debounce"
 
 
 async def should_extract_session_thread(session_id: str, redis: Redis) -> bool:
     """
-    Check if enough time has passed since last thread-aware extraction for this session.
+    Check if extraction should proceed based on debounce.
 
-    This implements a debounce mechanism to avoid constantly re-extracting memories
-    from the same conversation thread as new messages arrive.
+    This checks if the post-extraction debounce key exists. After successful
+    extraction, we set this key to prevent immediate re-extraction even if
+    new messages arrive.
 
     Args:
         session_id: The session ID to check
@@ -161,18 +169,12 @@ async def should_extract_session_thread(session_id: str, redis: Redis) -> bool:
     Returns:
         True if extraction should proceed, False if debounced
     """
-
     debounce_key = f"{EXTRACTION_DEBOUNCE_KEY_PREFIX}:{session_id}"
 
-    # Check if debounce key exists
+    # Check if debounce key exists (set after successful extraction)
     exists = await redis.exists(debounce_key)
     if not exists:
-        # Set debounce key with TTL to prevent extraction for the next period
-        debounce_ttl = settings.extraction_debounce_seconds
-        await redis.setex(debounce_key, debounce_ttl, "extracting")
-        logger.info(
-            f"Starting thread-aware extraction for session {session_id} (debounce set for {debounce_ttl}s)"
-        )
+        logger.info(f"Extraction allowed for session {session_id} (no debounce key)")
         return True
 
     remaining_ttl = await redis.ttl(debounce_key)
@@ -180,6 +182,229 @@ async def should_extract_session_thread(session_id: str, redis: Redis) -> bool:
         f"Skipping thread-aware extraction for session {session_id} (debounced, {remaining_ttl}s remaining)"
     )
     return False
+
+
+async def set_extraction_debounce(session_id: str, redis: Redis) -> None:
+    """
+    Set the debounce key after successful extraction.
+
+    This should be called after extraction completes successfully to prevent
+    re-extraction for the debounce period.
+
+    Args:
+        session_id: The session ID to set debounce for
+        redis: Redis client
+    """
+    debounce_key = f"{EXTRACTION_DEBOUNCE_KEY_PREFIX}:{session_id}"
+    debounce_ttl = settings.extraction_debounce_seconds
+    await redis.setex(debounce_key, debounce_ttl, "extracted")
+    logger.info(f"Set extraction debounce for session {session_id} ({debounce_ttl}s)")
+
+
+async def schedule_trailing_extraction(
+    session_id: str,
+    namespace: str | None,
+    user_id: str | None,
+    redis: Redis,
+) -> None:
+    """
+    Schedule a trailing-edge debounced extraction.
+
+    This implements trailing-edge debounce:
+    1. Store a "pending extraction" timestamp in Redis
+    2. Schedule a Docket task to run after the debounce period
+    3. Each new message resets the timer by updating the pending timestamp
+    4. The scheduled task checks if it's still valid before running
+
+    Args:
+        session_id: The session ID to extract for
+        namespace: Optional namespace
+        user_id: Optional user ID
+        redis: Redis client
+    """
+    from datetime import timedelta
+
+    pending_key = f"{EXTRACTION_PENDING_KEY_PREFIX}:{session_id}"
+    debounce_seconds = settings.extraction_debounce_seconds
+
+    # Calculate when extraction should run (trailing edge)
+    extraction_time = datetime.now(UTC) + timedelta(seconds=debounce_seconds)
+    extraction_timestamp = extraction_time.isoformat()
+
+    # Store the pending extraction timestamp
+    # TTL is 2x debounce to ensure cleanup even if task fails
+    await redis.setex(pending_key, debounce_seconds * 2, extraction_timestamp)
+    logger.info(
+        f"Scheduled trailing extraction for session {session_id} at {extraction_timestamp}"
+    )
+
+    # Schedule the Docket task if enabled
+    if settings.use_docket:
+        from docket import Docket
+
+        try:
+            async with Docket(
+                name=settings.docket_name,
+                url=settings.redis_url,
+            ) as docket:
+                # Schedule with a unique key per session
+                # If there's already a pending task for this session, the new one
+                # will check the timestamp and skip if superseded
+                task_key = f"extraction:{session_id}:{extraction_timestamp}"
+                await docket.add(
+                    run_delayed_extraction,
+                    when=extraction_time,
+                    key=task_key,
+                )(
+                    session_id=session_id,
+                    namespace=namespace,
+                    user_id=user_id,
+                    scheduled_timestamp=extraction_timestamp,
+                )
+                logger.debug(f"Docket task scheduled with key {task_key}")
+        except Exception as e:
+            logger.error(f"Failed to schedule Docket extraction task: {e}")
+            # Fall back to immediate execution on next request
+    else:
+        # For asyncio backend, use asyncio.create_task with delay
+        import asyncio
+
+        async def delayed_extraction():
+            try:
+                await asyncio.sleep(debounce_seconds)
+                await run_delayed_extraction(
+                    session_id=session_id,
+                    namespace=namespace,
+                    user_id=user_id,
+                    scheduled_timestamp=extraction_timestamp,
+                )
+            finally:
+                # Remove task from tracking set when done
+                _pending_extraction_tasks.discard(asyncio.current_task())
+
+        # Track the task to prevent garbage collection
+        task = asyncio.create_task(delayed_extraction())
+        _pending_extraction_tasks.add(task)
+        logger.debug(
+            f"Scheduled asyncio extraction task for session {session_id} "
+            f"(delay: {debounce_seconds}s)"
+        )
+
+
+async def run_delayed_extraction(
+    session_id: str,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    scheduled_timestamp: str | None = None,
+) -> int:
+    """
+    Run the delayed extraction if this task is still valid.
+
+    This is called by Docket after the debounce period. It checks if the
+    scheduled_timestamp matches the current pending timestamp - if not,
+    this task was superseded by a newer one and should skip.
+
+    Args:
+        session_id: The session ID to extract for
+        namespace: Optional namespace
+        user_id: Optional user ID
+        scheduled_timestamp: The timestamp when this extraction was scheduled
+
+    Returns:
+        Number of memories extracted, or 0 if skipped
+    """
+    from agent_memory_server.utils.redis import get_redis_conn
+    from agent_memory_server.working_memory import (
+        get_working_memory,
+        set_working_memory,
+    )
+
+    redis = await get_redis_conn()
+    pending_key = f"{EXTRACTION_PENDING_KEY_PREFIX}:{session_id}"
+
+    # Check if this task is still valid (not superseded by a newer schedule)
+    current_pending = await redis.get(pending_key)
+    if current_pending:
+        current_pending = (
+            current_pending.decode("utf-8")
+            if isinstance(current_pending, bytes)
+            else current_pending
+        )
+
+    if scheduled_timestamp and current_pending != scheduled_timestamp:
+        logger.info(
+            f"Skipping extraction for session {session_id} - superseded by newer schedule "
+            f"(scheduled: {scheduled_timestamp}, current: {current_pending})"
+        )
+        return 0
+
+    # Check if we're still within the post-extraction debounce
+    if not await should_extract_session_thread(session_id, redis):
+        return 0
+
+    # Get working memory to extract from
+    working_memory = await get_working_memory(
+        session_id=session_id, namespace=namespace, user_id=user_id
+    )
+
+    if not working_memory or not working_memory.messages:
+        logger.info(f"No working memory to extract for session {session_id}")
+        await redis.delete(pending_key)
+        return 0
+
+    # Check for unextracted messages
+    unextracted_messages = [
+        msg for msg in working_memory.messages if msg.discrete_memory_extracted == "f"
+    ]
+
+    if not unextracted_messages:
+        logger.info(f"No unextracted messages for session {session_id}")
+        await redis.delete(pending_key)
+        return 0
+
+    logger.info(
+        f"Running trailing-edge extraction for session {session_id} "
+        f"({len(unextracted_messages)} unextracted messages)"
+    )
+
+    try:
+        extracted_memories = await extract_memories_from_session_thread(
+            session_id=session_id,
+            namespace=namespace,
+            user_id=user_id,
+        )
+
+        # Mark all messages as extracted
+        for message in working_memory.messages:
+            message.discrete_memory_extracted = "t"
+
+        # Persist the updated working memory
+        await set_working_memory(
+            working_memory=working_memory,
+            redis_client=redis,
+        )
+
+        # Set post-extraction debounce
+        await set_extraction_debounce(session_id, redis)
+
+        # Clear the pending key
+        await redis.delete(pending_key)
+
+        # Index the extracted memories
+        if extracted_memories:
+            await index_long_term_memories(extracted_memories)
+            logger.info(
+                f"Trailing extraction completed for session {session_id}: "
+                f"{len(extracted_memories)} memories extracted and indexed"
+            )
+
+        return len(extracted_memories)
+
+    except Exception as e:
+        logger.error(f"Error in trailing extraction for session {session_id}: {e}")
+        # Clear the pending key to allow retry on next message
+        await redis.delete(pending_key)
+        return 0
 
 
 async def extract_memories_from_session_thread(
@@ -884,6 +1109,15 @@ async def search_long_term_memories(
         search_query = await optimize_query_for_vector_search(text)
         optimized_applied = True
 
+    # Debug: Log search input
+    optimized_display = repr(search_query) if optimized_applied else "N/A"
+    logger.debug(
+        f"[search_long_term_memories] INPUT - query: {text!r}, "
+        f"optimized_query: {optimized_display}, "
+        f"session_id: {session_id}, user_id: {user_id}, namespace: {namespace}, "
+        f"distance_threshold: {distance_threshold}, limit: {limit}"
+    )
+
     # Get the VectorStore adapter
     adapter = await get_vectorstore_adapter()
 
@@ -937,6 +1171,15 @@ async def search_long_term_memories(
     except Exception:
         # Best-effort fallback; return the original results on any error
         pass
+
+    # Debug: Log search output
+    memory_previews = [
+        f"{m.id}: {m.text[:80]}..." if len(m.text) > 80 else f"{m.id}: {m.text}"
+        for m in results.memories[:5]  # Show first 5
+    ]
+    logger.debug(
+        f"[search_long_term_memories] OUTPUT - {results.total} results: {memory_previews}"
+    )
 
     return results
 
@@ -1284,42 +1527,33 @@ async def promote_working_memory_to_long_term(
 
     promoted_count = 0
     updated_memories = []
-    extracted_memories = []
 
-    # Thread-aware discrete memory extraction with debouncing
+    # Thread-aware discrete memory extraction with trailing-edge debouncing
+    # Instead of extracting immediately, we schedule extraction to run after
+    # a period of inactivity. Each new message resets the timer.
     unextracted_messages = [
         message
         for message in current_working_memory.messages
         if message.discrete_memory_extracted == "f"
     ]
 
-    extracted_memories = []
     if settings.enable_discrete_memory_extraction and unextracted_messages:
-        # Check if we should run thread-aware extraction (debounced)
+        # Check if we're not in post-extraction debounce
         if await should_extract_session_thread(session_id, redis):
-            logger.info(
-                f"Running thread-aware extraction from {len(current_working_memory.messages)} total messages in session {session_id}"
-            )
-            extracted_memories = await extract_memories_from_session_thread(
+            # Schedule trailing-edge extraction (runs after debounce period of inactivity)
+            await schedule_trailing_extraction(
                 session_id=session_id,
                 namespace=namespace,
                 user_id=user_id,
+                redis=redis,
+            )
+        else:
+            logger.info(
+                f"Skipping extraction scheduling for session {session_id} - in post-extraction debounce"
             )
 
-            # Mark ALL messages in the session as extracted since we processed the full thread
-            for message in current_working_memory.messages:
-                message.discrete_memory_extracted = "t"
-
-        else:
-            logger.info(f"Skipping extraction for session {session_id} - debounced")
-
-    # Combine existing memories with newly extracted memories for processing
+    # Process existing memories for promotion (extracted memories are handled by the delayed task)
     all_memories_to_process = list(current_working_memory.memories)
-    if extracted_memories:
-        logger.info(
-            f"Adding {len(extracted_memories)} extracted memories for promotion"
-        )
-        all_memories_to_process.extend(extracted_memories)
 
     for memory in all_memories_to_process:
         if memory.persisted_at is None:
@@ -1435,20 +1669,9 @@ async def promote_working_memory_to_long_term(
         count_persisted_messages = 0
         updated_messages = current_working_memory.messages
 
-    # Check if any messages were marked as extracted
-    messages_marked_extracted = (
-        settings.enable_discrete_memory_extraction
-        and unextracted_messages
-        and await should_extract_session_thread(session_id, redis)
-    )
-
-    # Update working memory with the new persisted_at timestamps and extracted memories
-    if (
-        promoted_count > 0
-        or extracted_memories
-        or count_persisted_messages > 0
-        or messages_marked_extracted
-    ):
+    # Update working memory with the new persisted_at timestamps
+    # Note: Extraction now happens asynchronously via trailing-edge debounce
+    if promoted_count > 0 or count_persisted_messages > 0:
         updated_working_memory = current_working_memory.model_copy()
         updated_working_memory.memories = updated_memories
         updated_working_memory.messages = updated_messages
@@ -1461,11 +1684,6 @@ async def promote_working_memory_to_long_term(
 
         logger.info(
             f"Successfully promoted {promoted_count} memories and {len(message_records_to_index)} messages to long-term storage"
-            + (
-                f" and extracted {len(extracted_memories)} new memories"
-                if extracted_memories
-                else ""
-            )
         )
 
     return promoted_count

@@ -947,8 +947,6 @@ async def memory_prompt(
     redis = await get_redis_conn()
     _messages = []
 
-    logger.debug(f"Memory prompt params: {params}")
-
     if params.session:
         # Use token limit for memory prompt - model info is required now
         if params.session.model_name or params.session.context_window_max:

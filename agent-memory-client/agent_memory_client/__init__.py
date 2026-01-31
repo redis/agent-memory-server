@@ -5,7 +5,7 @@ A Python client for the Agent Memory Server REST API providing comprehensive
 memory management capabilities for AI agents and applications.
 """
 
-__version__ = "0.13.0"
+__version__ = "0.14.0"
 
 from .client import MemoryAPIClient, MemoryClientConfig, create_memory_client
 from .exceptions import (
@@ -16,7 +16,13 @@ from .exceptions import (
 )
 from .models import (
     # Re-export essential models for convenience
+    CreateSummaryViewRequest,
+    ForgetPolicy,
+    ForgetResponse,
     ModelNameLiteral,
+    SummaryView,
+    SummaryViewPartitionResult,
+    Task,
 )
 from .tool_schema import ToolSchema, ToolSchemaCollection
 
@@ -35,4 +41,13 @@ __all__ = [
     "MemoryServerError",
     # Types
     "ModelNameLiteral",
+    # Forget
+    "ForgetPolicy",
+    "ForgetResponse",
+    # Summary Views
+    "SummaryView",
+    "CreateSummaryViewRequest",
+    "SummaryViewPartitionResult",
+    # Tasks
+    "Task",
 ]
