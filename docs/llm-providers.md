@@ -268,8 +268,11 @@ export GEMINI_API_KEY=...
 export GENERATION_MODEL=gemini/gemini-1.5-pro
 export FAST_MODEL=gemini/gemini-1.5-flash
 
-# Gemini embeddings
-export EMBEDDING_MODEL=gemini/text-embedding-004
+# Note: Gemini API (gemini/ prefix) only supports generation models.
+# For embeddings, use Vertex AI or another provider:
+export EMBEDDING_MODEL=text-embedding-3-small  # OpenAI
+# Or with Vertex AI:
+# export EMBEDDING_MODEL=vertex_ai/text-embedding-004
 ```
 
 ## Model Configuration Reference

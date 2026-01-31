@@ -26,9 +26,11 @@ export EMBEDDING_MODEL=ollama/nomic-embed-text
 | Ollama | `ollama/<model>` | `OLLAMA_API_BASE` | `ollama/nomic-embed-text` |
 | HuggingFace | `huggingface/<org>/<model>` | `HUGGINGFACE_API_KEY` | `huggingface/BAAI/bge-large-en` |
 | Cohere | `cohere/<model>` | `COHERE_API_KEY` | `cohere/embed-english-v3.0` |
-| Gemini | `gemini/<model>` | `GEMINI_API_KEY` | `gemini/text-embedding-004` |
+| Vertex AI | `vertex_ai/<model>` | GCP credentials | `vertex_ai/text-embedding-004` |
 | Mistral | `mistral/<model>` | `MISTRAL_API_KEY` | `mistral/mistral-embed` |
 | Azure OpenAI | `azure/<deployment>` | `AZURE_API_KEY`, `AZURE_API_BASE` | `azure/my-embedding-deployment` |
+
+> **Note:** Google's embedding models (`text-embedding-004`, `text-embedding-005`) are available via Vertex AI, not the Gemini API. The `gemini/` prefix only supports generation models.
 
 ## Provider Configuration
 

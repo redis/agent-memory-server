@@ -8,11 +8,10 @@ from fastapi import FastAPI
 from agent_memory_server import __version__
 from agent_memory_server.api import router as memory_router
 from agent_memory_server.auth import verify_auth_config
-from agent_memory_server.config import ModelProvider, settings
+from agent_memory_server.config import settings
 from agent_memory_server.docket_tasks import register_tasks
 from agent_memory_server.healthcheck import router as health_router
 from agent_memory_server.llm import (
-    APIKeyMissingError,
     LLMClient,
     ModelValidationError,
 )
@@ -71,31 +70,13 @@ async def lifespan(app: FastAPI):
         logger.error(err_msg)
         raise ModelValidationError(err_msg) from e
 
-    # Validate API keys for resolved providers
-    for model_config in [generation_model_config, embedding_model_config]:
-        match model_config.provider:
-            case ModelProvider.OPENAI:
-                if not settings.openai_api_key:
-                    error = APIKeyMissingError("OpenAI", "OPENAI_API_KEY")
-                    logger.error(str(error))
-                    raise error
-            case ModelProvider.ANTHROPIC:
-                if not settings.anthropic_api_key:
-                    error = APIKeyMissingError("Anthropic", "ANTHROPIC_API_KEY")
-                    logger.error(str(error))
-                    raise error
-            case ModelProvider.AWS_BEDROCK:
-                # The access key ID and secret access key are mandatory.
-                # The session token is optional (only for STS).
-                has_access_key = (
-                    settings.aws_access_key_id and settings.aws_secret_access_key
-                )
-                if not has_access_key:
-                    error = APIKeyMissingError(
-                        "AWS Bedrock", "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"
-                    )
-                    logger.error(str(error))
-                    raise error
+    # NOTE: API key validation is intentionally NOT done at startup.
+    # LiteLLM handles API key validation at call time and provides clear error
+    # messages (e.g., "GEMINI_API_KEY not set"). This approach:
+    # 1. Supports all LiteLLM providers without maintaining a hardcoded list
+    # 2. Avoids false positives (key exists but is invalid/expired)
+    # 3. Allows conditional model usage (different models for different features)
+    # 4. Reduces maintenance burden of tracking every provider's env var
 
     # Set up Redis connection and check working memory migration status
     redis_conn = await get_redis_conn()

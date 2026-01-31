@@ -417,25 +417,17 @@ class TestMapProvider:
         result = LLMClient._map_provider("azure")
         assert result == ModelProvider.OPENAI
 
-    def test_map_provider_unsupported_raises_error(self):
-        """_map_provider should raise ModelValidationError for unsupported providers."""
-        from agent_memory_server.llm.exceptions import ModelValidationError
+    def test_map_provider_unknown_returns_other(self):
+        """_map_provider should return OTHER for unknown providers (Gemini, Ollama, etc.)."""
+        from agent_memory_server.config import ModelProvider
 
-        with pytest.raises(ModelValidationError, match="Unsupported LiteLLM provider"):
-            LLMClient._map_provider("unsupported_provider")
-
-    def test_map_provider_error_lists_supported_providers(self):
-        """_map_provider error message should list supported providers."""
-        from agent_memory_server.llm.exceptions import ModelValidationError
-
-        with pytest.raises(ModelValidationError) as exc_info:
-            LLMClient._map_provider("vertex_ai")
-
-        error_message = str(exc_info.value)
-        assert "openai" in error_message
-        assert "anthropic" in error_message
-        assert "bedrock" in error_message
-        assert "azure" in error_message
+        # Unknown providers should return OTHER, not raise an error
+        # This allows LiteLLM to handle all providers natively
+        assert LLMClient._map_provider("gemini") == ModelProvider.OTHER
+        assert LLMClient._map_provider("ollama") == ModelProvider.OTHER
+        assert LLMClient._map_provider("cohere") == ModelProvider.OTHER
+        assert LLMClient._map_provider("vertex_ai") == ModelProvider.OTHER
+        assert LLMClient._map_provider("huggingface") == ModelProvider.OTHER
 
 
 # =============================================================================
