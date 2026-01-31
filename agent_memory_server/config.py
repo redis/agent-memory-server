@@ -16,11 +16,16 @@ logger = logging.getLogger(__name__)
 
 
 class ModelProvider(str, Enum):
-    """Type of model provider"""
+    """Type of model provider.
+
+    Note: This enum includes common providers for convenience, but the server
+    supports ALL providers via LiteLLM. Unknown providers are mapped to OTHER.
+    """
 
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     AWS_BEDROCK = "aws-bedrock"
+    OTHER = "other"  # Catch-all for Gemini, Ollama, Cohere, HuggingFace, etc.
 
 
 class ModelConfig(BaseModel):

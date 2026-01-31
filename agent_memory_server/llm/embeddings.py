@@ -30,9 +30,12 @@ class LiteLLMEmbeddings(Embeddings):
     - Ollama (ollama/nomic-embed-text, ollama/mxbai-embed-large)
     - HuggingFace (huggingface/BAAI/bge-large-en)
     - Cohere (cohere/embed-english-v3.0)
-    - Gemini (gemini/text-embedding-004)
+    - Vertex AI (vertex_ai/text-embedding-004, text-embedding-005)
     - Mistral (mistral/mistral-embed)
     - And many more...
+
+    Note: Google's embedding models are available via Vertex AI, not the Gemini API.
+    Use `vertex_ai/text-embedding-004` or just `text-embedding-004` (no prefix).
 
     Usage:
         >>> embeddings = LiteLLMEmbeddings(model="text-embedding-3-small")

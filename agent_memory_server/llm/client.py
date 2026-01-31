@@ -264,7 +264,11 @@ class LLMClient:
 
     @classmethod
     def _map_provider(cls, litellm_provider: str) -> ModelProvider:
-        """Map LiteLLM provider string to ModelProvider enum."""
+        """Map LiteLLM provider string to ModelProvider enum.
+
+        Unknown providers are mapped to OTHER, allowing the server to support
+        all 100+ LiteLLM providers without maintaining a hardcoded list.
+        """
         from agent_memory_server.config import ModelProvider
 
         provider_map = {
@@ -273,12 +277,9 @@ class LLMClient:
             "bedrock": ModelProvider.AWS_BEDROCK,
             "azure": ModelProvider.OPENAI,  # Azure OpenAI uses OpenAI-compatible API
         }
-        if litellm_provider not in provider_map:
-            raise ModelValidationError(
-                f"Unsupported LiteLLM provider: {litellm_provider!r}. "
-                f"Supported providers: {', '.join(provider_map.keys())}"
-            )
-        return provider_map[litellm_provider]
+        # Return OTHER for unknown providers (Gemini, Ollama, Cohere, etc.)
+        # This allows LiteLLM to handle them natively without our intervention
+        return provider_map.get(litellm_provider, ModelProvider.OTHER)
 
     @classmethod
     def get_model_config(cls, model_name: str) -> ModelConfig:
