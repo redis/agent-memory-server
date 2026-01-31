@@ -54,12 +54,12 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@vitest/coverage-v8": "^1.6.1",
+    "@vitest/coverage-v8": "^4.0.18",
     "eslint": "^8.57.0",
     "prettier": "^3.2.0",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
-    "vitest": "^1.4.0"
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "ulid": "^2.3.0"
