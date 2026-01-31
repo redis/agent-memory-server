@@ -1172,17 +1172,14 @@ async def search_long_term_memories(
         # Best-effort fallback; return the original results on any error
         pass
 
-    # Log search output
-    if results.total > 0:
-        memory_previews = [
-            f"{m.id}: {m.text[:80]}..." if len(m.text) > 80 else f"{m.id}: {m.text}"
-            for m in results.memories[:5]  # Show first 5
-        ]
-        logger.info(
-            f"[search_long_term_memories] OUTPUT - {results.total} results found: {memory_previews}"
-        )
-    else:
-        logger.info("[search_long_term_memories] OUTPUT - 0 results found")
+    # Log search output - always log regardless of result count
+    memory_previews = [
+        f"{m.id}: {m.text[:80]}..." if len(m.text) > 80 else f"{m.id}: {m.text}"
+        for m in results.memories[:5]  # Show first 5
+    ]
+    logger.info(
+        f"[search_long_term_memories] OUTPUT - {results.total} results: {memory_previews}"
+    )
 
     return results
 
