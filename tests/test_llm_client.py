@@ -422,7 +422,7 @@ class TestMapProvider:
         from agent_memory_server.config import ModelProvider
 
         # Unknown providers should return OTHER, not raise an error
-        # This allows LiteLLM to handle all 100+ providers natively
+        # This allows LiteLLM to handle all providers natively
         assert LLMClient._map_provider("gemini") == ModelProvider.OTHER
         assert LLMClient._map_provider("ollama") == ModelProvider.OTHER
         assert LLMClient._map_provider("cohere") == ModelProvider.OTHER

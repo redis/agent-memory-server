@@ -73,7 +73,7 @@ async def lifespan(app: FastAPI):
     # NOTE: API key validation is intentionally NOT done at startup.
     # LiteLLM handles API key validation at call time and provides clear error
     # messages (e.g., "GEMINI_API_KEY not set"). This approach:
-    # 1. Supports all 100+ LiteLLM providers without maintaining a hardcoded list
+    # 1. Supports all LiteLLM providers without maintaining a hardcoded list
     # 2. Avoids false positives (key exists but is invalid/expired)
     # 3. Allows conditional model usage (different models for different features)
     # 4. Reduces maintenance burden of tracking every provider's env var
