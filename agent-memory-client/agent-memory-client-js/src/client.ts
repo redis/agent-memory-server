@@ -132,7 +132,7 @@ export class MemoryAPIClient {
     path: string,
     options: {
       body?: unknown;
-      params?: Record<string, string | number | boolean | undefined>;
+      params?: Record<string, string | number | boolean | string[] | undefined>;
     } = {}
   ): Promise<T> {
     const url = new URL(path, this.config.baseUrl);
@@ -141,7 +141,14 @@ export class MemoryAPIClient {
     if (options.params) {
       for (const [key, value] of Object.entries(options.params)) {
         if (value !== undefined) {
-          url.searchParams.set(key, String(value));
+          if (Array.isArray(value)) {
+            // Handle array params by appending multiple values with the same key
+            for (const item of value) {
+              url.searchParams.append(key, String(item));
+            }
+          } else {
+            url.searchParams.set(key, String(value));
+          }
         }
       }
     }
@@ -468,8 +475,8 @@ export class MemoryAPIClient {
     options: { namespace?: string } = {}
   ): Promise<AckResponse> {
     return this.request<AckResponse>("DELETE", "/v1/long-term-memory", {
-      body: { memory_ids: memoryIds },
       params: {
+        memory_ids: memoryIds,
         namespace: options.namespace ?? this.config.defaultNamespace,
       },
     });

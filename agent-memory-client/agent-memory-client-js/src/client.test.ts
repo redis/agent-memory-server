@@ -731,6 +731,18 @@ describe("MemoryAPIClient", () => {
         expect.objectContaining({ method: "DELETE" })
       );
     });
+
+    it("should send memory_ids as query params not body", async () => {
+      mockFetch = createMockFetch({ status: "ok" });
+      client["fetchFn"] = mockFetch;
+      await client.deleteLongTermMemories(["mem-1", "mem-2"]);
+      const calledUrl = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(calledUrl).toContain("memory_ids=mem-1");
+      expect(calledUrl).toContain("memory_ids=mem-2");
+      // Verify no body is sent
+      const calledOptions = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+      expect(calledOptions.body).toBeUndefined();
+    });
   });
 
   describe("memoryPrompt", () => {
