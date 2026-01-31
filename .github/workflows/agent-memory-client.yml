@@ -185,9 +185,7 @@ jobs:
 
       - name: Publish to npm
         working-directory: agent-memory-client/agent-memory-client-js
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance
 
   publish-maven:
     name: Publish to Maven Central
