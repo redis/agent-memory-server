@@ -48,6 +48,11 @@ from agent_memory_server.utils.redis import get_redis_conn
 from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
 
 
+# Track pending extraction tasks to prevent garbage collection
+# This is only used when running without Docket (asyncio mode)
+_pending_extraction_tasks: set = set()
+
+
 def _parse_extraction_response_with_fallback(content: str, logger) -> dict:
     """
     Parse JSON response with fallback mechanisms for malformed responses.
@@ -265,15 +270,25 @@ async def schedule_trailing_extraction(
         import asyncio
 
         async def delayed_extraction():
-            await asyncio.sleep(debounce_seconds)
-            await run_delayed_extraction(
-                session_id=session_id,
-                namespace=namespace,
-                user_id=user_id,
-                scheduled_timestamp=extraction_timestamp,
-            )
+            try:
+                await asyncio.sleep(debounce_seconds)
+                await run_delayed_extraction(
+                    session_id=session_id,
+                    namespace=namespace,
+                    user_id=user_id,
+                    scheduled_timestamp=extraction_timestamp,
+                )
+            finally:
+                # Remove task from tracking set when done
+                _pending_extraction_tasks.discard(asyncio.current_task())
 
-        asyncio.create_task(delayed_extraction())
+        # Track the task to prevent garbage collection
+        task = asyncio.create_task(delayed_extraction())
+        _pending_extraction_tasks.add(task)
+        logger.debug(
+            f"Scheduled asyncio extraction task for session {session_id} "
+            f"(delay: {debounce_seconds}s)"
+        )
 
 
 async def run_delayed_extraction(
