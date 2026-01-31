@@ -37,6 +37,9 @@ from .filters import (
 from .models import (
     AckResponse,
     ClientMemoryRecord,
+    CreateSummaryViewRequest,
+    ForgetPolicy,
+    ForgetResponse,
     HealthCheckResponse,
     MemoryMessage,
     MemoryRecord,
@@ -46,6 +49,9 @@ from .models import (
     ModelNameLiteral,
     RecencyConfig,
     SessionListResponse,
+    SummaryView,
+    SummaryViewPartitionResult,
+    Task,
     WorkingMemory,
     WorkingMemoryResponse,
 )
@@ -788,6 +794,240 @@ class MemoryAPIClient:
             response.raise_for_status()
             return MemoryRecord(**response.json())
         except httpx.HTTPStatusError as e:
+            self._handle_http_error(e.response)
+
+    # ==================== Forget ====================
+
+    async def forget_long_term_memories(
+        self,
+        policy: ForgetPolicy,
+        namespace: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        limit: int | None = None,
+        dry_run: bool = False,
+        pinned_ids: list[str] | None = None,
+    ) -> ForgetResponse:
+        """
+        Run a forgetting pass with the provided policy.
+
+        Args:
+            policy: The forget policy defining what to forget
+            namespace: Optional namespace filter
+            user_id: Optional user ID filter
+            session_id: Optional session ID filter
+            limit: Optional limit on number of memories to process
+            dry_run: If True, don't actually delete, just return what would be deleted
+            pinned_ids: Optional list of memory IDs to exclude from forgetting
+
+        Returns:
+            ForgetResponse with scanned count, deleted count, and deleted IDs
+        """
+        params = {}
+        if namespace is not None:
+            params["namespace"] = namespace
+        if user_id is not None:
+            params["user_id"] = user_id
+        if session_id is not None:
+            params["session_id"] = session_id
+        if limit is not None:
+            params["limit"] = limit
+        if dry_run:
+            params["dry_run"] = dry_run
+
+        body = {"policy": policy.model_dump(exclude_none=True)}
+        if pinned_ids:
+            body["pinned_ids"] = pinned_ids
+
+        try:
+            response = await self._client.post(
+                "/v1/long-term-memory/forget",
+                params=params,
+                json=body,
+            )
+            response.raise_for_status()
+            return ForgetResponse(**response.json())
+        except httpx.HTTPStatusError as e:
+            self._handle_http_error(e.response)
+
+    # ==================== Summary Views ====================
+
+    async def list_summary_views(self) -> list[SummaryView]:
+        """
+        List all summary views.
+
+        Returns:
+            List of SummaryView objects
+        """
+        try:
+            response = await self._client.get("/v1/summary-views")
+            response.raise_for_status()
+            return [SummaryView(**v) for v in response.json()]
+        except httpx.HTTPStatusError as e:
+            self._handle_http_error(e.response)
+
+    async def create_summary_view(
+        self, request: CreateSummaryViewRequest
+    ) -> SummaryView:
+        """
+        Create a new summary view.
+
+        Args:
+            request: The summary view configuration
+
+        Returns:
+            The created SummaryView object
+        """
+        try:
+            response = await self._client.post(
+                "/v1/summary-views",
+                json=request.model_dump(exclude_none=True),
+            )
+            response.raise_for_status()
+            return SummaryView(**response.json())
+        except httpx.HTTPStatusError as e:
+            self._handle_http_error(e.response)
+
+    async def get_summary_view(self, view_id: str) -> SummaryView | None:
+        """
+        Get a summary view by ID.
+
+        Args:
+            view_id: The unique view ID
+
+        Returns:
+            SummaryView object or None if not found
+        """
+        try:
+            response = await self._client.get(f"/v1/summary-views/{view_id}")
+            response.raise_for_status()
+            return SummaryView(**response.json())
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            self._handle_http_error(e.response)
+
+    async def delete_summary_view(self, view_id: str) -> AckResponse:
+        """
+        Delete a summary view.
+
+        Args:
+            view_id: The unique view ID
+
+        Returns:
+            AckResponse indicating success
+        """
+        try:
+            response = await self._client.delete(f"/v1/summary-views/{view_id}")
+            response.raise_for_status()
+            return AckResponse(**response.json())
+        except httpx.HTTPStatusError as e:
+            self._handle_http_error(e.response)
+
+    async def run_summary_view_partition(
+        self, view_id: str, group: dict[str, str]
+    ) -> SummaryViewPartitionResult:
+        """
+        Run a single summary view partition.
+
+        Args:
+            view_id: The unique view ID
+            group: Concrete values for the view's group_by fields
+
+        Returns:
+            SummaryViewPartitionResult with the computed summary
+        """
+        try:
+            response = await self._client.post(
+                f"/v1/summary-views/{view_id}/partitions/run",
+                json={"group": group},
+            )
+            response.raise_for_status()
+            return SummaryViewPartitionResult(**response.json())
+        except httpx.HTTPStatusError as e:
+            self._handle_http_error(e.response)
+
+    async def list_summary_view_partitions(
+        self,
+        view_id: str,
+        namespace: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        memory_type: str | None = None,
+    ) -> list[SummaryViewPartitionResult]:
+        """
+        List summary view partitions.
+
+        Args:
+            view_id: The unique view ID
+            namespace: Optional namespace filter
+            user_id: Optional user ID filter
+            session_id: Optional session ID filter
+            memory_type: Optional memory type filter
+
+        Returns:
+            List of SummaryViewPartitionResult objects
+        """
+        params = {}
+        if namespace is not None:
+            params["namespace"] = namespace
+        if user_id is not None:
+            params["user_id"] = user_id
+        if session_id is not None:
+            params["session_id"] = session_id
+        if memory_type is not None:
+            params["memory_type"] = memory_type
+
+        try:
+            response = await self._client.get(
+                f"/v1/summary-views/{view_id}/partitions",
+                params=params,
+            )
+            response.raise_for_status()
+            return [SummaryViewPartitionResult(**p) for p in response.json()]
+        except httpx.HTTPStatusError as e:
+            self._handle_http_error(e.response)
+
+    async def run_summary_view(self, view_id: str, force: bool = False) -> Task:
+        """
+        Run a full summary view (async task).
+
+        Args:
+            view_id: The unique view ID
+            force: Force recomputation even if cached
+
+        Returns:
+            Task object representing the background task
+        """
+        try:
+            response = await self._client.post(
+                f"/v1/summary-views/{view_id}/run",
+                json={"force": force} if force else {},
+            )
+            response.raise_for_status()
+            return Task(**response.json())
+        except httpx.HTTPStatusError as e:
+            self._handle_http_error(e.response)
+
+    # ==================== Tasks ====================
+
+    async def get_task(self, task_id: str) -> Task | None:
+        """
+        Get a task by ID.
+
+        Args:
+            task_id: The unique task ID
+
+        Returns:
+            Task object or None if not found
+        """
+        try:
+            response = await self._client.get(f"/v1/tasks/{task_id}")
+            response.raise_for_status()
+            return Task(**response.json())
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
             self._handle_http_error(e.response)
 
     async def search_long_term_memory(

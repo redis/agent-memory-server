@@ -16,7 +16,13 @@ from .exceptions import (
 )
 from .models import (
     # Re-export essential models for convenience
+    CreateSummaryViewRequest,
+    ForgetPolicy,
+    ForgetResponse,
     ModelNameLiteral,
+    SummaryView,
+    SummaryViewPartitionResult,
+    Task,
 )
 from .tool_schema import ToolSchema, ToolSchemaCollection
 
@@ -35,4 +41,13 @@ __all__ = [
     "MemoryServerError",
     # Types
     "ModelNameLiteral",
+    # Forget
+    "ForgetPolicy",
+    "ForgetResponse",
+    # Summary Views
+    "SummaryView",
+    "CreateSummaryViewRequest",
+    "SummaryViewPartitionResult",
+    # Tasks
+    "Task",
 ]

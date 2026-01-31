@@ -43,6 +43,8 @@ public class MemoryAPIClient implements AutoCloseable {
     private final WorkingMemoryService workingMemoryService;
     private final LongTermMemoryService longTermMemoryService;
     private final MemoryHydrationService memoryHydrationService;
+    private final SummaryViewService summaryViewService;
+    private final TaskService taskService;
 
     private MemoryAPIClient(Builder builder) {
         this.baseUrl = builder.baseUrl;
@@ -75,6 +77,8 @@ public class MemoryAPIClient implements AutoCloseable {
         this.workingMemoryService = new WorkingMemoryService(baseUrl, httpClient, objectMapper, defaultNamespace, defaultModelName, defaultContextWindowMax);
         this.longTermMemoryService = new LongTermMemoryService(baseUrl, httpClient, objectMapper, defaultNamespace, defaultModelName, defaultContextWindowMax);
         this.memoryHydrationService = new MemoryHydrationService(baseUrl, httpClient, objectMapper, defaultNamespace, defaultModelName, defaultContextWindowMax);
+        this.summaryViewService = new SummaryViewService(baseUrl, httpClient, objectMapper, defaultNamespace, defaultModelName, defaultContextWindowMax);
+        this.taskService = new TaskService(baseUrl, httpClient, objectMapper, defaultNamespace, defaultModelName, defaultContextWindowMax);
     }
 
     @NotNull
@@ -135,6 +139,24 @@ public class MemoryAPIClient implements AutoCloseable {
     @NotNull
     public MemoryHydrationService hydration() {
         return memoryHydrationService;
+    }
+
+    /**
+     * Get the summary view service for summary view operations.
+     * @return SummaryViewService instance
+     */
+    @NotNull
+    public SummaryViewService summaryViews() {
+        return summaryViewService;
+    }
+
+    /**
+     * Get the task service for task operations.
+     * @return TaskService instance
+     */
+    @NotNull
+    public TaskService tasks() {
+        return taskService;
     }
 
     @Override

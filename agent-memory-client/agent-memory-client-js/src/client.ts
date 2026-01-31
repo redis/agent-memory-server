@@ -22,6 +22,9 @@ import {
 } from "./filters";
 import {
   AckResponse,
+  CreateSummaryViewRequest,
+  ForgetPolicy,
+  ForgetResponse,
   HealthCheckResponse,
   MemoryPromptRequest,
   MemoryPromptResponse,
@@ -31,6 +34,9 @@ import {
   ModelNameLiteral,
   RecencyConfig,
   SessionListResponse,
+  SummaryView,
+  SummaryViewPartitionResult,
+  Task,
   WorkingMemory,
   WorkingMemoryResponse,
 } from "./models";
@@ -491,5 +497,168 @@ export class MemoryAPIClient {
     return this.request<MemoryPromptResponse>("POST", "/v1/memory/prompt", {
       body: request,
     });
+  }
+
+  // ==================== Edit Long-term Memory ====================
+
+  /**
+   * Edit a long-term memory by ID
+   */
+  async editLongTermMemory(
+    memoryId: string,
+    updates: Partial<MemoryRecord>
+  ): Promise<MemoryRecord> {
+    return this.request<MemoryRecord>(
+      "PATCH",
+      `/v1/long-term-memory/${encodeURIComponent(memoryId)}`,
+      { body: updates }
+    );
+  }
+
+  // ==================== Forget ====================
+
+  /**
+   * Run a forgetting pass with the provided policy
+   */
+  async forgetLongTermMemories(options: {
+    policy: ForgetPolicy;
+    namespace?: string;
+    userId?: string;
+    sessionId?: string;
+    limit?: number;
+    dryRun?: boolean;
+    pinnedIds?: string[];
+  }): Promise<ForgetResponse> {
+    return this.request<ForgetResponse>("POST", "/v1/long-term-memory/forget", {
+      params: {
+        namespace: options.namespace,
+        user_id: options.userId,
+        session_id: options.sessionId,
+        limit: options.limit,
+        dry_run: options.dryRun,
+      },
+      body: {
+        policy: options.policy,
+        pinned_ids: options.pinnedIds,
+      },
+    });
+  }
+
+  // ==================== Summary Views ====================
+
+  /**
+   * List all summary views
+   */
+  async listSummaryViews(): Promise<SummaryView[]> {
+    return this.request<SummaryView[]>("GET", "/v1/summary-views");
+  }
+
+  /**
+   * Create a new summary view
+   */
+  async createSummaryView(request: CreateSummaryViewRequest): Promise<SummaryView> {
+    return this.request<SummaryView>("POST", "/v1/summary-views", {
+      body: request,
+    });
+  }
+
+  /**
+   * Get a summary view by ID
+   */
+  async getSummaryView(viewId: string): Promise<SummaryView | null> {
+    try {
+      return await this.request<SummaryView>(
+        "GET",
+        `/v1/summary-views/${encodeURIComponent(viewId)}`
+      );
+    } catch (error) {
+      if (error instanceof MemoryNotFoundError) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a summary view
+   */
+  async deleteSummaryView(viewId: string): Promise<AckResponse> {
+    return this.request<AckResponse>(
+      "DELETE",
+      `/v1/summary-views/${encodeURIComponent(viewId)}`
+    );
+  }
+
+  /**
+   * Run a summary view partition
+   */
+  async runSummaryViewPartition(
+    viewId: string,
+    group: Record<string, string>
+  ): Promise<SummaryViewPartitionResult> {
+    return this.request<SummaryViewPartitionResult>(
+      "POST",
+      `/v1/summary-views/${encodeURIComponent(viewId)}/partitions/run`,
+      { body: { group } }
+    );
+  }
+
+  /**
+   * List summary view partitions
+   */
+  async listSummaryViewPartitions(
+    viewId: string,
+    options: {
+      namespace?: string;
+      userId?: string;
+      sessionId?: string;
+      memoryType?: string;
+    } = {}
+  ): Promise<SummaryViewPartitionResult[]> {
+    return this.request<SummaryViewPartitionResult[]>(
+      "GET",
+      `/v1/summary-views/${encodeURIComponent(viewId)}/partitions`,
+      {
+        params: {
+          namespace: options.namespace,
+          user_id: options.userId,
+          session_id: options.sessionId,
+          memory_type: options.memoryType,
+        },
+      }
+    );
+  }
+
+  /**
+   * Run a full summary view (async task)
+   */
+  async runSummaryView(
+    viewId: string,
+    options: { force?: boolean } = {}
+  ): Promise<Task> {
+    return this.request<Task>(
+      "POST",
+      `/v1/summary-views/${encodeURIComponent(viewId)}/run`,
+      { body: options }
+    );
+  }
+
+  // ==================== Tasks ====================
+
+  /**
+   * Get a task by ID
+   */
+  async getTask(taskId: string): Promise<Task | null> {
+    try {
+      return await this.request<Task>(
+        "GET",
+        `/v1/tasks/${encodeURIComponent(taskId)}`
+      );
+    } catch (error) {
+      if (error instanceof MemoryNotFoundError) {
+        return null;
+      }
+      throw error;
+    }
   }
 }

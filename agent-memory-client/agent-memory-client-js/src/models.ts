@@ -348,3 +348,152 @@ export interface MemoryTypeFilter {
   not_eq?: string | null;
   not_in?: string[] | null;
 }
+
+// ==================== Forget ====================
+
+/**
+ * Policy for forgetting memories
+ */
+export interface ForgetPolicy {
+  /** Maximum age in days for memories to keep */
+  max_age_days?: number | null;
+  /** Maximum inactive days before forgetting */
+  max_inactive_days?: number | null;
+  /** Budget limit for forgetting operation */
+  budget?: number | null;
+  /** Allowlist of memory types to consider for forgetting */
+  memory_type_allowlist?: string[] | null;
+}
+
+/**
+ * Response from forget operation
+ */
+export interface ForgetResponse {
+  /** Number of memories scanned */
+  scanned: number;
+  /** Number of memories deleted */
+  deleted: number;
+  /** IDs of deleted memories */
+  deleted_ids: string[];
+  /** Whether this was a dry run */
+  dry_run: boolean;
+}
+
+// ==================== Summary Views ====================
+
+/**
+ * Source type for summary views
+ */
+export type SummaryViewSource = "long_term" | "working_memory";
+
+/**
+ * Summary view configuration
+ */
+export interface SummaryView {
+  /** Unique identifier for the view */
+  id: string;
+  /** Optional human-readable name */
+  name?: string | null;
+  /** Memory source to summarize */
+  source: SummaryViewSource;
+  /** Fields to group by for partitioning */
+  group_by: string[];
+  /** Optional filters to apply */
+  filters?: Record<string, unknown> | null;
+  /** Time window in days for filtering */
+  time_window_days?: number | null;
+  /** Whether background workers refresh this view */
+  continuous?: boolean;
+  /** Custom summarization prompt */
+  prompt?: string | null;
+  /** Model override for summarization */
+  model_name?: string | null;
+}
+
+/**
+ * Request to create a summary view
+ */
+export interface CreateSummaryViewRequest {
+  /** Optional human-readable name */
+  name?: string | null;
+  /** Memory source to summarize */
+  source: SummaryViewSource;
+  /** Fields to group by for partitioning */
+  group_by: string[];
+  /** Optional filters to apply */
+  filters?: Record<string, unknown> | null;
+  /** Time window in days for filtering */
+  time_window_days?: number | null;
+  /** Whether background workers refresh this view */
+  continuous?: boolean;
+  /** Custom summarization prompt */
+  prompt?: string | null;
+  /** Model override for summarization */
+  model_name?: string | null;
+}
+
+/**
+ * Result of summarizing one partition
+ */
+export interface SummaryViewPartitionResult {
+  /** ID of the SummaryView that produced this result */
+  view_id: string;
+  /** Concrete values for the view's group_by fields */
+  group: Record<string, string>;
+  /** Summarized text for this partition */
+  summary: string;
+  /** Number of memories that contributed to this summary */
+  memory_count: number;
+  /** When this summary was computed */
+  computed_at?: string;
+}
+
+/**
+ * Request to run a summary view partition
+ */
+export interface RunSummaryViewPartitionRequest {
+  /** Concrete values for the view's group_by fields */
+  group: Record<string, string>;
+}
+
+/**
+ * Request to run a full summary view
+ */
+export interface RunSummaryViewRequest {
+  /** Force recomputation even if cached */
+  force?: boolean;
+}
+
+// ==================== Tasks ====================
+
+/**
+ * Task type enum
+ */
+export type TaskType = "summary_view_full_run" | string;
+
+/**
+ * Task status enum
+ */
+export type TaskStatus = "pending" | "running" | "completed" | "failed";
+
+/**
+ * Background task representation
+ */
+export interface Task {
+  /** Unique task identifier */
+  id: string;
+  /** Type of task */
+  type: TaskType;
+  /** Current task status */
+  status: TaskStatus;
+  /** Associated SummaryView ID, if applicable */
+  view_id?: string | null;
+  /** When the task record was created */
+  created_at?: string;
+  /** When execution started */
+  started_at?: string | null;
+  /** When execution finished */
+  completed_at?: string | null;
+  /** Error message if failed */
+  error_message?: string | null;
+}

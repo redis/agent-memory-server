@@ -43,4 +43,18 @@ export type {
   MemoryPromptRequest,
   MemoryPromptResponse,
   RecencyConfig,
+  // Forget
+  ForgetPolicy,
+  ForgetResponse,
+  // Summary Views
+  SummaryView,
+  SummaryViewSource,
+  CreateSummaryViewRequest,
+  SummaryViewPartitionResult,
+  RunSummaryViewPartitionRequest,
+  RunSummaryViewRequest,
+  // Tasks
+  Task,
+  TaskType,
+  TaskStatus,
 } from "./models";
