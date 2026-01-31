@@ -1109,9 +1109,9 @@ async def search_long_term_memories(
         search_query = await optimize_query_for_vector_search(text)
         optimized_applied = True
 
-    # Log search input
+    # Debug: Log search input
     optimized_display = repr(search_query) if optimized_applied else "N/A"
-    logger.info(
+    logger.debug(
         f"[search_long_term_memories] INPUT - query: {text!r}, "
         f"optimized_query: {optimized_display}, "
         f"session_id: {session_id}, user_id: {user_id}, namespace: {namespace}, "
@@ -1172,12 +1172,12 @@ async def search_long_term_memories(
         # Best-effort fallback; return the original results on any error
         pass
 
-    # Log search output - always log regardless of result count
+    # Debug: Log search output
     memory_previews = [
         f"{m.id}: {m.text[:80]}..." if len(m.text) > 80 else f"{m.id}: {m.text}"
         for m in results.memories[:5]  # Show first 5
     ]
-    logger.info(
+    logger.debug(
         f"[search_long_term_memories] OUTPUT - {results.total} results: {memory_previews}"
     )
 
