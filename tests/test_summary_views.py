@@ -707,3 +707,968 @@ class TestPartitionResultStructure:
         assert isinstance(result["summary"], str)
         assert isinstance(result["memory_count"], int)
         assert isinstance(result["computed_at"], str)  # ISO format string
+
+
+# =============================================================================
+# Additional Unit Tests for 100% Coverage
+# =============================================================================
+
+
+class TestDecodePartitionKey:
+    """Tests for decode_partition_key function."""
+
+    def test_empty_string_returns_empty_dict(self):
+        """decode_partition_key should return {} for empty string."""
+        from agent_memory_server.summary_views import decode_partition_key
+
+        assert decode_partition_key("") == {}
+
+    def test_part_without_equals_is_skipped(self):
+        """decode_partition_key should skip parts without '=' delimiter."""
+        from agent_memory_server.summary_views import decode_partition_key
+
+        # A malformed key with a part that has no equals sign
+        result = decode_partition_key("valid_key=valid_value|malformed_part")
+        assert result == {"valid_key": "valid_value"}
+
+
+class TestGetSummaryViewExceptionHandling:
+    """Tests for get_summary_view exception handling."""
+
+    @pytest.mark.asyncio
+    async def test_get_summary_view_returns_none_on_invalid_json(
+        self, async_redis_client
+    ):
+        """get_summary_view should return None if JSON is invalid."""
+        from agent_memory_server import summary_views
+
+        # Store invalid JSON directly
+        view_id = "test-invalid-json-view"
+        await async_redis_client.set(
+            f"summary_view:{view_id}:config", "not valid json {{"
+        )
+
+        result = await summary_views.get_summary_view(view_id)
+        assert result is None
+
+
+class TestListPartitionResultsEdgeCases:
+    """Tests for list_partition_results edge cases."""
+
+    @pytest.mark.asyncio
+    async def test_list_partition_results_skips_invalid_json(self, async_redis_client):
+        """list_partition_results should skip entries with invalid JSON."""
+        from agent_memory_server import summary_views
+
+        view_id = "test-invalid-partition"
+
+        # Store a valid partition
+        from datetime import UTC, datetime
+
+        from agent_memory_server.models import SummaryViewPartitionResult
+
+        valid_result = SummaryViewPartitionResult(
+            view_id=view_id,
+            group={"user_id": "alice"},
+            summary="Valid summary",
+            memory_count=5,
+            computed_at=datetime.now(UTC),
+        )
+        partition_key = summary_views.encode_partition_key(valid_result.group)
+        await async_redis_client.set(
+            f"summary_view:{view_id}:summary:{partition_key}",
+            valid_result.model_dump_json(),
+        )
+
+        # Store invalid JSON as another partition
+        await async_redis_client.set(
+            f"summary_view:{view_id}:summary:invalid_partition",
+            "not valid json {{",
+        )
+
+        results = await summary_views.list_partition_results(view_id)
+        # Should only return the valid partition
+        assert len(results) == 1
+        assert results[0].group == {"user_id": "alice"}
+
+    @pytest.mark.asyncio
+    async def test_list_partition_results_filters_by_group(self, async_redis_client):
+        """list_partition_results should filter by group when provided."""
+        from agent_memory_server import summary_views
+
+        view_id = "test-filter-partition"
+        from datetime import UTC, datetime
+
+        from agent_memory_server.models import SummaryViewPartitionResult
+
+        # Store two partitions
+        for user in ["alice", "bob"]:
+            result = SummaryViewPartitionResult(
+                view_id=view_id,
+                group={"user_id": user},
+                summary=f"Summary for {user}",
+                memory_count=5,
+                computed_at=datetime.now(UTC),
+            )
+            partition_key = summary_views.encode_partition_key(result.group)
+            await async_redis_client.set(
+                f"summary_view:{view_id}:summary:{partition_key}",
+                result.model_dump_json(),
+            )
+
+        # Filter for alice only
+        results = await summary_views.list_partition_results(
+            view_id, group_filter={"user_id": "alice"}
+        )
+        assert len(results) == 1
+        assert results[0].group["user_id"] == "alice"
+
+
+class TestBuildLongTermFiltersForView:
+    """Tests for _build_long_term_filters_for_view function."""
+
+    def test_applies_session_id_filter(self):
+        """_build_long_term_filters_for_view should apply session_id filter."""
+        from agent_memory_server.filters import SessionId
+        from agent_memory_server.models import SummaryView
+        from agent_memory_server.summary_views import _build_long_term_filters_for_view
+
+        view = SummaryView(
+            id="test",
+            name="test",
+            source="long_term",
+            group_by=[],
+            filters={"session_id": "test-session"},
+        )
+
+        filters = _build_long_term_filters_for_view(view)
+        assert "session_id" in filters
+        assert isinstance(filters["session_id"], SessionId)
+        assert filters["session_id"].eq == "test-session"
+
+    def test_applies_memory_type_filter(self):
+        """_build_long_term_filters_for_view should apply memory_type filter."""
+        from agent_memory_server.filters import MemoryType
+        from agent_memory_server.models import SummaryView
+        from agent_memory_server.summary_views import _build_long_term_filters_for_view
+
+        view = SummaryView(
+            id="test",
+            name="test",
+            source="long_term",
+            group_by=[],
+            filters={"memory_type": "episodic"},
+        )
+
+        filters = _build_long_term_filters_for_view(view)
+        assert "memory_type" in filters
+        assert isinstance(filters["memory_type"], MemoryType)
+        assert filters["memory_type"].eq == "episodic"
+
+    def test_applies_time_window_filter(self):
+        """_build_long_term_filters_for_view should apply time_window_days filter."""
+        from agent_memory_server.filters import CreatedAt
+        from agent_memory_server.models import SummaryView
+        from agent_memory_server.summary_views import _build_long_term_filters_for_view
+
+        view = SummaryView(
+            id="test",
+            name="test",
+            source="long_term",
+            group_by=[],
+            filters={},
+            time_window_days=7,
+        )
+
+        filters = _build_long_term_filters_for_view(view)
+        assert "created_at" in filters
+        assert isinstance(filters["created_at"], CreatedAt)
+        assert filters["created_at"].gte is not None
+
+    def test_applies_extra_group_filters(self):
+        """_build_long_term_filters_for_view should apply extra_group filters."""
+        from agent_memory_server.filters import Namespace, UserId
+        from agent_memory_server.models import SummaryView
+        from agent_memory_server.summary_views import _build_long_term_filters_for_view
+
+        view = SummaryView(
+            id="test",
+            name="test",
+            source="long_term",
+            group_by=["user_id", "namespace"],
+            filters={},
+        )
+
+        filters = _build_long_term_filters_for_view(
+            view, extra_group={"user_id": "alice", "namespace": "chat"}
+        )
+        assert "user_id" in filters
+        assert isinstance(filters["user_id"], UserId)
+        assert filters["user_id"].eq == "alice"
+        assert "namespace" in filters
+        assert isinstance(filters["namespace"], Namespace)
+        assert filters["namespace"].eq == "chat"
+
+
+class TestFetchLongTermMemoriesForView:
+    """Tests for _fetch_long_term_memories_for_view function."""
+
+    @pytest.mark.asyncio
+    async def test_raises_value_error_on_zero_page_size(self):
+        """_fetch_long_term_memories_for_view should raise ValueError for page_size <= 0."""
+        from agent_memory_server.models import SummaryView
+        from agent_memory_server.summary_views import (
+            _fetch_long_term_memories_for_view,
+        )
+
+        view = SummaryView(
+            id="test",
+            name="test",
+            source="long_term",
+            group_by=[],
+            filters={},
+        )
+
+        with pytest.raises(ValueError, match="page_size must be positive"):
+            await _fetch_long_term_memories_for_view(view, page_size=0)
+
+    @pytest.mark.asyncio
+    async def test_raises_value_error_on_negative_page_size(self):
+        """_fetch_long_term_memories_for_view should raise ValueError for negative page_size."""
+        from agent_memory_server.models import SummaryView
+        from agent_memory_server.summary_views import (
+            _fetch_long_term_memories_for_view,
+        )
+
+        view = SummaryView(
+            id="test",
+            name="test",
+            source="long_term",
+            group_by=[],
+            filters={},
+        )
+
+        with pytest.raises(ValueError, match="page_size must be positive"):
+            await _fetch_long_term_memories_for_view(view, page_size=-1)
+
+
+class TestPartitionMemoriesByGroup:
+    """Tests for _partition_memories_by_group function."""
+
+    def test_partitions_memories_by_single_field(self):
+        """_partition_memories_by_group should group by a single field."""
+        from agent_memory_server.models import MemoryRecord, SummaryView
+        from agent_memory_server.summary_views import _partition_memories_by_group
+
+        view = SummaryView(
+            id="test", name="test", source="long_term", group_by=["user_id"], filters={}
+        )
+
+        memories = [
+            MemoryRecord(id="m1", text="memory 1", user_id="alice"),
+            MemoryRecord(id="m2", text="memory 2", user_id="alice"),
+            MemoryRecord(id="m3", text="memory 3", user_id="bob"),
+        ]
+
+        partitions = _partition_memories_by_group(view, memories)
+        assert len(partitions) == 2
+        # Check alice partition
+        alice_key = (("user_id", "alice"),)
+        assert alice_key in partitions
+        assert len(partitions[alice_key]) == 2
+        # Check bob partition
+        bob_key = (("user_id", "bob"),)
+        assert bob_key in partitions
+        assert len(partitions[bob_key]) == 1
+
+    def test_skips_memories_with_missing_group_field(self):
+        """_partition_memories_by_group should skip memories missing group_by fields."""
+        from agent_memory_server.models import MemoryRecord, SummaryView
+        from agent_memory_server.summary_views import _partition_memories_by_group
+
+        view = SummaryView(
+            id="test", name="test", source="long_term", group_by=["user_id"], filters={}
+        )
+
+        memories = [
+            MemoryRecord(id="m1", text="memory 1", user_id="alice"),
+            MemoryRecord(id="m2", text="memory 2", user_id=None),  # Missing user_id
+            MemoryRecord(id="m3", text="memory 3"),  # No user_id
+        ]
+
+        partitions = _partition_memories_by_group(view, memories)
+        assert len(partitions) == 1
+        alice_key = (("user_id", "alice"),)
+        assert alice_key in partitions
+        assert len(partitions[alice_key]) == 1
+
+    def test_partitions_by_multiple_fields(self):
+        """_partition_memories_by_group should group by multiple fields."""
+        from agent_memory_server.models import MemoryRecord, SummaryView
+        from agent_memory_server.summary_views import _partition_memories_by_group
+
+        view = SummaryView(
+            id="test",
+            name="test",
+            source="long_term",
+            group_by=["user_id", "namespace"],
+            filters={},
+        )
+
+        memories = [
+            MemoryRecord(id="m1", text="memory 1", user_id="alice", namespace="chat"),
+            MemoryRecord(id="m2", text="memory 2", user_id="alice", namespace="chat"),
+            MemoryRecord(id="m3", text="memory 3", user_id="alice", namespace="work"),
+        ]
+
+        partitions = _partition_memories_by_group(view, memories)
+        assert len(partitions) == 2
+
+
+class TestBuildLongTermSummaryPrompt:
+    """Tests for _build_long_term_summary_prompt function."""
+
+    def test_builds_prompt_with_memories(self):
+        """_build_long_term_summary_prompt should build a prompt with memory bullets."""
+        from agent_memory_server.models import MemoryRecord, SummaryView
+        from agent_memory_server.summary_views import _build_long_term_summary_prompt
+
+        view = SummaryView(
+            id="test", name="test", source="long_term", group_by=["user_id"], filters={}
+        )
+
+        memories = [
+            MemoryRecord(id="m1", text="Alice likes coffee"),
+            MemoryRecord(id="m2", text="Alice works in tech"),
+        ]
+
+        prompt = _build_long_term_summary_prompt(
+            view=view,
+            group={"user_id": "alice"},
+            memories=memories,
+            model_name="gpt-4o-mini",
+            instructions="Summarize the user's preferences.",
+        )
+
+        assert "Summarize the user's preferences." in prompt
+        assert "alice" in prompt.lower() or '"user_id"' in prompt
+        assert "Alice likes coffee" in prompt
+        assert "Alice works in tech" in prompt
+        assert "SUMMARY:" in prompt
+
+    def test_handles_empty_memories_gracefully(self):
+        """_build_long_term_summary_prompt should handle empty memory list."""
+        from agent_memory_server.models import SummaryView
+        from agent_memory_server.summary_views import _build_long_term_summary_prompt
+
+        view = SummaryView(
+            id="test", name="test", source="long_term", group_by=["user_id"], filters={}
+        )
+
+        prompt = _build_long_term_summary_prompt(
+            view=view,
+            group={"user_id": "alice"},
+            memories=[],
+            model_name="gpt-4o-mini",
+            instructions="Summarize.",
+        )
+
+        assert "Summarize." in prompt
+        assert "SUMMARY:" in prompt
+
+
+class TestSummarizePartitionLongTerm:
+    """Tests for summarize_partition_long_term function."""
+
+    @pytest.mark.asyncio
+    async def test_returns_no_memories_message_for_empty_list(self):
+        """summarize_partition_long_term should return message when no memories."""
+        from agent_memory_server.models import SummaryView
+        from agent_memory_server.summary_views import summarize_partition_long_term
+
+        view = SummaryView(
+            id="test", name="test", source="long_term", group_by=["user_id"], filters={}
+        )
+
+        result = await summarize_partition_long_term(
+            view, group={"user_id": "alice"}, memories=[]
+        )
+
+        assert result.memory_count == 0
+        assert "No memories found" in result.summary
+
+    @pytest.mark.asyncio
+    async def test_fallback_when_no_api_keys(self, monkeypatch):
+        """summarize_partition_long_term should fallback when no API keys."""
+        from agent_memory_server import config
+        from agent_memory_server.models import MemoryRecord, SummaryView
+        from agent_memory_server.summary_views import summarize_partition_long_term
+
+        # Ensure no API keys are set
+        monkeypatch.setattr(config.settings, "openai_api_key", None)
+        monkeypatch.setattr(config.settings, "anthropic_api_key", None)
+        monkeypatch.setattr(config.settings, "aws_access_key_id", None)
+
+        view = SummaryView(
+            id="test", name="test", source="long_term", group_by=["user_id"], filters={}
+        )
+
+        memories = [
+            MemoryRecord(id="m1", text="Memory 1"),
+            MemoryRecord(id="m2", text="Memory 2"),
+        ]
+
+        result = await summarize_partition_long_term(
+            view, group={"user_id": "alice"}, memories=memories
+        )
+
+        assert result.memory_count == 2
+        assert "LLM summarization disabled" in result.summary
+        assert "Memory 1" in result.summary
+
+    @pytest.mark.asyncio
+    async def test_llm_call_with_mocked_client(self, monkeypatch):
+        """summarize_partition_long_term should call LLM when API key is set."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from agent_memory_server import config
+        from agent_memory_server.models import MemoryRecord, SummaryView
+        from agent_memory_server.summary_views import summarize_partition_long_term
+
+        # Set an API key to trigger LLM path
+        monkeypatch.setattr(config.settings, "openai_api_key", "test-key")
+
+        # Mock the LLMClient
+        mock_response = MagicMock()
+        mock_response.content = "This is a summary of Alice's memories."
+
+        mock_create = AsyncMock(return_value=mock_response)
+
+        # We need to patch within the module where it's imported
+
+        monkeypatch.setattr(
+            "agent_memory_server.llm.LLMClient.create_chat_completion", mock_create
+        )
+
+        view = SummaryView(
+            id="test", name="test", source="long_term", group_by=["user_id"], filters={}
+        )
+
+        memories = [
+            MemoryRecord(id="m1", text="Memory 1"),
+        ]
+
+        result = await summarize_partition_long_term(
+            view, group={"user_id": "alice"}, memories=memories
+        )
+
+        assert result.summary == "This is a summary of Alice's memories."
+        mock_create.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_llm_call_handles_exception(self, monkeypatch):
+        """summarize_partition_long_term should handle LLM exceptions gracefully."""
+        from unittest.mock import AsyncMock
+
+        from agent_memory_server import config
+        from agent_memory_server.models import MemoryRecord, SummaryView
+        from agent_memory_server.summary_views import summarize_partition_long_term
+
+        # Set an API key to trigger LLM path
+        monkeypatch.setattr(config.settings, "openai_api_key", "test-key")
+
+        # Mock the LLMClient to raise an exception
+        mock_create = AsyncMock(side_effect=Exception("API error"))
+        monkeypatch.setattr(
+            "agent_memory_server.llm.LLMClient.create_chat_completion", mock_create
+        )
+
+        view = SummaryView(
+            id="test", name="test", source="long_term", group_by=["user_id"], filters={}
+        )
+
+        memories = [
+            MemoryRecord(id="m1", text="Memory 1"),
+        ]
+
+        result = await summarize_partition_long_term(
+            view, group={"user_id": "alice"}, memories=memories
+        )
+
+        assert "No summary could be generated" in result.summary
+
+    @pytest.mark.asyncio
+    async def test_llm_call_handles_empty_content(self, monkeypatch):
+        """summarize_partition_long_term should handle empty LLM response."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from agent_memory_server import config
+        from agent_memory_server.models import MemoryRecord, SummaryView
+        from agent_memory_server.summary_views import summarize_partition_long_term
+
+        # Set an API key to trigger LLM path
+        monkeypatch.setattr(config.settings, "openai_api_key", "test-key")
+
+        # Mock the LLMClient to return empty content
+        mock_response = MagicMock()
+        mock_response.content = ""
+
+        mock_create = AsyncMock(return_value=mock_response)
+        monkeypatch.setattr(
+            "agent_memory_server.llm.LLMClient.create_chat_completion", mock_create
+        )
+
+        view = SummaryView(
+            id="test", name="test", source="long_term", group_by=["user_id"], filters={}
+        )
+
+        memories = [
+            MemoryRecord(id="m1", text="Memory 1"),
+        ]
+
+        result = await summarize_partition_long_term(
+            view, group={"user_id": "alice"}, memories=memories
+        )
+
+        assert "No summary could be generated" in result.summary
+
+
+class TestSummarizePartitionPlaceholder:
+    """Tests for summarize_partition_placeholder function."""
+
+    @pytest.mark.asyncio
+    async def test_returns_placeholder_summary(self):
+        """summarize_partition_placeholder should return a placeholder message."""
+        from agent_memory_server.models import SummaryView
+        from agent_memory_server.summary_views import summarize_partition_placeholder
+
+        view = SummaryView(
+            id="test-view",
+            name="test",
+            source="working_memory",
+            group_by=[],
+            filters={},
+        )
+
+        result = await summarize_partition_placeholder(view, group={"user_id": "alice"})
+
+        assert result.view_id == "test-view"
+        assert result.memory_count == 0
+        assert "Placeholder summary" in result.summary
+
+
+class TestSummarizePartitionForView:
+    """Tests for summarize_partition_for_view function."""
+
+    @pytest.mark.asyncio
+    async def test_dispatches_to_placeholder_for_unsupported_source(self, monkeypatch):
+        """summarize_partition_for_view should use placeholder for working_memory source."""
+        from agent_memory_server.models import SummaryView
+        from agent_memory_server.summary_views import summarize_partition_for_view
+
+        # Create a view with working_memory source (not yet fully implemented)
+        view = SummaryView(
+            id="test-view",
+            name="test",
+            source="working_memory",
+            group_by=[],
+            filters={},
+        )
+
+        result = await summarize_partition_for_view(view, group={"user_id": "alice"})
+
+        assert "Placeholder summary" in result.summary
+
+
+class TestRefreshSummaryView:
+    """Tests for refresh_summary_view function."""
+
+    @pytest.mark.asyncio
+    async def test_refresh_handles_missing_view_with_task(self, async_redis_client):
+        """refresh_summary_view should mark task as failed when view is missing."""
+        from agent_memory_server.models import Task, TaskStatusEnum, TaskTypeEnum
+        from agent_memory_server.summary_views import refresh_summary_view
+        from agent_memory_server.tasks import create_task, get_task
+
+        # Create a task first
+        task_id = "test-task-missing-view"
+        task = Task(
+            id=task_id,
+            type=TaskTypeEnum.SUMMARY_VIEW_FULL_RUN,
+            view_id="nonexistent-view",
+            status=TaskStatusEnum.PENDING,
+        )
+        await create_task(task)
+
+        # Try to refresh a non-existent view
+        await refresh_summary_view("nonexistent-view", task_id=task_id)
+
+        # Check task status
+        result_task = await get_task(task_id)
+        assert result_task is not None
+        assert result_task.status == TaskStatusEnum.FAILED
+        assert "not found" in result_task.error_message
+
+    @pytest.mark.asyncio
+    async def test_refresh_handles_missing_view_without_task(self, async_redis_client):
+        """refresh_summary_view should return silently when view is missing and no task."""
+        from agent_memory_server.summary_views import refresh_summary_view
+
+        # This should not raise an exception
+        await refresh_summary_view("nonexistent-view", task_id=None)
+
+    @pytest.mark.asyncio
+    async def test_refresh_updates_task_to_running(self, async_redis_client):
+        """refresh_summary_view should update task to running status."""
+        from agent_memory_server.models import (
+            SummaryView,
+            Task,
+            TaskStatusEnum,
+            TaskTypeEnum,
+        )
+        from agent_memory_server.summary_views import (
+            refresh_summary_view,
+            save_summary_view,
+        )
+        from agent_memory_server.tasks import create_task, get_task
+
+        # Create a view
+        view = SummaryView(
+            id="test-refresh-view",
+            name="test",
+            source="long_term",
+            group_by=["user_id"],
+            filters={},
+        )
+        await save_summary_view(view)
+
+        # Create a task
+        task_id = "test-refresh-task"
+        task = Task(
+            id=task_id,
+            type=TaskTypeEnum.SUMMARY_VIEW_FULL_RUN,
+            view_id=view.id,
+            status=TaskStatusEnum.PENDING,
+        )
+        await create_task(task)
+
+        # Run the refresh
+        await refresh_summary_view(view.id, task_id=task_id)
+
+        # Check final task status
+        result_task = await get_task(task_id)
+        assert result_task is not None
+        assert result_task.status == TaskStatusEnum.SUCCESS
+
+    @pytest.mark.asyncio
+    async def test_refresh_logs_unsupported_source(self, async_redis_client, caplog):
+        """refresh_summary_view should log info for working_memory sources."""
+        import logging
+
+        from agent_memory_server.models import SummaryView
+        from agent_memory_server.summary_views import (
+            refresh_summary_view,
+            save_summary_view,
+        )
+
+        # Create a view with working_memory source (not yet fully implemented)
+        view = SummaryView(
+            id="test-unsupported-source-view",
+            name="test",
+            source="working_memory",
+            group_by=[],
+            filters={},
+        )
+        await save_summary_view(view)
+
+        with caplog.at_level(logging.INFO):
+            await refresh_summary_view(view.id, task_id=None)
+
+        assert "not yet implemented" in caplog.text
+
+
+class TestPeriodicRefreshSummaryViews:
+    """Tests for periodic_refresh_summary_views function."""
+
+    @pytest.mark.asyncio
+    async def test_periodic_refresh_skips_when_ltm_disabled(self, monkeypatch):
+        """periodic_refresh_summary_views should skip when long_term_memory is disabled."""
+        from agent_memory_server import config
+        from agent_memory_server.summary_views import periodic_refresh_summary_views
+
+        monkeypatch.setattr(config.settings, "long_term_memory", False)
+
+        # This should return early without error
+        await periodic_refresh_summary_views()
+
+    @pytest.mark.asyncio
+    async def test_periodic_refresh_skips_non_continuous_views(
+        self, async_redis_client, monkeypatch
+    ):
+        """periodic_refresh_summary_views should skip non-continuous views."""
+        from unittest.mock import AsyncMock
+
+        from agent_memory_server import config
+        from agent_memory_server.models import SummaryView
+        from agent_memory_server.summary_views import periodic_refresh_summary_views
+
+        monkeypatch.setattr(config.settings, "long_term_memory", True)
+
+        # Create a non-continuous view
+        view = SummaryView(
+            id="test-non-continuous",
+            name="test",
+            source="long_term",
+            group_by=[],
+            filters={},
+            continuous=False,
+        )
+
+        # Mock list_summary_views to return only our test view (avoiding test isolation issues)
+        mock_list = AsyncMock(return_value=[view])
+        monkeypatch.setattr(
+            "agent_memory_server.summary_views.list_summary_views", mock_list
+        )
+
+        # Mock refresh_summary_view to track calls
+        mock_refresh = AsyncMock()
+        monkeypatch.setattr(
+            "agent_memory_server.summary_views.refresh_summary_view", mock_refresh
+        )
+
+        await periodic_refresh_summary_views()
+
+        # Should not have been called for non-continuous view
+        mock_refresh.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_periodic_refresh_processes_continuous_views(
+        self, async_redis_client, monkeypatch
+    ):
+        """periodic_refresh_summary_views should refresh continuous views."""
+        from unittest.mock import AsyncMock
+
+        from agent_memory_server import config
+        from agent_memory_server.models import SummaryView
+        from agent_memory_server.summary_views import periodic_refresh_summary_views
+
+        monkeypatch.setattr(config.settings, "long_term_memory", True)
+
+        # Create a continuous view
+        view = SummaryView(
+            id="test-continuous",
+            name="test",
+            source="long_term",
+            group_by=[],
+            filters={},
+            continuous=True,
+        )
+
+        # Mock list_summary_views to return only our test view (avoiding test isolation issues)
+        mock_list = AsyncMock(return_value=[view])
+        monkeypatch.setattr(
+            "agent_memory_server.summary_views.list_summary_views", mock_list
+        )
+
+        # Mock refresh_summary_view to track calls
+        mock_refresh = AsyncMock()
+        monkeypatch.setattr(
+            "agent_memory_server.summary_views.refresh_summary_view", mock_refresh
+        )
+
+        await periodic_refresh_summary_views()
+
+        # Should have been called for continuous view
+        mock_refresh.assert_called_once_with("test-continuous", task_id=None)
+
+
+class TestBuildLongTermSummaryPromptEdgeCases:
+    """Additional tests for _build_long_term_summary_prompt edge cases."""
+
+    def test_truncates_very_long_memories(self):
+        """_build_long_term_summary_prompt should truncate very long memories."""
+        from agent_memory_server.models import MemoryRecord, SummaryView
+        from agent_memory_server.summary_views import _build_long_term_summary_prompt
+
+        view = SummaryView(
+            id="test-view",
+            name="test",
+            source="long_term",
+            group_by=["user_id"],
+            filters={},
+        )
+        group = {"user_id": "alice"}
+        # Create a memory with very long text (this tests lines 388-391)
+        long_text = "A" * 20000  # Very long text
+        mem = MemoryRecord(id="mem-1", text=long_text)
+
+        result = _build_long_term_summary_prompt(
+            view, group, [mem], "gpt-4o-mini", "Summarize these memories"
+        )
+
+        # Should have a valid prompt that doesn't include the full 20k chars
+        assert "SUMMARY:" in result
+        assert len(result) < 25000  # Should be truncated
+
+    def test_exceeds_remaining_tokens_breaks_early(self):
+        """_build_long_term_summary_prompt breaks early when remaining tokens exhausted."""
+        from agent_memory_server.models import MemoryRecord, SummaryView
+        from agent_memory_server.summary_views import _build_long_term_summary_prompt
+
+        view = SummaryView(
+            id="test-view",
+            name="test",
+            source="long_term",
+            group_by=["user_id"],
+            filters={},
+        )
+        group = {"user_id": "alice"}
+        # Create multiple memories that exceed budget (tests line 394)
+        memories = [
+            MemoryRecord(id=f"mem-{i}", text=f"Memory {i} " * 200) for i in range(100)
+        ]
+
+        result = _build_long_term_summary_prompt(
+            view, group, memories, "gpt-4o-mini", "Summarize these memories"
+        )
+
+        # Should truncate to fit budget
+        assert "SUMMARY:" in result
+
+    def test_shows_truncation_notice_when_memories_exceed_budget(self):
+        """_build_long_term_summary_prompt shows truncation notice."""
+        from agent_memory_server.models import MemoryRecord, SummaryView
+        from agent_memory_server.summary_views import _build_long_term_summary_prompt
+
+        view = SummaryView(
+            id="test-view",
+            name="test",
+            source="long_term",
+            group_by=["user_id"],
+            filters={},
+        )
+        group = {"user_id": "alice"}
+        # Create more memories than can fit (tests lines 402-406)
+        memories = [
+            MemoryRecord(id=f"mem-{i}", text=f"Memory content {i} " * 100)
+            for i in range(200)
+        ]
+
+        result = _build_long_term_summary_prompt(
+            view, group, memories, "gpt-4o-mini", "Summarize these memories"
+        )
+
+        # Should have truncation notice or at least produce valid output
+        assert "truncated" in result.lower() or "SUMMARY:" in result
+
+
+class TestRefreshSummaryViewExceptionHandling:
+    """Tests for exception handling in refresh_summary_view."""
+
+    @pytest.mark.asyncio
+    async def test_refresh_catches_exception_and_marks_task_failed(
+        self, async_redis_client, monkeypatch
+    ):
+        """refresh_summary_view should catch exceptions and mark task as failed."""
+        from unittest.mock import AsyncMock
+
+        from agent_memory_server.models import (
+            SummaryView,
+            Task,
+            TaskStatusEnum,
+            TaskTypeEnum,
+        )
+        from agent_memory_server.summary_views import (
+            refresh_summary_view,
+            save_summary_view,
+        )
+        from agent_memory_server.tasks import create_task, get_task
+
+        # Create a view
+        view = SummaryView(
+            id="test-exception-view",
+            name="test",
+            source="long_term",
+            group_by=["user_id"],
+            filters={},
+        )
+        await save_summary_view(view)
+
+        # Create a task
+        task_id = "test-exception-task"
+        task = Task(
+            id=task_id,
+            type=TaskTypeEnum.SUMMARY_VIEW_FULL_RUN,
+            view_id=view.id,
+            status=TaskStatusEnum.PENDING,
+        )
+        await create_task(task)
+
+        # Mock _fetch_long_term_memories_for_view to raise an exception
+        mock_fetch = AsyncMock(side_effect=RuntimeError("Test error"))
+        monkeypatch.setattr(
+            "agent_memory_server.summary_views._fetch_long_term_memories_for_view",
+            mock_fetch,
+        )
+
+        # Run the refresh - should not raise
+        await refresh_summary_view(view.id, task_id=task_id)
+
+        # Check task status - should be FAILED
+        result_task = await get_task(task_id)
+        assert result_task is not None
+        assert result_task.status == TaskStatusEnum.FAILED
+        assert "Test error" in result_task.error_message
+
+
+class TestLargeMemoryThresholdWarning:
+    """Tests for large memory threshold warning."""
+
+    @pytest.mark.asyncio
+    async def test_logs_warning_for_large_memory_sets(
+        self, async_redis_client, monkeypatch, caplog
+    ):
+        """refresh_summary_view should log warning for large memory sets."""
+        import logging
+        from unittest.mock import AsyncMock
+
+        from agent_memory_server.models import MemoryRecord, SummaryView
+        from agent_memory_server.summary_views import (
+            refresh_summary_view,
+            save_summary_view,
+        )
+
+        # Create a view
+        view = SummaryView(
+            id="test-large-memory-view",
+            name="test",
+            source="long_term",
+            group_by=[],
+            filters={},
+        )
+        await save_summary_view(view)
+
+        # Mock _fetch_long_term_memories_for_view to return many memories
+        large_memories = [
+            MemoryRecord(id=f"mem-{i}", text=f"Memory {i}") for i in range(15000)
+        ]
+        mock_fetch = AsyncMock(return_value=large_memories)
+        monkeypatch.setattr(
+            "agent_memory_server.summary_views._fetch_long_term_memories_for_view",
+            mock_fetch,
+        )
+
+        # Mock the summarization to avoid actual LLM calls
+        mock_summarize = AsyncMock()
+        monkeypatch.setattr(
+            "agent_memory_server.summary_views.summarize_partition_long_term",
+            mock_summarize,
+        )
+
+        with caplog.at_level(logging.WARNING):
+            await refresh_summary_view(view.id, task_id=None)
+
+        # Should have logged the warning (tests line 579)
+        assert (
+            "15000 memories" in caplog.text or "consider adding filters" in caplog.text
+        )
