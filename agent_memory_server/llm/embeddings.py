@@ -159,9 +159,21 @@ class LiteLLMEmbeddings(Embeddings):
 
         Returns:
             List of embedding vectors.
+
+        Raises:
+            ValueError: If any text in the list is empty (OpenAI rejects empty strings).
         """
         if not texts:
             return []
+
+        # Validate that no texts are empty - OpenAI rejects empty strings with
+        # "'$.input' is invalid" error
+        for i, text in enumerate(texts):
+            if not text:
+                raise ValueError(
+                    f"Cannot embed empty string at index {i}. "
+                    "OpenAI's embedding API rejects empty strings."
+                )
 
         kwargs = self._build_call_kwargs(texts)
         response = embedding(**kwargs)
@@ -188,9 +200,21 @@ class LiteLLMEmbeddings(Embeddings):
 
         Returns:
             List of embedding vectors.
+
+        Raises:
+            ValueError: If any text in the list is empty (OpenAI rejects empty strings).
         """
         if not texts:
             return []
+
+        # Validate that no texts are empty - OpenAI rejects empty strings with
+        # "'$.input' is invalid" error
+        for i, text in enumerate(texts):
+            if not text:
+                raise ValueError(
+                    f"Cannot embed empty string at index {i}. "
+                    "OpenAI's embedding API rejects empty strings."
+                )
 
         kwargs = self._build_call_kwargs(texts)
         response = await aembedding(**kwargs)

@@ -14,9 +14,13 @@ from agent_memory_server.filters import (
     UserId,
 )
 from agent_memory_server.models import (
+    CreateMemoryRecordRequest,
+    ExtractedMemoryRecord,
+    LenientMemoryRecord,
     MemoryMessage,
     MemoryRecordResult,
     SearchRequest,
+    UpdateWorkingMemory,
     WorkingMemory,
     WorkingMemoryResponse,
 )
@@ -324,3 +328,87 @@ class TestMemoryMessageTimestampValidation:
         # Without created_at
         msg2 = MemoryMessage(role="user", content="Hello")
         assert msg2._created_at_was_provided is False
+
+
+class TestEmptyTextValidation:
+    """Tests for validation that rejects empty text in memory records."""
+
+    def test_create_memory_record_request_rejects_empty_text(self):
+        """Test that CreateMemoryRecordRequest rejects memories with empty text."""
+        valid_memory = ExtractedMemoryRecord(
+            id="valid-id",
+            text="Valid memory text",
+        )
+        empty_text_memory = ExtractedMemoryRecord(
+            id="empty-text-id",
+            text="",
+        )
+
+        with pytest.raises(ValueError, match="has empty text"):
+            CreateMemoryRecordRequest(memories=[valid_memory, empty_text_memory])
+
+    def test_create_memory_record_request_rejects_empty_id(self):
+        """Test that CreateMemoryRecordRequest rejects memories with empty id."""
+        empty_id_memory = ExtractedMemoryRecord(
+            id="",
+            text="Valid text",
+        )
+
+        with pytest.raises(ValueError, match="has empty id"):
+            CreateMemoryRecordRequest(memories=[empty_id_memory])
+
+    def test_create_memory_record_request_accepts_valid_memories(self):
+        """Test that CreateMemoryRecordRequest accepts valid memories."""
+        valid_memory = ExtractedMemoryRecord(
+            id="valid-id",
+            text="Valid memory text",
+        )
+        request = CreateMemoryRecordRequest(memories=[valid_memory])
+        assert len(request.memories) == 1
+        assert request.memories[0].id == "valid-id"
+        assert request.memories[0].text == "Valid memory text"
+
+    def test_update_working_memory_rejects_empty_text(self):
+        """Test that UpdateWorkingMemory rejects memories with empty text."""
+        empty_text_memory = ExtractedMemoryRecord(
+            id="empty-text-id",
+            text="",
+        )
+
+        with pytest.raises(ValueError, match="has empty text"):
+            UpdateWorkingMemory(memories=[empty_text_memory])
+
+    def test_update_working_memory_rejects_empty_id(self):
+        """Test that UpdateWorkingMemory rejects memories with empty id."""
+        empty_id_memory = ExtractedMemoryRecord(
+            id="",
+            text="Valid text",
+        )
+
+        with pytest.raises(ValueError, match="has empty id"):
+            UpdateWorkingMemory(memories=[empty_id_memory])
+
+    def test_update_working_memory_accepts_valid_memories(self):
+        """Test that UpdateWorkingMemory accepts valid memories."""
+        valid_memory = ExtractedMemoryRecord(
+            id="valid-id",
+            text="Valid memory text",
+        )
+        request = UpdateWorkingMemory(memories=[valid_memory])
+        assert len(request.memories) == 1
+
+    def test_lenient_memory_record_rejects_empty_text(self):
+        """Test that LenientMemoryRecord rejects empty text."""
+        with pytest.raises(ValueError, match="Memory text cannot be empty"):
+            LenientMemoryRecord(text="")
+
+    def test_lenient_memory_record_accepts_valid_text(self):
+        """Test that LenientMemoryRecord accepts valid text."""
+        record = LenientMemoryRecord(text="Valid memory text")
+        assert record.text == "Valid memory text"
+
+    def test_lenient_memory_record_accepts_whitespace(self):
+        """Test that LenientMemoryRecord accepts whitespace-only text."""
+        # Whitespace is accepted (it's not empty, just whitespace)
+        record = LenientMemoryRecord(text="   ")
+        assert record.text == "   "
