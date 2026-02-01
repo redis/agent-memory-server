@@ -343,7 +343,7 @@ def _build_long_term_summary_prompt(
     """
 
     # Import here to avoid circular imports at module load time.
-    from agent_memory_server.llms import get_model_config
+    from agent_memory_server.llm import get_model_config
 
     encoding = tiktoken.get_encoding("cl100k_base")
 
@@ -442,10 +442,9 @@ async def summarize_partition_long_term(
             "Concatenated up to 50 memories:\n" + joined
         )
     else:
-        from agent_memory_server.llms import get_model_client
+        from agent_memory_server.llm import LLMClient
 
         model_name = view.model_name or settings.fast_model
-        client = await get_model_client(model_name)
 
         # Build a prompt using either the view's prompt or a default, then
         # construct a token-aware memories section based on the model's
@@ -468,12 +467,9 @@ async def summarize_partition_long_term(
         # We use the same interface pattern as other summarization helpers,
         # but add minimal defensive checks around the response structure.
         try:
-            response = await client.create_chat_completion(model_name, prompt)
-            choices = getattr(response, "choices", None) or []
-            content = None
-            if choices:
-                first_message = getattr(choices[0], "message", None)
-                content = getattr(first_message, "content", None)
+            messages = [{"role": "user", "content": prompt}]
+            response = await LLMClient.create_chat_completion(model_name, messages)
+            content = response.content
         except Exception:
             logger.exception(
                 "Error calling summarization model %s for SummaryView %s group %r",
