@@ -234,6 +234,11 @@ class MemoryRecord(BaseModel):
     """A memory record"""
 
     id: str = Field(description="Client-provided ID for deduplication and overwrites")
+    # NOTE: We intentionally do NOT validate that text is non-empty here because
+    # legacy databases may contain memories with empty text. Validation for new
+    # memories is enforced at the API layer (CreateMemoryRecordRequest,
+    # UpdateWorkingMemory, LenientMemoryRecord). The indexing layer
+    # (index_long_term_memories) filters out empty text before processing.
     text: str
     session_id: str | None = Field(
         default=None,
@@ -557,6 +562,16 @@ class UpdateWorkingMemory(BaseModel):
         description="Datetime when the working memory was last updated",
     )
 
+    @model_validator(mode="after")
+    def validate_memories_not_empty(self) -> "UpdateWorkingMemory":
+        """Validate that no memories have empty text or id."""
+        for i, memory in enumerate(self.memories):
+            if not memory.id:
+                raise ValueError(f"Memory at index {i} has empty id")
+            if not memory.text:
+                raise ValueError(f"Memory at index {i} has empty text")
+        return self
+
     def to_working_memory(self, session_id: str) -> "WorkingMemory":
         """Convert to WorkingMemory by adding the session_id from URL path"""
         return WorkingMemory(
@@ -643,6 +658,16 @@ class CreateMemoryRecordRequest(BaseModel):
         default=True,
         description="Whether to deduplicate memories before indexing",
     )
+
+    @model_validator(mode="after")
+    def validate_memories_not_empty(self) -> "CreateMemoryRecordRequest":
+        """Validate that no memories have empty text or id."""
+        for i, memory in enumerate(self.memories):
+            if not memory.id:
+                raise ValueError(f"Memory at index {i} has empty id")
+            if not memory.text:
+                raise ValueError(f"Memory at index {i} has empty text")
+        return self
 
 
 class GetSessionsQuery(BaseModel):
@@ -819,6 +844,13 @@ class LenientMemoryRecord(ExtractedMemoryRecord):
     """
 
     id: str = Field(default_factory=lambda: str(ULID()))
+
+    @model_validator(mode="after")
+    def validate_text_not_empty(self) -> "LenientMemoryRecord":
+        """Validate that text is not empty."""
+        if not self.text:
+            raise ValueError("Memory text cannot be empty")
+        return self
 
 
 class DeleteMemoryRecordRequest(BaseModel):

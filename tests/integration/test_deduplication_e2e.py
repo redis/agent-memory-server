@@ -366,3 +366,169 @@ class TestDeduplicationE2E:
             f"Expected progression [1, 1, 1] (all merged), got {counts}. "
             "Each new paraphrased memory should merge with existing."
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.requires_api_keys
+class TestEmbeddingsInputValidation:
+    """
+    Tests to identify what input causes OpenAI's '$.input' is invalid error.
+
+    This reproduces the error from compact_long_term_memories:
+    litellm.exceptions.BadRequestError: OpenAIException - Error code: 400 -
+    {'error': {'message': "'$.input' is invalid..."}}
+    """
+
+    async def test_empty_string_rejected_at_api_layer(self):
+        """
+        Test that empty string text is rejected when creating memories via API.
+
+        Empty strings cannot be embedded by OpenAI's API (causes "'$.input' is invalid"
+        error). We reject them at the API layer with validation.
+        """
+        from agent_memory_server.models import (
+            CreateMemoryRecordRequest,
+            ExtractedMemoryRecord,
+            LenientMemoryRecord,
+        )
+
+        # Creating a memory with empty text via LenientMemoryRecord should fail
+        with pytest.raises(ValueError, match="Memory text cannot be empty"):
+            LenientMemoryRecord(text="")
+
+        # Creating a memory request with empty text should fail
+        valid_memory = ExtractedMemoryRecord(
+            id=str(ulid.ULID()),
+            text="Valid memory",
+        )
+        empty_memory = ExtractedMemoryRecord(
+            id=str(ulid.ULID()),
+            text="",  # Empty string
+        )
+
+        with pytest.raises(ValueError, match="has empty text"):
+            CreateMemoryRecordRequest(memories=[valid_memory, empty_memory])
+
+    async def test_legacy_empty_text_filtered_on_index(
+        self, use_test_redis_connection, unique_namespace, unique_user_id
+    ):
+        """
+        Test that legacy memories with empty text are filtered out when indexing.
+
+        Old databases may contain memories with empty text. These should be
+        gracefully filtered during indexing/deduplication to avoid API errors.
+        """
+        # Create a MemoryRecord directly (bypassing API validation) with empty text
+        # This simulates legacy data that already exists in the database
+        empty_text_memory = MemoryRecord(
+            id=str(ulid.ULID()),
+            text="",  # Empty string - simulating legacy data
+            namespace=unique_namespace,
+            user_id=unique_user_id,
+            memory_type="semantic",
+        )
+
+        # index_long_term_memories should filter this out without error
+        await index_long_term_memories(
+            [empty_text_memory],
+            redis_client=use_test_redis_connection,
+            deduplicate=False,
+        )
+        # No error means it was filtered successfully
+
+        # deduplicate_by_semantic_search should also handle empty text gracefully
+        result, was_merged = await deduplicate_by_semantic_search(
+            memory=empty_text_memory,
+            redis_client=use_test_redis_connection,
+            namespace=unique_namespace,
+            user_id=unique_user_id,
+        )
+
+        # Should return the original memory unchanged, without merging
+        assert result is not None
+        assert result.id == empty_text_memory.id
+        assert was_merged is False
+
+    async def test_whitespace_only_does_not_cause_error(
+        self, use_test_redis_connection, unique_namespace, unique_user_id
+    ):
+        """
+        Test that whitespace-only text does NOT cause the '$.input' is invalid error.
+
+        OpenAI's embedding API accepts whitespace-only strings and generates embeddings
+        for them. Only truly empty strings ("") cause the error.
+        """
+        # First, create a valid memory so there's something to search against
+        valid_memory = MemoryRecord(
+            id=str(ulid.ULID()),
+            text="User likes tea",
+            namespace=unique_namespace,
+            user_id=unique_user_id,
+            memory_type="semantic",
+        )
+        await index_long_term_memories(
+            [valid_memory],
+            redis_client=use_test_redis_connection,
+            deduplicate=False,
+        )
+        await asyncio.sleep(1)
+
+        # Now try to deduplicate a memory with whitespace-only text
+        whitespace_memory = MemoryRecord(
+            id=str(ulid.ULID()),
+            text="   \t\n   ",  # Whitespace only
+            namespace=unique_namespace,
+            user_id=unique_user_id,
+            memory_type="semantic",
+        )
+
+        # Whitespace-only strings are accepted by OpenAI's API
+        result, was_merged = await deduplicate_by_semantic_search(
+            memory=whitespace_memory,
+            redis_client=use_test_redis_connection,
+            namespace=unique_namespace,
+            user_id=unique_user_id,
+        )
+
+        # Should complete without error (though it won't find duplicates)
+        assert result is not None
+        assert was_merged is False  # Whitespace won't match any real memories
+
+    async def test_valid_text_works(
+        self, use_test_redis_connection, unique_namespace, unique_user_id
+    ):
+        """Baseline test: valid text should work without errors."""
+        # First, create a valid memory so there's something to search against
+        valid_memory = MemoryRecord(
+            id=str(ulid.ULID()),
+            text="User prefers Earl Grey tea",
+            namespace=unique_namespace,
+            user_id=unique_user_id,
+            memory_type="semantic",
+        )
+        await index_long_term_memories(
+            [valid_memory],
+            redis_client=use_test_redis_connection,
+            deduplicate=False,
+        )
+        await asyncio.sleep(1)
+
+        # Try to deduplicate a memory with valid text
+        valid_text_memory = MemoryRecord(
+            id=str(ulid.ULID()),
+            text="User enjoys drinking Earl Grey",
+            namespace=unique_namespace,
+            user_id=unique_user_id,
+            memory_type="semantic",
+        )
+
+        # This should NOT raise an error
+        result, was_merged = await deduplicate_by_semantic_search(
+            memory=valid_text_memory,
+            redis_client=use_test_redis_connection,
+            namespace=unique_namespace,
+            user_id=unique_user_id,
+        )
+
+        # Should successfully complete (merged or not)
+        assert result is not None or was_merged is not None

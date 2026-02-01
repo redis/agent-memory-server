@@ -954,13 +954,33 @@ async def index_long_term_memories(
     """
     background_tasks = get_background_tasks()
 
+    # Filter out memories with empty text or id before processing
+    # Empty text causes OpenAI's embedding API to reject with "'$.input' is invalid"
+    valid_memories = []
+    for memory in memories:
+        if not memory.text:
+            logger.warning(
+                f"Skipping memory with empty text: id={memory.id}",
+            )
+            continue
+        if not memory.id:
+            logger.warning(
+                f"Skipping memory with empty id: text={memory.text[:50] if memory.text else ''}...",
+            )
+            continue
+        valid_memories.append(memory)
+
+    if not valid_memories:
+        logger.info("No valid memories to index (all had empty text or id)")
+        return
+
     # Process memories for deduplication if requested
     processed_memories = []
     if deduplicate:
         # Get Redis client for deduplication operations (still needed for existing dedup logic)
         redis = redis_client or await get_redis_conn()
 
-        for memory in memories:
+        for memory in valid_memories:
             current_memory = memory
             was_deduplicated = False
 
@@ -1003,7 +1023,7 @@ async def index_long_term_memories(
             if not was_deduplicated:
                 processed_memories.append(current_memory)
     else:
-        processed_memories = memories
+        processed_memories = valid_memories
 
     # If all memories were duplicates, we're done
     if not processed_memories:
@@ -1413,6 +1433,15 @@ async def deduplicate_by_semantic_search(
     Returns:
         Tuple of (memory to save (potentially merged), was_merged)
     """
+    # Skip semantic deduplication for memories with empty text
+    # OpenAI's embedding API rejects empty strings with "'$.input' is invalid"
+    if not memory.text:
+        logger.debug(
+            "Skipping semantic deduplication for memory with empty text",
+            memory_id=memory.id,
+        )
+        return memory, False
+
     if not redis_client:
         redis_client = await get_redis_conn()
 
