@@ -483,6 +483,11 @@ Optimized query:"""
     # Compaction settings
     compaction_every_minutes: int = 10
 
+    # Docket task timeout for LLM-dependent tasks (in minutes)
+    # This controls how long tasks like memory compaction, extraction, and summarization
+    # can run before being cancelled. Should be less than the task schedule intervals.
+    llm_task_timeout_minutes: int = 5
+
     # Progressive summarization prompt template
     progressive_summarization_prompt: str = """You are a precise summarization assistant. Your task is to progressively
 summarize conversation history while maintaining critical context and accuracy.

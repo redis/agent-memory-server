@@ -1,7 +1,9 @@
 import json
 import logging
+from datetime import timedelta
 
 import tiktoken
+from docket import Timeout
 from redis import WatchError
 
 from agent_memory_server.config import settings
@@ -64,6 +66,7 @@ async def summarize_session(
     session_id: str,
     model: str,
     max_context_tokens: int | None = None,
+    timeout: Timeout = Timeout(timedelta(minutes=settings.llm_task_timeout_minutes)),
 ) -> None:
     """
     Summarize messages in a session when they exceed the token limit.
@@ -77,6 +80,7 @@ async def summarize_session(
         session_id: The session ID
         model: The model to use for summarization
         max_context_tokens: Maximum context tokens to keep (defaults to model's context window * summarization_threshold)
+        timeout: Docket timeout for this task (defaults to llm_task_timeout_minutes from settings)
     """
     logger.debug(f"Summarizing session {session_id}")
     redis = await get_redis_conn()
