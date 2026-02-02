@@ -1,8 +1,10 @@
 import json
 import os
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 import ulid
+from docket import Timeout
 from tenacity.asyncio import AsyncRetrying
 from tenacity.stop import stop_after_attempt
 
@@ -270,12 +272,18 @@ async def handle_extraction(text: str) -> tuple[list[str], list[str]]:
 async def extract_memories_with_strategy(
     memories: list[MemoryRecord] | None = None,
     deduplicate: bool = True,
+    timeout: Timeout = Timeout(timedelta(minutes=settings.llm_task_timeout_minutes)),
 ):
     """
     Extract memories using their configured strategies.
 
     This function replaces extract_discrete_memories for strategy-aware extraction.
     Each memory record contains its extraction strategy configuration.
+
+    Args:
+        memories: List of memory records to process, or None to search for unprocessed messages
+        deduplicate: Whether to deduplicate extracted memories
+        timeout: Docket timeout for this task (defaults to llm_task_timeout_minutes from settings)
     """
     # Local imports to avoid circular dependencies:
     # long_term_memory imports from extraction, so we import locally here

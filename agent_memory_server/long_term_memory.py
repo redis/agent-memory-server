@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from docket import Timeout
 from docket.dependencies import Perpetual
 from redis.asyncio import Redis
 from ulid import ULID
@@ -492,7 +493,10 @@ async def extract_memories_from_session_thread(
         return []
 
 
-async def extract_memory_structure(memory: MemoryRecord):
+async def extract_memory_structure(
+    memory: MemoryRecord,
+    timeout: Timeout = Timeout(timedelta(minutes=settings.llm_task_timeout_minutes)),
+):
     redis = await get_redis_conn()
 
     # Process messages for topic/entity extraction
@@ -634,6 +638,7 @@ async def compact_long_term_memories(
     perpetual: Perpetual = Perpetual(
         every=timedelta(minutes=settings.compaction_every_minutes), automatic=True
     ),
+    timeout: Timeout = Timeout(timedelta(minutes=settings.llm_task_timeout_minutes)),
 ) -> int:
     """
     Compact long-term memories by merging duplicates and semantically similar memories.

@@ -15,7 +15,7 @@ from typing import Any
 from urllib.parse import quote, unquote
 
 import tiktoken
-from docket import Perpetual
+from docket import Perpetual, Timeout
 
 from agent_memory_server import long_term_memory
 from agent_memory_server.config import settings
@@ -534,12 +534,21 @@ async def summarize_partition_for_view(
     return await summarize_partition_placeholder(view, group)
 
 
-async def refresh_summary_view(view_id: str, task_id: str | None = None) -> None:
+async def refresh_summary_view(
+    view_id: str,
+    task_id: str | None = None,
+    timeout: Timeout = Timeout(timedelta(minutes=settings.llm_task_timeout_minutes)),
+) -> None:
     """Docket task to recompute all partitions for a SummaryView.
 
     For long-term memory sources, this will fetch memories matching the
     view filters, partition them by group_by, summarize each partition,
     and store SummaryViewPartitionResult entries.
+
+    Args:
+        view_id: The ID of the SummaryView to refresh
+        task_id: Optional task ID for status tracking
+        timeout: Docket timeout for this task (defaults to llm_task_timeout_minutes from settings)
     """
 
     view = await get_summary_view(view_id)
@@ -622,10 +631,18 @@ async def periodic_refresh_summary_views(
         every=timedelta(minutes=60),
         automatic=True,
     ),
+    timeout: Timeout = Timeout(
+        timedelta(minutes=settings.llm_task_timeout_minutes * 5)
+    ),
 ) -> None:
     """Periodic Docket task to refresh all continuous SummaryViews.
 
     Uses the same refresh_summary_view helper but without task tracking.
+
+    Args:
+        perpetual: Docket perpetual schedule configuration
+        timeout: Docket timeout for this task (defaults to 5x llm_task_timeout_minutes
+                 since this task may process multiple views)
     """
 
     if not settings.long_term_memory:
