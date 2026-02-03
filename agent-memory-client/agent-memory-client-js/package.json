@@ -1,6 +1,6 @@
 {
   "name": "agent-memory-client",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "JavaScript/TypeScript client for the Agent Memory Server REST API",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
