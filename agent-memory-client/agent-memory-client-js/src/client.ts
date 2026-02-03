@@ -227,12 +227,14 @@ export class MemoryAPIClient {
    */
   async listSessions(options: {
     namespace?: string;
+    userId?: string;
     limit?: number;
     offset?: number;
   } = {}): Promise<SessionListResponse> {
     return this.request<SessionListResponse>("GET", "/v1/working-memory/", {
       params: {
         namespace: options.namespace ?? this.config.defaultNamespace,
+        user_id: options.userId,
         limit: options.limit,
         offset: options.offset,
       },
@@ -343,7 +345,7 @@ export class MemoryAPIClient {
    */
   async deleteWorkingMemory(
     sessionId: string,
-    options: { namespace?: string } = {}
+    options: { namespace?: string; userId?: string } = {}
   ): Promise<AckResponse> {
     return this.request<AckResponse>(
       "DELETE",
@@ -351,6 +353,7 @@ export class MemoryAPIClient {
       {
         params: {
           namespace: options.namespace ?? this.config.defaultNamespace,
+          user_id: options.userId,
         },
       }
     );

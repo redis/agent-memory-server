@@ -309,6 +309,16 @@ describe("MemoryAPIClient", () => {
         expect.any(Object)
       );
     });
+
+    it("should pass user_id parameter", async () => {
+      mockFetch = createMockFetch({ sessions: [], total: 0 });
+      client["fetchFn"] = mockFetch;
+      await client.listSessions({ userId: "user-123" });
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining("user_id=user-123"),
+        expect.any(Object)
+      );
+    });
   });
 
   describe("getWorkingMemory", () => {
@@ -475,6 +485,26 @@ describe("MemoryAPIClient", () => {
       expect(mockFetch).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({ method: "DELETE" })
+      );
+    });
+
+    it("should pass user_id parameter", async () => {
+      mockFetch = createMockFetch({ status: "ok" });
+      client["fetchFn"] = mockFetch;
+      await client.deleteWorkingMemory("test", { userId: "user-123" });
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining("user_id=user-123"),
+        expect.any(Object)
+      );
+    });
+
+    it("should pass namespace parameter", async () => {
+      mockFetch = createMockFetch({ status: "ok" });
+      client["fetchFn"] = mockFetch;
+      await client.deleteWorkingMemory("test", { namespace: "custom-ns" });
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining("namespace=custom-ns"),
+        expect.any(Object)
       );
     });
   });
