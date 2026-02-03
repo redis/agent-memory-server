@@ -345,6 +345,52 @@ describe("MemoryAPIClient", () => {
       );
     });
 
+    it("should pass user_id parameter", async () => {
+      mockFetch = createMockFetch({ session_id: "test" });
+      client["fetchFn"] = mockFetch;
+      await client.getWorkingMemory("test", { userId: "user-123" });
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining("user_id=user-123"),
+        expect.any(Object)
+      );
+    });
+
+    it("should pass namespace parameter", async () => {
+      mockFetch = createMockFetch({ session_id: "test" });
+      client["fetchFn"] = mockFetch;
+      await client.getWorkingMemory("test", { namespace: "custom-ns" });
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining("namespace=custom-ns"),
+        expect.any(Object)
+      );
+    });
+
+    it("should pass context_window_max parameter", async () => {
+      mockFetch = createMockFetch({ session_id: "test" });
+      client["fetchFn"] = mockFetch;
+      await client.getWorkingMemory("test", { contextWindowMax: 16000 });
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining("context_window_max=16000"),
+        expect.any(Object)
+      );
+    });
+
+    it("should pass all options together", async () => {
+      mockFetch = createMockFetch({ session_id: "test" });
+      client["fetchFn"] = mockFetch;
+      await client.getWorkingMemory("test-session", {
+        namespace: "my-ns",
+        userId: "user-456",
+        modelName: "gpt-4o",
+        contextWindowMax: 32000,
+      });
+      const calledUrl = mockFetch.mock.calls[0][0];
+      expect(calledUrl).toContain("namespace=my-ns");
+      expect(calledUrl).toContain("user_id=user-456");
+      expect(calledUrl).toContain("model_name=gpt-4o");
+      expect(calledUrl).toContain("context_window_max=32000");
+    });
+
     it("should re-throw non-404 errors", async () => {
       client["fetchFn"] = createErrorFetch(500, { detail: "Server error" });
       await expect(client.getWorkingMemory("test")).rejects.toThrow(MemoryServerError);
