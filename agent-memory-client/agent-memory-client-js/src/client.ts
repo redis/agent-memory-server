@@ -246,6 +246,7 @@ export class MemoryAPIClient {
     sessionId: string,
     options: {
       namespace?: string;
+      userId?: string;
       modelName?: ModelNameLiteral;
       contextWindowMax?: number;
     } = {}
@@ -257,6 +258,7 @@ export class MemoryAPIClient {
         {
           params: {
             namespace: options.namespace ?? this.config.defaultNamespace,
+            user_id: options.userId,
             model_name: options.modelName ?? this.config.defaultModelName,
             context_window_max: options.contextWindowMax ?? this.config.defaultContextWindowMax,
           },
