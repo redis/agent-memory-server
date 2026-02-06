@@ -86,6 +86,11 @@ async def lifespan(app: FastAPI):
 
     await check_and_set_migration_status(redis_conn)
 
+    # Ensure working memory search index exists for session listing
+    from agent_memory_server.working_memory_index import ensure_working_memory_index
+
+    await ensure_working_memory_index(redis_conn)
+
     # Initialize Docket for background tasks if enabled
     if settings.use_docket:
         logger.info("Attempting to initialize Docket for background tasks.")

@@ -38,8 +38,18 @@ class Keys:
 
     @staticmethod
     def sessions_key(namespace: str | None = None) -> str:
-        """Get the sessions key for a namespace."""
+        """Get the sessions key for a namespace.
+
+        DEPRECATED: This method is deprecated. Session listing now uses
+        Redis Search index on working memory JSON documents instead of
+        sorted sets. The index automatically handles TTL expiration.
+        """
         return f"sessions:{namespace}" if namespace else "sessions"
+
+    @staticmethod
+    def working_memory_index_name() -> str:
+        """Return the name of the working memory search index."""
+        return settings.working_memory_index_name
 
     @staticmethod
     def memory_key(id: str) -> str:

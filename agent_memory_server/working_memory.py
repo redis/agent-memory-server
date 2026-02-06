@@ -232,38 +232,100 @@ async def list_sessions(
     user_id: str | None = None,
 ) -> tuple[int, list[str]]:
     """
-    List sessions
+    List sessions using Redis Search index.
+
+    Uses FT.SEARCH on the working memory index to list sessions. This approach
+    ensures that expired sessions (via TTL) are automatically excluded since
+    Redis Search removes deleted keys from the index.
 
     Args:
         redis: Redis client
         limit: Maximum number of sessions to return
         offset: Offset for pagination
         namespace: Optional namespace filter
-        user_id: Optional user ID filter (not yet implemented - sessions are stored in sorted sets)
+        user_id: Optional user ID filter
 
     Returns:
         Tuple of (total_count, session_ids)
-
-    Note:
-        The user_id parameter is accepted for API compatibility but filtering by user_id
-        is not yet implemented. This would require changing how sessions are stored to
-        enable efficient user_id-based filtering.
     """
-    # Calculate start and end indices (0-indexed start, inclusive end)
-    start = offset
-    end = offset + limit - 1
+    # Build filter query parts
+    filter_parts = []
 
-    # TODO: This should take a user_id
-    sessions_key = Keys.sessions_key(namespace=namespace)
+    if namespace:
+        # Escape special characters in TAG values
+        escaped_namespace = _escape_tag_value(namespace)
+        filter_parts.append(f"@namespace:{{{escaped_namespace}}}")
 
-    async with redis.pipeline() as pipe:
-        pipe.zcard(sessions_key)
-        pipe.zrange(sessions_key, start, end)
-        total, session_ids = await pipe.execute()
+    if user_id:
+        escaped_user_id = _escape_tag_value(user_id)
+        filter_parts.append(f"@user_id:{{{escaped_user_id}}}")
 
-    return total, [
-        s.decode("utf-8") if isinstance(s, bytes) else s for s in session_ids
-    ]
+    # Combine filters or use wildcard for all
+    filter_str = " ".join(filter_parts) if filter_parts else "*"
+
+    try:
+        # Execute FT.SEARCH query
+        result = await redis.execute_command(
+            "FT.SEARCH",
+            settings.working_memory_index_name,
+            filter_str,
+            "RETURN",
+            "1",
+            "$.session_id",
+            "SORTBY",
+            "created_at",
+            "DESC",
+            "LIMIT",
+            str(offset),
+            str(limit),
+        )
+
+        # Parse FT.SEARCH response
+        # Format: [total_count, key1, [field, value], key2, [field, value], ...]
+        total = result[0]
+        session_ids = []
+
+        # Iterate through results (skip the total count at index 0)
+        i = 1
+        while i < len(result):
+            # Skip the key name
+            i += 1
+            if i < len(result):
+                # Get the field-value pairs
+                fields = result[i]
+                if fields and len(fields) >= 2:
+                    # fields is [field_name, value]
+                    session_id = fields[1]
+                    if isinstance(session_id, bytes):
+                        session_id = session_id.decode("utf-8")
+                    # Remove JSON quotes if present
+                    if session_id.startswith('"') and session_id.endswith('"'):
+                        session_id = session_id[1:-1]
+                    session_ids.append(session_id)
+                i += 1
+
+        return total, session_ids
+
+    except Exception as e:
+        logger.error(f"Error listing sessions: {e}")
+        # Return empty results on error
+        return 0, []
+
+
+def _escape_tag_value(value: str) -> str:
+    """
+    Escape special characters in Redis Search TAG values.
+
+    TAG field values need certain characters escaped to be parsed correctly.
+    Redis Search requires backslash escaping for special characters in TAG queries.
+    """
+    # First escape backslashes (must be done first to avoid double-escaping)
+    result = value.replace("\\", "\\\\")
+    # Characters that need escaping in TAG queries (excluding backslash, already handled)
+    special_chars = ["-", "@", ":", "{", "}", "(", ")", "[", "]", "'", '"', "|", " "]
+    for char in special_chars:
+        result = result.replace(char, f"\\{char}")
+    return result
 
 
 async def get_working_memory(
@@ -455,11 +517,9 @@ async def set_working_memory(
 
     try:
         # Use Redis native JSON storage
+        # The working memory search index automatically indexes this document
+        # for session listing (no need for separate sorted set)
         await redis_client.json().set(key, "$", data)
-
-        # Index session in sorted set for listing
-        sessions_key = Keys.sessions_key(namespace=working_memory.namespace)
-        await redis_client.zadd(sessions_key, {working_memory.session_id: time.time()})
 
         if working_memory.ttl_seconds is not None:
             # Set TTL separately for JSON keys
@@ -501,10 +561,9 @@ async def delete_working_memory(
     )
 
     try:
+        # Delete the JSON key - the working memory search index automatically
+        # removes the document from the index when the key is deleted
         await redis_client.delete(key)
-        # Remove session from sorted set index
-        sessions_key = Keys.sessions_key(namespace=namespace)
-        await redis_client.zrem(sessions_key, session_id)
         logger.info(f"Deleted working memory for session {session_id}")
 
     except Exception as e:

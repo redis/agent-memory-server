@@ -98,6 +98,25 @@ async def search_index(async_redis_client):
         )
 
 
+@pytest.fixture(autouse=True)
+async def working_memory_index(async_redis_client):
+    """Ensure working memory search index exists for session listing tests."""
+    from agent_memory_server.working_memory_index import (
+        WORKING_MEMORY_INDEX_NAME,
+        ensure_working_memory_index,
+    )
+
+    await ensure_working_memory_index(async_redis_client)
+
+    yield
+
+    # Clean up after tests
+    with contextlib.suppress(Exception):
+        await async_redis_client.execute_command(
+            "FT.DROPINDEX", WORKING_MEMORY_INDEX_NAME
+        )
+
+
 @pytest.fixture()
 async def session(use_test_redis_connection, async_redis_client, request):
     """Set up a test session with Redis data for testing"""
@@ -135,10 +154,8 @@ async def session(use_test_redis_connection, async_redis_client, request):
             redis_client=use_test_redis_connection,
         )
 
-        # Also add session to sessions list for compatibility
-        sessions_key = Keys.sessions_key(namespace=namespace)
-        current_time = int(time.time())
-        await use_test_redis_connection.zadd(sessions_key, {session_id: current_time})
+        # Note: Session is now automatically indexed via Redis Search index
+        # on the working memory JSON document (no sorted set needed)
 
         # Index the messages as long-term memories directly without background tasks
         from redisvl.utils.vectorize import OpenAITextVectorizer
