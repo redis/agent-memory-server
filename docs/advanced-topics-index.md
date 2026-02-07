@@ -1,6 +1,6 @@
 # Advanced Topics
 
-Optimize memory search, tune ranking algorithms, and configure advanced vector store features.
+Optimize memory search, tune ranking algorithms, and configure advanced memory vector database features.
 
 <div class="grid cards" markdown>
 
@@ -20,13 +20,13 @@ Optimize memory search, tune ranking algorithms, and configure advanced vector s
 
     [Recency Boost →](recency-boost.md)
 
--   🗄️ **Advanced Vector Store Config**
+-   🗄️ **Advanced Memory Vector Database Config**
 
     ---
 
     Fine-tune vector indexing, distance metrics, and performance
 
-    [Vector Store Config →](vector-store-advanced.md)
+    [Memory Vector Database Config →](advanced-memory-vector-db.md)
 
 -   🎯 **Contextual Grounding**
 

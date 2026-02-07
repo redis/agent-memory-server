@@ -26,7 +26,7 @@ Powerful features for intelligent memory management:
 - **[Contextual Grounding](contextual-grounding.md)** - Resolve pronouns and references in extracted memories
 - **[Memory Editing](memory-lifecycle.md#memory-editing)** - Update, correct, and enrich existing memories
 - **[Recency Boost](recency-boost.md)** - Time-aware memory ranking and intelligent scoring
-- **[Vector Store Backends](vector-store-backends.md)** - Alternative storage backends (Pinecone, Chroma, etc.)
+- **[Custom Memory Vector Databases](custom-memory-vector-db.md)** - Custom memory vector database implementations
 
 ## 🔌 API Reference
 
@@ -63,7 +63,7 @@ For contributors and advanced users:
 **Building a chatbot?** → Quick Start → Memory Types → MCP Server
 **Adding memory to existing app?** → REST API → Authentication → Configuration
 **Research/content assistant?** → Use Cases → Query Optimization → Contextual Grounding
-**Production deployment?** → Authentication → Vector Store Backends → Development
+**Production deployment?** → Authentication → Custom Memory Vector Databases → Development
 
 ### By Interface Preference
 

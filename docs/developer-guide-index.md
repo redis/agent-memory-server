@@ -47,6 +47,7 @@ Learn how to integrate memory into your AI applications. This guide covers integ
 | [Summary Views](summary-views.md) | Pre-computed memory summaries for efficient context |
 | [Memory Lifecycle](memory-lifecycle.md) | How memories are created, updated, and managed over time |
 | [LangChain Integration](langchain-integration.md) | Use memory with LangChain agents and chains |
+| [Custom Memory Vector Databases](custom-memory-vector-db.md) | Configure Redis or custom memory vector databases |
 
 ## Where to Start
 

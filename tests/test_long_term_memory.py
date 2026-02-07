@@ -30,7 +30,7 @@ from agent_memory_server.utils.recency import generate_memory_hash
 class TestLongTermMemory:
     @pytest.mark.asyncio
     async def test_index_memories(self, mock_async_redis_client, session):
-        """Test indexing memories using vectorstore adapter"""
+        """Test indexing memories using memory vector database"""
         long_term_memories = [
             MemoryRecord(
                 id="memory-1", text="Paris is the capital of France", session_id=session
@@ -40,12 +40,12 @@ class TestLongTermMemory:
             ),
         ]
 
-        # Mock the vectorstore adapter add_memories method
+        # Mock the memory vector database add_memories method
         mock_adapter = AsyncMock()
         mock_adapter.add_memories.return_value = ["memory-1", "memory-2"]
 
         with mock.patch(
-            "agent_memory_server.long_term_memory.get_vectorstore_adapter",
+            "agent_memory_server.long_term_memory.get_memory_vector_db",
             return_value=mock_adapter,
         ):
             await index_long_term_memories(
@@ -67,10 +67,10 @@ class TestLongTermMemory:
 
     @pytest.mark.asyncio
     async def test_search_memories(self, mock_async_redis_client):
-        """Test searching memories using vectorstore adapter"""
+        """Test searching memories using memory vector database"""
         from agent_memory_server.models import MemoryRecordResult, MemoryRecordResults
 
-        # Mock the vectorstore adapter search_memories method
+        # Mock the memory vector database search_memories method
         mock_adapter = AsyncMock()
 
         # Create mock search results in the expected format
@@ -102,7 +102,7 @@ class TestLongTermMemory:
         session_id = SessionId(eq="test-session")
 
         with mock.patch(
-            "agent_memory_server.long_term_memory.get_vectorstore_adapter",
+            "agent_memory_server.long_term_memory.get_memory_vector_db",
             return_value=mock_adapter,
         ):
             results = await search_long_term_memories(
@@ -125,7 +125,7 @@ class TestLongTermMemory:
 
     @pytest.mark.asyncio
     async def test_deduplicate_by_id(self, mock_async_redis_client):
-        """Test deduplication by id using vectorstore adapter"""
+        """Test deduplication by id using memory vector database"""
         memory = MemoryRecord(
             text="Test memory",
             id="test-id",
@@ -134,7 +134,7 @@ class TestLongTermMemory:
         )
 
         with patch(
-            "agent_memory_server.long_term_memory.get_vectorstore_adapter"
+            "agent_memory_server.long_term_memory.get_memory_vector_db"
         ) as mock_get_adapter:
             mock_adapter = AsyncMock()
             mock_get_adapter.return_value = mock_adapter
@@ -280,14 +280,14 @@ class TestLongTermMemory:
 
     @pytest.mark.asyncio
     async def test_count_long_term_memories(self, mock_async_redis_client):
-        """Test counting long-term memories using vectorstore adapter"""
+        """Test counting long-term memories using memory vector database"""
 
-        # Mock the vectorstore adapter count_memories method
+        # Mock the memory vector database count_memories method
         mock_adapter = AsyncMock()
         mock_adapter.count_memories.return_value = 42
 
         with mock.patch(
-            "agent_memory_server.long_term_memory.get_vectorstore_adapter",
+            "agent_memory_server.long_term_memory.get_memory_vector_db",
             return_value=mock_adapter,
         ):
             count = await count_long_term_memories(
@@ -308,7 +308,7 @@ class TestLongTermMemory:
 
     @pytest.mark.asyncio
     async def test_deduplicate_by_hash(self, mock_async_redis_client):
-        """Test deduplication by hash using vectorstore adapter"""
+        """Test deduplication by hash using memory vector database"""
         memory = MemoryRecord(
             id="test-memory-1",
             text="Test memory",
@@ -323,7 +323,7 @@ class TestLongTermMemory:
         )
 
         with mock.patch(
-            "agent_memory_server.long_term_memory.get_vectorstore_adapter",
+            "agent_memory_server.long_term_memory.get_memory_vector_db",
             return_value=mock_adapter,
         ):
             result_memory, overwrite = await deduplicate_by_hash(
@@ -352,7 +352,7 @@ class TestLongTermMemory:
         mock_async_redis_client.hset = AsyncMock()
 
         with mock.patch(
-            "agent_memory_server.long_term_memory.get_vectorstore_adapter",
+            "agent_memory_server.long_term_memory.get_memory_vector_db",
             return_value=mock_adapter,
         ):
             result_memory, overwrite = await deduplicate_by_hash(
@@ -707,12 +707,12 @@ class TestLongTermMemory:
         # Test IDs to delete
         memory_ids = ["memory-1", "memory-2", "memory-3"]
 
-        # Mock the vectorstore adapter delete_memories method
+        # Mock the memory vector database delete_memories method
         mock_adapter = AsyncMock()
         mock_adapter.delete_memories.return_value = 3  # 3 memories deleted
 
         with mock.patch(
-            "agent_memory_server.long_term_memory.get_vectorstore_adapter",
+            "agent_memory_server.long_term_memory.get_memory_vector_db",
             return_value=mock_adapter,
         ):
             deleted_count = await delete_long_term_memories(
@@ -729,12 +729,12 @@ class TestLongTermMemory:
     async def test_delete_long_term_memories_empty_list(self, mock_async_redis_client):
         """Test deleting long-term memories with empty ID list"""
 
-        # Mock the vectorstore adapter delete_memories method
+        # Mock the memory vector database delete_memories method
         mock_adapter = AsyncMock()
         mock_adapter.delete_memories.return_value = 0  # No memories deleted
 
         with mock.patch(
-            "agent_memory_server.long_term_memory.get_vectorstore_adapter",
+            "agent_memory_server.long_term_memory.get_memory_vector_db",
             return_value=mock_adapter,
         ):
             deleted_count = await delete_long_term_memories(
@@ -1093,13 +1093,13 @@ class TestLongTermMemoryIntegration:
 class TestSearchQueryOptimization:
     """Test query optimization in search_long_term_memories function."""
 
-    @patch("agent_memory_server.long_term_memory.get_vectorstore_adapter")
+    @patch("agent_memory_server.long_term_memory.get_memory_vector_db")
     @patch("agent_memory_server.long_term_memory.optimize_query_for_vector_search")
     async def test_search_with_query_optimization_enabled(
         self, mock_optimize, mock_get_adapter
     ):
         """Test that query optimization is applied when optimize_query=True."""
-        # Mock the vectorstore adapter
+        # Mock the memory vector database
         mock_adapter = AsyncMock()
         mock_adapter.search_memories.return_value = MemoryRecordResults(
             total=1,
@@ -1134,13 +1134,13 @@ class TestSearchQueryOptimization:
         assert result.total == 1
         assert len(result.memories) == 1
 
-    @patch("agent_memory_server.long_term_memory.get_vectorstore_adapter")
+    @patch("agent_memory_server.long_term_memory.get_memory_vector_db")
     @patch("agent_memory_server.long_term_memory.optimize_query_for_vector_search")
     async def test_search_with_query_optimization_disabled(
         self, mock_optimize, mock_get_adapter
     ):
         """Test that query optimization is skipped when optimize_query=False."""
-        # Mock the vectorstore adapter
+        # Mock the memory vector database
         mock_adapter = AsyncMock()
         mock_adapter.search_memories.return_value = MemoryRecordResults(
             total=1,
@@ -1172,13 +1172,13 @@ class TestSearchQueryOptimization:
         assert result.total == 1
         assert len(result.memories) == 1
 
-    @patch("agent_memory_server.long_term_memory.get_vectorstore_adapter")
+    @patch("agent_memory_server.long_term_memory.get_memory_vector_db")
     @patch("agent_memory_server.long_term_memory.optimize_query_for_vector_search")
     async def test_search_with_empty_query_skips_optimization(
         self, mock_optimize, mock_get_adapter
     ):
         """Test that empty queries skip optimization."""
-        # Mock the vectorstore adapter
+        # Mock the memory vector database
         mock_adapter = AsyncMock()
         mock_adapter.search_memories.return_value = MemoryRecordResults(
             total=0, memories=[]
@@ -1195,13 +1195,13 @@ class TestSearchQueryOptimization:
         mock_adapter.list_memories.assert_called_once()
         mock_adapter.search_memories.assert_not_called()
 
-    @patch("agent_memory_server.long_term_memory.get_vectorstore_adapter")
+    @patch("agent_memory_server.long_term_memory.get_memory_vector_db")
     @patch("agent_memory_server.long_term_memory.optimize_query_for_vector_search")
     async def test_search_optimization_failure_fallback(
         self, mock_optimize, mock_get_adapter
     ):
         """Test that search continues with original query if optimization fails."""
-        # Mock the vectorstore adapter
+        # Mock the memory vector database
         mock_adapter = AsyncMock()
         mock_adapter.search_memories.return_value = MemoryRecordResults(
             total=0, memories=[]
@@ -1226,13 +1226,13 @@ class TestSearchQueryOptimization:
         call_kwargs = mock_adapter.search_memories.call_args[1]
         assert call_kwargs["query"] == "test query"
 
-    @patch("agent_memory_server.long_term_memory.get_vectorstore_adapter")
+    @patch("agent_memory_server.long_term_memory.get_memory_vector_db")
     @patch("agent_memory_server.long_term_memory.optimize_query_for_vector_search")
     async def test_search_passes_all_parameters_correctly(
         self, mock_optimize, mock_get_adapter
     ):
         """Test that all search parameters are passed correctly to the adapter."""
-        # Mock the vectorstore adapter
+        # Mock the memory vector database
         mock_adapter = AsyncMock()
         # Return some results to avoid fallback behavior when distance_threshold is set
         mock_adapter.search_memories.return_value = MemoryRecordResults(

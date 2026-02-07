@@ -24,9 +24,8 @@ from agent_memory_server.llm.types import (
 
 
 if TYPE_CHECKING:
-    from langchain_core.embeddings import Embeddings
-
     from agent_memory_server.config import ModelConfig, ModelProvider
+    from agent_memory_server.llm.embeddings import LiteLLMEmbeddings
 
 
 logger = logging.getLogger(__name__)
@@ -185,11 +184,11 @@ class LLMClient:
         )
 
     @classmethod
-    def create_embeddings(cls) -> Embeddings:
-        """Create a LangChain Embeddings instance based on configuration.
+    def create_embeddings(cls) -> LiteLLMEmbeddings:
+        """Create an embeddings instance based on configuration.
 
-        This method returns a LangChain-compatible Embeddings object that uses
-        LiteLLM internally, enabling support for any embedding provider:
+        This method returns a LiteLLMEmbeddings object that uses LiteLLM
+        internally, enabling support for any embedding provider:
         - OpenAI (text-embedding-3-small, text-embedding-3-large)
         - AWS Bedrock (bedrock/amazon.titan-embed-text-v2:0)
         - Ollama (ollama/nomic-embed-text)
@@ -198,7 +197,7 @@ class LLMClient:
         - And many more...
 
         Returns:
-            A LiteLLMEmbeddings instance compatible with LangChain vector stores.
+            A LiteLLMEmbeddings instance.
 
         Raises:
             ModelValidationError: If Anthropic is configured (no embedding models).
@@ -206,9 +205,6 @@ class LLMClient:
         Example:
             >>> from agent_memory_server.llm import LLMClient
             >>> embeddings = LLMClient.create_embeddings()
-            >>> # Use with a vector store
-            >>> from langchain_redis import RedisVectorStore
-            >>> vectorstore = RedisVectorStore(embeddings=embeddings, ...)
         """
         import warnings
 

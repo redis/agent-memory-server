@@ -71,7 +71,7 @@ class TestExtractionLogicFixes:
 
     @pytest.mark.asyncio
     async def test_trailing_extraction_schedules_correctly(
-        self, async_redis_client, mock_vectorstore_adapter
+        self, async_redis_client, mock_memory_vector_db
     ):
         """Test that promote_working_memory_to_long_term schedules trailing extraction"""
         from agent_memory_server.config import settings
@@ -129,7 +129,7 @@ class TestExtractionLogicFixes:
 
     @pytest.mark.asyncio
     async def test_run_delayed_extraction_extracts_and_indexes(
-        self, async_redis_client, mock_vectorstore_adapter
+        self, async_redis_client, mock_memory_vector_db
     ):
         """Test that run_delayed_extraction properly extracts and indexes memories"""
         from agent_memory_server.config import settings

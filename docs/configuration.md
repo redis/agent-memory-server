@@ -95,10 +95,10 @@ ENABLE_DISCRETE_MEMORY_EXTRACTION=true  # Extract structured memories from conve
 INDEX_ALL_MESSAGES_IN_LONG_TERM_MEMORY=false  # Index every message (default: false)
 ```
 
-### Vector Store Configuration
+### Vector Database Configuration
 ```bash
-# Vector store factory (advanced)
-VECTORSTORE_FACTORY=agent_memory_server.vectorstore_factory.create_redis_vectorstore
+# Memory vector database factory (advanced)
+MEMORY_VECTOR_DB_FACTORY=agent_memory_server.memory_vector_db_factory.create_redis_memory_vector_db
 
 # RedisVL Settings (used by default Redis factory)
 REDISVL_INDEX_NAME=memory_records        # Index name (default: memory_records)

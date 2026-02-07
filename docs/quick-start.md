@@ -351,7 +351,7 @@ Now that you have the basics working, explore these advanced features:
 - **Query Optimization**: Improve search accuracy with configurable models
 - **Contextual Grounding**: Resolve pronouns and references in extracted memories
 - **Recency Boost**: Time-aware memory ranking
-- **Vector Store Backends**: Use different storage backends (Pinecone, Chroma, etc.)
+- **Custom Memory Vector Databases**: Use custom memory vector database implementations
 
 ## Production Deployment
 
