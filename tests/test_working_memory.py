@@ -786,6 +786,6 @@ class TestWorkingMemory:
         )
 
         assert total == 3, f"Expected 3 sessions, got {total}"
-        assert set(listed_sessions) == set(session_ids), (
-            f"Expected {session_ids}, got {listed_sessions}"
-        )
+        assert set(listed_sessions) == set(
+            session_ids
+        ), f"Expected {session_ids}, got {listed_sessions}"
