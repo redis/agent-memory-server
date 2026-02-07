@@ -67,9 +67,9 @@ class TestToolBasedContextualGrounding:
         ]
 
         for keyword in grounding_keywords:
-            assert keyword in tool_description, (
-                f"Tool description missing keyword: {keyword}"
-            )
+            assert (
+                keyword in tool_description
+            ), f"Tool description missing keyword: {keyword}"
             print(f"✓ Found: {keyword}")
 
         print(
@@ -107,9 +107,9 @@ class TestToolBasedContextualGrounding:
         print(f"Scores: {evaluation}")
 
         # Well-grounded tool memory should score well
-        assert evaluation["overall_score"] >= 0.7, (
-            f"Well-grounded tool memory should score high: {evaluation['overall_score']}"
-        )
+        assert (
+            evaluation["overall_score"] >= 0.7
+        ), f"Well-grounded tool memory should score high: {evaluation['overall_score']}"
 
         # Test case: Poorly grounded tool memory
         poor_grounded_memory = "He has extensive backend experience. She specializes in React. They collaborate effectively."
@@ -133,9 +133,9 @@ class TestToolBasedContextualGrounding:
 
         # Both should at least be evaluated successfully
         assert evaluation["overall_score"] >= 0.7, "Good grounding should score well"
-        assert poor_evaluation["overall_score"] >= 0.0, (
-            "Poor grounding should still be evaluated"
-        )
+        assert (
+            poor_evaluation["overall_score"] >= 0.0
+        ), "Poor grounding should still be evaluated"
 
     @pytest.mark.requires_api_keys
     async def test_realistic_tool_usage_scenario(self):
@@ -194,12 +194,12 @@ class TestToolBasedContextualGrounding:
         print(f"Evaluation: {evaluation}")
 
         # Should demonstrate good contextual grounding
-        assert evaluation["pronoun_resolution_score"] >= 0.8, (
-            "Should properly ground 'she' to 'Maria'"
-        )
-        assert evaluation["overall_score"] >= 0.6, (
-            f"Realistic tool usage should show good grounding: {evaluation['overall_score']}"
-        )
+        assert (
+            evaluation["pronoun_resolution_score"] >= 0.8
+        ), "Should properly ground 'she' to 'Maria'"
+        assert (
+            evaluation["overall_score"] >= 0.6
+        ), f"Realistic tool usage should show good grounding: {evaluation['overall_score']}"
 
         print(
             "✓ Tool-based memory creation with proper contextual grounding successful"

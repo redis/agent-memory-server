@@ -198,9 +198,9 @@ class TestMemoryTypeEnumExclusion:
                 memory_type_prop = params["properties"]["memory_type"]
                 if "enum" in memory_type_prop:
                     if function_name in restricted_tools:
-                        assert "message" not in memory_type_prop["enum"], (
-                            f"Creation/editing tool '{function_name}' should not expose 'message' memory type"
-                        )
+                        assert (
+                            "message" not in memory_type_prop["enum"]
+                        ), f"Creation/editing tool '{function_name}' should not expose 'message' memory type"
                     elif function_name in allowed_tools:
                         # These tools are allowed to have message in enum for filtering
                         pass
@@ -215,9 +215,9 @@ class TestMemoryTypeEnumExclusion:
                     and function_name in restricted_tools
                 ):
                     memory_type_prop = items["properties"]["memory_type"]
-                    assert "message" not in memory_type_prop["enum"], (
-                        f"Creation/editing tool '{function_name}' should not expose 'message' memory type in nested properties"
-                    )
+                    assert (
+                        "message" not in memory_type_prop["enum"]
+                    ), f"Creation/editing tool '{function_name}' should not expose 'message' memory type in nested properties"
 
 
 class TestAnthropicSchemas:
@@ -292,9 +292,9 @@ class TestAnthropicSchemas:
                 memory_type_prop = params["properties"]["memory_type"]
                 if "enum" in memory_type_prop:
                     if function_name in restricted_tools:
-                        assert "message" not in memory_type_prop["enum"], (
-                            f"Anthropic creation/editing tool '{function_name}' should not expose 'message' memory type"
-                        )
+                        assert (
+                            "message" not in memory_type_prop["enum"]
+                        ), f"Anthropic creation/editing tool '{function_name}' should not expose 'message' memory type"
                     elif function_name in allowed_tools:
                         # These tools are allowed to have message in enum for filtering
                         pass
@@ -309,9 +309,9 @@ class TestAnthropicSchemas:
                     and function_name in restricted_tools
                 ):
                     memory_type_prop = items["properties"]["memory_type"]
-                    assert "message" not in memory_type_prop["enum"], (
-                        f"Anthropic creation/editing tool '{function_name}' should not expose 'message' memory type in nested properties"
-                    )
+                    assert (
+                        "message" not in memory_type_prop["enum"]
+                    ), f"Anthropic creation/editing tool '{function_name}' should not expose 'message' memory type in nested properties"
 
 
 class TestToolSchemaCustomization:

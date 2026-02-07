@@ -126,7 +126,7 @@ class AdvancedCustomBackend(MemoryVectorDatabase):
         """Count memories matching filters."""
         results = await self.list_memories(limit=100000, **filter_kwargs)
         return results.total
-    
+
     async def list_memories(self, offset: int = 0, limit: int = 100, **filter_kwargs) -> MemoryRecordResults:
         """List memories with optional filters."""
         raise NotImplementedError
