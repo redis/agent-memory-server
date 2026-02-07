@@ -114,13 +114,14 @@ class AdvancedCustomBackend(MemoryVectorDatabase):
         """Perform vector search in your backend."""
         raise NotImplementedError
 
-    async def delete_memories(self, memory_ids: list[str]) -> None:
+    async def delete_memories(self, memory_ids: list[str]) -> int:
         """Delete memories by ID."""
         raise NotImplementedError
 
-    async def update_memories(self, memories: list[MemoryRecord]) -> list[str]:
+    async def update_memories(self, memories: list[MemoryRecord]) -> int:
         """Update existing memories."""
-        return await self.add_memories(memories)
+        updated_ids = await self.add_memories(memories)
+        return len(updated_ids)
 
     async def count_memories(self, **filter_kwargs) -> int:
         """Count memories matching filters."""
