@@ -48,12 +48,12 @@ class MyCustomBackend(MemoryVectorDatabase):
         """Search memories by semantic similarity."""
         ...
 
-    async def delete_memories(self, memory_ids: list[str]) -> None:
-        """Delete memories by ID."""
+    async def delete_memories(self, memory_ids: list[str]) -> int:
+        """Delete memories by ID and return the number deleted."""
         ...
 
-    async def update_memories(self, memories: list[MemoryRecord]) -> list[str]:
-        """Update existing memories."""
+    async def update_memories(self, memories: list[MemoryRecord]) -> int:
+        """Update existing memories and return the number updated."""
         ...
 
     async def count_memories(self, **filter_kwargs) -> int:
