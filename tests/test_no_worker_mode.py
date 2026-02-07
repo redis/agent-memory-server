@@ -8,7 +8,7 @@ from agent_memory_server.main import app
 
 
 @pytest.mark.asyncio
-async def test_no_worker_mode_runs_tasks_inline(mock_vectorstore_adapter):
+async def test_no_worker_mode_runs_tasks_inline(mock_memory_vector_db):
     """Test that background tasks run inline when use_docket=False."""
     # Set to no-worker mode
     original_use_docket = settings.use_docket
@@ -56,7 +56,7 @@ async def test_no_worker_mode_runs_tasks_inline(mock_vectorstore_adapter):
 
 
 @pytest.mark.asyncio
-async def test_worker_mode_queues_tasks(mock_vectorstore_adapter):
+async def test_worker_mode_queues_tasks(mock_memory_vector_db):
     """Test that background tasks are configured to use Docket when use_docket=True.
 
     Note: This test verifies the API accepts the request and returns successfully

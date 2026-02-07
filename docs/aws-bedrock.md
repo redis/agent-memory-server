@@ -232,7 +232,7 @@ AWS_REGION_NAME=us-east-1
 AWS_ACCESS_KEY_ID=your-access-key-id
 AWS_SECRET_ACCESS_KEY=your-secret-access-key
 
-# Vector store dimensions (must match embedding model)
+# Embedding dimensions (must match embedding model)
 REDISVL_VECTOR_DIMENSIONS=1024
 
 # Generation model (OpenAI)
@@ -419,5 +419,5 @@ If you see authentication errors:
 - [LLM Providers](llm-providers.md) - Comprehensive LLM provider guide (recommended)
 - [Embedding Providers](embedding-providers.md) - Embedding model configuration
 - [Configuration](configuration.md) - Full configuration reference
-- [Vector Store Backends](vector-store-backends.md) - Custom vector store setup
+- [Custom Memory Vector Databases](custom-memory-vector-db.md) - Custom memory vector database setup
 - [Getting Started](getting-started.md) - Initial setup guide

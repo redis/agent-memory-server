@@ -47,25 +47,25 @@ def rebuild_index():
     """Rebuild the search index."""
     import asyncio
 
-    from agent_memory_server.vectorstore_adapter import RedisVectorStoreAdapter
-    from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
+    from agent_memory_server.memory_vector_db import RedisVLMemoryVectorDatabase
+    from agent_memory_server.memory_vector_db_factory import get_memory_vector_db
 
     configure_logging()
 
     async def setup_and_run():
-        # Get the vectorstore adapter
-        adapter = await get_vectorstore_adapter()
+        # Get the memory vector database
+        db = await get_memory_vector_db()
 
-        # Only Redis adapter supports index rebuilding
-        if isinstance(adapter, RedisVectorStoreAdapter):
-            index = adapter.vectorstore.index
+        # Only Redis implementation supports index rebuilding
+        if isinstance(db, RedisVLMemoryVectorDatabase):
+            index = db.index
             logger.info(f"Dropping and recreating index '{index.name}'")
-            index.create(overwrite=True)
+            await index.create(overwrite=True)
             logger.info("Index rebuilt successfully")
         else:
             logger.error(
-                "Index rebuilding is only supported for Redis vectorstore. "
-                "Current vectorstore does not support this operation."
+                "Index rebuilding is only supported for Redis backends. "
+                "Current backend does not support this operation."
             )
 
     asyncio.run(setup_and_run())

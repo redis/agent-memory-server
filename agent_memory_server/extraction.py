@@ -289,9 +289,9 @@ async def extract_memories_with_strategy(
     # long_term_memory imports from extraction, so we import locally here
     from agent_memory_server.long_term_memory import index_long_term_memories
     from agent_memory_server.memory_strategies import get_memory_strategy
-    from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
+    from agent_memory_server.memory_vector_db_factory import get_memory_vector_db
 
-    adapter = await get_vectorstore_adapter()
+    db = await get_memory_vector_db()
 
     if not memories:
         # If no memories are provided, search for any messages in long-term memory
@@ -300,7 +300,7 @@ async def extract_memories_with_strategy(
         memories = []
         offset = 0
         while True:
-            search_result = await adapter.list_memories(
+            search_result = await db.list_memories(
                 memory_type=MemoryType(eq="message"),
                 discrete_memory_extracted=DiscreteMemoryExtracted(eq="f"),
                 limit=25,
@@ -323,7 +323,7 @@ async def extract_memories_with_strategy(
     for memory in memories:
         if not memory or not memory.text:
             logger.info(f"Deleting memory with no text: {memory}")
-            await adapter.delete_memories([memory.id])
+            await db.delete_memories([memory.id])
             continue
 
         strategy_key = (
@@ -376,7 +376,7 @@ async def extract_memories_with_strategy(
 
     # Update processed memories
     if all_updated_memories:
-        await adapter.update_memories(all_updated_memories)
+        await db.update_memories(all_updated_memories)
 
     # Index new extracted memories
     if all_new_memories:

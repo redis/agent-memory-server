@@ -47,7 +47,7 @@ async def test_forget_long_term_memories_dry_run_selection():
     )
 
     with patch(
-        "agent_memory_server.long_term_memory.get_vectorstore_adapter",
+        "agent_memory_server.long_term_memory.get_memory_vector_db",
         return_value=mock_adapter,
     ):
         from agent_memory_server.long_term_memory import forget_long_term_memories
@@ -90,7 +90,7 @@ async def test_forget_long_term_memories_executes_deletes_when_not_dry_run():
     mock_adapter.delete_memories.return_value = 1
 
     with patch(
-        "agent_memory_server.long_term_memory.get_vectorstore_adapter",
+        "agent_memory_server.long_term_memory.get_memory_vector_db",
         return_value=mock_adapter,
     ):
         from agent_memory_server.long_term_memory import forget_long_term_memories

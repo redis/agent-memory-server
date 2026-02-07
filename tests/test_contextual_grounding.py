@@ -10,8 +10,8 @@ from agent_memory_server.models import MemoryRecord, MemoryTypeEnum
 
 
 @pytest.fixture
-def mock_vectorstore_adapter():
-    """Mock vectorstore adapter for testing"""
+def mock_memory_vector_db():
+    """Mock memory vector database for testing"""
     return AsyncMock()
 
 

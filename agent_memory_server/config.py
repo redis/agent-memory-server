@@ -360,15 +360,16 @@ class Settings(BaseSettings):
     port: int = 8000
     mcp_port: int = 9000
 
-    # Vector store factory configuration
-    # Python dotted path to function that returns VectorStore or VectorStoreAdapter
-    # Function signature: (embeddings: Embeddings) -> Union[VectorStore, VectorStoreAdapter]
+    # Memory vector database factory configuration
+    # Python dotted path to function that returns a MemoryVectorDatabase
+    # Function signature: (embeddings: LiteLLMEmbeddings) -> MemoryVectorDatabase
+    # Env var: MEMORY_VECTOR_DB_FACTORY
     # Examples:
-    #   - "agent_memory_server.vectorstore_factory.create_redis_vectorstore"
-    #   - "my_module.my_vectorstore_factory"
+    #   - "agent_memory_server.memory_vector_db_factory.create_redis_memory_vector_db"
+    #   - "my_module.create_custom_memory_db"
     #   - "my_package.adapters.create_custom_adapter"
-    vectorstore_factory: str = (
-        "agent_memory_server.vectorstore_factory.create_redis_vectorstore"
+    memory_vector_db_factory: str = (
+        "agent_memory_server.memory_vector_db_factory.create_redis_memory_vector_db"
     )
 
     # RedisVL configuration (used by default Redis factory)
@@ -395,7 +396,7 @@ class Settings(BaseSettings):
     index_all_messages_in_long_term_memory: bool = False
 
     # RedisVL Settings
-    # TODO: Adapt to vector store settings
+    # TODO: Adapt to memory database settings
     redisvl_distance_metric: str = "COSINE"
     redisvl_vector_dimensions: str = "1536"
     redisvl_index_prefix: str = "memory_idx"

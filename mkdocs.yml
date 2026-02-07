@@ -87,7 +87,7 @@ nav:
     - Memory Lifecycle: memory-lifecycle.md
     - LLM Providers: llm-providers.md
     - Embedding Providers: embedding-providers.md
-    - Vector Store Backends: vector-store-backends.md
+    - Custom Memory Vector Databases: custom-memory-vector-db.md
     - AWS Bedrock: aws-bedrock.md
     - Authentication: authentication.md
     - Security: security-custom-prompts.md
@@ -105,7 +105,7 @@ nav:
     - advanced-topics-index.md
     - Query Optimization: query-optimization.md
     - Recency Boost: recency-boost.md
-    - Advanced Vector Store Config: vector-store-advanced.md
+    - Advanced Memory Vector Database Config: advanced-memory-vector-db.md
     - Contextual Grounding: contextual-grounding.md
 
   - API Reference:

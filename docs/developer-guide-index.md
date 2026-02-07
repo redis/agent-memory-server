@@ -47,7 +47,7 @@ Learn how to integrate memory into your AI applications. This guide covers integ
 | [Memory Lifecycle](memory-lifecycle.md) | How memories are created, updated, and managed over time |
 | [LLM Providers](llm-providers.md) | Configure OpenAI, Anthropic, AWS Bedrock, Ollama, and more |
 | [Embedding Providers](embedding-providers.md) | Configure embedding models for semantic search |
-| [Vector Store Backends](vector-store-backends.md) | Configure Redis, Pinecone, Chroma, or other backends |
+| [Custom Memory Vector Databases](custom-memory-vector-db.md) | Configure Redis or custom memory vector databases |
 | [AWS Bedrock](aws-bedrock.md) | AWS-specific setup for Bedrock models |
 | [Authentication](authentication.md) | OAuth2/JWT and token-based authentication |
 | [Security](security-custom-prompts.md) | Security considerations for custom prompts |

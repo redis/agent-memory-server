@@ -36,29 +36,27 @@ class TestVersion:
 class TestRebuildIndex:
     """Tests for the rebuild_index command."""
 
-    @patch("agent_memory_server.vectorstore_factory.get_vectorstore_adapter")
-    def test_rebuild_index_command(self, mock_get_adapter):
+    @patch("agent_memory_server.memory_vector_db_factory.get_memory_vector_db")
+    def test_rebuild_index_command(self, mock_get_db):
         """Test rebuild_index command execution."""
-        from agent_memory_server.vectorstore_adapter import RedisVectorStoreAdapter
+        from agent_memory_server.memory_vector_db import RedisVLMemoryVectorDatabase
 
-        # Create a mock adapter with a mock index
+        # Create a mock index
         mock_index = Mock()
         mock_index.name = "test_index"
-        mock_index.create = Mock()
+        mock_index.create = AsyncMock()
 
-        mock_vectorstore = Mock()
-        mock_vectorstore.index = mock_index
+        # Create a mock database with a mock index
+        mock_db = Mock(spec=RedisVLMemoryVectorDatabase)
+        mock_db.index = mock_index
 
-        mock_adapter = Mock(spec=RedisVectorStoreAdapter)
-        mock_adapter.vectorstore = mock_vectorstore
-
-        mock_get_adapter.return_value = mock_adapter
+        mock_get_db.return_value = mock_db
 
         runner = CliRunner()
         result = runner.invoke(rebuild_index)
 
         assert result.exit_code == 0
-        mock_get_adapter.assert_called_once()
+        mock_get_db.assert_called_once()
         mock_index.create.assert_called_once_with(overwrite=True)
 
 

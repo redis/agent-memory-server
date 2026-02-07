@@ -1,5 +1,5 @@
 """
-Tests for vector store factory patterns from documentation.
+Tests for memory vector database factory patterns from documentation.
 
 Focuses on testing the factory logic without external dependencies.
 """
@@ -8,11 +8,14 @@ import json
 import os
 
 import pytest
-from langchain_core.embeddings import Embeddings
 
 
-class MockEmbeddings(Embeddings):
+class MockEmbeddings:
     """Simple mock embeddings for testing."""
+
+    def __init__(self):
+        self._dimensions = 3
+        self.model = "mock-embedding-model"
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         return [[0.1, 0.2, 0.3] for _ in texts]
@@ -20,9 +23,15 @@ class MockEmbeddings(Embeddings):
     def embed_query(self, text: str) -> list[float]:
         return [0.1, 0.2, 0.3]
 
+    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [[0.1, 0.2, 0.3] for _ in texts]
 
-class MockVectorStore:
-    """Mock vector store for testing."""
+    async def aembed_query(self, text: str) -> list[float]:
+        return [0.1, 0.2, 0.3]
+
+
+class MockBackend:
+    """Mock backend for testing."""
 
     def __init__(self, **kwargs):
         for key, value in kwargs.items():
@@ -35,9 +44,9 @@ class TestFactoryPatterns:
     def test_basic_factory_pattern(self):
         """Test the basic factory pattern."""
 
-        def create_mock_backend(embeddings: Embeddings):
-            """Factory function that creates a mock vectorstore."""
-            return MockVectorStore(
+        def create_mock_backend(embeddings):
+            """Factory function that creates a mock backend."""
+            return MockBackend(
                 collection_name="agent_memory",
                 persist_directory="./data",
                 embedding_function=embeddings,
@@ -59,16 +68,16 @@ class TestFactoryPatterns:
         }
 
         with pytest.MonkeyPatch().context() as mp:
-            mp.setenv("VECTORSTORE_CONFIG", json.dumps(config))
+            mp.setenv("MEMORY_VECTOR_DB_CONFIG", json.dumps(config))
             mp.setenv("BACKEND_TYPE", "mock")
 
-            def create_configured_backend(embeddings: Embeddings):
+            def create_configured_backend(embeddings):
                 """Factory that reads configuration from environment."""
-                config = json.loads(os.getenv("VECTORSTORE_CONFIG", "{}"))
+                config = json.loads(os.getenv("MEMORY_VECTOR_DB_CONFIG", "{}"))
                 backend_type = os.getenv("BACKEND_TYPE", "chroma")
 
                 if backend_type == "mock":
-                    return MockVectorStore(
+                    return MockBackend(
                         collection_name=config.get("collection_name", "default"),
                         persist_directory=config.get("persist_directory", "./default"),
                         embedding_function=embeddings,
@@ -85,24 +94,24 @@ class TestFactoryPatterns:
     def test_multi_environment_factory(self):
         """Test multi-environment factory pattern."""
 
-        def create_adaptive_vectorstore(embeddings: Embeddings):
-            """Dynamically choose vectorstore based on environment."""
+        def create_adaptive_backend(embeddings):
+            """Dynamically choose backend based on environment."""
 
             environment = os.getenv("ENVIRONMENT", "development")
 
             if environment == "production":
-                return MockVectorStore(
+                return MockBackend(
                     backend_type="production",
                     index_name="prod-memories",
                     embeddings=embeddings,
                 )
             if environment == "staging":
-                return MockVectorStore(
+                return MockBackend(
                     backend_type="staging",
                     index_name="staging-memories",
                     embeddings=embeddings,
                 )
-            return MockVectorStore(
+            return MockBackend(
                 backend_type="development",
                 persist_directory="./dev_data",
                 embeddings=embeddings,
@@ -111,29 +120,29 @@ class TestFactoryPatterns:
         embeddings = MockEmbeddings()
 
         # Test development environment (default)
-        result_dev = create_adaptive_vectorstore(embeddings)
+        result_dev = create_adaptive_backend(embeddings)
         assert result_dev.backend_type == "development"
         assert hasattr(result_dev, "persist_directory")
 
         # Test staging environment
         with pytest.MonkeyPatch().context() as mp:
             mp.setenv("ENVIRONMENT", "staging")
-            result_staging = create_adaptive_vectorstore(embeddings)
+            result_staging = create_adaptive_backend(embeddings)
             assert result_staging.backend_type == "staging"
             assert result_staging.index_name == "staging-memories"
 
         # Test production environment
         with pytest.MonkeyPatch().context() as mp:
             mp.setenv("ENVIRONMENT", "production")
-            result_prod = create_adaptive_vectorstore(embeddings)
+            result_prod = create_adaptive_backend(embeddings)
             assert result_prod.backend_type == "production"
             assert result_prod.index_name == "prod-memories"
 
     def test_resilient_factory_pattern(self):
         """Test resilient factory with fallback pattern."""
 
-        def create_resilient_vectorstore(embeddings: Embeddings):
-            """Create vectorstore with built-in resilience patterns."""
+        def create_resilient_backend(embeddings):
+            """Create backend with built-in resilience patterns."""
 
             # Try multiple backends in order of preference
             backend_preferences = [
@@ -145,40 +154,38 @@ class TestFactoryPatterns:
             last_error = None
             for backend_name, factory_func in backend_preferences:
                 try:
-                    vectorstore = factory_func(embeddings)
-                    vectorstore.selected_backend = backend_name
-                    return vectorstore
+                    backend = factory_func(embeddings)
+                    backend.selected_backend = backend_name
+                    return backend
                 except Exception as e:
                     last_error = e
                     continue
 
-            raise Exception(
-                f"All vectorstore backends failed. Last error: {last_error}"
-            )
+            raise Exception(f"All backends failed. Last error: {last_error}")
 
-        def _create_primary_backend(embeddings: Embeddings):
+        def _create_primary_backend(embeddings):
             """Primary backend that fails."""
             raise ConnectionError("Primary backend unavailable")
 
-        def _create_secondary_backend(embeddings: Embeddings):
+        def _create_secondary_backend(embeddings):
             """Secondary backend that works."""
-            return MockVectorStore(backend_type="secondary", embeddings=embeddings)
+            return MockBackend(backend_type="secondary", embeddings=embeddings)
 
-        def _create_fallback_backend(embeddings: Embeddings):
+        def _create_fallback_backend(embeddings):
             """Fallback backend."""
-            return MockVectorStore(backend_type="fallback", embeddings=embeddings)
+            return MockBackend(backend_type="fallback", embeddings=embeddings)
 
         embeddings = MockEmbeddings()
 
         # Should fall back to secondary when primary fails
-        result = create_resilient_vectorstore(embeddings)
+        result = create_resilient_backend(embeddings)
         assert result.selected_backend == "secondary"
         assert result.backend_type == "secondary"
 
     def test_resilient_factory_all_fail(self):
         """Test resilient factory when all backends fail."""
 
-        def create_failing_vectorstore(embeddings: Embeddings):
+        def create_failing_backend(embeddings):
             backend_preferences = [
                 ("first", lambda e: _fail("First failed")),
                 ("second", lambda e: _fail("Second failed")),
@@ -201,11 +208,11 @@ class TestFactoryPatterns:
         embeddings = MockEmbeddings()
 
         with pytest.raises(Exception, match="All backends failed"):
-            create_failing_vectorstore(embeddings)
+            create_failing_backend(embeddings)
 
 
 class TestHybridPattern:
-    """Test the hybrid vectorstore pattern."""
+    """Test the hybrid backend pattern."""
 
     def test_hybrid_routing_logic(self):
         """Test the routing logic of the hybrid pattern."""
@@ -213,7 +220,7 @@ class TestHybridPattern:
         class SimpleHybridStore:
             """Simplified hybrid store for testing routing logic."""
 
-            def __init__(self, embeddings: Embeddings):
+            def __init__(self, embeddings):
                 self.embeddings = embeddings
                 self.fast_store_items = []
                 self.archive_store_items = []
@@ -274,7 +281,7 @@ class TestErrorHandling:
     def test_configuration_validation(self):
         """Test configuration validation patterns."""
 
-        def create_validated_backend(embeddings: Embeddings):
+        def create_validated_backend(embeddings):
             """Factory with configuration validation."""
 
             required_config = os.getenv("REQUIRED_CONFIG")
@@ -290,7 +297,7 @@ class TestErrorHandling:
                 raise ValueError("collection_name is required in configuration")
 
             # Mock successful creation
-            return MockVectorStore(
+            return MockBackend(
                 collection_name=config["collection_name"], embeddings=embeddings
             )
 
@@ -323,7 +330,7 @@ class TestErrorHandling:
     def test_dependency_handling(self):
         """Test handling of missing dependencies."""
 
-        def create_backend_with_dependency_check(embeddings: Embeddings):
+        def create_backend_with_dependency_check(embeddings):
             """Factory that checks for dependencies."""
 
             try:
@@ -333,7 +340,7 @@ class TestErrorHandling:
                 return nonexistent_library.create_store(embeddings)
             except ImportError:
                 # Fall back to a different implementation
-                return MockVectorStore(fallback_used=True, embeddings=embeddings)
+                return MockBackend(fallback_used=True, embeddings=embeddings)
 
         embeddings = MockEmbeddings()
         result = create_backend_with_dependency_check(embeddings)
@@ -344,7 +351,7 @@ class TestErrorHandling:
     def test_connection_validation(self):
         """Test connection validation patterns."""
 
-        def create_backend_with_connection_test(embeddings: Embeddings):
+        def create_backend_with_connection_test(embeddings):
             """Factory that validates connections."""
 
             def test_connection():
@@ -356,7 +363,7 @@ class TestErrorHandling:
             # Test the connection during factory creation
             try:
                 test_connection()
-                return MockVectorStore(connection_tested=True, embeddings=embeddings)
+                return MockBackend(connection_tested=True, embeddings=embeddings)
             except ConnectionError as e:
                 raise ConnectionError(f"Backend connection failed: {e}") from e
 
@@ -376,15 +383,15 @@ class TestErrorHandling:
 class TestReturnTypes:
     """Test that factories return the correct types."""
 
-    def test_vectorstore_return_type(self):
-        """Test factory returning VectorStore-like object."""
+    def test_factory_return_type(self):
+        """Test factory returning a backend object."""
 
-        def create_vectorstore_factory(embeddings: Embeddings):
-            """Factory returning VectorStore-like object."""
-            return MockVectorStore(embeddings=embeddings)
+        def create_mock_db_factory(embeddings):
+            """Factory returning a mock backend."""
+            return MockBackend(embeddings=embeddings)
 
         embeddings = MockEmbeddings()
-        result = create_vectorstore_factory(embeddings)
+        result = create_mock_db_factory(embeddings)
 
         # Should have embeddings attribute
         assert result.embeddings == embeddings
@@ -392,9 +399,9 @@ class TestReturnTypes:
     def test_invalid_return_type(self):
         """Test handling of invalid return types."""
 
-        def create_invalid_factory(embeddings: Embeddings):
+        def create_invalid_factory(embeddings):
             """Factory returning invalid type."""
-            return "this is not a vectorstore"
+            return "this is not a database"
 
         embeddings = MockEmbeddings()
         result = create_invalid_factory(embeddings)
