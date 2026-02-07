@@ -78,6 +78,14 @@ class LangChainFilterProcessor:
             filter_dict[field_name] = {"$ne": tag_filter.ne}
         elif tag_filter.any:
             filter_dict[field_name] = {"$in": tag_filter.any}
+        elif hasattr(tag_filter, "startswith") and tag_filter.startswith:
+            # For prefix matching, use regex pattern
+            # Most LangChain backends support $regex or similar
+            # The pattern anchors at start (^) and escapes special regex chars
+            import re
+
+            escaped = re.escape(tag_filter.startswith)
+            filter_dict[field_name] = {"$regex": f"^{escaped}"}
 
     def process_datetime_filter(
         self, dt_filter, field_name: str, filter_dict: dict[str, Any]

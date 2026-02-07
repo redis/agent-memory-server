@@ -5,6 +5,7 @@ from typing import Self
 from pydantic import BaseModel
 from pydantic.functional_validators import model_validator
 from redisvl.query.filter import FilterExpression, Num, Tag
+from redisvl.utils.token_escaper import TokenEscaper
 
 
 class TagFilter(BaseModel):
@@ -13,6 +14,7 @@ class TagFilter(BaseModel):
     ne: str | None = None
     any: list[str] | None = None
     all: list[str] | None = None
+    startswith: str | None = None
 
     @model_validator(mode="after")
     def validate_filters(self) -> Self:
@@ -24,9 +26,27 @@ class TagFilter(BaseModel):
             raise ValueError("all cannot be an empty list")
         if self.any is not None and len(self.any) == 0:
             raise ValueError("any cannot be an empty list")
+        # Validate startswith doesn't combine with other filters
+        if self.startswith is not None:
+            if self.startswith == "":
+                raise ValueError("startswith cannot be an empty string")
+            if self.eq is not None:
+                raise ValueError("startswith and eq cannot both be set")
+            if self.ne is not None:
+                raise ValueError("startswith and ne cannot both be set")
+            if self.any is not None:
+                raise ValueError("startswith and any cannot both be set")
+            if self.all is not None:
+                raise ValueError("startswith and all cannot both be set")
         return self
 
     def to_filter(self) -> FilterExpression:
+        if self.startswith is not None:
+            # Use raw FilterExpression for prefix matching
+            # Escape special characters in the prefix, but add unescaped * at end
+            escaper = TokenEscaper()
+            escaped_prefix = escaper.escape(self.startswith)
+            return FilterExpression(f"@{self.field}:{{{escaped_prefix}*}}")
         if self.eq is not None:
             return Tag(self.field) == self.eq
         if self.ne is not None:

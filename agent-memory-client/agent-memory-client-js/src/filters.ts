@@ -13,6 +13,7 @@ export class SessionId {
   not_eq?: string;
   not_in?: string[];
   ne?: string;
+  startswith?: string;
 
   constructor(options: {
     eq?: string;
@@ -20,12 +21,14 @@ export class SessionId {
     not_eq?: string;
     not_in?: string[];
     ne?: string;
+    startswith?: string;
   } = {}) {
     this.eq = options.eq;
     this.in_ = options.in_;
     this.not_eq = options.not_eq;
     this.not_in = options.not_in;
     this.ne = options.ne;
+    this.startswith = options.startswith;
   }
 
   toJSON(): Record<string, unknown> {
@@ -35,29 +38,39 @@ export class SessionId {
     if (this.not_eq !== undefined) result.not_eq = this.not_eq;
     if (this.not_in !== undefined) result.not_in = this.not_in;
     if (this.ne !== undefined) result.ne = this.ne;
+    if (this.startswith !== undefined) result.startswith = this.startswith;
     return result;
   }
 }
 
 /**
  * Filter by namespace
+ *
+ * The startswith option enables hierarchical namespace filtering.
+ * For example, startswith="workspace:abc" will match:
+ * - "workspace:abc"
+ * - "workspace:abc/session:thread-1"
+ * - "workspace:abc/session:thread-2"
  */
 export class Namespace {
   eq?: string;
   in_?: string[];
   not_eq?: string;
   not_in?: string[];
+  startswith?: string;
 
   constructor(options: {
     eq?: string;
     in_?: string[];
     not_eq?: string;
     not_in?: string[];
+    startswith?: string;
   } = {}) {
     this.eq = options.eq;
     this.in_ = options.in_;
     this.not_eq = options.not_eq;
     this.not_in = options.not_in;
+    this.startswith = options.startswith;
   }
 
   toJSON(): Record<string, unknown> {
@@ -66,6 +79,7 @@ export class Namespace {
     if (this.in_ !== undefined) result.in_ = this.in_;
     if (this.not_eq !== undefined) result.not_eq = this.not_eq;
     if (this.not_in !== undefined) result.not_in = this.not_in;
+    if (this.startswith !== undefined) result.startswith = this.startswith;
     return result;
   }
 }
@@ -78,17 +92,20 @@ export class UserId {
   in_?: string[];
   not_eq?: string;
   not_in?: string[];
+  startswith?: string;
 
   constructor(options: {
     eq?: string;
     in_?: string[];
     not_eq?: string;
     not_in?: string[];
+    startswith?: string;
   } = {}) {
     this.eq = options.eq;
     this.in_ = options.in_;
     this.not_eq = options.not_eq;
     this.not_in = options.not_in;
+    this.startswith = options.startswith;
   }
 
   toJSON(): Record<string, unknown> {
@@ -97,6 +114,7 @@ export class UserId {
     if (this.in_ !== undefined) result.in_ = this.in_;
     if (this.not_eq !== undefined) result.not_eq = this.not_eq;
     if (this.not_in !== undefined) result.not_in = this.not_in;
+    if (this.startswith !== undefined) result.startswith = this.startswith;
     return result;
   }
 }

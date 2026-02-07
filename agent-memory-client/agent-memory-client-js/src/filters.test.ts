@@ -37,6 +37,11 @@ describe("SessionId", () => {
     expect(filter.toJSON()).toEqual({ ne: "session-1" });
   });
 
+  it("should create with startswith option", () => {
+    const filter = new SessionId({ startswith: "session-prefix" });
+    expect(filter.toJSON()).toEqual({ startswith: "session-prefix" });
+  });
+
   it("should create empty filter", () => {
     const filter = new SessionId();
     expect(filter.toJSON()).toEqual({});
@@ -57,6 +62,11 @@ describe("Namespace", () => {
   it("should create with not_in option", () => {
     const filter = new Namespace({ not_in: ["ns1", "ns2"] });
     expect(filter.toJSON()).toEqual({ not_in: ["ns1", "ns2"] });
+  });
+
+  it("should create with startswith option for hierarchical namespaces", () => {
+    const filter = new Namespace({ startswith: "workspace:abc123" });
+    expect(filter.toJSON()).toEqual({ startswith: "workspace:abc123" });
   });
 
   it("should create empty filter", () => {
@@ -84,6 +94,11 @@ describe("UserId", () => {
   it("should create with not_in option", () => {
     const filter = new UserId({ not_in: ["u1", "u2"] });
     expect(filter.toJSON()).toEqual({ not_in: ["u1", "u2"] });
+  });
+
+  it("should create with startswith option", () => {
+    const filter = new UserId({ startswith: "user-prefix" });
+    expect(filter.toJSON()).toEqual({ startswith: "user-prefix" });
   });
 
   it("should create empty filter", () => {
