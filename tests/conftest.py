@@ -4,14 +4,13 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 from unittest import mock
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import docket
 import pytest
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from langchain_core.embeddings import Embeddings
 from redis.asyncio import Redis as AsyncRedis
 from testcontainers.compose import DockerCompose
 
@@ -20,6 +19,7 @@ from agent_memory_server.config import settings
 from agent_memory_server.dependencies import HybridBackgroundTasks
 from agent_memory_server.healthcheck import router as health_router
 from agent_memory_server.llm import LLMClient
+from agent_memory_server.memory_vector_db import MemoryVectorDatabase
 from agent_memory_server.models import (
     MemoryMessage,
     MemoryRecord,
@@ -30,7 +30,6 @@ from agent_memory_server.models import (
 # Import the module to access its global for resetting
 from agent_memory_server.utils import redis as redis_utils_module
 from agent_memory_server.utils.keys import Keys
-from agent_memory_server.vectorstore_adapter import VectorStoreAdapter
 
 
 load_dotenv()
@@ -322,8 +321,8 @@ def use_test_redis_connection(redis_url: str):
         return original_docket_init(self, name, *args, url=redis_url, **kwargs)
 
     # Reset all global state and patch get_redis_conn
+    import agent_memory_server.memory_vector_db_factory
     import agent_memory_server.utils.redis
-    import agent_memory_server.vectorstore_factory
 
     with (
         # Core Redis helper
@@ -344,14 +343,14 @@ def use_test_redis_connection(redis_url: str):
         # Reset global state to force recreation with test Redis
         agent_memory_server.utils.redis._redis_pool = None
         agent_memory_server.utils.redis._index = None
-        agent_memory_server.vectorstore_factory._adapter = None
+        agent_memory_server.memory_vector_db_factory._memory_vector_db = None
 
         yield replacement_redis
 
         # Clean up global state after test
         agent_memory_server.utils.redis._redis_pool = None
         agent_memory_server.utils.redis._index = None
-        agent_memory_server.vectorstore_factory._adapter = None
+        agent_memory_server.memory_vector_db_factory._memory_vector_db = None
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -492,51 +491,53 @@ async def client_with_mock_background_tasks(
 
 
 @pytest.fixture()
-def mock_vectorstore_adapter():
-    """Create a mock vectorstore adapter and patch get_vectorstore_adapter.
+def mock_memory_vector_db():
+    """Create a mock memory vector database and patch get_memory_vector_db.
 
-    This fixture provides a MockVectorStoreAdapter that doesn't require real
+    This fixture provides a MockMemoryVectorDatabase that doesn't require real
     embeddings or API keys, suitable for unit tests that don't need actual
     vector search functionality.
 
     Usage:
-        def test_something(mock_vectorstore_adapter):
-            # mock_vectorstore_adapter is already patched as the global adapter
-            # You can also access the adapter instance directly:
-            mock_vectorstore_adapter.memories["id"] = some_memory
+        def test_something(mock_memory_vector_db):
+            # mock_memory_vector_db is already patched as the global instance
+            # You can also access the instance directly:
+            mock_memory_vector_db.memories["id"] = some_memory
     """
-    adapter = MockVectorStoreAdapter()
+    adapter = MockMemoryVectorDatabase()
 
-    async def mock_get_vectorstore_adapter():
+    async def mock_get_memory_vector_db():
         return adapter
 
     with (
         patch(
-            "agent_memory_server.vectorstore_factory.get_vectorstore_adapter",
-            mock_get_vectorstore_adapter,
+            "agent_memory_server.memory_vector_db_factory.get_memory_vector_db",
+            mock_get_memory_vector_db,
         ),
         patch(
-            "agent_memory_server.long_term_memory.get_vectorstore_adapter",
-            mock_get_vectorstore_adapter,
+            "agent_memory_server.long_term_memory.get_memory_vector_db",
+            mock_get_memory_vector_db,
         ),
     ):
-        # Also reset the global adapter to None to force re-creation
-        import agent_memory_server.vectorstore_factory
+        # Also reset the global state to None to force re-creation
+        import agent_memory_server.memory_vector_db_factory
 
-        original_adapter = agent_memory_server.vectorstore_factory._adapter
-        agent_memory_server.vectorstore_factory._adapter = None
+        original = agent_memory_server.memory_vector_db_factory._memory_vector_db
+        agent_memory_server.memory_vector_db_factory._memory_vector_db = None
 
         yield adapter
 
-        # Restore original adapter
-        agent_memory_server.vectorstore_factory._adapter = original_adapter
+        # Restore original
+        agent_memory_server.memory_vector_db_factory._memory_vector_db = original
 
 
-class MockEmbeddings(Embeddings):
+class MockEmbeddings:
     """Mock embeddings that return fixed-dimension vectors without API calls."""
 
     def __init__(self, dimensions: int = 1536):
         self.dimensions = dimensions
+        self._dimensions = dimensions
+        self.model = "mock-embedding-model"
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Return mock embeddings for documents."""
@@ -546,14 +547,21 @@ class MockEmbeddings(Embeddings):
         """Return mock embedding for a query."""
         return [0.1] * self.dimensions
 
+    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
+        """Return mock embeddings for documents (async)."""
+        return [[0.1] * self.dimensions for _ in texts]
 
-class MockVectorStoreAdapter(VectorStoreAdapter):
-    """Mock VectorStoreAdapter for testing without real embeddings."""
+    async def aembed_query(self, text: str) -> list[float]:
+        """Return mock embedding for a query (async)."""
+        return [0.1] * self.dimensions
+
+
+class MockMemoryVectorDatabase(MemoryVectorDatabase):
+    """Mock MemoryVectorDatabase for testing without real embeddings."""
 
     def __init__(self):
         self.memories: dict[str, MemoryRecord] = {}
         self.embeddings = MockEmbeddings()
-        self.vectorstore = MagicMock()
 
     async def add_memories(self, memories: list[MemoryRecord]) -> list[str]:
         """Add memories to the mock store."""

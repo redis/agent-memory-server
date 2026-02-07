@@ -31,6 +31,7 @@ from agent_memory_server.filters import (
     UserId,
 )
 from agent_memory_server.llm import LLMClient, optimize_query_for_vector_search
+from agent_memory_server.memory_vector_db_factory import get_memory_vector_db
 from agent_memory_server.models import (
     ExtractedMemoryRecord,
     MemoryRecord,
@@ -46,7 +47,6 @@ from agent_memory_server.utils.recency import (
     update_memory_hash_if_text_changed,
 )
 from agent_memory_server.utils.redis import get_redis_conn
-from agent_memory_server.vectorstore_factory import get_vectorstore_adapter
 
 
 # Track pending extraction tasks to prevent garbage collection
@@ -813,9 +813,9 @@ async def compact_long_term_memories(
         index_name = Keys.search_index_name()
         logger.info(f"Using index '{index_name}' for semantic duplicate compaction.")
 
-        # Get all memories using the vector store adapter
+        # Get all memories using the memory vector database
         try:
-            # Convert filters to adapter format
+            # Convert filters to database format
             namespace_filter = None
             user_id_filter = None
             session_id_filter = None
@@ -833,10 +833,10 @@ async def compact_long_term_memories(
 
                 session_id_filter = SessionId(eq=session_id)
 
-            # Use vectorstore adapter to get all memories using filter-only query
+            # Use memory vector database to get all memories using filter-only query
             # (no embedding required)
-            adapter = await get_vectorstore_adapter()
-            search_result = await adapter.list_memories(
+            db = await get_memory_vector_db()
+            search_result = await db.list_memories(
                 namespace=namespace_filter,
                 user_id=user_id_filter,
                 session_id=session_id_filter,
@@ -899,8 +899,8 @@ async def compact_long_term_memories(
 
                     if was_merged:
                         semantic_memories_merged += 1
-                        # Delete the original memory using the adapter
-                        await adapter.delete_memories([memory_id])
+                        # Delete the original memory using the database
+                        await db.delete_memories([memory_id])
 
                         # Re-index the merged memory
                         if merged_memory:
@@ -942,7 +942,7 @@ async def index_long_term_memories(
     vector_distance_threshold: float | None = None,
 ) -> None:
     """
-    Index long-term memories using the pluggable VectorStore adapter.
+    Index long-term memories using the pluggable memory vector database.
 
     Args:
         memories: List of long-term memories to index
@@ -1035,12 +1035,12 @@ async def index_long_term_memories(
         logger.info("All memories were duplicates, nothing to index")
         return
 
-    # Get the VectorStore adapter and add memories
-    adapter = await get_vectorstore_adapter()
+    # Get the memory vector database and add memories
+    db = await get_memory_vector_db()
 
-    # Add memories to the vector store
+    # Add memories to the database
     try:
-        ids = await adapter.add_memories(processed_memories)
+        ids = await db.add_memories(processed_memories)
         logger.info(f"Indexed {len(processed_memories)} memories with IDs: {ids}")
     except Exception as e:
         logger.error(f"Error indexing memories: {e}")
@@ -1086,7 +1086,7 @@ async def search_long_term_memories(
     optimize_query: bool = False,
 ) -> MemoryRecordResults:
     """
-    Search for long-term memories using the pluggable VectorStore adapter.
+    Search for long-term memories using the pluggable memory vector database.
 
     Args:
         text: Query for vector search - will be used for semantic similarity matching
@@ -1111,8 +1111,8 @@ async def search_long_term_memories(
     # If no query text is provided, perform a filter-only listing (no semantic search).
     # This enables patterns like: "return all memories for this user/namespace".
     if not (text or "").strip():
-        adapter = await get_vectorstore_adapter()
-        return await adapter.list_memories(
+        db = await get_memory_vector_db()
+        return await db.list_memories(
             session_id=session_id,
             user_id=user_id,
             namespace=namespace,
@@ -1143,11 +1143,11 @@ async def search_long_term_memories(
         f"distance_threshold: {distance_threshold}, limit: {limit}"
     )
 
-    # Get the VectorStore adapter
-    adapter = await get_vectorstore_adapter()
+    # Get the memory vector database
+    db = await get_memory_vector_db()
 
-    # Delegate search to the adapter
-    results = await adapter.search_memories(
+    # Delegate search to the database
+    results = await db.search_memories(
         query=search_query,
         session_id=session_id,
         user_id=user_id,
@@ -1175,7 +1175,7 @@ async def search_long_term_memories(
             and results.total == 0
             and search_query != text
         ):
-            results = await adapter.search_memories(
+            results = await db.search_memories(
                 query=text,
                 session_id=session_id,
                 user_id=user_id,
@@ -1218,22 +1218,22 @@ async def count_long_term_memories(
     """
     Count the total number of long-term memories matching the given filters.
 
-    Uses the pluggable VectorStore adapter instead of direct Redis calls.
+    Uses the pluggable memory vector database instead of direct Redis calls.
 
     Args:
         namespace: Optional namespace filter
         user_id: Optional user ID filter
         session_id: Optional session ID filter
-        redis_client: Optional Redis client (for compatibility - not used by adapter)
+        redis_client: Optional Redis client (for compatibility)
 
     Returns:
         Total count of memories matching filters
     """
-    # Get the VectorStore adapter
-    adapter = await get_vectorstore_adapter()
+    # Get the memory vector database
+    db = await get_memory_vector_db()
 
-    # Delegate to the adapter
-    return await adapter.count_memories(
+    # Delegate to the database
+    return await db.count_memories(
         namespace=namespace,
         user_id=user_id,
         session_id=session_id,
@@ -1269,7 +1269,7 @@ async def deduplicate_by_hash(
     # Generate hash for the memory
     memory_hash = generate_memory_hash(memory)
 
-    # Use vectorstore adapter to search for memories with the same hash
+    # Use memory vector database to search for memories with the same hash
     # Build filter objects
     namespace_filter = None
     if namespace or memory.namespace:
@@ -1286,12 +1286,12 @@ async def deduplicate_by_hash(
     # Create memory hash filter
     memory_hash_filter = MemoryHash(eq=memory_hash)
 
-    # Use vectorstore adapter to search for memories with the same hash
-    adapter = await get_vectorstore_adapter()
+    # Use memory vector database to search for memories with the same hash
+    db = await get_memory_vector_db()
 
     # Search for existing memories with the same hash using filter-only query
     # (no embedding required)
-    results = await adapter.list_memories(
+    results = await db.list_memories(
         session_id=session_id_filter,
         user_id=user_id_filter,
         namespace=namespace_filter,
@@ -1349,7 +1349,7 @@ async def deduplicate_by_id(
     if not memory.id:
         return memory, False
 
-    # Use vectorstore adapter to search for memories with the same id
+    # Use memory vector database to search for memories with the same id
     # Build filter objects
     namespace_filter = None
     if namespace or memory.namespace:
@@ -1374,12 +1374,12 @@ async def deduplicate_by_id(
 
     id_filter = Id(eq=memory.id)
 
-    # Use vectorstore adapter to search for memories with the same id
-    adapter = await get_vectorstore_adapter()
+    # Use memory vector database to search for memories with the same id
+    db = await get_memory_vector_db()
 
     # Search for existing memories with the same id using filter-only query
     # (no embedding required)
-    results = await adapter.list_memories(
+    results = await db.list_memories(
         session_id=session_id_filter,
         user_id=user_id_filter,
         namespace=namespace_filter,
@@ -1396,9 +1396,9 @@ async def deduplicate_by_id(
         if existing_memory.persisted_at:
             memory.persisted_at = existing_memory.persisted_at
 
-        # Delete the existing memory using the adapter
+        # Delete the existing memory using the database
         if existing_memory.id:
-            await adapter.delete_memories([existing_memory.id])
+            await db.delete_memories([existing_memory.id])
 
         # Return the memory to be saved (overwriting the existing one)
         return memory, True
@@ -1450,14 +1450,14 @@ async def deduplicate_by_semantic_search(
     if not redis_client:
         redis_client = await get_redis_conn()
 
-    # Use vector store adapter to find semantically similar memories
-    adapter = await get_vectorstore_adapter()
+    # Use memory vector database to find semantically similar memories
+    db = await get_memory_vector_db()
 
     # Get threshold from settings if not provided
     if vector_distance_threshold is None:
         vector_distance_threshold = settings.deduplication_distance_threshold
 
-    # Convert filters to adapter format
+    # Convert filters to database format
     namespace_filter = None
     user_id_filter = None
     session_id_filter = None
@@ -1476,9 +1476,9 @@ async def deduplicate_by_semantic_search(
 
         session_id_filter = SessionId(eq=session_id or memory.session_id)
 
-    # Use the vectorstore adapter for semantic search
+    # Use the memory vector database for semantic search
     # TODO: Paginate through results?
-    search_result = await adapter.search_memories(
+    search_result = await db.search_memories(
         query=memory.text,  # Use memory text for semantic search
         namespace=namespace_filter,
         user_id=user_id_filter,
@@ -1501,9 +1501,9 @@ async def deduplicate_by_semantic_search(
             [memory] + vector_search_result,
         )
 
-        # Delete the similar memories using the adapter
+        # Delete the similar memories using the database
         if similar_memory_ids:
-            await adapter.delete_memories(similar_memory_ids)
+            await db.delete_memories(similar_memory_ids)
 
         logger.info(
             f"Merged new memory with {len(similar_memory_ids)} semantic duplicates"
@@ -1729,8 +1729,8 @@ async def delete_long_term_memories(
     """
     Delete long-term memories by ID.
     """
-    adapter = await get_vectorstore_adapter()
-    return await adapter.delete_memories(ids)
+    db = await get_memory_vector_db()
+    return await db.delete_memories(ids)
 
 
 async def get_long_term_memory_by_id(memory_id: str) -> MemoryRecord | None:
@@ -1745,10 +1745,10 @@ async def get_long_term_memory_by_id(memory_id: str) -> MemoryRecord | None:
     """
     from agent_memory_server.filters import Id
 
-    adapter = await get_vectorstore_adapter()
+    db = await get_memory_vector_db()
 
     # Search for the memory by ID using filter-only query (no embedding required)
-    results = await adapter.list_memories(
+    results = await db.list_memories(
         limit=1,
         id=Id(eq=memory_id),
     )
@@ -1804,9 +1804,9 @@ async def update_long_term_memory(
     update_dict = update_memory_hash_if_text_changed(existing_memory, base_updates)
     updated_memory = existing_memory.model_copy(update=update_dict)
 
-    # Update in the vectorstore
-    adapter = await get_vectorstore_adapter()
-    await adapter.update_memories([updated_memory])
+    # Update in the database
+    db = await get_memory_vector_db()
+    await db.update_memories([updated_memory])
 
     return updated_memory
 
@@ -1963,10 +1963,10 @@ async def forget_long_term_memories(
 ) -> dict:
     """Select and delete long-term memories according to policy.
 
-    Uses the vectorstore adapter to fetch candidates (empty query + filters),
-    then applies `select_ids_for_forgetting` locally and deletes via adapter.
+    Uses the memory vector database to fetch candidates (empty query + filters),
+    then applies `select_ids_for_forgetting` locally and deletes matching memories.
     """
-    adapter = await get_vectorstore_adapter()
+    db = await get_memory_vector_db()
 
     # Build filters
     namespace_filter = Namespace(eq=namespace) if namespace else None
@@ -1974,7 +1974,7 @@ async def forget_long_term_memories(
     session_id_filter = SessionId(eq=session_id) if session_id else None
 
     # Fetch candidates using filter-only query (no embedding required)
-    results = await adapter.list_memories(
+    results = await db.list_memories(
         namespace=namespace_filter,
         user_id=user_id_filter,
         session_id=session_id_filter,
@@ -1994,7 +1994,7 @@ async def forget_long_term_memories(
 
     deleted = 0
     if to_delete_ids and not dry_run:
-        deleted = await adapter.delete_memories(to_delete_ids)
+        deleted = await db.delete_memories(to_delete_ids)
 
     return {
         "scanned": len(candidate_results),

@@ -21,7 +21,7 @@ from agent_memory_server.models import (
 
 
 @pytest.fixture
-async def mcp_test_setup(async_redis_client, search_index, mock_vectorstore_adapter):
+async def mcp_test_setup(async_redis_client, search_index, mock_memory_vector_db):
     with (
         mock.patch(
             "agent_memory_server.long_term_memory.get_redis_conn",

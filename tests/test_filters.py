@@ -197,7 +197,7 @@ class TestNamespacePrefixSearchIntegration:
         mock_adapter.search_memories.return_value = mock_results
 
         with patch(
-            "agent_memory_server.long_term_memory.get_vectorstore_adapter",
+            "agent_memory_server.long_term_memory.get_memory_vector_db",
             return_value=mock_adapter,
         ):
             # Search using namespace prefix filter

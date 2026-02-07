@@ -1,5 +1,5 @@
 """
-Integration tests for the actual vectorstore factory system.
+Integration tests for the memory vector database factory system.
 
 Tests the real factory loading mechanism and Redis factory.
 """
@@ -8,22 +8,32 @@ import os
 from unittest.mock import Mock, patch
 
 import pytest
-from langchain_core.embeddings import Embeddings
 
 from agent_memory_server.config import ModelConfig, ModelProvider
-from agent_memory_server.vectorstore_factory import (
+from agent_memory_server.memory_vector_db_factory import (
     _import_and_call_factory,
     create_embeddings,
 )
 
 
-class MockEmbeddings(Embeddings):
+class MockEmbeddings:
     """Mock embeddings for testing."""
+
+    def __init__(self, dimensions: int = 3):
+        self.dimensions = dimensions
+        self._dimensions = dimensions
+        self.model = "mock-embedding-model"
 
     def embed_documents(self, texts):
         return [[0.1, 0.2, 0.3] for _ in texts]
 
     def embed_query(self, text):
+        return [0.1, 0.2, 0.3]
+
+    async def aembed_documents(self, texts):
+        return [[0.1, 0.2, 0.3] for _ in texts]
+
+    async def aembed_query(self, text):
         return [0.1, 0.2, 0.3]
 
 
@@ -59,8 +69,8 @@ class TestFactoryLoading:
     def test_import_and_call_factory_invalid_return_type(self):
         """Test factory loading with invalid return type."""
 
-        def invalid_factory(embeddings: Embeddings):
-            return "not a vectorstore"  # Invalid return type
+        def invalid_factory(embeddings):
+            return "not a memory vector database"  # Invalid return type
 
         with patch("importlib.import_module") as mock_import:
             mock_module = Mock()
@@ -69,9 +79,7 @@ class TestFactoryLoading:
 
             embeddings = MockEmbeddings()
 
-            with pytest.raises(
-                TypeError, match="must return VectorStore or VectorStoreAdapter"
-            ):
+            with pytest.raises(TypeError, match="must return MemoryVectorDatabase"):
                 _import_and_call_factory("test_module.invalid_factory", embeddings)
 
     def test_import_and_call_factory_invalid_path(self):
@@ -131,8 +139,8 @@ class TestDocumentationExamples:
     def test_basic_factory_pattern(self):
         """Test the basic factory pattern from docs works."""
 
-        def create_mock_backend(embeddings: Embeddings):
-            """Factory function that creates a mock vectorstore."""
+        def create_mock_backend(embeddings):
+            """Factory function that creates a mock backend."""
             mock_store = Mock()
             mock_store.embeddings = embeddings
             mock_store.collection_name = "agent_memory"
@@ -150,16 +158,16 @@ class TestDocumentationExamples:
         with patch.dict(
             os.environ,
             {
-                "VECTORSTORE_CONFIG": '{"collection_name": "test_memories", "persist_directory": "./test_data"}',
+                "MEMORY_VECTOR_DB_CONFIG": '{"collection_name": "test_memories", "persist_directory": "./test_data"}',
                 "BACKEND_TYPE": "mock",
             },
         ):
 
-            def create_configured_backend(embeddings: Embeddings):
+            def create_configured_backend(embeddings):
                 """Factory that reads configuration from environment."""
                 import json
 
-                config = json.loads(os.getenv("VECTORSTORE_CONFIG", "{}"))
+                config = json.loads(os.getenv("MEMORY_VECTOR_DB_CONFIG", "{}"))
                 backend_type = os.getenv("BACKEND_TYPE", "chroma")
 
                 if backend_type == "mock":
