@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from functools import reduce
 from typing import Any
 
+import numpy as np
 from redisvl.index import AsyncSearchIndex
 from redisvl.query import FilterQuery, RangeQuery, VectorQuery
 
@@ -604,7 +605,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
             keys = []
             for memory, embedding in zip(memories, embeddings, strict=False):
                 data = self._memory_to_data(memory)
-                data["vector"] = embedding
+                data["vector"] = np.array(embedding, dtype=np.float32).tobytes()
                 data_list.append(data)
                 keys.append(memory.id)
 
@@ -694,24 +695,15 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                 return_fields=self.RETURN_FIELDS,
             )
 
-        # Execute search
-        raw_results = await self._index.search(vq)
-        docs = getattr(raw_results, "docs", raw_results) or []
+        # Execute search using index.query() which properly passes vector params
+        results = await self._index.query(vq)
 
-        # Parse results
+        # Parse results (query() returns List[Dict[str, Any]])
         memory_results: list[MemoryRecordResult] = []
-        for i, doc in enumerate(docs):
+        for i, fields in enumerate(results):
             # Apply offset - RedisVL doesn't support native offset for KNN
             if i < offset:
                 continue
-
-            # Extract fields from the result document
-            if hasattr(doc, "__dict__"):
-                fields = doc.__dict__
-            elif isinstance(doc, dict):
-                fields = doc
-            else:
-                fields = dict(doc)
 
             # Get vector distance score
             score = float(
@@ -730,11 +722,11 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                 memory_results, recency_params
             )
 
-        next_offset = offset + limit if len(docs) > offset + limit else None
+        next_offset = offset + limit if len(results) > offset + limit else None
 
         return MemoryRecordResults(
             memories=memory_results[:limit],
-            total=len(docs),
+            total=len(results),
             next_offset=next_offset,
         )
 
@@ -826,32 +818,23 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                 num_results=limit + offset,
             )
 
-            # Execute query
-            raw_results = await self._index.search(filter_query)
-            docs = getattr(raw_results, "docs", raw_results) or []
+            # Execute query using index.query() which properly handles params
+            results = await self._index.query(filter_query)
 
-            # Parse results
+            # Parse results (query() returns List[Dict[str, Any]])
             memory_results: list[MemoryRecordResult] = []
-            for doc in docs[offset:]:
-                # Handle different doc formats
-                if hasattr(doc, "__dict__"):
-                    fields = doc.__dict__
-                elif isinstance(doc, dict):
-                    fields = doc
-                else:
-                    fields = dict(doc)
-
+            for fields in results[offset:]:
                 memory_result = self._data_to_memory_result(fields, score=0.0)
                 memory_results.append(memory_result)
 
                 if len(memory_results) >= limit:
                     break
 
-            next_offset = offset + limit if len(docs) > offset + limit else None
+            next_offset = offset + limit if len(results) > offset + limit else None
 
             return MemoryRecordResults(
                 memories=memory_results[:limit],
-                total=len(docs),
+                total=len(results),
                 next_offset=next_offset,
             )
 
