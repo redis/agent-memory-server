@@ -602,16 +602,18 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
 
             # Build data dicts with embeddings
             data_list = []
-            keys = []
+            memory_ids = []
             for memory, embedding in zip(memories, embeddings, strict=False):
                 data = self._memory_to_data(memory)
                 data["vector"] = np.array(embedding, dtype=np.float32).tobytes()
                 data_list.append(data)
-                keys.append(memory.id)
+                memory_ids.append(memory.id)
 
-            # Load into Redis via RedisVL
-            await self._index.load(data_list, id_field="id_", keys=keys)
-            return keys
+            # Load into Redis via RedisVL -- use id_field so keys are
+            # auto-generated with the index prefix (e.g. "memory_idx:<id>").
+            # Do NOT pass explicit keys, as that bypasses the prefix.
+            await self._index.load(data_list, id_field="id_")
+            return memory_ids
 
         except Exception as e:
             logger.error(f"Error adding memories to Redis: {e}")
