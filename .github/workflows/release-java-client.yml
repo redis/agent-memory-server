@@ -1,0 +1,106 @@
+name: Release Java Client
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release"
+        required: true
+        type: string
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent-memory-client/agent-memory-client-java
+    steps:
+      - name: Cancel previous run
+        uses: styfle/cancel-workflow-action@0.12.1
+        with:
+          access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: 11
+          distribution: 'zulu'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}-${{ hashFiles('**/gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Cache Gradle wrapper
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradlew-${{ hashFiles('**/gradlew') }}
+          restore-keys: ${{ runner.os }}-gradlew-
+
+      - name: Set up Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Bump version in gradle.properties
+        id: bump
+        run: |
+          sed -i "s/^version\s*=.*/version=${{ inputs.version }}/" gradle.properties
+          git add agent-memory-client/agent-memory-client-java/gradle.properties
+          git commit --allow-empty -m "release: Releasing Java client version ${{ inputs.version }}"
+          git push origin HEAD
+
+      - name: Build
+        run: |
+          ./gradlew build test publish -S
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            agent-memory-client/agent-memory-client-java/build/reports/tests/
+
+      - name: Assemble
+        uses: jreleaser/release-action@v2
+        with:
+          arguments: assemble
+          working-directory: agent-memory-client/agent-memory-client-java
+        env:
+          JRELEASER_PROJECT_VERSION: ${{ inputs.version }}
+
+      - name: Release
+        uses: jreleaser/release-action@v2
+        with:
+          arguments: full-release
+          working-directory: agent-memory-client/agent-memory-client-java
+        env:
+          JRELEASER_GITHUB_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          JRELEASER_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JRELEASER_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          JRELEASER_GPG_PUBLIC_KEY: ${{ secrets.GPG_PUBLIC_KEY }}
+          JRELEASER_GPG_SECRET_KEY: ${{ secrets.GPG_SECRET_KEY }}
+          JRELEASER_MAVENCENTRAL_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          JRELEASER_MAVENCENTRAL_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+          JRELEASER_PROJECT_VERSION: ${{ inputs.version }}
+
+      - name: JReleaser output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact
+          path: |
+            agent-memory-client/agent-memory-client-java/out/jreleaser/trace.log
+            agent-memory-client/agent-memory-client-java/out/jreleaser/output.properties
+

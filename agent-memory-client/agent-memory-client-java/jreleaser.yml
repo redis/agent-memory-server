@@ -1,0 +1,78 @@
+project:
+  name: agent-memory-client-java
+  description: Java client for the Agent Memory Server REST API
+  longDescription: Java client library for interacting with the Agent Memory Server REST API, providing a simple and intuitive interface for managing agent memories.
+  links:
+    homepage: https://github.com/redis-developer/agent-memory-server
+  authors:
+    - Andrew Brookins
+    - Brian Sam-Bodden
+    - Raphael De Lio
+  license: Apache-2.0
+  languages:
+    java:
+      groupId: com.redis
+      version: '11'
+  inceptionYear: '2025'
+  tags: ['redis', 'agent', 'memory', 'ai', 'llm', 'client']
+
+release:
+  github:
+    owner: redis
+    name: agent-memory-server
+    overwrite: true
+    sign: true
+    prerelease:
+      pattern: .*-(RC|SNAPSHOT|M|alpha|beta).*
+    draft: false
+    changelog:
+      formatted: ALWAYS
+      preset: conventional-commits
+      includeLabels:
+        - 'feat'
+        - 'feature'
+        - 'fix'
+        - 'docs'
+        - 'chore'
+        - 'perf'
+        - 'refactor'
+        - 'test'
+        - 'build'
+        - 'ci'
+      contributors:
+        enabled: true
+        format: '- {{contributorName}} ({{contributorUsernameAsLink}})'
+      extraProperties:
+        categorizeScopes: false
+      replacers:
+        # Escape Java annotations to prevent GitHub from treating them as user mentions
+        - search: '\s@([A-Z][a-zA-Z]+)'
+          replace: ' `@$1`'
+      hide:
+        contributors:
+          - 'GitHub Actions'
+          - 'actions'
+          - 'github-actions'
+          - 'github-actions[bot]'
+
+signing:
+  active: ALWAYS
+  pgp:
+    armored: true
+
+deploy:
+  maven:
+    mavenCentral:
+      redis:
+        active: RELEASE
+        authorization: BASIC
+        url: https://central.sonatype.com/api/v1/publisher
+        applyMavenCentralRules: true
+        stagingRepositories:
+          - build/staging-deploy
+
+# No announcements needed
+announce:
+  slack:
+    active: NEVER
+
