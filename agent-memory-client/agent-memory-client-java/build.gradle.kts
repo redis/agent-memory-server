@@ -1,11 +1,22 @@
 plugins {
     id("java-library")
     id("maven-publish")
+    id("pl.allegro.tech.build.axion-release") version "1.21.1"
 }
 
 group = "com.redis"
-version = project.findProperty("version") as String? ?: "0.1.0"
+version = scmVersion.version
 description = "Java client for the Agent Memory Server REST API"
+
+scmVersion {
+    repository {
+        directory.set(project.rootProject.file("../..").toString())
+    }
+    tag {
+        prefix.set("java-client-v")
+        versionSeparator.set("")
+    }
+}
 
 java {
     sourceCompatibility = JavaVersion.VERSION_11
