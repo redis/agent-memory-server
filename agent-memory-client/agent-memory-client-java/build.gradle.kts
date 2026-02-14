@@ -1,11 +1,24 @@
 plugins {
     id("java-library")
     id("maven-publish")
+    id("pl.allegro.tech.build.axion-release") version "1.21.1"
 }
 
 group = "com.redis"
-version = project.findProperty("version") as String? ?: "0.1.0"
+// Version is managed by the Axion Release plugin via git tags (prefix: java-client-v).
+// The 'version' property in gradle.properties is not used.
+version = scmVersion.version
 description = "Java client for the Agent Memory Server REST API"
+
+scmVersion {
+    repository {
+        directory.set(project.rootProject.file("../..").canonicalPath)
+    }
+    tag {
+        prefix.set("java-client-v")
+        versionSeparator.set("")
+    }
+}
 
 java {
     sourceCompatibility = JavaVersion.VERSION_11
@@ -97,8 +110,8 @@ publishing {
             pom {
                 name.set("Agent Memory Client Java")
                 description.set(project.description)
-                url.set("https://github.com/redis-developer/agent-memory-server")
-                inceptionYear.set("2024")
+                url.set("https://github.com/redis/agent-memory-server")
+                inceptionYear.set("2025")
 
                 licenses {
                     license {
@@ -118,9 +131,9 @@ publishing {
                 }
 
                 scm {
-                    connection.set("scm:git:git://github.com/redis-developer/agent-memory-server.git")
-                    developerConnection.set("scm:git:ssh://github.com:redis-developer/agent-memory-server.git")
-                    url.set("https://github.com/redis-developer/agent-memory-server")
+                    connection.set("scm:git:git://github.com/redis/agent-memory-server.git")
+                    developerConnection.set("scm:git:ssh://github.com:redis/agent-memory-server.git")
+                    url.set("https://github.com/redis/agent-memory-server")
                 }
             }
         }

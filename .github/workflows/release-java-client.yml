@@ -1,0 +1,47 @@
+name: Release Java Client
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 0.5.1). Leave empty to auto-increment patch version.'
+        required: false
+        type: string
+      version-increment:
+        description: 'Version increment type (used if version is not specified)'
+        default: 'patch'
+        required: false
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: redis/github-workflows/.github/workflows/release.yml@main
+    with:
+      java-version: '11'
+      version: ${{ inputs.version }}
+      version-increment: ${{ inputs.version-increment }}
+      gradle-build-tasks: 'build test publish'
+      jreleaser-arguments: 'assemble'
+      clone-to-dist-repo: false
+      update-antora-version: false
+      working-directory: 'agent-memory-client/agent-memory-client-java'
+    secrets:
+      git-access-token: ${{ secrets.GIT_ACCESS_TOKEN }}
+      gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
+      gpg-public-key: ${{ secrets.GPG_PUBLIC_KEY }}
+      gpg-secret-key: ${{ secrets.GPG_SECRET_KEY }}
+      sonatype-username: ${{ secrets.SONATYPE_USERNAME }}
+      sonatype-password: ${{ secrets.SONATYPE_PASSWORD }}
+
