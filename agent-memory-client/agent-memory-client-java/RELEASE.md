@@ -17,8 +17,9 @@ Before you can release, you need to set up the following GitHub secrets in your 
    - `SONATYPE_USERNAME` - Your Sonatype username
    - `SONATYPE_PASSWORD` - Your Sonatype password (or token)
 
-3. **GitHub Token**
+3. **GitHub Tokens**
    - `GITHUB_TOKEN` - Automatically provided by GitHub Actions (no setup needed)
+   - `GIT_ACCESS_TOKEN` - Personal access token with write access to push tags (must be added as a repository secret)
 
 ### Setting Up GPG Keys
 
@@ -68,7 +69,7 @@ The release is triggered via GitHub Actions workflow dispatch:
 
 The workflow will:
 
-1. **Update Version**: Update `gradle.properties` with the new version
+1. **Create Version Tag**: Use the Axion Release Plugin to create a git tag (prefixed with `java-client-v`) for the specified version
 2. **Build**: Compile and test the project
 3. **Publish**: Publish artifacts to the staging repository
 4. **Sign**: Sign all artifacts with GPG
@@ -148,8 +149,8 @@ export JRELEASER_MAVENCENTRAL_PASSWORD=your_password
 ## Configuration Files
 
 - **jreleaser.yml**: JReleaser configuration
-- **build.gradle.kts**: Gradle build configuration with signing
-- **.github/workflows/release.yml**: GitHub Actions workflow
+- **build.gradle.kts**: Gradle build configuration with signing and Axion release plugin
+- **.github/workflows/release-java-client.yml**: GitHub Actions workflow
 
 ## References
 

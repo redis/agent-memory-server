@@ -3,7 +3,7 @@ project:
   description: Java client for the Agent Memory Server REST API
   longDescription: Java client library for interacting with the Agent Memory Server REST API, providing a simple and intuitive interface for managing agent memories.
   links:
-    homepage: https://github.com/redis-developer/agent-memory-server
+    homepage: https://github.com/redis/agent-memory-server
   authors:
     - Andrew Brookins
     - Brian Sam-Bodden
@@ -13,7 +13,7 @@ project:
     java:
       groupId: com.redis
       version: '11'
-  inceptionYear: '2025'
+  inceptionYear: '2024'
   tags: ['redis', 'agent', 'memory', 'ai', 'llm', 'client']
 
 release:
@@ -68,6 +68,8 @@ deploy:
         authorization: BASIC
         url: https://central.sonatype.com/api/v1/publisher
         applyMavenCentralRules: true
+        retryDelay: 30
+        maxRetries: 100
         stagingRepositories:
           - build/staging-deploy
 
