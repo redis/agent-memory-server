@@ -260,7 +260,7 @@ Args:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `memory_ids` | array[string] | No |  |
+| `memory_ids` | array\[string] | No |  |
 
 **Response:** [`AckResponse`](#data-models)
 
@@ -516,22 +516,22 @@ Response containing working memory
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `messages` | array[MemoryMessage] | No | Conversation messages (role/content pairs) |
-| `memories` | array[MemoryRecord | ClientMemoryRecord] | No | Structured memory records for promotion to long-term storage |
-| `data` | object | null | No | Arbitrary JSON data storage (key-value pairs) |
-| `context` | string | null | No | Summary of past session messages if server has auto-summariz |
-| `user_id` | string | null | No | Optional user ID for the working memory |
+| `memories` | array[MemoryRecord \| ClientMemoryRecord] | No | Structured memory records for promotion to long-term storage |
+| `data` | object \| null | No | Arbitrary JSON data storage (key-value pairs) |
+| `context` | string \| null | No | Summary of past session messages if server has auto-summariz |
+| `user_id` | string \| null | No | Optional user ID for the working memory |
 | `tokens` | integer | No | Optional number of tokens in the working memory |
 | `session_id` | string | Yes |  |
-| `namespace` | string | null | No | Optional namespace for the working memory |
+| `namespace` | string \| null | No | Optional namespace for the working memory |
 | `long_term_memory_strategy` | MemoryStrategyConfig | No | Configuration for memory extraction strategy when promoting  |
-| `ttl_seconds` | integer | null | No | TTL for the working memory in seconds |
+| `ttl_seconds` | integer \| null | No | TTL for the working memory in seconds |
 | `last_accessed` | string | No | Datetime when the working memory was last accessed |
 | `created_at` | string | No | Datetime when the working memory was created |
 | `updated_at` | string | No | Datetime when the working memory was last updated |
-| `context_percentage_total_used` | number | null | No | Percentage of total context window currently used (0-100) |
-| `context_percentage_until_summarization` | number | null | No | Percentage until auto-summarization triggers (0-100, reaches |
-| `new_session` | boolean | null | No | True if session was created, False if existing session was f |
-| `unsaved` | boolean | null | No | True if this session data has not been persisted to Redis ye |
+| `context_percentage_total_used` | number \| null | No | Percentage of total context window currently used (0-100) |
+| `context_percentage_until_summarization` | number \| null | No | Percentage until auto-summarization triggers (0-100, reaches |
+| `new_session` | boolean \| null | No | True if session was created, False if existing session was f |
+| `unsaved` | boolean \| null | No | True if this session data has not been persisted to Redis ye |
 
 ### UpdateWorkingMemory
 
@@ -539,15 +539,15 @@ Working memory update payload for PUT requests - session_id comes from URL path
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `messages` | array[MemoryMessage] | No | Conversation messages (role/content pairs) |
-| `memories` | array[MemoryRecord | ClientMemoryRecord] | No | Structured memory records for promotion to long-term storage |
-| `data` | object | null | No | Arbitrary JSON data storage (key-value pairs) |
-| `context` | string | null | No | Summary of past session messages if server has auto-summariz |
-| `user_id` | string | null | No | Optional user ID for the working memory |
+| `messages` | array\[MemoryMessage] | No | Conversation messages (role/content pairs) |
+| `memories` | array\[MemoryRecord \| ClientMemoryRecord] | No | Structured memory records for promotion to long-term storage |
+| `data` | object \| null | No | Arbitrary JSON data storage (key-value pairs) |
+| `context` | string \| null | No | Summary of past session messages if server has auto-summariz |
+| `user_id` | string \| null | No | Optional user ID for the working memory |
 | `tokens` | integer | No | Optional number of tokens in the working memory |
-| `namespace` | string | null | No | Optional namespace for the working memory |
+| `namespace` | string \| null | No | Optional namespace for the working memory |
 | `long_term_memory_strategy` | MemoryStrategyConfig | No | Configuration for memory extraction strategy when promoting  |
-| `ttl_seconds` | integer | null | No | TTL for the working memory in seconds |
+| `ttl_seconds` | integer \| null | No | TTL for the working memory in seconds |
 | `last_accessed` | string | No | Datetime when the working memory was last accessed |
 | `created_at` | string | No | Datetime when the working memory was created |
 | `updated_at` | string | No | Datetime when the working memory was last updated |
@@ -562,7 +562,7 @@ A message in the memory system
 | `content` | string | Yes |  |
 | `id` | string | No | Unique identifier for the message (auto-generated if not pro |
 | `created_at` | string | No | Timestamp when the message was created (should be provided b |
-| `persisted_at` | string | null | No | Server-assigned timestamp when message was persisted to long |
+| `persisted_at` | string \| null | No | Server-assigned timestamp when message was persisted to long |
 | `discrete_memory_extracted` | enum: `t`, `f` | No | Whether memory extraction has run for this message |
 
 ### MemoryRecord
@@ -573,22 +573,22 @@ A memory record
 |-------|------|----------|-------------|
 | `id` | string | Yes | Client-provided ID for deduplication and overwrites |
 | `text` | string | Yes |  |
-| `session_id` | string | null | No | Optional session ID for the memory record |
-| `user_id` | string | null | No | Optional user ID for the memory record |
-| `namespace` | string | null | No | Optional namespace for the memory record |
+| `session_id` | string \| null | No | Optional session ID for the memory record |
+| `user_id` | string \| null | No | Optional user ID for the memory record |
+| `namespace` | string \| null | No | Optional namespace for the memory record |
 | `last_accessed` | string | No | Datetime when the memory was last accessed |
 | `created_at` | string | No | Datetime when the memory was created |
 | `updated_at` | string | No | Datetime when the memory was last updated |
 | `pinned` | boolean | No | Whether this memory is pinned and should not be auto-deleted |
 | `access_count` | integer | No | Number of times this memory has been accessed (best-effort,  |
-| `topics` | array[string] | null | No | Optional topics for the memory record |
-| `entities` | array[string] | null | No | Optional entities for the memory record |
-| `memory_hash` | string | null | No | Hash representation of the memory for deduplication |
+| `topics` | array[string] \| null | No | Optional topics for the memory record |
+| `entities` | array[string] \| null | No | Optional entities for the memory record |
+| `memory_hash` | string \| null | No | Hash representation of the memory for deduplication |
 | `discrete_memory_extracted` | enum: `t`, `f` | No | Whether memory extraction has run for this memory |
 | `memory_type` | agent_memory_server__models__MemoryTypeEnum | No | Type of memory |
-| `persisted_at` | string | null | No | Server-assigned timestamp when memory was persisted to long- |
-| `extracted_from` | array[string] | null | No | List of message IDs that this memory was extracted from |
-| `event_date` | string | null | No | Date/time when the event described in this memory occurred ( |
+| `persisted_at` | string \| null | No | Server-assigned timestamp when memory was persisted to long- |
+| `extracted_from` | array[string] \| null | No | List of message IDs that this memory was extracted from |
+| `event_date` | string \| null | No | Date/time when the event described in this memory occurred ( |
 | `extraction_strategy` | string | No | Memory extraction strategy used when this was promoted from  |
 | `extraction_strategy_config` | object | No | Configuration for the extraction strategy used |
 
@@ -598,7 +598,7 @@ Payload for creating memory records
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `memories` | array[ExtractedMemoryRecord] | Yes |  |
+| `memories` | array\[ExtractedMemoryRecord] | Yes |  |
 | `deduplicate` | boolean | No | Whether to deduplicate memories before indexing |
 
 ### EditMemoryRecordRequest
@@ -608,13 +608,13 @@ Payload for editing a memory record
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `text` | string | null | No | Updated text content for the memory |
-| `topics` | array[string] | null | No | Updated topics for the memory |
-| `entities` | array[string] | null | No | Updated entities for the memory |
-| `memory_type` | agent_memory_server__models__MemoryTypeEnum | null | No | Updated memory type (semantic, episodic, message) |
-| `namespace` | string | null | No | Updated namespace for the memory |
-| `user_id` | string | null | No | Updated user ID for the memory |
-| `session_id` | string | null | No | Updated session ID for the memory |
-| `event_date` | string | null | No | Updated event date for episodic memories |
+| `topics` | array\[string] \| null | No | Updated topics for the memory |
+| `entities` | array\[string] \| null | No | Updated entities for the memory |
+| `memory_type` | agent_memory_server__models__MemoryTypeEnum \| null | No | Updated memory type (semantic, episodic, message) |
+| `namespace` | string \| null | No | Updated namespace for the memory |
+| `user_id` | string \| null | No | Updated user ID for the memory |
+| `session_id` | string \| null | No | Updated session ID for the memory |
+| `event_date` | string \| null | No | Updated event date for episodic memories |
 
 ### MemoryRecordResultsResponse
 
@@ -622,9 +622,9 @@ Response containing memory search results
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `memories` | array[MemoryRecordResult] | Yes |  |
+| `memories` | array\[MemoryRecordResult] | Yes |  |
 | `total` | integer | Yes |  |
-| `next_offset` | integer | null | No |  |
+| `next_offset` | integer \| null | No |  |
 
 ### SearchRequest
 
@@ -632,41 +632,41 @@ Payload for long-term memory search
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `text` | string | null | No | Optional text to use for a semantic search |
-| `session_id` | SessionId | null | No | Optional session ID to filter by |
-| `namespace` | Namespace | null | No | Optional namespace to filter by |
-| `topics` | Topics | null | No | Optional topics to filter by |
-| `entities` | Entities | null | No | Optional entities to filter by |
-| `created_at` | CreatedAt | null | No | Optional created at timestamp to filter by |
-| `last_accessed` | LastAccessed | null | No | Optional last accessed timestamp to filter by |
-| `user_id` | UserId | null | No | Optional user ID to filter by |
-| `distance_threshold` | number | null | No | Optional distance threshold to filter by |
-| `memory_type` | MemoryType | null | No | Optional memory type to filter by |
-| `event_date` | EventDate | null | No | Optional event date to filter by (for episodic memories) |
+| `text` | string \| null | No | Optional text to use for a semantic search |
+| `session_id` | SessionId \| null | No | Optional session ID to filter by |
+| `namespace` | Namespace \| null | No | Optional namespace to filter by |
+| `topics` | Topics \| null | No | Optional topics to filter by |
+| `entities` | Entities \| null | No | Optional entities to filter by |
+| `created_at` | CreatedAt \| null | No | Optional created at timestamp to filter by |
+| `last_accessed` | LastAccessed \| null | No | Optional last accessed timestamp to filter by |
+| `user_id` | UserId \| null | No | Optional user ID to filter by |
+| `distance_threshold` | number \| null | No | Optional distance threshold to filter by |
+| `memory_type` | MemoryType \| null | No | Optional memory type to filter by |
+| `event_date` | EventDate \| null | No | Optional event date to filter by (for episodic memories) |
 | `limit` | integer | No | Optional limit on the number of results |
 | `offset` | integer | No | Optional offset |
-| `recency_boost` | boolean | null | No | Enable recency-aware re-ranking (defaults to enabled if None |
-| `recency_semantic_weight` | number | null | No | Weight for semantic similarity |
-| `recency_recency_weight` | number | null | No | Weight for recency score |
-| `recency_freshness_weight` | number | null | No | Weight for freshness component |
-| `recency_novelty_weight` | number | null | No | Weight for novelty (age) component |
-| `recency_half_life_last_access_days` | number | null | No | Half-life (days) for last_accessed decay |
-| `recency_half_life_created_days` | number | null | No | Half-life (days) for created_at decay |
-| `server_side_recency` | boolean | null | No | If true, attempt server-side recency-aware re-ranking when s |
+| `recency_boost` | boolean \| null | No | Enable recency-aware re-ranking (defaults to enabled if None |
+| `recency_semantic_weight` | number \| null | No | Weight for semantic similarity |
+| `recency_recency_weight` | number \| null | No | Weight for recency score |
+| `recency_freshness_weight` | number \| null | No | Weight for freshness component |
+| `recency_novelty_weight` | number \| null | No | Weight for novelty (age) component |
+| `recency_half_life_last_access_days` | number \| null | No | Half-life (days) for last_accessed decay |
+| `recency_half_life_created_days` | number \| null | No | Half-life (days) for created_at decay |
+| `server_side_recency` | boolean \| null | No | If true, attempt server-side recency-aware re-ranking when s |
 
 ### MemoryPromptRequest
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `query` | string | Yes |  |
-| `session` | WorkingMemoryRequest | null | No |  |
-| `long_term_search` | SearchRequest | boolean | No |  |
+| `session` | WorkingMemoryRequest \| null | No |  |
+| `long_term_search` | SearchRequest \| boolean | No |  |
 
 ### MemoryPromptResponse
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `messages` | array[Message | SystemMessage] | Yes |  |
+| `messages` | array\[Message \| SystemMessage] | Yes |  |
 
 ### AckResponse
 
@@ -674,7 +674,7 @@ Generic acknowledgement response
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `status` | string | Yes |  |
+| `status` | string \| Yes |  |
 
 ### SessionListResponse
 
@@ -682,7 +682,7 @@ Response containing a list of sessions
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `sessions` | array[string] | Yes |  |
+| `sessions` | array\[string] | Yes |  |
 | `total` | integer | Yes |  |
 
 ### HealthCheckResponse
@@ -704,14 +704,14 @@ background worker without additional runtime parameters.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `id` | string | Yes | Unique identifier for the summary view |
-| `name` | string | null | No | Optional human-readable name for the view |
+| `name` | string \| null | No | Optional human-readable name for the view |
 | `source` | enum: `long_term`, `working_memory` | Yes | Memory source to summarize. Currently only 'long_term' is su |
-| `group_by` | array[string] | No | Fields used to partition summaries (e.g. ['user_id'], ['user |
+| `group_by` | array\[string] | No | Fields used to partition summaries (e.g. ['user_id'], ['user |
 | `filters` | object | No | Static filters applied to every run (e.g. memory_type, names |
-| `time_window_days` | integer | null | No | If set, each run uses now() - time_window_days as a cutoff f |
+| `time_window_days` | integer \| null | No | If set, each run uses now() - time_window_days as a cutoff f |
 | `continuous` | boolean | No | If true, background workers periodically refresh all partiti |
-| `prompt` | string | null | No | Optional custom summarization instructions. If omitted, a se |
-| `model_name` | string | null | No | Optional model override for summarization. Defaults to a fas |
+| `prompt` | string \| null | No | Optional custom summarization instructions. If omitted, a se |
+| `model_name` | string \| null | No | Optional model override for summarization. Defaults to a fas |
 
 ### CreateSummaryViewRequest
 
@@ -721,14 +721,14 @@ Same fields as SummaryView except for the server-assigned id.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | null | No | Optional human-readable name for the view |
+| `name` | string \| null | No | Optional human-readable name for the view |
 | `source` | enum: `long_term`, `working_memory` | Yes | Memory source to summarize: long-term or working memory |
-| `group_by` | array[string] | No | Fields used to partition summaries (e.g. ['user_id'], ['user |
+| `group_by` | array\[string] | No | Fields used to partition summaries (e.g. ['user_id'], ['user |
 | `filters` | object | No | Static filters applied to every run (e.g. memory_type, names |
-| `time_window_days` | integer | null | No | If set, each run uses now() - time_window_days as a cutoff f |
+| `time_window_days` | integer \| null | No | If set, each run uses now() - time_window_days as a cutoff f |
 | `continuous` | boolean | No | If true, background workers periodically refresh all partiti |
-| `prompt` | string | null | No | Optional custom summarization instructions. If omitted, a se |
-| `model_name` | string | null | No | Optional model override for summarization. Defaults to a fas |
+| `prompt` | string \| null | No | Optional custom summarization instructions. If omitted, a se |
+| `model_name` | string \| null | No | Optional model override for summarization. Defaults to a fas |
 
 ### SummaryViewPartitionResult
 
@@ -760,9 +760,9 @@ of all partitions for a SummaryView.
 | `status` | TaskStatusEnum | No | Current task status |
 | `view_id` | string | null | No | Associated SummaryView ID, if applicable |
 | `created_at` | string | No | When the task record was created |
-| `started_at` | string | null | No | When execution of the task actually started |
-| `completed_at` | string | null | No | When execution of the task finished (success or failure) |
-| `error_message` | string | null | No | Error message if the task failed |
+| `started_at` | string \| null | No | When execution of the task actually started |
+| `completed_at` | string \| null | No | When execution of the task finished (success or failure) |
+| `error_message` | string \| null | No | Error message if the task failed |
 
 ## Filter Options
 
