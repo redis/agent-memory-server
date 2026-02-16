@@ -18,6 +18,7 @@ Benefits:
 - All factories must return MemoryVectorDatabase instances
 """
 
+import asyncio
 import importlib
 import logging
 
@@ -213,10 +214,26 @@ def create_memory_vector_db() -> MemoryVectorDatabase:
 
 # Global memory vector database instance
 _memory_vector_db: MemoryVectorDatabase | None = None
+_memory_vector_db_lock: asyncio.Lock | None = None
+
+
+def _get_lock() -> asyncio.Lock:
+    """Get or create the async lock for thread-safe initialization.
+
+    Note: This creates the lock lazily to avoid issues with event loop
+    not being available at module import time.
+    """
+    global _memory_vector_db_lock
+    if _memory_vector_db_lock is None:
+        _memory_vector_db_lock = asyncio.Lock()
+    return _memory_vector_db_lock
 
 
 async def get_memory_vector_db() -> MemoryVectorDatabase:
     """Get the global memory vector database instance.
+
+    This function is thread-safe and uses double-checked locking to ensure
+    only one instance is created even under concurrent access.
 
     Returns:
         The global MemoryVectorDatabase instance
@@ -224,6 +241,9 @@ async def get_memory_vector_db() -> MemoryVectorDatabase:
     global _memory_vector_db
 
     if _memory_vector_db is None:
-        _memory_vector_db = create_memory_vector_db()
+        async with _get_lock():
+            # Double-check after acquiring lock
+            if _memory_vector_db is None:
+                _memory_vector_db = create_memory_vector_db()
 
     return _memory_vector_db
