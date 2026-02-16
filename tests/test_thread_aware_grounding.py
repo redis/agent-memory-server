@@ -189,9 +189,9 @@ class TestThreadAwareContextualGrounding:
 
         # Immediate second call should be debounced
         should_extract_2 = await should_extract_session_thread(session_id, redis)
-        assert (
-            should_extract_2 is False
-        ), "Second extraction attempt should be debounced"
+        assert should_extract_2 is False, (
+            "Second extraction attempt should be debounced"
+        )
 
         # Clean up
         debounce_key = f"extraction_debounce:{session_id}"
@@ -309,9 +309,9 @@ class TestThreadAwareContextualGrounding:
 
         # The main success criterion: significantly reduced pronoun usage
         # Since we have proper contextual grounding, we should see very few unresolved pronouns
-        assert (
-            pronoun_count <= 3
-        ), f"Should have significantly reduced pronoun usage with proper grounding, found {pronoun_count}"
+        assert pronoun_count <= 3, (
+            f"Should have significantly reduced pronoun usage with proper grounding, found {pronoun_count}"
+        )
 
         # Additional validation: if we see multiple memories, it's a good sign of thorough extraction
         if len(extracted_memories) >= 2:
