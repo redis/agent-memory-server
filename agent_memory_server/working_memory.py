@@ -6,6 +6,8 @@ import time
 from datetime import UTC, datetime
 
 from redis.asyncio import Redis
+from redisvl.query import FilterQuery
+from redisvl.query.filter import Tag
 
 from agent_memory_server.config import settings
 from agent_memory_server.models import (
@@ -225,7 +227,7 @@ async def _migrate_string_to_json(
 
 
 async def list_sessions(
-    redis,
+    redis: Redis,
     limit: int = 10,
     offset: int = 0,
     namespace: str | None = None,
@@ -234,9 +236,9 @@ async def list_sessions(
     """
     List sessions using Redis Search index.
 
-    Uses FT.SEARCH on the working memory index to list sessions. This approach
-    ensures that expired sessions (via TTL) are automatically excluded since
-    Redis Search removes deleted keys from the index.
+    Uses RedisVL FilterQuery on the working memory index to list sessions.
+    This approach ensures that expired sessions (via TTL) are automatically
+    excluded since Redis Search removes deleted keys from the index.
 
     Args:
         redis: Redis client
@@ -248,61 +250,66 @@ async def list_sessions(
     Returns:
         Tuple of (total_count, session_ids)
     """
-    # Build filter query parts
-    filter_parts = []
-
-    if namespace:
-        # Escape special characters in TAG values
-        escaped_namespace = _escape_tag_value(namespace)
-        filter_parts.append(f"@namespace:{{{escaped_namespace}}}")
-
-    if user_id:
-        escaped_user_id = _escape_tag_value(user_id)
-        filter_parts.append(f"@user_id:{{{escaped_user_id}}}")
-
-    # Combine filters or use wildcard for all
-    filter_str = " ".join(filter_parts) if filter_parts else "*"
+    from agent_memory_server.working_memory_index import get_working_memory_index
 
     try:
-        # Execute FT.SEARCH query
-        result = await redis.execute_command(
-            "FT.SEARCH",
-            settings.working_memory_index_name,
-            filter_str,
-            "RETURN",
-            "1",
-            "$.session_id",
-            "SORTBY",
-            "created_at",
-            "DESC",
-            "LIMIT",
-            str(offset),
-            str(limit),
+        # Get the search index
+        index = await get_working_memory_index(redis)
+
+        # Build filter expression using Tag filters
+        filters = []
+        if namespace:
+            filters.append(Tag("namespace") == namespace)
+        if user_id:
+            filters.append(Tag("user_id") == user_id)
+
+        # Combine filters with AND logic, or use None for no filter
+        filter_expression = None
+        if filters:
+            if len(filters) == 1:
+                filter_expression = filters[0]
+            else:
+                # Combine multiple filters with AND
+                from functools import reduce
+
+                filter_expression = reduce(lambda x, y: x & y, filters)
+
+        # Create FilterQuery
+        filter_query = FilterQuery(
+            filter_expression=filter_expression,
+            return_fields=["session_id"],
+            num_results=limit + offset,
         )
 
-        # Parse FT.SEARCH response
-        # Format: [total_count, key1, [field, value], key2, [field, value], ...]
-        total = result[0]
-        session_ids = []
+        # Execute the query
+        raw_results = await index.search(filter_query)
 
-        # Iterate through results (skip the total count at index 0)
-        i = 1
-        while i < len(result):
-            # Skip the key name
-            i += 1
-            if i < len(result):
-                # Get the field-value pairs
-                fields = result[i]
-                if fields and len(fields) >= 2:
-                    # fields is [field_name, value]
-                    session_id = fields[1]
-                    if isinstance(session_id, bytes):
-                        session_id = session_id.decode("utf-8")
-                    # Remove JSON quotes if present
-                    if session_id.startswith('"') and session_id.endswith('"'):
-                        session_id = session_id[1:-1]
-                    session_ids.append(session_id)
-                i += 1
+        # Parse results
+        docs = getattr(raw_results, "docs", raw_results) or []
+        total = getattr(raw_results, "total", len(docs))
+
+        # Extract session_ids from results, applying offset
+        session_ids = []
+        for doc in docs[offset:]:
+            # Handle different doc formats (dict-like or object)
+            if hasattr(doc, "__dict__"):
+                session_id = getattr(doc, "session_id", None)
+            elif isinstance(doc, dict):
+                session_id = doc.get("session_id")
+            else:
+                session_id = dict(doc).get("session_id")
+
+            if session_id:
+                # Handle bytes if needed
+                if isinstance(session_id, bytes):
+                    session_id = session_id.decode("utf-8")
+                # Remove JSON quotes if present
+                if session_id.startswith('"') and session_id.endswith('"'):
+                    session_id = session_id[1:-1]
+                session_ids.append(session_id)
+
+            if len(session_ids) >= limit:
+                break
 
         return total, session_ids
 
@@ -310,22 +317,6 @@ async def list_sessions(
         logger.error(f"Error listing sessions: {e}")
         # Return empty results on error
         return 0, []
-
-
-def _escape_tag_value(value: str) -> str:
-    """
-    Escape special characters in Redis Search TAG values.
-
-    TAG field values need certain characters escaped to be parsed correctly.
-    Redis Search requires backslash escaping for special characters in TAG queries.
-    """
-    # First escape backslashes (must be done first to avoid double-escaping)
-    result = value.replace("\\", "\\\\")
-    # Characters that need escaping in TAG queries (excluding backslash, already handled)
-    special_chars = ["-", "@", ":", "{", "}", "(", ")", "[", "]", "'", '"', "|", " "]
-    for char in special_chars:
-        result = result.replace(char, f"\\{char}")
-    return result
 
 
 async def get_working_memory(

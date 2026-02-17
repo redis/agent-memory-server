@@ -102,7 +102,7 @@ async def search_index(async_redis_client):
 async def working_memory_index(async_redis_client):
     """Ensure working memory search index exists for session listing tests."""
     from agent_memory_server.working_memory_index import (
-        WORKING_MEMORY_INDEX_NAME,
+        drop_working_memory_index,
         ensure_working_memory_index,
     )
 
@@ -112,9 +112,7 @@ async def working_memory_index(async_redis_client):
 
     # Clean up after tests
     with contextlib.suppress(Exception):
-        await async_redis_client.execute_command(
-            "FT.DROPINDEX", WORKING_MEMORY_INDEX_NAME
-        )
+        await drop_working_memory_index(async_redis_client)
 
 
 @pytest.fixture()

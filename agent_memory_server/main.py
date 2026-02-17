@@ -20,6 +20,8 @@ from agent_memory_server.utils.redis import (
     _redis_pool as connection_pool,
     get_redis_conn,
 )
+from agent_memory_server.working_memory import check_and_set_migration_status
+from agent_memory_server.working_memory_index import ensure_working_memory_index
 
 
 logger = get_logger(__name__)
@@ -82,13 +84,9 @@ async def lifespan(app: FastAPI):
     redis_conn = await get_redis_conn()
 
     # Check if any working memory keys need migration from string to JSON format
-    from agent_memory_server.working_memory import check_and_set_migration_status
-
     await check_and_set_migration_status(redis_conn)
 
     # Ensure working memory search index exists for session listing
-    from agent_memory_server.working_memory_index import ensure_working_memory_index
-
     await ensure_working_memory_index(redis_conn)
 
     # Initialize Docket for background tasks if enabled

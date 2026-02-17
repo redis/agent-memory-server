@@ -1,6 +1,7 @@
 """Redis key utilities."""
 
 import logging
+import warnings
 
 from agent_memory_server.config import settings
 
@@ -44,6 +45,12 @@ class Keys:
         Redis Search index on working memory JSON documents instead of
         sorted sets. The index automatically handles TTL expiration.
         """
+        warnings.warn(
+            "sessions_key() is deprecated. Session listing now uses Redis Search "
+            "index on working memory JSON documents instead of sorted sets.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return f"sessions:{namespace}" if namespace else "sessions"
 
     @staticmethod
