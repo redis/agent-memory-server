@@ -44,4 +44,3 @@ jobs:
       gpg-secret-key: ${{ secrets.GPG_SECRET_KEY }}
       sonatype-username: ${{ secrets.SONATYPE_USERNAME }}
       sonatype-password: ${{ secrets.SONATYPE_PASSWORD }}
-
