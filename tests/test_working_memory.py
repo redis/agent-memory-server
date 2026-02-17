@@ -707,8 +707,10 @@ class TestWorkingMemory:
         monkeypatch.setattr(config.settings, "working_memory_migration_complete", False)
 
     @pytest.mark.asyncio
-    async def test_set_working_memory_indexes_session(self, async_redis_client):
-        """Test that set_working_memory adds session to the sessions sorted set."""
+    async def test_set_working_memory_indexes_session_in_search_index(
+        self, async_redis_client
+    ):
+        """Test that set_working_memory adds session to the search index."""
         session_id = "test_session_index_123"
         namespace = "test_namespace_index"
 
@@ -723,18 +725,22 @@ class TestWorkingMemory:
         # Save working memory
         await set_working_memory(working_mem, redis_client=async_redis_client)
 
-        # Verify session is in sorted set
-        sessions_key = Keys.sessions_key(namespace=namespace)
-        score = await async_redis_client.zscore(sessions_key, session_id)
+        # Verify session is findable via list_sessions (uses search index)
+        total, sessions = await list_sessions(
+            redis=async_redis_client,
+            namespace=namespace,
+            limit=10,
+            offset=0,
+        )
 
-        assert score is not None, "Session should be indexed in sorted set"
-        assert score > 0, "Score should be a positive timestamp"
+        assert session_id in sessions, "Session should be indexed in search index"
+        assert total >= 1, "Should have at least one session"
 
     @pytest.mark.asyncio
-    async def test_delete_working_memory_removes_session_from_index(
+    async def test_delete_working_memory_removes_session_from_search_index(
         self, async_redis_client
     ):
-        """Test that delete_working_memory removes session from the sessions sorted set."""
+        """Test that delete_working_memory removes session from the search index."""
         session_id = "test_session_to_delete"
         namespace = "test_namespace_delete"
 
@@ -748,9 +754,13 @@ class TestWorkingMemory:
         await set_working_memory(working_mem, redis_client=async_redis_client)
 
         # Verify session is indexed
-        sessions_key = Keys.sessions_key(namespace=namespace)
-        score_before = await async_redis_client.zscore(sessions_key, session_id)
-        assert score_before is not None, "Session should be indexed before delete"
+        total_before, sessions_before = await list_sessions(
+            redis=async_redis_client,
+            namespace=namespace,
+            limit=10,
+            offset=0,
+        )
+        assert session_id in sessions_before, "Session should be indexed before delete"
 
         # Delete working memory
         await delete_working_memory(
@@ -758,8 +768,15 @@ class TestWorkingMemory:
         )
 
         # Verify session is removed from index
-        score_after = await async_redis_client.zscore(sessions_key, session_id)
-        assert score_after is None, "Session should be removed from index after delete"
+        total_after, sessions_after = await list_sessions(
+            redis=async_redis_client,
+            namespace=namespace,
+            limit=10,
+            offset=0,
+        )
+        assert (
+            session_id not in sessions_after
+        ), "Session should be removed from index after delete"
 
     @pytest.mark.asyncio
     async def test_list_sessions_returns_indexed_sessions(self, async_redis_client):
@@ -789,3 +806,46 @@ class TestWorkingMemory:
         assert set(listed_sessions) == set(
             session_ids
         ), f"Expected {session_ids}, got {listed_sessions}"
+
+    @pytest.mark.asyncio
+    async def test_list_sessions_filters_by_user_id(self, async_redis_client):
+        """Test that list_sessions can filter by user_id."""
+        namespace = "user_filter_namespace"
+        user1_sessions = ["user1_session_a", "user1_session_b"]
+        user2_sessions = ["user2_session_a"]
+
+        # Create sessions for user1
+        for session_id in user1_sessions:
+            working_mem = WorkingMemory(
+                session_id=session_id,
+                namespace=namespace,
+                user_id="user1",
+                messages=[],
+                memories=[],
+            )
+            await set_working_memory(working_mem, redis_client=async_redis_client)
+
+        # Create sessions for user2
+        for session_id in user2_sessions:
+            working_mem = WorkingMemory(
+                session_id=session_id,
+                namespace=namespace,
+                user_id="user2",
+                messages=[],
+                memories=[],
+            )
+            await set_working_memory(working_mem, redis_client=async_redis_client)
+
+        # List sessions for user1 only
+        total, listed_sessions = await list_sessions(
+            redis=async_redis_client,
+            namespace=namespace,
+            user_id="user1",
+            limit=10,
+            offset=0,
+        )
+
+        assert total == 2, f"Expected 2 sessions for user1, got {total}"
+        assert set(listed_sessions) == set(
+            user1_sessions
+        ), f"Expected {user1_sessions}, got {listed_sessions}"

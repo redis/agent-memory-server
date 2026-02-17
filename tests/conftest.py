@@ -31,6 +31,10 @@ from agent_memory_server.models import (
 from agent_memory_server.utils import redis as redis_utils_module
 from agent_memory_server.utils.keys import Keys
 from agent_memory_server.vectorstore_adapter import VectorStoreAdapter
+from agent_memory_server.working_memory_index import (
+    drop_working_memory_index,
+    ensure_working_memory_index,
+)
 
 
 load_dotenv()
@@ -69,33 +73,18 @@ async def search_index(async_redis_client):
     redis_utils_module._index = None
 
     yield
-    return
 
-    await async_redis_client.flushdb()
 
-    try:
-        try:
-            await async_redis_client.execute_command(
-                "FT.INFO", settings.redisvl_index_name
-            )
-            await async_redis_client.execute_command(
-                "FT.DROPINDEX", settings.redisvl_index_name
-            )
-        except Exception as e:
-            if "unknown index name".lower() not in str(e).lower():
-                pass
-
-    except Exception:
-        raise
+@pytest.fixture(autouse=True)
+async def working_memory_index(async_redis_client):
+    """Ensure working memory search index exists for session listing tests."""
+    await ensure_working_memory_index(async_redis_client)
 
     yield
 
     # Clean up after tests
-    await async_redis_client.flushdb()
     with contextlib.suppress(Exception):
-        await async_redis_client.execute_command(
-            "FT.DROPINDEX", settings.redisvl_index_name
-        )
+        await drop_working_memory_index(async_redis_client)
 
 
 @pytest.fixture()
@@ -135,10 +124,8 @@ async def session(use_test_redis_connection, async_redis_client, request):
             redis_client=use_test_redis_connection,
         )
 
-        # Also add session to sessions list for compatibility
-        sessions_key = Keys.sessions_key(namespace=namespace)
-        current_time = int(time.time())
-        await use_test_redis_connection.zadd(sessions_key, {session_id: current_time})
+        # Note: Session is now automatically indexed via Redis Search index
+        # on the working memory JSON document (no sorted set needed)
 
         # Index the messages as long-term memories directly without background tasks
         from redisvl.utils.vectorize import OpenAITextVectorizer

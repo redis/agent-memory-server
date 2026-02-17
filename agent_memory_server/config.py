@@ -401,6 +401,11 @@ class Settings(BaseSettings):
     redisvl_index_prefix: str = "memory_idx"
     redisvl_indexing_algorithm: str = "HNSW"
 
+    # Working Memory Index Settings
+    # Used for listing sessions via Redis Search instead of sorted sets
+    working_memory_index_name: str = "working_memory_idx"
+    working_memory_index_prefix: str = "working_memory:"
+
     # Deduplication Settings (Store-Time)
     # Distance threshold for semantic similarity when deduplicating at store time
     # 0.35 works well for catching paraphrased content while avoiding false positives

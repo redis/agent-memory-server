@@ -74,7 +74,7 @@ The workflow will:
 3. **Publish**: Publish artifacts to the staging repository
 4. **Sign**: Sign all artifacts with GPG
 5. **Assemble**: Prepare release artifacts with JReleaser
-6. **Release**: 
+6. **Release**:
    - Create a GitHub release with changelog
    - Deploy to Maven Central
    - Tag the repository
@@ -157,4 +157,3 @@ export JRELEASER_MAVENCENTRAL_PASSWORD=your_password
 - [JReleaser Documentation](https://jreleaser.org/)
 - [Maven Central Publishing Guide](https://central.sonatype.org/publish/)
 - [GPG Signing Guide](https://central.sonatype.org/publish/requirements/gpg/)
-

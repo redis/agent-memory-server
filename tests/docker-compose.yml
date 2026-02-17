@@ -1,7 +1,6 @@
 services:
   redis:
     image: "${REDIS_IMAGE:-redis:8.4}"
-    platform: linux/amd64
     ports:
       - "6379"
     environment:
