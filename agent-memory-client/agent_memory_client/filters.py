@@ -22,15 +22,24 @@ class SessionId(BaseFilter):
     in_: list[str] | None = None
     not_eq: str | None = None
     not_in: list[str] | None = None
+    startswith: str | None = None
 
 
 class Namespace(BaseFilter):
-    """Filter by namespace"""
+    """Filter by namespace
+
+    The startswith option enables hierarchical namespace filtering.
+    For example, startswith="workspace:abc" will match:
+    - "workspace:abc"
+    - "workspace:abc/session:thread-1"
+    - "workspace:abc/session:thread-2"
+    """
 
     eq: str | None = None
     in_: list[str] | None = None
     not_eq: str | None = None
     not_in: list[str] | None = None
+    startswith: str | None = None
 
 
 class UserId(BaseFilter):
@@ -40,6 +49,7 @@ class UserId(BaseFilter):
     in_: list[str] | None = None
     not_eq: str | None = None
     not_in: list[str] | None = None
+    startswith: str | None = None
 
 
 class Topics(BaseFilter):
