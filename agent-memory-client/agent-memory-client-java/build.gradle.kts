@@ -4,12 +4,8 @@ plugins {
     id("pl.allegro.tech.build.axion-release") version "1.21.1"
 }
 
-group = "com.redis"
-// Version is managed by the Axion Release plugin via git tags (prefix: java-client-v).
-// The 'version' property in gradle.properties is not used.
-version = scmVersion.version
-description = "Java client for the Agent Memory Server REST API"
-
+// Configure scmVersion BEFORE accessing scmVersion.version
+// This is required because the repository directory must be set before version resolution
 scmVersion {
     repository {
         // Navigate to the repository root (two levels up from the Java client directory)
@@ -20,6 +16,12 @@ scmVersion {
         versionSeparator.set("")
     }
 }
+
+group = "com.redis"
+// Version is managed by the Axion Release plugin via git tags (prefix: java-client-v).
+// The 'version' property in gradle.properties is not used.
+version = scmVersion.version
+description = "Java client for the Agent Memory Server REST API"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_21
