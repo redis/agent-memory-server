@@ -12,7 +12,8 @@ description = "Java client for the Agent Memory Server REST API"
 
 scmVersion {
     repository {
-        directory.set(project.rootProject.file("../..").canonicalPath)
+        // Navigate to the repository root (two levels up from the Java client directory)
+        directory.set(project.rootProject.projectDir.parentFile.parentFile.absolutePath)
     }
     tag {
         prefix.set("java-client-v")
