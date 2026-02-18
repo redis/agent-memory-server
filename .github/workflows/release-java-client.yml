@@ -38,6 +38,7 @@ jobs:
       update-antora-version: false
       working-directory: 'agent-memory-client/agent-memory-client-java'
       tag-prefix: 'java-client-v'
+      git-root-search: true
     secrets:
       git-access-token: ${{ secrets.GIT_ACCESS_TOKEN }}
       gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
