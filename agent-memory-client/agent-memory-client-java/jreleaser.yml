@@ -1,3 +1,7 @@
+environment:
+  properties:
+    git-root-search: true
+
 project:
   name: agent-memory-client-java
   description: Java client for the Agent Memory Server REST API
