@@ -7,12 +7,13 @@ project:
   authors:
     - Andrew Brookins
     - Brian Sam-Bodden
+    - Julien Ruaux
     - Raphael De Lio
   license: Apache-2.0
   languages:
     java:
       groupId: com.redis
-      version: '11'
+      version: '21'
   inceptionYear: '2024'
   tags: ['redis', 'agent', 'memory', 'ai', 'llm', 'client']
 
