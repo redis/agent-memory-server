@@ -21,6 +21,10 @@ release:
   github:
     owner: redis
     name: agent-memory-server
+    # Use the java-client-v prefix to match Axion's tag format
+    tagName: java-client-v{{projectVersion}}
+    releaseName: Java Client {{projectVersion}}
+    skipTag: true  # Tag is already created by Axion
     overwrite: true
     sign: true
     prerelease:
