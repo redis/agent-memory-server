@@ -33,7 +33,7 @@ jobs:
       version: ${{ inputs.version }}
       version-increment: ${{ inputs.version-increment }}
       gradle-build-tasks: 'build test publish'
-      jreleaser-arguments: 'assemble'
+      jreleaser-arguments: 'assemble --git-root-search'
       clone-to-dist-repo: false
       update-antora-version: false
       working-directory: 'agent-memory-client/agent-memory-client-java'
