@@ -1733,6 +1733,69 @@ async def delete_long_term_memories(
     return await adapter.delete_memories(ids)
 
 
+async def delete_invalid_memories(
+    redis_client: Redis | None = None,
+) -> int:
+    """
+    Delete corrupted memory records from Redis.
+
+    Corrupted records are those that:
+    1. Have empty key ID components (keys like "prefix:" or "prefix: ")
+    2. Are missing required fields (like 'text')
+
+    These records cannot be properly searched or deleted by ID, so they need
+    to be cleaned up directly via Redis key operations.
+
+    Args:
+        redis_client: Optional Redis client
+
+    Returns:
+        Number of memories deleted
+    """
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    prefix = settings.redisvl_index_prefix
+
+    deleted_count = 0
+    cursor = 0
+
+    # Scan for all memory keys
+    while True:
+        cursor, keys = await redis_client.scan(
+            cursor=cursor, match=f"{prefix}:*", count=1000
+        )
+
+        for key in keys:
+            key_str = key.decode("utf-8") if isinstance(key, bytes) else key
+            should_delete = False
+
+            # Check 1: Empty ID in key name
+            id_part = key_str[len(prefix) + 1 :]  # +1 for the colon
+            if not id_part or not id_part.strip():
+                should_delete = True
+                logger.info(f"Found invalid memory with empty key ID: {key_str}")
+            else:
+                # Check 2: Missing required 'text' field
+                data = await redis_client.hgetall(key)
+                text_field = data.get(b"text") or data.get("text")
+                if text_field is None:
+                    should_delete = True
+                    logger.info(f"Found invalid memory missing 'text' field: {key_str}")
+
+            if should_delete:
+                await redis_client.delete(key)
+                deleted_count += 1
+
+        if cursor == 0:
+            break
+
+    if deleted_count > 0:
+        logger.info(f"Deleted {deleted_count} corrupted memory records")
+
+    return deleted_count
+
+
 async def get_long_term_memory_by_id(memory_id: str) -> MemoryRecord | None:
     """
     Get a single long-term memory by its ID.
