@@ -10,6 +10,7 @@ from agent_memory_server.long_term_memory import (
     count_long_term_memories,
     deduplicate_by_hash,
     deduplicate_by_id,
+    delete_invalid_memories,
     delete_long_term_memories,
     extract_memory_structure,
     index_long_term_memories,
@@ -1154,3 +1155,130 @@ class TestSearchQueryOptimization:
         assert call_kwargs["limit"] == 20
         assert call_kwargs["offset"] == 10
         assert call_kwargs["distance_threshold"] == 0.3
+
+
+class TestDeleteInvalidMemories:
+    """Tests for the delete_invalid_memories function."""
+
+    @pytest.mark.asyncio
+    async def test_delete_invalid_memories_empty_ids(self, mock_async_redis_client):
+        """Test deleting memories with empty key IDs."""
+
+        # Mock scan to return keys with empty ID components
+        async def mock_scan(cursor, match, count):
+            return (0, [b"memory:", b"memory: ", b"memory:valid-id"])
+
+        mock_async_redis_client.scan = AsyncMock(side_effect=mock_scan)
+        mock_async_redis_client.delete = AsyncMock(return_value=1)
+        # Valid key has text field
+        mock_async_redis_client.hgetall = AsyncMock(return_value={b"text": b"content"})
+
+        with (
+            patch(
+                "agent_memory_server.long_term_memory.get_redis_conn",
+                return_value=mock_async_redis_client,
+            ),
+            patch("agent_memory_server.long_term_memory.settings") as mock_settings,
+        ):
+            mock_settings.redisvl_index_prefix = "memory"
+
+            count = await delete_invalid_memories()
+
+        # Should delete "memory:" and "memory: " but not "memory:valid-id"
+        assert count == 2
+        assert mock_async_redis_client.delete.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_delete_invalid_memories_missing_text_field(
+        self, mock_async_redis_client
+    ):
+        """Test deleting memories missing the text field."""
+
+        async def mock_scan(cursor, match, count):
+            return (0, [b"memory:id1", b"memory:id2", b"memory:id3"])
+
+        # id1 and id2 missing text field, id3 has it
+        async def mock_hgetall(key):
+            key_str = key.decode() if isinstance(key, bytes) else key
+            if key_str == "memory:id3":
+                return {b"text": b"valid content", b"topics": b"test"}
+            return {b"topics": b"test"}  # Missing text field
+
+        mock_async_redis_client.scan = AsyncMock(side_effect=mock_scan)
+        mock_async_redis_client.hgetall = AsyncMock(side_effect=mock_hgetall)
+        mock_async_redis_client.delete = AsyncMock(return_value=1)
+
+        with (
+            patch(
+                "agent_memory_server.long_term_memory.get_redis_conn",
+                return_value=mock_async_redis_client,
+            ),
+            patch("agent_memory_server.long_term_memory.settings") as mock_settings,
+        ):
+            mock_settings.redisvl_index_prefix = "memory"
+
+            count = await delete_invalid_memories()
+
+        # Should delete id1 and id2 (missing text), keep id3
+        assert count == 2
+        assert mock_async_redis_client.delete.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_delete_invalid_memories_none_found(self, mock_async_redis_client):
+        """Test when no invalid memories exist."""
+
+        # Mock scan to return only valid keys
+        async def mock_scan(cursor, match, count):
+            return (0, [b"memory:id1", b"memory:id2"])
+
+        mock_async_redis_client.scan = AsyncMock(side_effect=mock_scan)
+        mock_async_redis_client.delete = AsyncMock(return_value=1)
+        # All keys have text field
+        mock_async_redis_client.hgetall = AsyncMock(return_value={b"text": b"content"})
+
+        with (
+            patch(
+                "agent_memory_server.long_term_memory.get_redis_conn",
+                return_value=mock_async_redis_client,
+            ),
+            patch("agent_memory_server.long_term_memory.settings") as mock_settings,
+        ):
+            mock_settings.redisvl_index_prefix = "memory"
+
+            count = await delete_invalid_memories()
+
+        assert count == 0
+        mock_async_redis_client.delete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_delete_invalid_memories_pagination(self, mock_async_redis_client):
+        """Test scan pagination when there are many keys."""
+        scan_call_count = 0
+
+        # Mock scan to return cursor indicating more results
+        async def mock_scan(cursor, match, count):
+            nonlocal scan_call_count
+            scan_call_count += 1
+            if scan_call_count == 1:
+                return (100, [b"memory:", b"memory:valid1"])  # More to come
+            return (0, [b"memory: ", b"memory:valid2"])  # Last batch
+
+        mock_async_redis_client.scan = AsyncMock(side_effect=mock_scan)
+        mock_async_redis_client.delete = AsyncMock(return_value=1)
+        # Valid keys have text field
+        mock_async_redis_client.hgetall = AsyncMock(return_value={b"text": b"content"})
+
+        with (
+            patch(
+                "agent_memory_server.long_term_memory.get_redis_conn",
+                return_value=mock_async_redis_client,
+            ),
+            patch("agent_memory_server.long_term_memory.settings") as mock_settings,
+        ):
+            mock_settings.redisvl_index_prefix = "memory"
+
+            count = await delete_invalid_memories()
+
+        # Should delete "memory:" from first batch and "memory: " from second batch
+        assert count == 2
+        assert mock_async_redis_client.scan.call_count == 2

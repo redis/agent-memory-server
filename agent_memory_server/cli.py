@@ -497,6 +497,340 @@ def task_worker(concurrency: int, redelivery_timeout: int):
     asyncio.run(_run_worker())
 
 
+@cli.command()
+@click.argument("query", default="")
+@click.option("--namespace", "-n", default=None, help="Filter by namespace")
+@click.option("--session-id", "-s", default=None, help="Filter by session ID")
+@click.option("--user-id", "-u", default=None, help="Filter by user ID")
+@click.option("--topics", "-t", default=None, help="Filter by topics (comma-separated)")
+@click.option(
+    "--entities", "-e", default=None, help="Filter by entities (comma-separated)"
+)
+@click.option("--limit", "-l", default=10, help="Maximum number of results")
+@click.option("--offset", "-o", default=0, help="Offset for pagination")
+@click.option(
+    "--distance-threshold",
+    "-d",
+    type=float,
+    default=None,
+    help="Maximum distance threshold for results",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+    help="Output format",
+)
+def search(
+    query: str,
+    namespace: str | None,
+    session_id: str | None,
+    user_id: str | None,
+    topics: str | None,
+    entities: str | None,
+    limit: int,
+    offset: int,
+    distance_threshold: float | None,
+    output_format: str,
+):
+    """
+    Search long-term memories.
+
+    QUERY is the search text for semantic similarity matching.
+    If empty, lists all memories matching the filters.
+
+    Examples:
+
+        agent-memory search "What did we discuss about authentication?"
+
+        agent-memory search "project deadlines" --namespace myapp --limit 5
+
+        agent-memory search "user preferences" -u user123 --format json
+
+        agent-memory search --namespace myapp  # List all memories in namespace
+    """
+    import asyncio
+
+    from agent_memory_server.filters import (
+        Entities,
+        Namespace,
+        SessionId,
+        Topics,
+        UserId,
+    )
+    from agent_memory_server.long_term_memory import search_long_term_memories
+
+    configure_logging()
+
+    async def run_search():
+        # Build filter objects
+        namespace_filter = Namespace(eq=namespace) if namespace else None
+        session_filter = SessionId(eq=session_id) if session_id else None
+        user_filter = UserId(eq=user_id) if user_id else None
+        topics_filter = Topics(any=topics.split(",")) if topics else None
+        entities_filter = Entities(any=entities.split(",")) if entities else None
+
+        results = await search_long_term_memories(
+            text=query,
+            namespace=namespace_filter,
+            session_id=session_filter,
+            user_id=user_filter,
+            topics=topics_filter,
+            entities=entities_filter,
+            distance_threshold=distance_threshold,
+            limit=limit,
+            offset=offset,
+        )
+
+        if output_format == "json":
+            click.echo(results.model_dump_json(indent=2))
+        else:
+            click.echo(
+                f"Found {results.total} memories (showing {len(results.memories)}):"
+            )
+            click.echo("=" * 60)
+            for i, memory in enumerate(results.memories, 1):
+                click.echo(f"\n[{i}] ID: {memory.id}")
+                click.echo(f"    Distance: {memory.dist:.4f}")
+                if memory.namespace:
+                    click.echo(f"    Namespace: {memory.namespace}")
+                if memory.session_id:
+                    click.echo(f"    Session: {memory.session_id}")
+                if memory.user_id:
+                    click.echo(f"    User: {memory.user_id}")
+                if memory.topics:
+                    click.echo(f"    Topics: {', '.join(memory.topics)}")
+                if memory.entities:
+                    click.echo(f"    Entities: {', '.join(memory.entities)}")
+                click.echo(
+                    f"    Text: {memory.text[:200]}{'...' if len(memory.text) > 200 else ''}"
+                )
+            if results.next_offset:
+                click.echo(
+                    f"\nMore results available. Use --offset {results.next_offset} to continue."
+                )
+
+    asyncio.run(run_search())
+
+
+@cli.group()
+def delete():
+    """Delete memories or sessions."""
+    pass
+
+
+@delete.command("memory")
+@click.argument("target_ids", nargs=-1)
+@click.option(
+    "--empty-text",
+    is_flag=True,
+    help="Delete all memories with empty text",
+)
+@click.option(
+    "--invalid",
+    is_flag=True,
+    help="Delete memories with empty/invalid IDs (corrupted data)",
+)
+@click.option(
+    "--namespace", "-n", default=None, help="Filter by namespace (with --empty-text)"
+)
+@click.option(
+    "--user-id", "-u", default=None, help="Filter by user ID (with --empty-text)"
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show what would be deleted without actually deleting",
+)
+@click.option(
+    "--force",
+    "-f",
+    is_flag=True,
+    help="Skip confirmation prompt",
+)
+def delete_memory_cmd(
+    target_ids: tuple[str, ...],
+    empty_text: bool,
+    invalid: bool,
+    namespace: str | None,
+    user_id: str | None,
+    dry_run: bool,
+    force: bool,
+):
+    """
+    Delete long-term memories by ID or criteria.
+
+    Examples:
+
+        agent-memory delete memory mem1 mem2 mem3
+
+        agent-memory delete memory --empty-text --dry-run
+
+        agent-memory delete memory --invalid -f
+
+        agent-memory delete memory --empty-text --namespace myapp -f
+    """
+    import asyncio
+
+    from agent_memory_server.filters import Namespace, UserId
+    from agent_memory_server.long_term_memory import (
+        delete_invalid_memories,
+        delete_long_term_memories,
+        search_long_term_memories,
+    )
+
+    configure_logging()
+
+    # Convert to list immediately
+    ids_list: list[str] = list(target_ids)
+
+    async def run_delete():
+        # Handle --invalid flag separately (deletes by Redis key, not by ID)
+        if invalid:
+            if dry_run:
+                click.echo(
+                    "Dry-run not supported for --invalid (requires Redis scan). "
+                    "Use without --dry-run to delete."
+                )
+                return
+
+            if not force:
+                click.confirm(
+                    "Delete all memories with invalid/empty IDs? This cannot be undone.",
+                    abort=True,
+                )
+
+            count = await delete_invalid_memories()
+            click.echo(f"Deleted {count} memories with invalid IDs.")
+            return
+
+        ids_to_delete: list[str] = ids_list.copy()
+
+        # If --empty-text flag, find all memories with empty text
+        if empty_text:
+            namespace_filter = Namespace(eq=namespace) if namespace else None
+            user_filter = UserId(eq=user_id) if user_id else None
+
+            # Search with empty query to list all, then filter for empty text
+            results = await search_long_term_memories(
+                text="",
+                namespace=namespace_filter,
+                user_id=user_filter,
+                limit=1000,  # Get a large batch
+            )
+
+            # Find memories with empty text
+            empty_text_memories = [
+                m for m in results.memories if not m.text or not m.text.strip()
+            ]
+
+            if not empty_text_memories:
+                click.echo("No memories with empty text found.")
+                return
+
+            # Separate valid IDs from invalid ones
+            valid_ids = [m.id for m in empty_text_memories if m.id and m.id.strip()]
+            invalid_count = len(empty_text_memories) - len(valid_ids)
+
+            click.echo(f"Found {len(empty_text_memories)} memories with empty text.")
+            if invalid_count > 0:
+                click.echo(
+                    f"Warning: {invalid_count} memories also have empty IDs. "
+                    f"Use --invalid flag to delete those."
+                )
+
+            if not valid_ids:
+                click.echo(
+                    "No deletable memories found (all have empty IDs). "
+                    "Use --invalid flag to delete those."
+                )
+                return
+
+            ids_to_delete.extend(valid_ids)
+
+        if not ids_to_delete:
+            click.echo("No memory IDs specified. Use --help for usage.")
+            return
+
+        # Remove duplicates while preserving order
+        ids_to_delete = list(dict.fromkeys(ids_to_delete))
+
+        if dry_run:
+            click.echo(f"Would delete {len(ids_to_delete)} memories:")
+            for mid in ids_to_delete[:20]:  # Show first 20
+                click.echo(f"  - {mid}")
+            if len(ids_to_delete) > 20:
+                click.echo(f"  ... and {len(ids_to_delete) - 20} more")
+            return
+
+        if not force:
+            click.confirm(
+                f"Delete {len(ids_to_delete)} memories? This cannot be undone.",
+                abort=True,
+            )
+
+        count = await delete_long_term_memories(ids=ids_to_delete)
+        click.echo(f"Deleted {count} memories.")
+
+    asyncio.run(run_delete())
+
+
+@delete.command("session")
+@click.argument("session_id", required=False)
+@click.option("--namespace", "-n", default=None, help="Namespace for the session")
+@click.option("--user-id", "-u", default=None, help="User ID for the session")
+@click.option(
+    "--force",
+    "-f",
+    is_flag=True,
+    help="Skip confirmation prompt",
+)
+def delete_session_cmd(
+    session_id: str | None,
+    namespace: str | None,
+    user_id: str | None,
+    force: bool,
+):
+    """
+    Delete a working memory session.
+
+    Examples:
+
+        agent-memory delete session my-session-123
+
+        agent-memory delete session my-session-123 --namespace myapp
+
+        agent-memory delete session my-session-123 -u user456 -f
+    """
+    import asyncio
+
+    from agent_memory_server.working_memory import delete_working_memory
+
+    configure_logging()
+
+    if not session_id:
+        click.echo("Session ID is required. Use --help for usage.")
+        return
+
+    async def run_delete():
+        if not force:
+            click.confirm(
+                f"Delete working memory session '{session_id}'? This cannot be undone.",
+                abort=True,
+            )
+
+        await delete_working_memory(
+            session_id=session_id,
+            user_id=user_id,
+            namespace=namespace,
+        )
+        click.echo(f"Deleted working memory session: {session_id}")
+
+    asyncio.run(run_delete())
+
+
 @cli.group()
 def token():
     """Manage authentication tokens."""
@@ -591,7 +925,7 @@ def add(
         click.echo("\nWARNING: Save this token securely. It will not be shown again.")
 
 
-@token.command()
+@token.command("list")
 @click.option(
     "--format",
     "output_format",
@@ -600,7 +934,7 @@ def add(
     show_default=True,
     help="Output format.",
 )
-def list(output_format: str):
+def list_tokens_cmd(output_format: str):
     """List all authentication tokens."""
     import asyncio
 
