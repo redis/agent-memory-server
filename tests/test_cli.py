@@ -284,6 +284,62 @@ class TestMcpCommand:
         assert result.exit_code == 0
         mock_mcp_app.run_sse_async.assert_called_once()
 
+    @patch("agent_memory_server.cli.settings")
+    @patch("agent_memory_server.mcp.mcp_app")
+    def test_mcp_command_streamable_http_mode(self, mock_mcp_app, mock_settings):
+        """Test mcp command in streamable-http mode."""
+        mock_settings.mcp_port = 3001
+
+        mock_mcp_app.run_streamable_http_async = AsyncMock()
+
+        runner = CliRunner()
+        result = runner.invoke(mcp, ["--mode", "streamable-http", "--port", "9000"])
+
+        assert result.exit_code == 0
+        mock_mcp_app.run_streamable_http_async.assert_called_once()
+
+    @patch("agent_memory_server.cli.configure_logging")
+    @patch("agent_memory_server.mcp.mcp_app")
+    def test_mcp_command_streamable_http_mode_uses_asyncio_by_default(
+        self, mock_mcp_app, mock_configure_logging
+    ):
+        """Test that streamable-http mode uses asyncio backend by default."""
+        from agent_memory_server.config import settings
+
+        # Set initial state
+        settings.use_docket = True
+
+        mock_mcp_app.run_streamable_http_async = AsyncMock()
+
+        runner = CliRunner()
+        result = runner.invoke(mcp, ["--mode", "streamable-http"])
+
+        assert result.exit_code == 0
+        assert settings.use_docket is False
+        mock_mcp_app.run_streamable_http_async.assert_called_once()
+
+    @patch("agent_memory_server.cli.configure_logging")
+    @patch("agent_memory_server.mcp.mcp_app")
+    def test_mcp_command_streamable_http_mode_with_task_backend_docket(
+        self, mock_mcp_app, mock_configure_logging
+    ):
+        """Test that streamable-http mode with --task-backend=docket sets use_docket=True."""
+        from agent_memory_server.config import settings
+
+        # Set initial state
+        settings.use_docket = False
+
+        mock_mcp_app.run_streamable_http_async = AsyncMock()
+
+        runner = CliRunner()
+        result = runner.invoke(
+            mcp, ["--mode", "streamable-http", "--task-backend", "docket"]
+        )
+
+        assert result.exit_code == 0
+        assert settings.use_docket is True
+        mock_mcp_app.run_streamable_http_async.assert_called_once()
+
     @patch("agent_memory_server.cli.configure_mcp_logging")
     @patch("agent_memory_server.cli.settings")
     @patch("agent_memory_server.mcp.mcp_app")

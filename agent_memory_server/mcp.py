@@ -94,7 +94,7 @@ class FastMCP(_FastMCPBase):
 
         sse = SseServerTransport(self.settings.message_path)
 
-        async def handle_sse(request: Request):
+        async def handle_sse(request: Request) -> Response:
             # Store the request in the FastMCP instance so call_tool can access it
             self._current_request = request
 
