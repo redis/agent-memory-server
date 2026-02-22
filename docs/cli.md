@@ -60,7 +60,7 @@ agent-memory mcp [OPTIONS]
 **Options:**
 
 - `--port INTEGER`: Port to run the MCP server on. (Default: value from `settings.mcp_port`, usually 9000)
-- `--mode [stdio|sse]`: Run the MCP server in stdio or SSE mode. (Default: stdio)
+- `--mode [stdio|sse|streamable-http]`: Run the MCP server in stdio, SSE, or streamable-http mode. (Default: stdio)
 - `--task-backend [asyncio|docket]`: Background task backend. `asyncio` (default) runs tasks inline in the MCP process with no separate worker. `docket` sends tasks to a Docket queue, which requires running `agent-memory task-worker`.
 
 **Examples:**
@@ -72,11 +72,14 @@ agent-memory mcp
 # SSE mode for development (no separate worker needed)
 agent-memory mcp --mode sse --port 9001
 
+# Streamable HTTP mode for network deployments (e.g. Kubernetes)
+agent-memory mcp --mode streamable-http --port 9000
+
 # SSE mode for production (requires separate worker process)
 agent-memory mcp --mode sse --port 9001 --task-backend docket
 ```
 
-**Note:** Stdio mode is designed for tools like Claude Desktop and, by default, uses the asyncio backend (no worker). Use `--task-backend docket` if you want MCP to enqueue background work into a shared Docket worker.
+**Note:** Stdio mode is designed for tools like Claude Desktop and, by default, uses the asyncio backend (no worker). Streamable HTTP mode is suited for deploying the MCP server as a network service where HTTP clients (like Claude Code) connect over the network. Use `--task-backend docket` if you want MCP to enqueue background work into a shared Docket worker.
 
 ### `schedule-task`
 
