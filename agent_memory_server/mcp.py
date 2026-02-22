@@ -917,9 +917,12 @@ async def get_working_memory(
     Returns:
         Working memory containing messages, context, and structured memory records
     """
-    return await core_get_working_memory(
+    result = await core_get_working_memory(
         session_id=session_id, recent_messages_limit=recent_messages_limit
     )
+    if result is None:
+        return WorkingMemory(session_id=session_id, messages=[], memories=[])
+    return result
 
 
 @mcp_app.tool()
