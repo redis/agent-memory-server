@@ -9,12 +9,12 @@ from agent_memory_server.api import (
     create_long_term_memory as core_create_long_term_memory,
     delete_long_term_memory as core_delete_long_term_memory,
     get_long_term_memory as core_get_long_term_memory,
-    get_working_memory as core_get_working_memory,
     memory_prompt as core_memory_prompt,
     put_working_memory_core as core_put_working_memory,
     search_long_term_memory as core_search_long_term_memory,
     update_long_term_memory as core_update_long_term_memory,
 )
+from agent_memory_server import working_memory as working_memory_core
 from agent_memory_server.config import settings
 from agent_memory_server.dependencies import get_background_tasks
 from agent_memory_server.filters import (
@@ -202,6 +202,7 @@ INSTRUCTIONS = """
 
 mcp_app = FastMCP(
     "Redis Agent Memory Server",
+    host=settings.mcp_host,
     port=settings.mcp_port,
     instructions=INSTRUCTIONS,
     default_namespace=settings.default_mcp_namespace,
@@ -917,7 +918,7 @@ async def get_working_memory(
     Returns:
         Working memory containing messages, context, and structured memory records
     """
-    result = await core_get_working_memory(
+    result = await working_memory_core.get_working_memory(
         session_id=session_id, recent_messages_limit=recent_messages_limit
     )
     if result is None:
