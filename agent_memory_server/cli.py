@@ -319,8 +319,8 @@ def api(port: int, host: str, reload: bool, no_worker: bool, task_backend: str):
 @click.option(
     "--mode",
     default="stdio",
-    help="Run the MCP server in SSE or stdio mode",
-    type=click.Choice(["stdio", "sse"]),
+    help="Run the MCP server in SSE, streamable-http, or stdio mode",
+    type=click.Choice(["stdio", "sse", "streamable-http"]),
 )
 @click.option(
     "--task-backend",
@@ -362,6 +362,9 @@ def mcp(port: int, mode: str, task_backend: str):
         if mode == "sse":
             logger.info(f"Starting MCP server on port {port}\n")
             await mcp_app.run_sse_async()
+        elif mode == "streamable-http":
+            logger.info(f"Starting MCP server (streamable HTTP) on port {port}\n")
+            await mcp_app.run_streamable_http_async()
         elif mode == "stdio":
             await mcp_app.run_stdio_async()
         else:
