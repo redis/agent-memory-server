@@ -1,0 +1,127 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Base colors - Dark theme */
+    --background: 0 0% 3%;
+    --foreground: 0 0% 98%;
+
+    /* Card colors */
+    --card: 0 0% 6%;
+    --card-foreground: 0 0% 98%;
+
+    /* Popover colors */
+    --popover: 0 0% 6%;
+    --popover-foreground: 0 0% 98%;
+
+    /* Primary - Redis Red */
+    --primary: 0 90% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary */
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 98%;
+
+    /* Muted */
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 64%;
+
+    /* Accent */
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 98%;
+
+    /* Destructive */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Border and input */
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 0 90% 50%;
+
+    /* Radius */
+    --radius: 0.5rem;
+
+    /* Memory type colors */
+    --semantic: 210 100% 56%;
+    --semantic-foreground: 0 0% 100%;
+    --episodic: 142 76% 36%;
+    --episodic-foreground: 0 0% 100%;
+    --message: 262 83% 58%;
+    --message-foreground: 0 0% 100%;
+
+    /* Status colors */
+    --success: 142 76% 36%;
+    --warning: 38 92% 50%;
+    --error: 0 84% 60%;
+    --info: 199 89% 48%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  /* Custom scrollbar styles */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted)) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted));
+    border-radius: 3px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground));
+  }
+
+  /* Memory type badge utilities */
+  .badge-semantic {
+    @apply bg-semantic/20 text-semantic border-semantic/30;
+  }
+
+  .badge-episodic {
+    @apply bg-episodic/20 text-episodic border-episodic/30;
+  }
+
+  .badge-message {
+    @apply bg-message/20 text-message border-message/30;
+  }
+
+  /* Animation utilities */
+  .animate-in {
+    animation: fade-in 0.15s ease-out;
+  }
+
+  .animate-slide-in {
+    animation: slide-in-from-bottom 0.2s ease-out;
+  }
+}
+
+/* Mermaid diagram styles */
+.mermaid {
+  @apply w-full overflow-x-auto;
+}
+
+.mermaid svg {
+  @apply mx-auto;
+}

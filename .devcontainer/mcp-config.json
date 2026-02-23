@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "agent-memory": {
+      "command": "uv",
+      "args": ["run", "agent-memory", "mcp"],
+      "cwd": "/workspace",
+      "env": {
+        "REDIS_URL": "redis://redis:6379",
+        "DISABLE_AUTH": "true",
+        "LONG_TERM_MEMORY": "true"
+      }
+    }
+  }
+}
