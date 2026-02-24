@@ -1,31 +1,22 @@
 import { Routes, Route } from 'react-router-dom'
 import { Header } from '@/components/layout/Header'
-import { Footer } from '@/components/layout/Footer'
-import DashboardPage from '@/pages/DashboardPage'
-import ChatPage from '@/pages/ChatPage'
-import ScenariosPage from '@/pages/ScenariosPage'
-import ScenarioDetailPage from '@/pages/ScenarioDetailPage'
+import { BackendProvider } from '@/context/BackendContext'
 import ExplorerPage from '@/pages/ExplorerPage'
-import WorkingMemoryPage from '@/pages/WorkingMemoryPage'
-import ArchitecturePage from '@/pages/ArchitecturePage'
+import ChatPage from '@/pages/ChatPage'
 
 function App() {
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
-      <Header />
-      <main className="flex-1 container py-6">
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/scenarios" element={<ScenariosPage />} />
-          <Route path="/scenarios/:scenarioId" element={<ScenarioDetailPage />} />
-          <Route path="/explorer" element={<ExplorerPage />} />
-          <Route path="/working-memory" element={<WorkingMemoryPage />} />
-          <Route path="/architecture" element={<ArchitecturePage />} />
-        </Routes>
-      </main>
-      <Footer />
-    </div>
+    <BackendProvider>
+      <div className="flex min-h-screen flex-col bg-[#07151C]">
+        <Header />
+        <main className="flex-1 mx-auto w-full max-w-7xl px-6 py-6">
+          <Routes>
+            <Route path="/" element={<ExplorerPage />} />
+            <Route path="/chat" element={<ChatPage />} />
+          </Routes>
+        </main>
+      </div>
+    </BackendProvider>
   )
 }
 
