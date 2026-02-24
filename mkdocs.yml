@@ -85,18 +85,16 @@ nav:
     - Summary Views: summary-views.md
     - Memory Extraction Strategies: memory-extraction-strategies.md
     - Memory Lifecycle: memory-lifecycle.md
+    - LangChain Integration: langchain-integration.md
+
+  - Operations Guide:
+    - operations-guide-index.md
+    - Configuration: configuration.md
+    - Authentication: authentication.md
+    - Security: security-custom-prompts.md
     - LLM Providers: llm-providers.md
     - Embedding Providers: embedding-providers.md
     - Vector Store Backends: vector-store-backends.md
-    - AWS Bedrock: aws-bedrock.md
-    - Authentication: authentication.md
-    - Security: security-custom-prompts.md
-
-  - Python SDK:
-    - python-sdk-index.md
-    - SDK Documentation: python-sdk.md
-    - LangChain Integration: langchain-integration.md
-    - Configuration: configuration.md
 
   - Examples:
     - Agent Examples: agent-examples.md
@@ -113,6 +111,10 @@ nav:
     - REST API: api.md
     - MCP Server: mcp.md
     - CLI Reference: cli.md
+    - Client SDKs:
+      - Python SDK: python-sdk.md
+      - TypeScript SDK: typescript-sdk.md
+      - Java SDK: java-sdk.md
 
   - Development:
     - Development Guide: development.md

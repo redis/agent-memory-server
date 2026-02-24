@@ -6,7 +6,7 @@ The Python SDK (agent-memory-client) provides a LangChain integration that helps
 
 The SDK provides a `get_memory_tools()` function that returns a list of LangChain `StructuredTool` instances. These tools give your LangChain LLMs and agents access to the memory server's capabilities.
 
-For details on available memory operations, see the [Tool Methods](python-sdk.md#tool-methods) section of the Python SDK documentation.
+For details on available memory operations, see the [Tool Integration](python-sdk.md#tool-integration) section of the Python SDK documentation.
 
 ### Direct LLM Integration
 

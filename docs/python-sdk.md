@@ -2,6 +2,8 @@
 
 The Python SDK (`agent-memory-client`) provides the easiest way to integrate memory into your AI applications. It includes high-level abstractions, tool integration for OpenAI and Anthropic, and automatic function call resolution.
 
+**Version**: 0.14.0+
+
 ## Installation
 
 **Requirements**: Python 3.10 or higher
@@ -13,67 +15,83 @@ pip install agent-memory-client
 ## Quick Start
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+from agent_memory_client.models import ClientMemoryRecord, MemoryTypeEnum
 
-# Connect to your memory server
-client = MemoryAPIClient(
+# Configure and create client
+config = MemoryClientConfig(
     base_url="http://localhost:8000",
-    api_key="your-api-key"  # Optional if auth disabled
+    default_namespace="my-app"
 )
 
-# Store a memory
-await client.create_long_term_memories([{
-    "text": "User prefers morning meetings and hates scheduling calls after 4 PM",
-    "memory_type": "semantic",
-    "topics": ["scheduling", "preferences"],
-    "user_id": "alice"
-}])
+async with MemoryAPIClient(config) as client:
+    # Store a memory
+    await client.create_long_term_memory([
+        ClientMemoryRecord(
+            text="User prefers morning meetings",
+            memory_type=MemoryTypeEnum.SEMANTIC,
+            topics=["scheduling", "preferences"],
+            user_id="alice"
+        )
+    ])
 
-# Search memories
-results = await client.search_long_term_memory(
-    text="when does user prefer meetings",
-    limit=5
-)
+    # Search memories
+    results = await client.search_long_term_memory(
+        text="when does user prefer meetings",
+        limit=5
+    )
+
+    for memory in results.memories:
+        print(f"{memory.text} (score: {1 - memory.dist:.2f})")
 ```
 
 ## Client Configuration
 
-### Basic Setup
+### Using MemoryClientConfig
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
 # Minimal configuration (development)
-client = MemoryAPIClient(base_url="http://localhost:8000")
+config = MemoryClientConfig(base_url="http://localhost:8000")
+client = MemoryAPIClient(config)
 
-# Production configuration
-client = MemoryAPIClient(
+# Production configuration with defaults
+config = MemoryClientConfig(
     base_url="https://your-memory-server.com",
-    api_key="your-api-token",
     timeout=30.0,
-    session_id="user-session-123",
-    user_id="user-456",
-    namespace="production"
+    default_namespace="production",
+    default_model_name="gpt-4o",  # For token counting
+    default_context_window_max=128000  # Override context window
 )
+client = MemoryAPIClient(config)
 ```
 
-### Authentication
+### Configuration Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `base_url` | `str` | Memory server URL (required) |
+| `timeout` | `float` | HTTP timeout in seconds (default: 30.0) |
+| `default_namespace` | `str` | Default namespace for all operations |
+| `default_model_name` | `str` | Model name for context window sizing |
+| `default_context_window_max` | `int` | Override max context window tokens |
+
+### Async Context Manager
+
+The client supports async context manager for proper resource cleanup:
 
 ```python
-# Token authentication
-client = MemoryAPIClient(
-    base_url="https://your-server.com",
-    api_key="your-token-here"
-)
+async with MemoryAPIClient(config) as client:
+    # Client automatically closes when exiting the context
+    results = await client.search_long_term_memory(text="query")
 
-# OAuth2/JWT authentication
-client = MemoryAPIClient(
-    base_url="https://your-server.com",
-    bearer_token="your-jwt-token"
-)
-
-# Development (no auth)
-client = MemoryAPIClient(base_url="http://localhost:8000")
+# Or manually manage lifecycle
+client = MemoryAPIClient(config)
+try:
+    results = await client.search_long_term_memory(text="query")
+finally:
+    await client.close()
 ```
 
 ## Tool Integration
@@ -84,21 +102,22 @@ The SDK provides automatic tool schemas and function call resolution for OpenAI:
 
 ```python
 import openai
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
 # Setup clients
-memory_client = MemoryAPIClient(base_url="http://localhost:8000")
+config = MemoryClientConfig(base_url="http://localhost:8000")
+memory_client = MemoryAPIClient(config)
 openai_client = openai.AsyncClient()
 
-# Get tool schemas for OpenAI
+# Get tool schemas for OpenAI (returns ToolSchemaCollection)
 memory_tools = MemoryAPIClient.get_all_memory_tool_schemas()
 
 async def chat_with_memory(message: str, session_id: str):
-    # Make request with memory tools
+    # Make request with memory tools (convert to list for API)
     response = await openai_client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": message}],
-        tools=memory_tools,
+        tools=memory_tools.to_list(),
         tool_choice="auto"
     )
 
@@ -149,20 +168,21 @@ Similar tool integration for Anthropic Claude:
 
 ```python
 import anthropic
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
 # Setup clients
-memory_client = MemoryAPIClient(base_url="http://localhost:8000")
+config = MemoryClientConfig(base_url="http://localhost:8000")
+memory_client = MemoryAPIClient(config)
 anthropic_client = anthropic.AsyncClient()
 
-# Get tool schemas for Anthropic
+# Get tool schemas for Anthropic (returns ToolSchemaCollection)
 memory_tools = MemoryAPIClient.get_all_memory_tool_schemas_anthropic()
 
 async def chat_with_memory(message: str, session_id: str):
     response = await anthropic_client.messages.create(
         model="claude-3-5-sonnet-20241022",
         messages=[{"role": "user", "content": message}],
-        tools=memory_tools,
+        tools=memory_tools.to_list(),
         max_tokens=1000
     )
 
@@ -360,119 +380,286 @@ response = await anthropic_client.messages.create(
 
 ## Memory Operations
 
-### Creating Memories
+### Creating Long-Term Memories
 
 ```python
+from agent_memory_client.models import ClientMemoryRecord, MemoryTypeEnum
+
 # Create multiple memories
 memories = [
-    {
-        "text": "User works as a software engineer at TechCorp",
-        "memory_type": "semantic",
-        "topics": ["career", "work", "company"],
-        "entities": ["TechCorp", "software engineer"],
-        "user_id": "alice"
-    },
-    {
-        "text": "User prefers Python and TypeScript for development",
-        "memory_type": "semantic",
-        "topics": ["programming", "preferences", "languages"],
-        "entities": ["Python", "TypeScript"],
-        "user_id": "alice"
-    }
+    ClientMemoryRecord(
+        text="User works as a software engineer at TechCorp",
+        memory_type=MemoryTypeEnum.SEMANTIC,
+        topics=["career", "work", "company"],
+        entities=["TechCorp", "software engineer"],
+        user_id="alice"
+    ),
+    ClientMemoryRecord(
+        text="User prefers Python and TypeScript for development",
+        memory_type=MemoryTypeEnum.SEMANTIC,
+        topics=["programming", "preferences", "languages"],
+        entities=["Python", "TypeScript"],
+        user_id="alice"
+    )
 ]
 
-result = await client.create_long_term_memories(memories)
-print(f"Created {len(result.memories)} memories")
+result = await client.create_long_term_memory(memories)
+print(f"Created memories: {result.status}")
 ```
 
-### Searching Memories
+### Searching Memories with Filters
+
+The SDK provides powerful filter classes for precise memory retrieval:
 
 ```python
+from agent_memory_client.filters import (
+    Topics, Entities, CreatedAt, UserId, Namespace, MemoryType
+)
+from datetime import datetime, timedelta, timezone
+
 # Basic semantic search
 results = await client.search_long_term_memory(
     text="user programming experience",
     limit=10
 )
 
-# Advanced filtering
+# Filter using filter objects (recommended)
 results = await client.search_long_term_memory(
     text="user preferences",
-    user_id="alice",
-    topics=["programming", "food"],
-    limit=5,
-    min_relevance_score=0.7
+    user_id=UserId(eq="alice"),
+    topics=Topics(any=["programming", "food"]),  # Match any of these topics
+    distance_threshold=0.3,  # Lower = more relevant (0-1 scale)
+    limit=5
 )
 
-# Time-based filtering
-from datetime import datetime, timedelta
-
-week_ago = datetime.now() - timedelta(days=7)
+# Time-based filtering with CreatedAt
+week_ago = datetime.now(timezone.utc) - timedelta(days=7)
 results = await client.search_long_term_memory(
     text="recent updates",
-    created_after=week_ago,
+    created_at=CreatedAt(gte=week_ago),  # Greater than or equal
+    limit=10
+)
+
+# Filter by memory type
+results = await client.search_long_term_memory(
+    text="events that happened",
+    memory_type=MemoryType(eq="episodic"),
     limit=10
 )
 
 # Process results
 for memory in results.memories:
-    print(f"Relevance: {memory.relevance_score:.2f}")
+    relevance = 1 - memory.dist if memory.dist else None
+    print(f"Relevance: {relevance:.2f}" if relevance else "No score")
     print(f"Text: {memory.text}")
     print(f"Topics: {', '.join(memory.topics or [])}")
 ```
 
+#### Filter Reference
+
+| Filter | Options | Description |
+|--------|---------|-------------|
+| `SessionId` | `eq`, `in_`, `not_eq`, `not_in`, `startswith` | Filter by session ID |
+| `Namespace` | `eq`, `in_`, `not_eq`, `not_in`, `startswith` | Filter by namespace |
+| `UserId` | `eq`, `in_`, `not_eq`, `not_in`, `startswith` | Filter by user ID |
+| `Topics` | `any`, `all`, `none` | Filter by topics |
+| `Entities` | `any`, `all`, `none` | Filter by entities |
+| `CreatedAt` | `gte`, `lte`, `eq` | Filter by creation date |
+| `LastAccessed` | `gte`, `lte`, `eq` | Filter by last access date |
+| `MemoryType` | `eq`, `in_`, `not_eq`, `not_in` | Filter by memory type |
+
 ### Memory Editing
 
 ```python
-# Update a memory
-await client.edit_memory(
-    memory_id="memory-123",
+# Update a memory by ID (get ID from search results)
+updated = await client.edit_long_term_memory(
+    memory_id="01HXYZ...",  # ULID from search results
     updates={
         "text": "User works as a senior software engineer at TechCorp",
         "topics": ["career", "work", "company", "senior"],
         "entities": ["TechCorp", "senior software engineer"]
     }
 )
+print(f"Updated: {updated.text}")
 
-# Add context to existing memory
-await client.edit_memory(
-    memory_id="memory-456",
-    updates={
-        "text": "User prefers Python and TypeScript for development. Recently started learning Rust.",
-        "topics": ["programming", "preferences", "languages", "rust"],
-        "entities": ["Python", "TypeScript", "Rust"]
-    }
-)
+# Get a specific memory by ID
+memory = await client.get_long_term_memory(memory_id="01HXYZ...")
+print(f"Memory: {memory.text}")
+
+# Delete memories
+await client.delete_long_term_memories(["memory-id-1", "memory-id-2"])
 ```
 
 ### Working Memory
 
 ```python
-# Store conversation context
-conversation = {
-    "messages": [
-        {"role": "user", "content": "I'm planning a trip to Italy"},
-        {"role": "assistant", "content": "That sounds exciting! What cities are you thinking of visiting?"},
-        {"role": "user", "content": "Rome and Florence, maybe Venice too"}
-    ],
-    "memories": [
-        {
-            "text": "User is planning a trip to Italy, considering Rome, Florence, and Venice",
-            "memory_type": "semantic",
-            "topics": ["travel", "italy", "vacation"],
-            "entities": ["Italy", "Rome", "Florence", "Venice"]
-        }
-    ]
-}
+from agent_memory_client.models import (
+    WorkingMemory, MemoryMessage, ClientMemoryRecord, MemoryTypeEnum
+)
 
-await client.set_working_memory("session-123", conversation)
-
-# Retrieve or create working memory
-created, memory = await client.get_or_create_working_memory("session-123")
+# Get or create working memory (returns tuple of created, memory)
+created, memory = await client.get_or_create_working_memory(
+    session_id="session-123",
+    user_id="alice",
+    namespace="my-app"
+)
 if created:
     print("Created new session")
 else:
-    print("Found existing session")
-print(f"Session has {len(memory.messages)} messages")
+    print(f"Found existing session with {len(memory.messages)} messages")
+
+# Store/update working memory with messages
+working_memory = WorkingMemory(
+    session_id="session-123",
+    namespace="my-app",
+    messages=[
+        MemoryMessage(role="user", content="I'm planning a trip to Italy"),
+        MemoryMessage(role="assistant", content="That sounds exciting!"),
+    ],
+    memories=[
+        ClientMemoryRecord(
+            text="User is planning a trip to Italy",
+            memory_type=MemoryTypeEnum.SEMANTIC,
+            topics=["travel", "italy"]
+        )
+    ],
+    data={"destination": "Italy", "budget": 2000}
+)
+
+response = await client.put_working_memory("session-123", working_memory)
+print(f"Stored {len(response.messages)} messages")
+
+# Convenience: Set only the data portion
+await client.set_working_memory_data(
+    session_id="session-123",
+    data={"trip_destination": "Rome", "travel_dates": ["2024-06-01", "2024-06-07"]}
+)
+
+# Convenience: Add memories to working memory
+await client.add_memories_to_working_memory(
+    session_id="session-123",
+    memories=[
+        ClientMemoryRecord(
+            text="User prefers boutique hotels",
+            memory_type=MemoryTypeEnum.SEMANTIC,
+            topics=["travel", "preferences"]
+        )
+    ]
+)
+
+# Delete working memory when session ends
+await client.delete_working_memory(session_id="session-123")
+```
+
+### Forgetting Memories
+
+Use `ForgetPolicy` to clean up old or inactive memories:
+
+```python
+from agent_memory_client.models import ForgetPolicy
+
+# Define a forget policy
+policy = ForgetPolicy(
+    max_age_days=90,           # Forget memories older than 90 days
+    max_inactive_days=30,      # Or inactive for 30+ days
+    budget=100,                # Process up to 100 memories per run
+    memory_type_allowlist=["episodic"]  # Only forget episodic memories
+)
+
+# Dry run to preview what would be deleted
+preview = await client.forget_long_term_memories(
+    policy=policy,
+    namespace="my-app",
+    user_id="alice",
+    dry_run=True  # Preview only, do not delete
+)
+print(f"Would delete {preview.deleted} of {preview.scanned} memories")
+
+# Execute forget operation
+result = await client.forget_long_term_memories(
+    policy=policy,
+    namespace="my-app",
+    user_id="alice",
+    pinned_ids=["memory-to-keep-1", "memory-to-keep-2"],  # Exclude these
+    dry_run=False
+)
+print(f"Deleted {result.deleted} memories: {result.deleted_ids}")
+```
+
+### Summary Views
+
+Summary Views create aggregated summaries of memories, grouped by fields you specify:
+
+```python
+from agent_memory_client.models import CreateSummaryViewRequest, SummaryViewSource
+
+# Create a summary view that groups by user and topic
+request = CreateSummaryViewRequest(
+    name="User Topic Summaries",
+    source=SummaryViewSource.LONG_TERM,
+    group_by=["user_id", "topics"],
+    time_window_days=30,  # Only last 30 days
+    continuous=True,      # Auto-refresh in background
+    prompt="Summarize these memories concisely:",  # Custom prompt
+    model_name="gpt-4o-mini"  # Override model
+)
+
+view = await client.create_summary_view(request)
+print(f"Created view: {view.id}")
+
+# List all views
+views = await client.list_summary_views()
+for v in views:
+    print(f"View: {v.name} (groups by: {v.group_by})")
+
+# Run a specific partition (sync)
+partition_result = await client.run_summary_view_partition(
+    view_id=view.id,
+    group={"user_id": "alice", "topics": "travel"}
+)
+print(f"Summary: {partition_result.summary}")
+print(f"Based on {partition_result.memory_count} memories")
+
+# Run full view as background task
+task = await client.run_summary_view(view_id=view.id, force=True)
+print(f"Task ID: {task.id}, Status: {task.status}")
+
+# Poll for completion
+import asyncio
+while True:
+    task = await client.get_task(task.id)
+    if task.status in ["completed", "failed"]:
+        break
+    await asyncio.sleep(1)
+
+# List computed partitions
+partitions = await client.list_summary_view_partitions(
+    view_id=view.id,
+    user_id="alice"
+)
+for p in partitions:
+    print(f"Group: {p.group}, Summary: {p.summary[:100]}...")
+
+# Delete a view
+await client.delete_summary_view(view.id)
+```
+
+### Recency Boosting
+
+Use `RecencyConfig` to boost recent memories in search results:
+
+```python
+from agent_memory_client.models import RecencyConfig
+
+# Boost recently accessed memories
+results = await client.search_long_term_memory(
+    text="user preferences",
+    recency=RecencyConfig(
+        decay_factor=0.9,  # How fast relevance decays (0-1)
+        reference_timestamp=None  # Use current time
+    ),
+    limit=10
+)
 ```
 
 ## Memory-Enhanced Conversations
@@ -541,6 +728,8 @@ async def chat_with_auto_memory(message: str, session_id: str):
 ### Bulk Memory Creation
 
 ```python
+from agent_memory_client.models import ClientMemoryRecord, MemoryTypeEnum
+
 # Process large datasets efficiently
 async def import_user_data(user_data: list, user_id: str):
     batch_size = 50
@@ -549,24 +738,26 @@ async def import_user_data(user_data: list, user_id: str):
         batch = user_data[i:i + batch_size]
 
         memories = [
-            {
-                "text": item["description"],
-                "memory_type": "semantic",
-                "topics": item.get("categories", []),
-                "entities": item.get("entities", []),
-                "user_id": user_id,
-                "metadata": {"source": item["source"]}
-            }
+            ClientMemoryRecord(
+                text=item["description"],
+                memory_type=MemoryTypeEnum.SEMANTIC,
+                topics=item.get("categories", []),
+                entities=item.get("entities", []),
+                user_id=user_id,
+            )
             for item in batch
         ]
 
-        result = await client.create_long_term_memories(memories)
-        print(f"Imported batch {i//batch_size + 1}, {len(result.memories)} memories")
+        result = await client.create_long_term_memory(memories)
+        print(f"Imported batch {i//batch_size + 1}: {result.status}")
 ```
 
 ### Bulk Search Operations
 
 ```python
+import asyncio
+from agent_memory_client.filters import UserId
+
 # Search multiple queries efficiently
 async def multi_search(queries: list[str], user_id: str):
     results = {}
@@ -575,7 +766,7 @@ async def multi_search(queries: list[str], user_id: str):
     search_tasks = [
         client.search_long_term_memory(
             text=query,
-            user_id=user_id,
+            user_id=UserId(eq=user_id),
             limit=3
         )
         for query in queries
@@ -591,58 +782,66 @@ async def multi_search(queries: list[str], user_id: str):
 
 ## Error Handling
 
+### Exception Classes
+
+```python
+from agent_memory_client import (
+    MemoryClientError,      # Base exception for all client errors
+    MemoryNotFoundError,    # Memory not found (404)
+    MemoryServerError,      # Server error (5xx)
+    MemoryValidationError,  # Invalid input (400)
+)
+```
+
 ### Robust Client Usage
 
 ```python
-from agent_memory_client import MemoryAPIClient, MemoryError
+from agent_memory_client import (
+    MemoryAPIClient, MemoryClientConfig,
+    MemoryClientError, MemoryNotFoundError, MemoryServerError
+)
 import asyncio
 import logging
 
+config = MemoryClientConfig(base_url="http://localhost:8000")
+
 async def robust_memory_operation(client: MemoryAPIClient):
     try:
-        # Attempt memory operation
         results = await client.search_long_term_memory(
             text="user preferences",
             limit=5
         )
-
         return results.memories
 
-    except MemoryError as e:
-        if e.status_code == 401:
-            logging.error("Authentication failed - check API key")
-        elif e.status_code == 429:
-            logging.warning("Rate limited - waiting before retry")
-            await asyncio.sleep(5)
-            return await robust_memory_operation(client)
-        else:
-            logging.error(f"Memory API error: {e}")
-            return []
+    except MemoryNotFoundError:
+        logging.warning("No matching memories found")
+        return []
+
+    except MemoryServerError as e:
+        logging.error(f"Server error: {e}")
+        await asyncio.sleep(5)
+        return await robust_memory_operation(client)  # Retry
+
+    except MemoryClientError as e:
+        logging.error(f"Client error: {e}")
+        return []
 
     except Exception as e:
         logging.error(f"Unexpected error: {e}")
         return []
 ```
 
-### Connection Management
+### Using Async Context Manager
 
 ```python
-import httpx
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
-# Custom timeout and retry configuration
-async with httpx.AsyncClient(
-    timeout=30.0,
-    limits=httpx.Limits(max_keepalive_connections=10, max_connections=20)
-) as http_client:
+config = MemoryClientConfig(base_url="http://localhost:8000", timeout=30.0)
 
-    client = MemoryAPIClient(
-        base_url="http://localhost:8000",
-        http_client=http_client
-    )
-
-    # Perform operations
+# Recommended: Use context manager for automatic cleanup
+async with MemoryAPIClient(config) as client:
     results = await client.search_long_term_memory(text="query")
+    # Client automatically closes when exiting
 ```
 
 ## Advanced Features
@@ -650,6 +849,10 @@ async with httpx.AsyncClient(
 ### Custom Tool Workflows
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+from agent_memory_client.models import ClientMemoryRecord, MemoryTypeEnum
+from agent_memory_client.filters import UserId
+
 class CustomMemoryAgent:
     def __init__(self, memory_client: MemoryAPIClient):
         self.memory = memory_client
@@ -658,7 +861,7 @@ class CustomMemoryAgent:
         # Multi-stage search with refinement
         initial_results = await self.memory.search_long_term_memory(
             text=query,
-            user_id=user_id,
+            user_id=UserId(eq=user_id),
             limit=20
         )
 
@@ -669,10 +872,10 @@ class CustomMemoryAgent:
                 limit=10
             )
 
-        # Filter by relevance threshold
+        # Filter by distance (lower is more relevant)
         relevant_memories = [
             m for m in initial_results.memories
-            if m.relevance_score > 0.7
+            if m.dist and m.dist < 0.3  # Close matches
         ]
 
         return relevant_memories[:5]
@@ -685,44 +888,46 @@ class CustomMemoryAgent:
         # Search for similar existing memories
         similar = await self.memory.search_long_term_memory(
             text=text,
-            user_id=user_id,
+            user_id=UserId(eq=user_id),
             limit=3,
-            min_relevance_score=0.8
+            distance_threshold=0.2  # Close matches only
         )
 
         if similar.memories:
             # Update existing memory instead of creating duplicate
-            await self.memory.edit_memory(
-                memory_id=similar.memories[0].id,
+            existing = similar.memories[0]
+            await self.memory.edit_long_term_memory(
+                memory_id=existing.id,
                 updates={
-                    "text": f"{similar.memories[0].text}. {text}",
-                    "topics": list(set(similar.memories[0].topics + topics)),
-                    "entities": list(set(similar.memories[0].entities + entities))
+                    "text": f"{existing.text}. {text}",
+                    "topics": list(set((existing.topics or []) + topics)),
+                    "entities": list(set((existing.entities or []) + entities))
                 }
             )
         else:
             # Create new memory
-            await self.memory.create_long_term_memories([{
-                "text": text,
-                "memory_type": "semantic",
-                "topics": topics,
-                "entities": entities,
-                "user_id": user_id
-            }])
+            await self.memory.create_long_term_memory([
+                ClientMemoryRecord(
+                    text=text,
+                    memory_type=MemoryTypeEnum.SEMANTIC,
+                    topics=topics,
+                    entities=entities,
+                    user_id=user_id
+                )
+            ])
 ```
 
 ### Performance Optimization
 
 ```python
-from functools import lru_cache
 import asyncio
+from agent_memory_client.filters import UserId
 
 class OptimizedMemoryClient:
     def __init__(self, client: MemoryAPIClient):
         self.client = client
         self._search_cache = {}
 
-    @lru_cache(maxsize=100)
     def _cache_key(self, text: str, user_id: str, limit: int) -> str:
         return f"{text}:{user_id}:{limit}"
 
@@ -734,7 +939,7 @@ class OptimizedMemoryClient:
 
         results = await self.client.search_long_term_memory(
             text=text,
-            user_id=user_id,
+            user_id=UserId(eq=user_id),
             limit=limit
         )
 
@@ -754,50 +959,72 @@ class OptimizedMemoryClient:
 ### 1. Client Management
 
 ```python
+import os
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 # Use a single client instance per application
 class MemoryService:
     def __init__(self):
-        self.client = MemoryAPIClient(
-            base_url=os.getenv("MEMORY_SERVER_URL"),
-            api_key=os.getenv("MEMORY_API_KEY")
+        config = MemoryClientConfig(
+            base_url=os.getenv("MEMORY_SERVER_URL", "http://localhost:8000"),
+            default_namespace=os.getenv("DEFAULT_NAMESPACE", "production"),
+            timeout=float(os.getenv("MEMORY_TIMEOUT", "30"))
         )
+        self.client = MemoryAPIClient(config)
 
     async def close(self):
         await self.client.close()
 
-# Singleton pattern
-memory_service = MemoryService()
+# Usage with context manager
+async def main():
+    service = MemoryService()
+    try:
+        # Use service.client
+        pass
+    finally:
+        await service.close()
 ```
 
 ### 2. Memory Organization
 
 ```python
+from agent_memory_client.models import ClientMemoryRecord, MemoryTypeEnum
+
 # Use consistent naming patterns
 async def create_user_memory(text: str, user_id: str, category: str):
-    return await client.create_long_term_memories([{
-        "text": text,
-        "memory_type": "semantic",
-        "topics": [category, "user-preference"],
-        "user_id": user_id,
-        "namespace": f"user:{user_id}:preferences"
-    }])
+    return await client.create_long_term_memory([
+        ClientMemoryRecord(
+            text=text,
+            memory_type=MemoryTypeEnum.SEMANTIC,
+            topics=[category, "user-preference"],
+            user_id=user_id,
+            namespace=f"user:{user_id}:preferences"
+        )
+    ])
 ```
 
 ### 3. Context Management
 
 ```python
-# Implement context-aware memory storage
-async def store_conversation_memory(conversation: dict, session_id: str):
-    # Extract key information
-    important_facts = extract_facts(conversation)
+from agent_memory_client.models import ClientMemoryRecord, MemoryTypeEnum
 
-    if important_facts:
-        await client.create_long_term_memories([{
-            "text": fact,
-            "memory_type": "semantic",
-            "session_id": session_id,
-            "metadata": {"conversation_turn": i}
-        } for i, fact in enumerate(important_facts)])
+# Implement context-aware memory storage
+async def store_conversation_memory(
+    facts: list[str],
+    session_id: str,
+    user_id: str
+):
+    if facts:
+        memories = [
+            ClientMemoryRecord(
+                text=fact,
+                memory_type=MemoryTypeEnum.EPISODIC,
+                session_id=session_id,
+                user_id=user_id
+            )
+            for fact in facts
+        ]
+        await client.create_long_term_memory(memories)
 ```
 
 ## Configuration Reference
@@ -807,31 +1034,30 @@ async def store_conversation_memory(conversation: dict, session_id: str):
 ```bash
 # Client configuration
 MEMORY_SERVER_URL=http://localhost:8000
-MEMORY_API_KEY=your-api-token
 
 # Connection settings
 MEMORY_TIMEOUT=30
-MEMORY_MAX_RETRIES=3
 
-# Default user settings
-DEFAULT_USER_ID=default-user
+# Default settings
 DEFAULT_NAMESPACE=production
 ```
 
-### Client Options
+### MemoryClientConfig Options
 
 ```python
-client = MemoryAPIClient(
-    base_url="http://localhost:8000",
-    api_key="optional-token",
-    bearer_token="optional-jwt",
-    timeout=30.0,
-    max_retries=3,
-    session_id="default-session",
-    user_id="default-user",
-    namespace="default",
-    http_client=custom_httpx_client
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
+config = MemoryClientConfig(
+    base_url="http://localhost:8000",       # Required: Server URL
+    timeout=30.0,                           # HTTP timeout (seconds)
+    default_namespace="production",          # Default namespace for all ops
+    default_model_name="gpt-4o",            # Model for token counting
+    default_context_window_max=128000,       # Override context window
 )
+
+async with MemoryAPIClient(config) as client:
+    # Use client...
+    pass
 ```
 
 The Python SDK makes it easy to add sophisticated memory capabilities to any AI application, with minimal setup and maximum flexibility. Use the tool integrations for LLM-driven memory, direct API calls for code-driven approaches, or combine both patterns for hybrid solutions.

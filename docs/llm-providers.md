@@ -125,6 +125,16 @@ export EMBEDDING_MODEL=text-embedding-3-small
 
 AWS Bedrock provides access to foundation models from multiple providers (Anthropic Claude, Amazon Titan, Cohere, etc.) through AWS infrastructure.
 
+#### Installation
+
+AWS Bedrock support requires additional dependencies:
+
+```bash
+pip install agent-memory-server[aws]
+```
+
+This installs `boto3` and `botocore` for AWS authentication.
+
 #### Authentication
 
 Bedrock uses standard AWS credentials. Configure using any of these methods:
@@ -142,6 +152,10 @@ export AWS_REGION_NAME=us-east-1
 # Option 3: IAM role (recommended for production on AWS)
 # No credentials needed - uses instance/container role
 export AWS_REGION_NAME=us-east-1
+
+# Option 4: AWS SSO
+aws sso login --profile your-profile
+export AWS_PROFILE=your-profile
 ```
 
 #### Generation Models
@@ -170,16 +184,30 @@ export GENERATION_MODEL=amazon.titan-text-premier-v1:0
 ```bash
 # Correct - use bedrock/ prefix
 export EMBEDDING_MODEL=bedrock/amazon.titan-embed-text-v2:0
+REDISVL_VECTOR_DIMENSIONS=1024  # Must match embedding model
 
 # Deprecated - unprefixed names emit a warning
 export EMBEDDING_MODEL=amazon.titan-embed-text-v2:0  # Works but shows deprecation warning
 ```
 
 **Supported Bedrock embedding models:**
-- `bedrock/amazon.titan-embed-text-v2:0` (1024 dimensions, recommended)
-- `bedrock/amazon.titan-embed-text-v1` (1536 dimensions)
-- `bedrock/cohere.embed-english-v3` (1024 dimensions)
-- `bedrock/cohere.embed-multilingual-v3` (1024 dimensions)
+
+| Model ID | Dimensions | Description |
+|----------|------------|-------------|
+| `bedrock/amazon.titan-embed-text-v2:0` | 1024 | Latest Titan (recommended) |
+| `bedrock/amazon.titan-embed-text-v1` | 1536 | Original Titan |
+| `bedrock/cohere.embed-english-v3` | 1024 | English-focused |
+| `bedrock/cohere.embed-multilingual-v3` | 1024 | Multilingual |
+
+#### Enabling Bedrock Models
+
+Before using a Bedrock model, enable it in the AWS Console:
+
+1. Navigate to **Amazon Bedrock** in the AWS Console
+2. Select **Model access** from the left navigation
+3. Click **Manage model access**
+4. Enable the models you need
+5. Wait for access to be granted (usually immediate for Amazon models)
 
 #### IAM Permissions
 
@@ -193,7 +221,8 @@ Your IAM role/user needs these permissions:
       "Effect": "Allow",
       "Action": [
         "bedrock:InvokeModel",
-        "bedrock:InvokeModelWithResponseStream"
+        "bedrock:InvokeModelWithResponseStream",
+        "bedrock:ListFoundationModels"
       ],
       "Resource": [
         "arn:aws:bedrock:*::foundation-model/anthropic.claude-*",
@@ -206,13 +235,27 @@ Your IAM role/user needs these permissions:
 
 #### Docker Configuration
 
-When running in Docker, pass AWS credentials:
+The Docker image supports two build targets:
+
+- **`standard`** (default): OpenAI/Anthropic support only
+- **`aws`**: Includes AWS Bedrock support
+
+```bash
+# Build AWS-enabled image
+docker build --target aws -t agent-memory-server:aws .
+
+# Or with Docker Compose
+DOCKER_TARGET=aws docker-compose up --build
+```
+
+When running, pass AWS credentials:
 
 ```bash
 docker run -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_REGION_NAME \
   -e GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0 \
   -e EMBEDDING_MODEL=bedrock/amazon.titan-embed-text-v2:0 \
-  agent-memory-server
+  -e REDISVL_VECTOR_DIMENSIONS=1024 \
+  agent-memory-server:aws
 ```
 
 Or mount credentials:
@@ -221,7 +264,26 @@ Or mount credentials:
 docker run -v ~/.aws:/root/.aws:ro \
   -e AWS_PROFILE=my-profile \
   -e AWS_REGION_NAME=us-east-1 \
-  agent-memory-server
+  agent-memory-server:aws
+```
+
+#### Complete Example
+
+Full Bedrock stack (keep all AI operations within AWS):
+
+```bash
+# AWS credentials
+export AWS_REGION_NAME=us-east-1
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+
+# Embeddings (bedrock/ prefix required)
+export EMBEDDING_MODEL=bedrock/amazon.titan-embed-text-v2:0
+export REDISVL_VECTOR_DIMENSIONS=1024
+
+# Generation (no prefix needed)
+export GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
+export FAST_MODEL=anthropic.claude-3-5-haiku-20241022-v1:0
 ```
 
 ### Ollama (Local Models)
