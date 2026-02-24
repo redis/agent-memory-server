@@ -840,6 +840,29 @@ async def delete_long_term_memory(
     return AckResponse(status=f"ok, deleted {count} memories")
 
 
+@router.post("/v1/long-term-memory/compact", response_model=AckResponse)
+async def compact_long_term_memories_endpoint(
+    namespace: str | None = Query(default=None),
+    user_id: str | None = Query(default=None),
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """
+    Compact long-term memories by merging hash-based and semantic duplicates.
+
+    Args:
+        namespace: Optional namespace filter
+        user_id: Optional user ID filter
+    """
+    if not settings.long_term_memory:
+        raise HTTPException(status_code=400, detail="Long-term memory is disabled")
+
+    remaining = await long_term_memory.compact_long_term_memories(
+        namespace=namespace,
+        user_id=user_id,
+    )
+    return AckResponse(status=f"ok, {remaining} memories remaining after compaction")
+
+
 @router.get("/v1/long-term-memory/{memory_id}", response_model=MemoryRecord)
 async def get_long_term_memory(
     memory_id: str,
