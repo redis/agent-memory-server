@@ -1471,10 +1471,13 @@ async def deduplicate_by_semantic_search(
         from agent_memory_server.filters import UserId
 
         user_id_filter = UserId(eq=user_id or memory.user_id)
-    if session_id or memory.session_id:
+    # Only filter by session_id if explicitly provided — do NOT fall back to
+    # memory.session_id.  Semantic dedup must search across sessions so that
+    # compaction can merge identical memories created in different sessions.
+    if session_id:
         from agent_memory_server.filters import SessionId
 
-        session_id_filter = SessionId(eq=session_id or memory.session_id)
+        session_id_filter = SessionId(eq=session_id)
 
     # Use the vectorstore adapter for semantic search
     # TODO: Paginate through results?
@@ -1574,13 +1577,35 @@ async def promote_working_memory_to_long_term(
     if settings.enable_discrete_memory_extraction and unextracted_messages:
         # Check if we're not in post-extraction debounce
         if await should_extract_session_thread(session_id, redis):
-            # Schedule trailing-edge extraction (runs after debounce period of inactivity)
-            await schedule_trailing_extraction(
-                session_id=session_id,
-                namespace=namespace,
-                user_id=user_id,
-                redis=redis,
-            )
+            if settings.use_docket:
+                # When using Docket, schedule via the queue for worker processing
+                await schedule_trailing_extraction(
+                    session_id=session_id,
+                    namespace=namespace,
+                    user_id=user_id,
+                    redis=redis,
+                )
+            else:
+                # When running in-process (no worker), run extraction inline
+                # with a short debounce sleep. This is already in a background
+                # task so the sleep won't block the HTTP response.
+                import asyncio
+
+                debounce = settings.extraction_debounce_seconds
+                logger.info(
+                    f"Running inline extraction for session {session_id} "
+                    f"(debounce: {debounce}s)"
+                )
+                await asyncio.sleep(debounce)
+                extraction_count = await run_delayed_extraction(
+                    session_id=session_id,
+                    namespace=namespace,
+                    user_id=user_id,
+                )
+                logger.info(
+                    f"Inline extraction completed for session {session_id}: "
+                    f"{extraction_count} memories extracted"
+                )
         else:
             logger.info(
                 f"Skipping extraction scheduling for session {session_id} - in post-extraction debounce"
