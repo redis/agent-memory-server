@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Ensure uv is in PATH
+export PATH="$HOME/.local/bin:$PATH"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -69,6 +72,15 @@ until curl -s http://localhost:8000/v1/health > /dev/null 2>&1; do
 done
 echo -e "${GREEN}Memory Server is ready!${NC}"
 
+# Start MCP Server (SSE mode for workbench browser client)
+echo -e "${YELLOW}Starting MCP Server (SSE mode on port 9000)...${NC}"
+cd /workspace
+nohup uv run agent-memory mcp --mode sse --port 9000 --task-backend=asyncio > /tmp/ams-logs/mcp-server.log 2>&1 &
+echo $! > /tmp/ams-logs/mcp-server.pid
+# Give MCP server a moment to bind
+sleep 3
+echo -e "${GREEN}MCP Server started!${NC}"
+
 # Start Workbench UI if it exists
 if [ -d "/workspace/workbench" ] && [ -f "/workspace/workbench/package.json" ]; then
     echo -e "${YELLOW}Starting Workbench UI...${NC}"
@@ -113,7 +125,8 @@ echo -e "${GREEN}  All services started successfully!${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 echo -e "  ${BLUE}Workbench UI:${NC}    http://localhost:5173  (or check VS Code Ports panel)"
-echo -e "  ${BLUE}Memory Server:${NC}   http://localhost:8000"
+echo -e "  ${BLUE}Memory Server:${NC}   http://localhost:8000  (REST API)"
+echo -e "  ${BLUE}MCP Server:${NC}      http://localhost:9000  (SSE transport)"
 echo -e "  ${BLUE}API Docs:${NC}        http://localhost:8000/docs"
 echo -e "  ${BLUE}Redis Insight:${NC}   http://localhost:28001"
 echo -e "  ${BLUE}Redis:${NC}           localhost:26379"
@@ -125,5 +138,6 @@ echo -e "  claude --mcp-config /workspace/.devcontainer/mcp-config.json"
 echo ""
 echo -e "${YELLOW}To view logs:${NC}"
 echo -e "  tail -f /tmp/ams-logs/memory-server.log"
+echo -e "  tail -f /tmp/ams-logs/mcp-server.log"
 echo -e "  tail -f /tmp/ams-logs/workbench-ui.log"
 echo ""
