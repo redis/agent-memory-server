@@ -1,127 +1,118 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
 
-@layer base {
-  :root {
-    /* Base colors - Dark theme */
-    --background: 0 0% 3%;
-    --foreground: 0 0% 98%;
+@theme {
+  --font-sans: 'Geist', 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', 'Space Mono', monospace;
 
-    /* Card colors */
-    --card: 0 0% 6%;
-    --card-foreground: 0 0% 98%;
+  /* Redis brand */
+  --color-redis-red: #ff4438;
+  --color-redis-red-dark: #351d22;
 
-    /* Popover colors */
-    --popover: 0 0% 6%;
-    --popover-foreground: 0 0% 98%;
+  /* Redis blues */
+  --color-redis-blue-01: #364dd9;
+  --color-redis-blue-02: #3044bf;
+  --color-redis-blue-03: #405bff;
+  --color-redis-blue-04: #16284f;
 
-    /* Primary - Redis Red */
-    --primary: 0 90% 50%;
-    --primary-foreground: 0 0% 100%;
+  /* Redis midnight */
+  --color-redis-midnight: #091a23;
 
-    /* Secondary */
-    --secondary: 0 0% 15%;
-    --secondary-foreground: 0 0% 98%;
+  /* Redis dusk scale */
+  --color-redis-dusk-01: #f3f3f3;
+  --color-redis-dusk-02: #d5d8db;
+  --color-redis-dusk-03: #b6bcc2;
+  --color-redis-dusk-04: #8e979e;
+  --color-redis-dusk-05: #5f6b74;
+  --color-redis-dusk-06: #3c4a54;
+  --color-redis-dusk-07: #263640;
+  --color-redis-dusk-08: #163040;
+  --color-redis-dusk-09: #0d2230;
 
-    /* Muted */
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 64%;
+  /* Redis accent colors */
+  --color-redis-green: #3cde67;
+  --color-redis-lime: #5bc69b;
+  --color-redis-yellow-300: #ffcc00;
+  --color-redis-link: rgb(64, 165, 205);
 
-    /* Accent */
-    --accent: 0 0% 15%;
-    --accent-foreground: 0 0% 98%;
+  /* Radius */
+  --radius-redis-xs: 3px;
+  --radius-redis-sm: 5px;
+  --radius-redis-md: 10px;
 
-    /* Destructive */
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-
-    /* Border and input */
-    --border: 0 0% 15%;
-    --input: 0 0% 15%;
-    --ring: 0 90% 50%;
-
-    /* Radius */
-    --radius: 0.5rem;
-
-    /* Memory type colors */
-    --semantic: 210 100% 56%;
-    --semantic-foreground: 0 0% 100%;
-    --episodic: 142 76% 36%;
-    --episodic-foreground: 0 0% 100%;
-    --message: 262 83% 58%;
-    --message-foreground: 0 0% 100%;
-
-    /* Status colors */
-    --success: 142 76% 36%;
-    --warning: 38 92% 50%;
-    --error: 0 84% 60%;
-    --info: 199 89% 48%;
-  }
+  /* Memory type colors */
+  --color-memory-semantic: #3b82f6;
+  --color-memory-episodic: #22c55e;
+  --color-memory-message: #a855f7;
 }
 
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
+/* Base styles */
+html {
+  color-scheme: dark;
 }
 
-@layer utilities {
-  /* Custom scrollbar styles */
-  .scrollbar-thin {
-    scrollbar-width: thin;
-    scrollbar-color: hsl(var(--muted)) transparent;
-  }
-
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-
-  .scrollbar-thin::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: hsl(var(--muted));
-    border-radius: 3px;
-  }
-
-  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background-color: hsl(var(--muted-foreground));
-  }
-
-  /* Memory type badge utilities */
-  .badge-semantic {
-    @apply bg-semantic/20 text-semantic border-semantic/30;
-  }
-
-  .badge-episodic {
-    @apply bg-episodic/20 text-episodic border-episodic/30;
-  }
-
-  .badge-message {
-    @apply bg-message/20 text-message border-message/30;
-  }
-
-  /* Animation utilities */
-  .animate-in {
-    animation: fade-in 0.15s ease-out;
-  }
-
-  .animate-slide-in {
-    animation: slide-in-from-bottom 0.2s ease-out;
-  }
+body {
+  @apply bg-[#07151C] text-redis-dusk-01 font-sans antialiased;
+  min-height: 100vh;
 }
 
-/* Mermaid diagram styles */
-.mermaid {
-  @apply w-full overflow-x-auto;
+/* Scrollbar */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-redis-dusk-06) transparent;
 }
 
-.mermaid svg {
-  @apply mx-auto;
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: var(--color-redis-dusk-06);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-redis-dusk-05);
+}
+
+/* Memory type badges */
+.badge-semantic {
+  background-color: color-mix(in srgb, var(--color-memory-semantic) 20%, transparent);
+  color: var(--color-memory-semantic);
+  border-color: color-mix(in srgb, var(--color-memory-semantic) 30%, transparent);
+}
+
+.badge-episodic {
+  background-color: color-mix(in srgb, var(--color-memory-episodic) 20%, transparent);
+  color: var(--color-memory-episodic);
+  border-color: color-mix(in srgb, var(--color-memory-episodic) 30%, transparent);
+}
+
+.badge-message {
+  background-color: color-mix(in srgb, var(--color-memory-message) 20%, transparent);
+  color: var(--color-memory-message);
+  border-color: color-mix(in srgb, var(--color-memory-message) 30%, transparent);
+}
+
+/* Animations */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-in-from-bottom {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-in {
+  animation: fade-in 0.15s ease-out;
+}
+
+.animate-slide-in {
+  animation: slide-in-from-bottom 0.2s ease-out;
 }
