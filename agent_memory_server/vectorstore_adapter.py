@@ -338,8 +338,6 @@ class VectorStoreAdapter(ABC):
         if isinstance(field_value, list):
             return field_value
         if isinstance(field_value, str):
-            if not field_value:
-                return []
             # Prefer pipe separator (langchain-redis default) over comma (legacy)
             if "|" in field_value:
                 return field_value.split("|")

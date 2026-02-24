@@ -267,6 +267,9 @@ def redis_container(request):
         compose.start()
     except Exception:
         # Docker compose failed (e.g., image pull failed)
+        # Attempt cleanup to avoid leaking containers/resources
+        with contextlib.suppress(Exception):
+            compose.stop()
         yield None
         return
 
@@ -324,6 +327,17 @@ def async_redis_client(use_test_redis_connection):
     An async Redis client that uses the same connection as other test fixtures.
     """
     return use_test_redis_connection
+
+
+@pytest.fixture()
+def requires_redis(async_redis_client):
+    """Fixture that skips tests when Redis is not available.
+
+    Use this fixture in tests that require a real Redis connection.
+    """
+    if async_redis_client is None:
+        pytest.skip("Redis is not available - skipping integration test")
+    return async_redis_client
 
 
 @pytest.fixture()

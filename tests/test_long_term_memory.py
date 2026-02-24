@@ -972,7 +972,9 @@ class TestLongTermMemoryIntegration:
         assert len(results.memories) == 2
 
     @pytest.mark.asyncio
-    async def test_search_with_topics_filter_issue_156(self, async_redis_client):
+    async def test_search_with_topics_filter_issue_156(
+        self, async_redis_client, requires_redis
+    ):
         """Test that topics filter works correctly - reproduces GitHub issue #156.
 
         Issue #156: Searching long-term memory with a topics filter returns a 500
