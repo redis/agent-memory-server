@@ -5,6 +5,7 @@ from typing import Any
 import ulid
 from mcp.server.fastmcp import FastMCP as _FastMCPBase
 
+from agent_memory_server import working_memory as working_memory_core
 from agent_memory_server.api import (
     create_long_term_memory as core_create_long_term_memory,
     delete_long_term_memory as core_delete_long_term_memory,
@@ -14,7 +15,6 @@ from agent_memory_server.api import (
     search_long_term_memory as core_search_long_term_memory,
     update_long_term_memory as core_update_long_term_memory,
 )
-from agent_memory_server import working_memory as working_memory_core
 from agent_memory_server.config import settings
 from agent_memory_server.dependencies import get_background_tasks
 from agent_memory_server.filters import (
