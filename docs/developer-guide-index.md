@@ -1,6 +1,6 @@
 # Developer Guide
 
-Learn how to integrate memory into your AI applications. This guide covers integration patterns, memory types, extraction strategies, and production considerations.
+Learn how to integrate memory into your AI applications. This guide covers integration patterns, memory types, extraction strategies, and memory lifecycle management.
 
 ## Core Concepts
 
@@ -44,13 +44,9 @@ Learn how to integrate memory into your AI applications. This guide covers integ
 
 | Topic | Description |
 |-------|-------------|
+| [Summary Views](summary-views.md) | Pre-computed memory summaries for efficient context |
 | [Memory Lifecycle](memory-lifecycle.md) | How memories are created, updated, and managed over time |
-| [LLM Providers](llm-providers.md) | Configure OpenAI, Anthropic, AWS Bedrock, Ollama, and more |
-| [Embedding Providers](embedding-providers.md) | Configure embedding models for semantic search |
-| [Vector Store Backends](vector-store-backends.md) | Configure Redis, Pinecone, Chroma, or other backends |
-| [AWS Bedrock](aws-bedrock.md) | AWS-specific setup for Bedrock models |
-| [Authentication](authentication.md) | OAuth2/JWT and token-based authentication |
-| [Security](security-custom-prompts.md) | Security considerations for custom prompts |
+| [LangChain Integration](langchain-integration.md) | Use memory with LangChain agents and chains |
 
 ## Where to Start
 
@@ -59,3 +55,5 @@ Learn how to integrate memory into your AI applications. This guide covers integ
 **Need to understand the data model?** Read [Working Memory](working-memory.md) and [Long-term Memory](long-term-memory.md).
 
 **Configuring extraction behavior?** See [Memory Extraction Strategies](memory-extraction-strategies.md).
+
+**Looking for server configuration?** See the [Operations Guide](operations-guide-index.md) for authentication, LLM providers, and deployment.
