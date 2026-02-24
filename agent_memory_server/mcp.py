@@ -15,6 +15,9 @@ from agent_memory_server.api import (
     search_long_term_memory as core_search_long_term_memory,
     update_long_term_memory as core_update_long_term_memory,
 )
+from agent_memory_server.long_term_memory import (
+    compact_long_term_memories as core_compact_long_term_memories,
+)
 from agent_memory_server.config import settings
 from agent_memory_server.dependencies import get_background_tasks
 from agent_memory_server.filters import (
@@ -666,9 +669,13 @@ async def memory_prompt(
             context_window_max=context_window_max,
         )
 
+    # Do NOT pass session_id to the long-term search — it scopes working
+    # memory retrieval, not the long-term memory search.  The REST API keeps
+    # these separate (session vs long_term_search); the MCP flat parameter
+    # space must not conflate them or long-term memories from other sessions
+    # will be excluded.
     search_payload = SearchRequest(
         text=query,
-        session_id=session_id,
         namespace=namespace,
         topics=topics,
         entities=entities,
@@ -1087,3 +1094,50 @@ async def delete_long_term_memories(
         raise ValueError("Long-term memory is disabled")
 
     return await core_delete_long_term_memory(memory_ids=memory_ids)
+
+
+@mcp_app.tool()
+async def compact_long_term_memories(
+    namespace: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+) -> AckResponse:
+    """
+    Compact long-term memories by merging hash-based and semantic duplicates.
+
+    This tool deduplicates stored memories in two ways:
+    1. Hash-based: Removes exact content duplicates (same memory_hash)
+    2. Semantic: Merges memories with very similar meaning but different text
+
+    Use this tool when you suspect duplicate or near-duplicate memories exist,
+    or periodically to keep the memory store clean and efficient.
+
+    Args:
+        namespace: Optional namespace filter to restrict compaction scope
+        user_id: Optional user ID filter to restrict compaction scope
+        session_id: Optional session ID filter to restrict compaction scope
+
+    Returns:
+        Acknowledgment with the number of memories remaining after compaction
+
+    Example:
+    ```python
+    # Compact all memories
+    compact_long_term_memories()
+
+    # Compact memories for a specific user
+    compact_long_term_memories(user_id="user_123")
+
+    # Compact memories in a specific namespace
+    compact_long_term_memories(namespace="work_projects")
+    ```
+    """
+    if not settings.long_term_memory:
+        raise ValueError("Long-term memory is disabled")
+
+    remaining = await core_compact_long_term_memories(
+        namespace=namespace,
+        user_id=user_id,
+        session_id=session_id,
+    )
+    return AckResponse(status=f"ok, {remaining} memories remaining after compaction")
