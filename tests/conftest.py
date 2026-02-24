@@ -69,6 +69,11 @@ def mock_llm_client():
 @pytest.fixture(autouse=True)
 async def search_index(async_redis_client):
     """Create a Redis connection pool for testing"""
+    if async_redis_client is None:
+        # Redis not available - skip for unit tests
+        yield
+        return
+
     # Reset the cached index in redis_utils_module
     redis_utils_module._index = None
 
@@ -78,6 +83,11 @@ async def search_index(async_redis_client):
 @pytest.fixture(autouse=True)
 async def working_memory_index(async_redis_client):
     """Ensure working memory search index exists for session listing tests."""
+    if async_redis_client is None:
+        # Redis not available - skip for unit tests
+        yield
+        return
+
     await ensure_working_memory_index(async_redis_client)
 
     yield
@@ -216,7 +226,27 @@ def redis_container(request):
     If using xdist, create a unique Compose project for each xdist worker by
     setting COMPOSE_PROJECT_NAME. That prevents collisions on container/volume
     names.
+
+    Skips container startup if Docker is not available or returns errors.
     """
+    import subprocess
+
+    # Check if Docker is available and working
+    try:
+        result = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            # Docker not available or not working
+            yield None
+            return
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        # Docker not available
+        yield None
+        return
+
     # In xdist, the config has "workerid" in workerinput
     workerinput = getattr(request.config, "workerinput", {})
     worker_id = workerinput.get("workerid", "master")
@@ -232,7 +262,13 @@ def redis_container(request):
         compose_file_name="docker-compose.yml",
         pull=True,
     )
-    compose.start()
+
+    try:
+        compose.start()
+    except Exception:
+        # Docker compose failed (e.g., image pull failed)
+        yield None
+        return
 
     yield compose
 
@@ -244,7 +280,12 @@ def redis_url(redis_container):
     """
     Use the `DockerCompose` fixture to get host/port of the 'redis' service
     on container port 6379 (mapped to an ephemeral port on the host).
+
+    Returns None if Redis is not available (allows unit tests to run without Redis).
     """
+    if redis_container is None:
+        return None
+
     host, port = redis_container.get_service_host_and_port("redis", 6379)
 
     # On macOS, testcontainers sometimes returns 0.0.0.0 which doesn't work
@@ -292,8 +333,17 @@ def mock_async_redis_client():
 
 
 @pytest.fixture(autouse=True)
-def use_test_redis_connection(redis_url: str):
-    """Replace the Redis connection with a test one"""
+def use_test_redis_connection(redis_url):
+    """Replace the Redis connection with a test one.
+
+    If Redis is not available (redis_url is None), yields None to allow
+    unit tests that don't need Redis to run.
+    """
+    if redis_url is None:
+        # Redis not available - allow unit tests to run without Redis
+        yield None
+        return
+
     replacement_redis = AsyncRedis.from_url(redis_url)
 
     # Create a mock get_redis_conn function that always returns the replacement_redis

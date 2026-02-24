@@ -505,9 +505,10 @@ async def extract_memory_structure(
     merged_topics = memory.topics + topics if memory.topics else topics
     merged_entities = memory.entities + entities if memory.entities else entities
 
-    # Convert lists to comma-separated strings for TAG fields
-    topics_joined = ",".join(merged_topics) if merged_topics else ""
-    entities_joined = ",".join(merged_entities) if merged_entities else ""
+    # Convert lists to pipe-separated strings for TAG fields
+    # Issue #156 fix: langchain-redis uses pipe (|) as the default TAG separator
+    topics_joined = "|".join(merged_topics) if merged_topics else ""
+    entities_joined = "|".join(merged_entities) if merged_entities else ""
 
     await redis.hset(
         Keys.memory_key(memory.id),

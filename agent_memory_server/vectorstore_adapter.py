@@ -318,10 +318,14 @@ class VectorStoreAdapter(ABC):
         pass
 
     def _parse_list_field(self, field_value: Any) -> list[str]:
-        """Parse a field that might be a list, comma-separated string, or None.
+        """Parse a field that might be a list, pipe/comma-separated string, or None.
 
         Centralized here so both LangChain and Redis adapters can normalize
         metadata fields like topics/entities/extracted_from.
+
+        Issue #156 fix: langchain-redis uses pipe (|) as the default TAG separator.
+        This method now handles both pipe-separated (preferred) and comma-separated
+        (legacy) values.
 
         Args:
             field_value: Value that may be a list, string, or None
@@ -334,7 +338,12 @@ class VectorStoreAdapter(ABC):
         if isinstance(field_value, list):
             return field_value
         if isinstance(field_value, str):
-            return field_value.split(",") if field_value else []
+            if not field_value:
+                return []
+            # Prefer pipe separator (langchain-redis default) over comma (legacy)
+            if "|" in field_value:
+                return field_value.split("|")
+            return field_value.split(",")
         return []
 
     def memory_to_document(self, memory: MemoryRecord) -> Document:
