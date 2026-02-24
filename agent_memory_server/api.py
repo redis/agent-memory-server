@@ -1052,6 +1052,7 @@ async def memory_prompt(
                     )
                 )
 
+    long_term_memories = None
     if params.long_term_search:
         logger.debug(
             f"[memory_prompt] Long-term search args: {params.long_term_search}"
@@ -1110,7 +1111,14 @@ async def memory_prompt(
         )
     )
 
-    return MemoryPromptResponse(messages=_messages)
+    # Return long_term_memories if we have them, for clients that want the raw data
+    ltm_results = (
+        long_term_memories.memories
+        if long_term_memories and long_term_memories.total > 0
+        else None
+    )
+
+    return MemoryPromptResponse(messages=_messages, long_term_memories=ltm_results)
 
 
 def _validate_summary_view_keys(payload: CreateSummaryViewRequest) -> None:
