@@ -13,9 +13,9 @@ Context Protocol), switchable at runtime from the header toggle.
 ### Memory Explorer (`/`)
 
 - Full-text and semantic search across long-term memories
-- Filter by memory type (semantic, episodic, message), namespace, user, topics,
-  entities, and date ranges
-- Paginated results with a detail panel showing all memory fields
+- Filter by memory type (semantic, episodic, message) and result limit
+- Results with a detail panel showing all memory fields (topics, entities,
+  namespace, user, session, timestamps, and more)
 - **Delete** individual memories or **Clear All** in one click
 - **Deduplicate** — triggers the server's compaction logic to merge duplicate and
   semantically similar memories

@@ -19,5 +19,5 @@ export function getOpenAIClient(): OpenAI {
 }
 
 export function getModel(): string {
-  return import.meta.env.VITE_OPENAI_MODEL || 'o4-mini'
+  return import.meta.env.VITE_OPENAI_MODEL || 'gpt-4o-mini'
 }

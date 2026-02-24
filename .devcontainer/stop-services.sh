@@ -18,6 +18,16 @@ if [ -f /tmp/ams-logs/memory-server.pid ]; then
     rm -f /tmp/ams-logs/memory-server.pid
 fi
 
+# Stop MCP Server
+if [ -f /tmp/ams-logs/mcp-server.pid ]; then
+    PID=$(cat /tmp/ams-logs/mcp-server.pid)
+    if kill -0 $PID 2>/dev/null; then
+        kill $PID
+        echo -e "${GREEN}Stopped MCP Server (PID: $PID)${NC}"
+    fi
+    rm -f /tmp/ams-logs/mcp-server.pid
+fi
+
 # Stop Workbench UI
 if [ -f /tmp/ams-logs/workbench-ui.pid ]; then
     PID=$(cat /tmp/ams-logs/workbench-ui.pid)

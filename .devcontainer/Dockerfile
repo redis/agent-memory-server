@@ -2,10 +2,10 @@ FROM mcr.microsoft.com/devcontainers/python:3.12
 
 # Install Node.js 22 directly (matching working devcontainer)
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs
+    && apt-get install -y --no-install-recommends nodejs
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     redis-tools \
     jq \
     vim \

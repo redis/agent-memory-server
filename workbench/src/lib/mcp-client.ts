@@ -94,7 +94,7 @@ export class McpSseClient {
             }
           }
         } catch {
-          // ignore unparseable events
+          // ignore unparsable events
         }
       })
 

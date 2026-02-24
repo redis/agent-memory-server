@@ -21,6 +21,7 @@ export default function ExplorerPage() {
   const { backend, transport } = useBackend()
   const queryClient = useQueryClient()
   const [searchText, setSearchText] = useState('')
+  const [submittedSearch, setSubmittedSearch] = useState('')
   const [filters, setFilters] = useState({
     memory_type: '' as '' | 'semantic' | 'episodic' | 'message',
     limit: 25,
@@ -32,18 +33,16 @@ export default function ExplorerPage() {
   const {
     data: searchResults,
     isLoading,
-    refetch,
   } = useQuery({
-    queryKey: ['memories', searchText, filters, transport],
+    queryKey: ['memories', submittedSearch, filters, transport],
     queryFn: () =>
       backend.search({
-        text: searchText || undefined,
+        text: submittedSearch || undefined,
         memory_type: filters.memory_type
           ? { eq: filters.memory_type }
           : undefined,
         limit: filters.limit,
       }),
-    enabled: true,
   })
 
   const [confirmClearAll, setConfirmClearAll] = useState(false)
@@ -92,7 +91,7 @@ export default function ExplorerPage() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
-    refetch()
+    setSubmittedSearch(searchText)
   }
 
   const copyToClipboard = (text: string) => {
