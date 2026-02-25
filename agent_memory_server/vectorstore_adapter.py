@@ -318,10 +318,10 @@ class VectorStoreAdapter(ABC):
         pass
 
     def _parse_list_field(self, field_value: Any) -> list[str]:
-        """Parse a field that might be a list, comma-separated string, or None.
+        """Parse a field that might be a list, pipe/comma-separated string, or None.
 
-        Centralized here so both LangChain and Redis adapters can normalize
-        metadata fields like topics/entities/extracted_from.
+        Handles both pipe-separated (langchain-redis default) and comma-separated
+        (legacy) string values for TAG fields like topics/entities/extracted_from.
 
         Args:
             field_value: Value that may be a list, string, or None
@@ -334,7 +334,12 @@ class VectorStoreAdapter(ABC):
         if isinstance(field_value, list):
             return field_value
         if isinstance(field_value, str):
-            return field_value.split(",") if field_value else []
+            # Prefer pipe separator (langchain-redis default) over comma (legacy)
+            if "|" in field_value:
+                return [x for x in field_value.split("|") if x]
+            if field_value:
+                return [x for x in field_value.split(",") if x]
+            return []
         return []
 
     def memory_to_document(self, memory: MemoryRecord) -> Document:

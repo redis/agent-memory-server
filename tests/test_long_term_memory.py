@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from agent_memory_server.filters import Namespace, SessionId
+from agent_memory_server.filters import Entities, Namespace, SessionId, Topics
 from agent_memory_server.long_term_memory import (
     compact_long_term_memories,
     count_long_term_memories,
@@ -234,7 +234,12 @@ class TestLongTermMemory:
 
     @pytest.mark.asyncio
     async def test_extract_memory_structure(self, mock_async_redis_client):
-        """Test memory structure extraction"""
+        """Test memory structure extraction.
+
+        Issue #156 fix: Topics and entities must be stored with pipe (|) separator
+        to match langchain-redis TAG field format. Using comma separator causes
+        search filters to fail with 500 errors.
+        """
         with (
             patch(
                 "agent_memory_server.long_term_memory.get_redis_conn"
@@ -268,10 +273,10 @@ class TestLongTermMemory:
             # Check the key format - it includes the memory ID in the key structure
             assert "memory_idx:" in args[0] and "test-id" in args[0]
 
-            # Check the mapping
+            # Check the mapping - must use pipe separator to match langchain-redis
             mapping = kwargs["mapping"]
-            assert mapping["topics"] == "topic1,topic2"
-            assert mapping["entities"] == "entity1,entity2"
+            assert mapping["topics"] == "topic1|topic2"
+            assert mapping["entities"] == "entity1|entity2"
 
     @pytest.mark.asyncio
     async def test_count_long_term_memories(self, mock_async_redis_client):
@@ -965,6 +970,123 @@ class TestLongTermMemoryIntegration:
 
         assert results.total == 2, f"Expected 2 results, got {results.total}"
         assert len(results.memories) == 2
+
+    @pytest.mark.asyncio
+    async def test_search_with_topics_filter_issue_156(
+        self, async_redis_client, requires_redis
+    ):
+        """Test that topics filter works correctly - reproduces GitHub issue #156.
+
+        Issue #156: Searching long-term memory with a topics filter returns a 500
+        Internal Server Error. The same search without the topics filter works correctly.
+
+        Root cause: TAG field separator mismatch - topics were stored with comma (,)
+        separator but langchain-redis expects pipe (|) separator.
+
+        This test verifies:
+        1. Search without topics filter works (baseline)
+        2. Search with topics.any filter works (was failing with 500 error)
+        3. Search with topics.eq filter works (was failing with 500 error)
+        4. Search with entities filter works (same underlying issue)
+        """
+        # Create memories with topics stored using pipe separator (the fix)
+        # This simulates the real-world scenario from the issue where topics
+        # are stored as pipe-delimited strings like:
+        # "family|qnap-docs-reorg-phase3-log.md|home|documents|importance:2|temporal:stable"
+        long_term_memories = [
+            MemoryRecord(
+                id="issue-156-test-1",
+                text="Family photos are stored in the home documents folder",
+                session_id="issue-156-session",
+                namespace="issue-156-ns",
+                topics=["family", "home", "documents"],
+                entities=["photos", "folder"],
+            ),
+            MemoryRecord(
+                id="issue-156-test-2",
+                text="Work documents are in the office folder",
+                session_id="issue-156-session",
+                namespace="issue-156-ns",
+                topics=["work", "office", "documents"],
+                entities=["documents", "folder"],
+            ),
+            MemoryRecord(
+                id="issue-156-test-3",
+                text="Vacation memories from last summer",
+                session_id="issue-156-session",
+                namespace="issue-156-ns",
+                topics=["family", "vacation", "memories"],
+                entities=["summer", "vacation"],
+            ),
+        ]
+
+        # Index memories
+        await index_long_term_memories(
+            long_term_memories,
+            redis_client=async_redis_client,
+        )
+
+        # Test 1: Search WITHOUT topics filter (baseline - should work)
+        results_no_filter = await search_long_term_memories(
+            text="family",
+            namespace=Namespace(eq="issue-156-ns"),
+            limit=10,
+        )
+        assert (
+            results_no_filter.total >= 1
+        ), "Baseline search without topics filter failed"
+
+        # Test 2: Search WITH topics.any filter (was failing with 500 error)
+        results_topics_any = await search_long_term_memories(
+            text="family",
+            namespace=Namespace(eq="issue-156-ns"),
+            topics=Topics(any=["family"]),
+            limit=10,
+        )
+        assert results_topics_any.total >= 1, "Search with topics.any filter failed"
+        # Verify the returned memories have the expected topic
+        for memory in results_topics_any.memories:
+            assert memory.topics is not None, "Memory should have topics"
+            assert (
+                "family" in memory.topics
+            ), f"Memory topics {memory.topics} should contain 'family'"
+
+        # Test 3: Search WITH topics.eq filter (was also failing with 500 error)
+        results_topics_eq = await search_long_term_memories(
+            text="documents",
+            namespace=Namespace(eq="issue-156-ns"),
+            topics=Topics(eq="documents"),
+            limit=10,
+        )
+        assert results_topics_eq.total >= 1, "Search with topics.eq filter failed"
+        for memory in results_topics_eq.memories:
+            assert memory.topics is not None, "Memory should have topics"
+            assert (
+                "documents" in memory.topics
+            ), f"Memory topics {memory.topics} should contain 'documents'"
+
+        # Test 4: Search WITH entities filter (same underlying issue)
+        results_entities = await search_long_term_memories(
+            text="folder",
+            namespace=Namespace(eq="issue-156-ns"),
+            entities=Entities(any=["folder"]),
+            limit=10,
+        )
+        assert results_entities.total >= 1, "Search with entities filter failed"
+        for memory in results_entities.memories:
+            assert memory.entities is not None, "Memory should have entities"
+            assert (
+                "folder" in memory.entities
+            ), f"Memory entities {memory.entities} should contain 'folder'"
+
+        # Test 5: Combined topics and namespace filter (real-world scenario from issue)
+        results_combined = await search_long_term_memories(
+            text="family",
+            namespace=Namespace(eq="issue-156-ns"),
+            topics=Topics(any=["family", "vacation"]),
+            limit=10,
+        )
+        assert results_combined.total >= 1, "Combined filter search failed"
 
 
 @pytest.mark.asyncio

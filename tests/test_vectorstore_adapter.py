@@ -700,3 +700,96 @@ class TestCreateEmbeddings:
                 ModelValidationError, match="Anthropic does not provide embedding"
             ):
                 create_embeddings()
+
+
+class TestParseListField:
+    """Tests for _parse_list_field method - Issue #156 fix.
+
+    The _parse_list_field method must handle both pipe-separated (langchain-redis default)
+    and comma-separated (legacy) values for TAG fields like topics and entities.
+    """
+
+    def test_parse_list_field_with_pipe_separator(self):
+        """_parse_list_field should correctly parse pipe-separated strings.
+
+        langchain-redis uses pipe (|) as the default TAG separator.
+        """
+        mock_vectorstore = MagicMock()
+        mock_embeddings = MagicMock()
+        adapter = LangChainVectorStoreAdapter(mock_vectorstore, mock_embeddings)
+
+        # Pipe-separated string (langchain-redis default)
+        result = adapter._parse_list_field("family|home|documents")
+        assert result == ["family", "home", "documents"]
+
+    def test_parse_list_field_with_comma_separator(self):
+        """_parse_list_field should correctly parse comma-separated strings.
+
+        Legacy data may use comma separator.
+        """
+        mock_vectorstore = MagicMock()
+        mock_embeddings = MagicMock()
+        adapter = LangChainVectorStoreAdapter(mock_vectorstore, mock_embeddings)
+
+        # Comma-separated string (legacy format)
+        result = adapter._parse_list_field("family,home,documents")
+        assert result == ["family", "home", "documents"]
+
+    def test_parse_list_field_with_single_value(self):
+        """_parse_list_field should handle single values without separators."""
+        mock_vectorstore = MagicMock()
+        mock_embeddings = MagicMock()
+        adapter = LangChainVectorStoreAdapter(mock_vectorstore, mock_embeddings)
+
+        result = adapter._parse_list_field("family")
+        assert result == ["family"]
+
+    def test_parse_list_field_with_empty_string(self):
+        """_parse_list_field should return empty list for empty string."""
+        mock_vectorstore = MagicMock()
+        mock_embeddings = MagicMock()
+        adapter = LangChainVectorStoreAdapter(mock_vectorstore, mock_embeddings)
+
+        result = adapter._parse_list_field("")
+        assert result == []
+
+    def test_parse_list_field_with_none(self):
+        """_parse_list_field should return empty list for None."""
+        mock_vectorstore = MagicMock()
+        mock_embeddings = MagicMock()
+        adapter = LangChainVectorStoreAdapter(mock_vectorstore, mock_embeddings)
+
+        result = adapter._parse_list_field(None)
+        assert result == []
+
+    def test_parse_list_field_with_list_input(self):
+        """_parse_list_field should return list as-is if already a list."""
+        mock_vectorstore = MagicMock()
+        mock_embeddings = MagicMock()
+        adapter = LangChainVectorStoreAdapter(mock_vectorstore, mock_embeddings)
+
+        result = adapter._parse_list_field(["family", "home"])
+        assert result == ["family", "home"]
+
+    def test_parse_list_field_with_special_characters(self):
+        """_parse_list_field should handle topics with special characters like colons."""
+        mock_vectorstore = MagicMock()
+        mock_embeddings = MagicMock()
+        adapter = LangChainVectorStoreAdapter(mock_vectorstore, mock_embeddings)
+
+        # Topics with special characters (from GitHub issue #156)
+        result = adapter._parse_list_field("family|importance:2|temporal:stable")
+        assert result == ["family", "importance:2", "temporal:stable"]
+
+    def test_parse_list_field_prefers_pipe_over_comma(self):
+        """_parse_list_field should prefer pipe separator when both are present.
+
+        This handles edge cases where a topic value might contain a comma.
+        """
+        mock_vectorstore = MagicMock()
+        mock_embeddings = MagicMock()
+        adapter = LangChainVectorStoreAdapter(mock_vectorstore, mock_embeddings)
+
+        # String with both pipe and comma - should split by pipe
+        result = adapter._parse_list_field("topic,with,commas|another_topic")
+        assert result == ["topic,with,commas", "another_topic"]
