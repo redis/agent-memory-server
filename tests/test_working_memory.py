@@ -612,7 +612,7 @@ class TestWorkingMemory:
         cursor = 0
         while True:
             cursor, keys = await async_redis_client.scan(
-                cursor=cursor, match="working_memory:*", count=100
+                cursor=cursor, match="working-memory:*", count=100
             )
             if keys:
                 await async_redis_client.delete(*keys)

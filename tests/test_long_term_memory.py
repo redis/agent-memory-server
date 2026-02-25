@@ -271,7 +271,7 @@ class TestLongTermMemory:
             args, kwargs = mock_redis.hset.call_args
 
             # Check the key format - it includes the memory ID in the key structure
-            assert "memory_idx:" in args[0] and "test-id" in args[0]
+            assert "memory-idx:" in args[0] and "test-id" in args[0]
 
             # Check the mapping - must use pipe separator to match langchain-redis
             mapping = kwargs["mapping"]

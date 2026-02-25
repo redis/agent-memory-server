@@ -78,7 +78,7 @@ class Keys:
     ) -> str:
         """Get the working memory key for a session."""
         # Build key components, filtering out None values
-        key_parts = ["working_memory"]
+        key_parts = ["working-memory"]
 
         if namespace:
             key_parts.append(namespace)
@@ -98,9 +98,9 @@ class Keys:
     @staticmethod
     def auth_token_key(token_hash: str) -> str:
         """Get the auth token key for a hashed token."""
-        return f"auth_token:{token_hash}"
+        return f"auth-token:{token_hash}"
 
     @staticmethod
     def auth_tokens_list_key() -> str:
         """Get the key for the list of all auth tokens."""
-        return "auth_tokens:list"
+        return "auth-tokens:list"

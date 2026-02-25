@@ -23,8 +23,8 @@ from agent_memory_server.utils.redis import get_redis_conn
 logger = logging.getLogger(__name__)
 
 # Redis keys for migration status (shared across workers, persists across restarts)
-MIGRATION_STATUS_KEY = "working_memory:migration:complete"
-MIGRATION_REMAINING_KEY = "working_memory:migration:remaining"
+MIGRATION_STATUS_KEY = "working-memory:migration:complete"
+MIGRATION_REMAINING_KEY = "working-memory:migration:remaining"
 
 
 async def check_and_set_migration_status(redis_client: Redis | None = None) -> bool:
@@ -62,7 +62,7 @@ async def check_and_set_migration_status(redis_client: Redis | None = None) -> b
             )
             return True
 
-    # Scan for working_memory:* keys of type STRING only
+    # Scan for working-memory:* keys of type STRING only
     # This is much faster than scanning all keys and calling TYPE on each
     cursor = 0
     string_keys_found = 0
@@ -71,7 +71,7 @@ async def check_and_set_migration_status(redis_client: Redis | None = None) -> b
         while True:
             # Use _type="string" to only get string keys directly
             cursor, keys = await redis_client.scan(
-                cursor=cursor, match="working_memory:*", count=1000, _type="string"
+                cursor=cursor, match="working-memory:*", count=1000, _type="string"
             )
 
             if keys:

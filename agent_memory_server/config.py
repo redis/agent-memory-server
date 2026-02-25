@@ -374,7 +374,7 @@ class Settings(BaseSettings):
     )
 
     # RedisVL configuration (used by default Redis factory)
-    redisvl_index_name: str = "memory_records"
+    redisvl_index_name: str = "memory-records"
 
     # The server indexes messages in long-term memory by default. If this
     # setting is enabled, we also extract discrete memories from message text
@@ -400,13 +400,13 @@ class Settings(BaseSettings):
     # TODO: Adapt to memory database settings
     redisvl_distance_metric: str = "COSINE"
     redisvl_vector_dimensions: str = "1536"
-    redisvl_index_prefix: str = "memory_idx"
+    redisvl_index_prefix: str = "memory-idx"
     redisvl_indexing_algorithm: str = "HNSW"
 
     # Working Memory Index Settings
     # Used for listing sessions via Redis Search instead of sorted sets
-    working_memory_index_name: str = "working_memory_idx"
-    working_memory_index_prefix: str = "working_memory:"
+    working_memory_index_name: str = "working-memory-idx"
+    working_memory_index_prefix: str = "working-memory:"
 
     # Deduplication Settings (Store-Time)
     # Distance threshold for semantic similarity when deduplicating at store time
