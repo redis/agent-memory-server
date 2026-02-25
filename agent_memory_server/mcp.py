@@ -227,7 +227,8 @@ class FastMCP(_FastMCPBase):
         from agent_memory_server.utils.redis import get_redis_conn
 
         await get_redis_conn()
-        # Enable stateless mode only for streamable-http transport
+        # Must be set before streamable_http_app() — the session manager
+        # reads this flag at creation time and caches it.
         self.settings.stateless_http = True
 
         app = self.streamable_http_app()
