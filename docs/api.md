@@ -515,8 +515,8 @@ Response containing working memory
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `messages` | array[MemoryMessage] | No | Conversation messages (role/content pairs) |
-| `memories` | array[MemoryRecord \| ClientMemoryRecord] | No | Structured memory records for promotion to long-term storage |
+| `messages` | array\[MemoryMessage] | No | Conversation messages (role/content pairs) |
+| `memories` | array\[MemoryRecord \| ClientMemoryRecord] | No | Structured memory records for promotion to long-term storage |
 | `data` | object \| null | No | Arbitrary JSON data storage (key-value pairs) |
 | `context` | string \| null | No | Summary of past session messages if server has auto-summariz |
 | `user_id` | string \| null | No | Optional user ID for the working memory |
@@ -581,13 +581,13 @@ A memory record
 | `updated_at` | string | No | Datetime when the memory was last updated |
 | `pinned` | boolean | No | Whether this memory is pinned and should not be auto-deleted |
 | `access_count` | integer | No | Number of times this memory has been accessed (best-effort,  |
-| `topics` | array[string] \| null | No | Optional topics for the memory record |
-| `entities` | array[string] \| null | No | Optional entities for the memory record |
+| `topics` | array\[string] \| null | No | Optional topics for the memory record |
+| `entities` | array\[string] \| null | No | Optional entities for the memory record |
 | `memory_hash` | string \| null | No | Hash representation of the memory for deduplication |
 | `discrete_memory_extracted` | enum: `t`, `f` | No | Whether memory extraction has run for this memory |
 | `memory_type` | agent_memory_server__models__MemoryTypeEnum | No | Type of memory |
 | `persisted_at` | string \| null | No | Server-assigned timestamp when memory was persisted to long- |
-| `extracted_from` | array[string] \| null | No | List of message IDs that this memory was extracted from |
+| `extracted_from` | array\[string] \| null | No | List of message IDs that this memory was extracted from |
 | `event_date` | string \| null | No | Date/time when the event described in this memory occurred ( |
 | `extraction_strategy` | string | No | Memory extraction strategy used when this was promoted from  |
 | `extraction_strategy_config` | object | No | Configuration for the extraction strategy used |
@@ -607,7 +607,7 @@ Payload for editing a memory record
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `text` | string | null | No | Updated text content for the memory |
+| `text` | string \| null | No | Updated text content for the memory |
 | `topics` | array\[string] \| null | No | Updated topics for the memory |
 | `entities` | array\[string] \| null | No | Updated entities for the memory |
 | `memory_type` | agent_memory_server__models__MemoryTypeEnum \| null | No | Updated memory type (semantic, episodic, message) |
@@ -758,7 +758,7 @@ of all partitions for a SummaryView.
 | `id` | string | Yes | Unique task identifier (client or server generated) |
 | `type` | TaskTypeEnum | Yes | Type of task, e.g. summary_view_full_run |
 | `status` | TaskStatusEnum | No | Current task status |
-| `view_id` | string | null | No | Associated SummaryView ID, if applicable |
+| `view_id` | string \| null | No | Associated SummaryView ID, if applicable |
 | `created_at` | string | No | When the task record was created |
 | `started_at` | string \| null | No | When execution of the task actually started |
 | `completed_at` | string \| null | No | When execution of the task finished (success or failure) |
