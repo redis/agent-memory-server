@@ -177,14 +177,67 @@ class FastMCP(_FastMCPBase):
             uvicorn.Config(app, host="0.0.0.0", port=int(self.settings.port))
         ).serve()
 
+    def streamable_http_app(self):
+        """Return a Starlette app for streamable-http with namespace routing."""
+        from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+        from starlette.applications import Starlette
+        from starlette.requests import Request
+        from starlette.routing import Route
+
+        if self._session_manager is None:
+            self._session_manager = StreamableHTTPSessionManager(
+                app=self._mcp_server,
+                event_store=self._event_store,
+                retry_interval=self._retry_interval,
+                json_response=self.settings.json_response,
+                stateless=self.settings.stateless_http,
+                security_settings=self.settings.transport_security,
+            )
+
+        session_manager = self._session_manager
+        mcp_instance = self
+
+        class _NamespaceAwareHandler:
+            """ASGI handler that captures request for namespace extraction."""
+
+            async def __call__(self, scope, receive, send):
+                request = Request(scope, receive, send)
+                mcp_instance._current_request = request
+                try:
+                    await session_manager.handle_request(scope, receive, send)
+                finally:
+                    mcp_instance._current_request = None
+
+        handler = _NamespaceAwareHandler()
+        path = self.settings.streamable_http_path
+
+        return Starlette(
+            debug=self.settings.debug,
+            routes=[
+                Route(path, endpoint=handler),
+                Route(f"/{{namespace}}{path}", endpoint=handler),
+            ],
+            lifespan=lambda app: session_manager.run(),
+        )
+
     async def run_streamable_http_async(self):
         """Start streamable HTTP MCP server."""
+        import uvicorn
+
         from agent_memory_server.utils.redis import get_redis_conn
 
         await get_redis_conn()
         # Enable stateless mode only for streamable-http transport
         self.settings.stateless_http = True
-        return await super().run_streamable_http_async()
+
+        app = self.streamable_http_app()
+        config = uvicorn.Config(
+            app,
+            host=self.settings.host,
+            port=int(self.settings.port),
+            log_level=self.settings.log_level.lower(),
+        )
+        await uvicorn.Server(config).serve()
 
     async def run_stdio_async(self):
         """Start STDIO MCP server."""

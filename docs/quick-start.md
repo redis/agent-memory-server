@@ -301,13 +301,16 @@ Add to your Claude Desktop config:
 
 Now Claude can use memory tools directly in conversations!
 
-### Alternative: SSE Mode (Advanced)
+### Alternative: SSE or Streamable HTTP Mode (Advanced)
 
-For web-based MCP clients, you can use SSE mode, but this requires manually starting the server:
+For web-based MCP clients, you can use SSE or streamable HTTP mode, but this requires manually starting the server:
 
 ```bash
-# Only needed for SSE mode (development)
+# SSE mode (development)
 uv run agent-memory mcp --mode sse --port 9000
+
+# Streamable HTTP mode (suited for network deployments, e.g. Kubernetes)
+uv run agent-memory mcp --mode streamable-http --port 9000
 ```
 
 **Recommendation**: Use stdio mode with Claude Desktop as it's much simpler to set up.
@@ -393,11 +396,14 @@ uv run agent-memory task-worker --concurrency 5 &
 uv run agent-memory task-worker --concurrency 5 &
 ```
 
-3. **Start MCP server (if using SSE mode):**
+3. **Start MCP server (if using SSE or streamable HTTP mode):**
 
 ```bash
-# Production MCP server (uses Docket backend)
+# Production MCP server — SSE (uses Docket backend)
 uv run agent-memory mcp --mode sse --port 9000 --task-backend docket
+
+# Production MCP server — streamable HTTP (uses Docket backend)
+uv run agent-memory mcp --mode streamable-http --port 9000 --task-backend docket
 ```
 
 4. **Enable authentication:**
@@ -463,7 +469,7 @@ services:
       - "9000:9000"
     environment:
       - REDIS_URL=redis://redis:6379
-    command: uv run agent-memory mcp --mode sse --port 9000 --task-backend docket
+    command: uv run agent-memory mcp --mode streamable-http --port 9000 --task-backend docket
     depends_on:
       - redis
 
@@ -494,7 +500,8 @@ redis-cli -h localhost -p 6379
 | **Production API** | Production | `uv run agent-memory api` + workers |
 | **High-scale deployment** | Production | `uv run agent-memory api` + multiple workers |
 | **Claude Desktop MCP** | Either | `uv run agent-memory mcp` (stdio mode, asyncio backend) |
-| **Web MCP clients** | Either | `uv run agent-memory mcp --mode sse [--task-backend docket]` |
+| **Web MCP clients (SSE)** | Either | `uv run agent-memory mcp --mode sse [--task-backend docket]` |
+| **Web MCP clients (HTTP)** | Either | `uv run agent-memory mcp --mode streamable-http [--task-backend docket]` |
 
 **Recommendation**: Start with the asyncio backend (`--task-backend asyncio`) for simple development runs, then rely on the default Docket backend for the API in production, and enable `--task-backend=docket` for MCP when you want shared workers.
 
