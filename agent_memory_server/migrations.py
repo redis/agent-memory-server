@@ -205,16 +205,16 @@ async def migrate_redis_key_naming_4(
             if dry_run:
                 renamed += len(keys)
             else:
-                # Batch rename using pipeline
+                # Batch rename using pipeline with RENAMENX for idempotency
                 for i in range(0, len(keys), batch_size):
                     batch = keys[i : i + batch_size]
                     pipe = redis.pipeline()
                     for key in batch:
                         key_str = key.decode("utf-8") if isinstance(key, bytes) else key
                         new_key = key_str.replace(old_prefix, new_prefix, 1)
-                        pipe.rename(key_str, new_key)
-                    await pipe.execute()
-                    renamed += len(batch)
+                        pipe.renamenx(key_str, new_key)
+                    results = await pipe.execute()
+                    renamed += sum(1 for r in results if r)
 
             if cursor == 0:
                 break
@@ -245,13 +245,18 @@ async def migrate_redis_key_naming_4(
         f"{'Would rename' if dry_run else 'Renamed'} {counts['auth_token']} auth_token keys"
     )
 
-    # 4. Rename auth_tokens:list → auth-tokens:list (single key)
+    # 4. Rename auth_tokens:list → auth-tokens:list (single key, idempotent)
     if not dry_run:
         exists = await redis.exists("auth_tokens:list")
         if exists:
-            await redis.rename("auth_tokens:list", "auth-tokens:list")
-            counts["auth_tokens_list"] = 1
-            logger.info("Renamed auth_tokens:list → auth-tokens:list")
+            result = await redis.renamenx("auth_tokens:list", "auth-tokens:list")
+            if result:
+                counts["auth_tokens_list"] = 1
+                logger.info("Renamed auth_tokens:list → auth-tokens:list")
+            else:
+                logger.info(
+                    "auth-tokens:list already exists, skipping auth_tokens:list rename"
+                )
     else:
         exists = await redis.exists("auth_tokens:list")
         if exists:
