@@ -174,7 +174,7 @@ class FastMCP(_FastMCPBase):
 
         app = self.sse_app()
         await uvicorn.Server(
-            uvicorn.Config(app, host="0.0.0.0", port=int(self.settings.port))
+            uvicorn.Config(app, host=self.settings.host, port=int(self.settings.port))
         ).serve()
 
     def streamable_http_app(self):
