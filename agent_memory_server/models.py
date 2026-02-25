@@ -833,6 +833,7 @@ class UserMessage(base.Message):
 
 class MemoryPromptResponse(BaseModel):
     messages: list[base.Message | SystemMessage]
+    long_term_memories: list["MemoryRecordResult"] | None = None
 
 
 class LenientMemoryRecord(ExtractedMemoryRecord):

@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  workspace:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ..:/workspace:cached
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: sleep infinity
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DISABLE_AUTH=true
+      - LONG_TERM_MEMORY=true
+      - ENABLE_TOPIC_EXTRACTION=true
+      - ENABLE_NER=true
+      - ENABLE_DISCRETE_MEMORY_EXTRACTION=true
+      - GENERATION_MODEL=${GENERATION_MODEL:-gpt-4o-mini}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - VITE_MEMORY_SERVER_URL=http://localhost:8000
+    ports:
+      - "25173:5173"    # Workbench UI
+      - "28000:8000"    # Memory Server API
+    networks:
+      - ams-network
+
+  redis:
+    image: redis:8
+    ports:
+      - "26379:6379"    # Redis
+    volumes:
+      - redis-data:/data
+    environment:
+      - REDIS_ARGS=--save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - ams-network
+
+  redis-insight:
+    image: redis/redisinsight:latest
+    ports:
+      - "28001:5540"    # Redis Insight
+    volumes:
+      - redisinsight-data:/data
+    depends_on:
+      - redis
+    networks:
+      - ams-network
+
+volumes:
+  redis-data:
+  redisinsight-data:
+
+networks:
+  ams-network:
+    driver: bridge

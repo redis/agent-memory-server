@@ -1,0 +1,81 @@
+{
+  "name": "Agent Memory Workbench",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "workspace",
+  "workspaceFolder": "/workspace",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "installOhMyZsh": true,
+      "upgradePackages": true
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
+        "charliermarsh.ruff",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "redhat.vscode-yaml",
+        "ms-azuretools.vscode-docker",
+        "ms-vscode.vscode-typescript-next"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.black-formatter"
+        },
+        "[typescript]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode"
+        },
+        "[typescriptreact]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode"
+        }
+      }
+    }
+  },
+  "remoteUser": "vscode",
+  "mounts": [
+    "source=ams-workbench-bashhistory-${devcontainerId},target=/commandhistory,type=volume",
+    "source=ams-workbench-claude-config-${devcontainerId},target=/home/vscode/.claude,type=volume"
+  ],
+  "containerEnv": {
+    "REDIS_URL": "redis://redis:6379",
+    "MEMORY_SERVER_URL": "http://localhost:8000",
+    "VITE_MEMORY_SERVER_URL": "http://localhost:8000",
+    "ENVIRONMENT": "development",
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude",
+    "NPM_CONFIG_PREFIX": "/usr/local/share/npm-global",
+    "DISABLE_AUTH": "true",
+    "LONG_TERM_MEMORY": "true",
+    "ENABLE_TOPIC_EXTRACTION": "true",
+    "ENABLE_NER": "true"
+  },
+  "forwardPorts": [5173, 8000],
+  "portsAttributes": {
+    "5173": {
+      "label": "Workbench UI",
+      "onAutoForward": "openBrowserOnce"
+    },
+    "8000": {
+      "label": "Memory Server API",
+      "onAutoForward": "notify"
+    },
+    "6379": {
+      "label": "Redis",
+      "onAutoForward": "silent"
+    },
+    "5540": {
+      "label": "Redis Insight",
+      "onAutoForward": "notify"
+    }
+  },
+  "postCreateCommand": "/workspace/.devcontainer/post-create.sh",
+  "postStartCommand": "/workspace/.devcontainer/start-services.sh"
+}

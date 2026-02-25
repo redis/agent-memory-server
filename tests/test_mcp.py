@@ -628,3 +628,56 @@ class TestMCP:
                 assert isinstance(
                     background_tasks, HybridBackgroundTasks
                 ), f"background_tasks should be HybridBackgroundTasks, got {type(background_tasks)}"
+
+    @pytest.mark.asyncio
+    async def test_compact_long_term_memories(self, mcp_test_setup):
+        """Test the compact_long_term_memories MCP tool."""
+        async with client_session(mcp_app._mcp_server) as client:
+            with mock.patch(
+                "agent_memory_server.mcp.core_compact_long_term_memories"
+            ) as mock_compact:
+                mock_compact.return_value = 5  # 5 memories remaining
+
+                result = await client.call_tool(
+                    "compact_long_term_memories",
+                    {},
+                )
+
+                assert isinstance(result, CallToolResult)
+                assert result.content[0].type == "text"
+                response = json.loads(result.content[0].text)
+                assert "status" in response
+                assert "5 memories remaining" in response["status"]
+
+                mock_compact.assert_called_once_with(
+                    namespace=None,
+                    user_id=None,
+                    session_id=None,
+                )
+
+    @pytest.mark.asyncio
+    async def test_compact_long_term_memories_with_filters(self, mcp_test_setup):
+        """Test compact_long_term_memories MCP tool with namespace and user_id filters."""
+        async with client_session(mcp_app._mcp_server) as client:
+            with mock.patch(
+                "agent_memory_server.mcp.core_compact_long_term_memories"
+            ) as mock_compact:
+                mock_compact.return_value = 3
+
+                result = await client.call_tool(
+                    "compact_long_term_memories",
+                    {
+                        "namespace": "test-ns",
+                        "user_id": "user-123",
+                    },
+                )
+
+                assert isinstance(result, CallToolResult)
+                response = json.loads(result.content[0].text)
+                assert "3 memories remaining" in response["status"]
+
+                mock_compact.assert_called_once_with(
+                    namespace="test-ns",
+                    user_id="user-123",
+                    session_id=None,
+                )

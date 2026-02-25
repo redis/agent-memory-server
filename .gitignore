@@ -238,3 +238,8 @@ TASK_MEMORY.md
 /agent-memory-client/agent-memory-client-java/.gradle/
 augment*.md
 dev_docs/
+
+# Root-level Node artifacts (workbench has its own)
+/node_modules/
+/package.json
+/package-lock.json
