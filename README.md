@@ -14,7 +14,7 @@ A memory layer for AI agents.
 - **Two-Tier Memory**: Working memory (session-scoped) and long-term memory (persistent)
 - **Configurable Memory Strategies**: Customize how memories are extracted (discrete, summary, preferences, custom)
 - **Semantic Search**: Vector-based similarity search with metadata filtering
-- **Flexible Backends**: Pluggable vector store factory system
+- **Flexible Backends**: Pluggable memory vector database factory system
 - **Multi-Provider LLM Support**: OpenAI, Anthropic, AWS Bedrock, Ollama, Azure, Gemini via [LiteLLM](https://docs.litellm.ai/)
 - **AI Integration**: Automatic topic extraction, entity recognition, and conversation summarization
 - **Python SDK**: Easy integration with AI applications
@@ -247,7 +247,7 @@ See **[LLM Providers](https://redis.github.io/agent-memory-server/llm-providers/
 - **[LangChain Integration](https://redis.github.io/agent-memory-server/langchain-integration/)** - Automatic tool conversion for LangChain
 - **[LLM Providers](https://redis.github.io/agent-memory-server/llm-providers/)** - Configure OpenAI, Anthropic, AWS Bedrock, Ollama, and more
 - **[Embedding Providers](https://redis.github.io/agent-memory-server/embedding-providers/)** - Configure embedding models for semantic search
-- **[Vector Store Backends](https://redis.github.io/agent-memory-server/vector-store-backends/)** - Configure different vector databases
+- **[Custom Memory Vector Databases](https://redis.github.io/agent-memory-server/custom-memory-vector-db/)** - Configure custom memory vector databases
 - **[Authentication](https://redis.github.io/agent-memory-server/authentication/)** - OAuth2/JWT setup for production
 - **[Memory Types](https://redis.github.io/agent-memory-server/long-term-memory/#memory-types)** - Understanding semantic vs episodic memory
 - **[API Reference](https://redis.github.io/agent-memory-server/api/)** - REST API endpoints

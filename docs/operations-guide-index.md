@@ -52,13 +52,13 @@ Configure, secure, and deploy your Redis Agent Memory Server in production. This
 
     [Embedding Providers →](embedding-providers.md)
 
--   🗄️ **Vector Store Backends**
+-   🗄️ **Memory Vector Databases**
 
     ---
 
-    Configure Redis, Pinecone, Chroma, or other vector stores
+    Configure Redis or custom memory vector databases
 
-    [Vector Store Backends →](vector-store-backends.md)
+    [Memory Vector Databases →](custom-memory-vector-db.md)
 
 </div>
 
@@ -71,7 +71,7 @@ Configure, secure, and deploy your Redis Agent Memory Server in production. This
 | [Security](security-custom-prompts.md) | Custom prompt security and best practices |
 | [LLM Providers](llm-providers.md) | Generation models including AWS Bedrock |
 | [Embedding Providers](embedding-providers.md) | Embedding models and dimensions |
-| [Vector Store Backends](vector-store-backends.md) | Storage backend configuration |
+| [Memory Vector Databases](custom-memory-vector-db.md) | Storage backend configuration |
 
 ## Where to Start
 
@@ -81,4 +81,4 @@ Configure, secure, and deploy your Redis Agent Memory Server in production. This
 
 **Using AWS?** The [LLM Providers](llm-providers.md) guide covers AWS Bedrock setup for both generation and embedding models.
 
-**Customizing storage?** Check [Vector Store Backends](vector-store-backends.md) for Redis, Pinecone, and other options.
+**Customizing storage?** Check [Memory Vector Databases](custom-memory-vector-db.md) for Redis and custom backend options.

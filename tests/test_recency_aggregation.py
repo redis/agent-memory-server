@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from agent_memory_server.memory_vector_db import RedisVLMemoryVectorDatabase
 from agent_memory_server.utils.redis_query import RecencyAggregationQuery
-from agent_memory_server.vectorstore_adapter import RedisVectorStoreAdapter
 
 
 @pytest.mark.asyncio
@@ -44,15 +44,16 @@ async def test_recency_aggregation_query_builds_and_paginates():
 
 @pytest.mark.asyncio
 async def test_redis_adapter_uses_aggregation_when_server_side_recency():
-    # Mock vectorstore and its underlying RedisVL index
+    # Mock the AsyncSearchIndex
     mock_index = MagicMock()
+    mock_index.exists = AsyncMock(return_value=True)
 
     class Rows:
         def __init__(self, rows):
             self.rows = rows
 
-    # Simulate aaggregate returning rows from FT.AGGREGATE
-    mock_index.aaggregate = AsyncMock(
+    # Simulate aggregate returning rows from FT.AGGREGATE
+    mock_index.aggregate = AsyncMock(
         return_value=Rows(
             [
                 {
@@ -80,20 +81,13 @@ async def test_redis_adapter_uses_aggregation_when_server_side_recency():
         )
     )
 
-    mock_vectorstore = MagicMock()
-    mock_vectorstore._index = mock_index
-    # If the adapter falls back, ensure awaited LC call is defined
-    mock_vectorstore.asimilarity_search_with_relevance_scores = AsyncMock(
-        return_value=[]
-    )
-
     # Mock embeddings
     mock_embeddings = MagicMock()
-    mock_embeddings.embed_query.return_value = [0.0, 0.0, 0.0]
+    mock_embeddings.aembed_query = AsyncMock(return_value=[0.0, 0.0, 0.0])
 
-    adapter = RedisVectorStoreAdapter(mock_vectorstore, mock_embeddings)
+    db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
 
-    results = await adapter.search_memories(
+    results = await db.search_memories(
         query="hello",
         server_side_recency=True,
         namespace=None,
@@ -102,7 +96,7 @@ async def test_redis_adapter_uses_aggregation_when_server_side_recency():
     )
 
     # Ensure we went through aggregate path
-    assert mock_index.aaggregate.await_count == 1
+    assert mock_index.aggregate.await_count == 1
     assert len(results.memories) == 1
     assert results.memories[0].id == "m1"
     assert results.memories[0].text == "hello"

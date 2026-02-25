@@ -1,7 +1,7 @@
 """
 LiteLLM-based embeddings implementation.
 
-This module provides a LangChain-compatible Embeddings class that uses LiteLLM
+This module provides a standalone Embeddings class that uses LiteLLM
 internally, enabling support for any embedding provider LiteLLM supports.
 """
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from langchain_core.embeddings import Embeddings
 from litellm import aembedding, embedding
 from litellm.exceptions import NotFoundError as LiteLLMNotFoundError
 from litellm.utils import get_model_info
@@ -19,11 +18,11 @@ from litellm.utils import get_model_info
 logger = logging.getLogger(__name__)
 
 
-class LiteLLMEmbeddings(Embeddings):
+class LiteLLMEmbeddings:
     """
-    LangChain-compatible Embeddings using LiteLLM.
+    Embeddings using LiteLLM.
 
-    This class implements the LangChain Embeddings interface while using LiteLLM
+    This class provides a standard embeddings interface while using LiteLLM
     internally, enabling support for any embedding provider LiteLLM supports:
     - OpenAI (text-embedding-3-small, text-embedding-3-large)
     - AWS Bedrock (amazon.titan-embed-text-v2:0, cohere.embed-english-v3)
@@ -84,7 +83,7 @@ class LiteLLMEmbeddings(Embeddings):
         if self._dimensions is None:
             logger.warning(
                 "Could not determine embedding dimensions for model %r. "
-                "Vector stores requiring explicit dimensions may fail. "
+                "Databases requiring explicit dimensions may fail. "
                 "Consider specifying dimensions explicitly.",
                 self.model,
             )

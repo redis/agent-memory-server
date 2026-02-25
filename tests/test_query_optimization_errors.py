@@ -175,7 +175,7 @@ class TestQueryOptimizationErrorHandling:
             prompt = call_kwargs["messages"][0]["content"]
             assert original_query in prompt
 
-    @patch("agent_memory_server.long_term_memory.get_vectorstore_adapter")
+    @patch("agent_memory_server.long_term_memory.get_memory_vector_db")
     @patch("agent_memory_server.long_term_memory.optimize_query_for_vector_search")
     async def test_search_continues_when_optimization_fails(
         self, mock_optimize, mock_get_adapter
@@ -186,7 +186,7 @@ class TestQueryOptimizationErrorHandling:
             "test query"  # The function handles errors internally
         )
 
-        # Mock the vectorstore adapter
+        # Mock the memory vector database
         mock_adapter = AsyncMock()
         mock_adapter.search_memories.return_value = MemoryRecordResults(
             total=0, memories=[]

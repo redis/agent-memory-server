@@ -287,4 +287,4 @@ For complete configuration options, see the [Configuration Guide](configuration.
 - [Memory Integration Patterns](memory-integration-patterns.md) - How to integrate memory with your applications
 - [Memory Extraction Strategies](memory-extraction-strategies.md) - Different approaches to memory extraction and storage
 - [LLM Providers](llm-providers.md) - Configure OpenAI, Anthropic, AWS Bedrock, Ollama, and more
-- [Vector Store Backends](vector-store-backends.md) - Configuring different vector storage backends
+- [Custom Memory Vector Databases](custom-memory-vector-db.md) - Configuring custom memory vector database implementations
