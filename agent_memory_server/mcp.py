@@ -80,7 +80,6 @@ class FastMCP(_FastMCPBase):
     """Extend FastMCP to support optional URL namespace and default STDIO namespace."""
 
     def __init__(self, *args, default_namespace=None, **kwargs):
-        kwargs.setdefault("stateless_http", True)
         super().__init__(*args, **kwargs)
         self.default_namespace = default_namespace
         self._current_request = None  # Initialize the attribute
@@ -108,7 +107,6 @@ class FastMCP(_FastMCPBase):
                         read_stream,
                         write_stream,
                         self._mcp_server.create_initialization_options(),
-                        stateless=True,
                     )
             finally:
                 # Clean up request reference
@@ -184,6 +182,8 @@ class FastMCP(_FastMCPBase):
         from agent_memory_server.utils.redis import get_redis_conn
 
         await get_redis_conn()
+        # Enable stateless mode only for streamable-http transport
+        self.settings.stateless_http = True
         return await super().run_streamable_http_async()
 
     async def run_stdio_async(self):
