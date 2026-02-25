@@ -674,7 +674,7 @@ Generic acknowledgement response
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `status` | string \| Yes |  |
+| `status` | string | Yes |  |
 
 ### SessionListResponse
 
