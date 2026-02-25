@@ -5,11 +5,11 @@ from typing import Any
 import ulid
 from mcp.server.fastmcp import FastMCP as _FastMCPBase
 
+from agent_memory_server import working_memory as working_memory_core
 from agent_memory_server.api import (
     create_long_term_memory as core_create_long_term_memory,
     delete_long_term_memory as core_delete_long_term_memory,
     get_long_term_memory as core_get_long_term_memory,
-    get_working_memory as core_get_working_memory,
     memory_prompt as core_memory_prompt,
     put_working_memory_core as core_put_working_memory,
     search_long_term_memory as core_search_long_term_memory,
@@ -88,11 +88,12 @@ class FastMCP(_FastMCPBase):
         from mcp.server.sse import SseServerTransport
         from starlette.applications import Starlette
         from starlette.requests import Request
+        from starlette.responses import Response
         from starlette.routing import Mount, Route
 
         sse = SseServerTransport(self.settings.message_path)
 
-        async def handle_sse(request: Request) -> None:
+        async def handle_sse(request: Request) -> Response:
             # Store the request in the FastMCP instance so call_tool can access it
             self._current_request = request
 
@@ -110,6 +111,7 @@ class FastMCP(_FastMCPBase):
             finally:
                 # Clean up request reference
                 self._current_request = None
+            return Response()
 
         return Starlette(
             debug=self.settings.debug,
@@ -172,8 +174,71 @@ class FastMCP(_FastMCPBase):
 
         app = self.sse_app()
         await uvicorn.Server(
-            uvicorn.Config(app, host="0.0.0.0", port=int(self.settings.port))
+            uvicorn.Config(app, host=self.settings.host, port=int(self.settings.port))
         ).serve()
+
+    def streamable_http_app(self):
+        """Return a Starlette app for streamable-http with namespace routing."""
+        from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+        from starlette.applications import Starlette
+        from starlette.requests import Request
+        from starlette.routing import Route
+
+        if self._session_manager is None:
+            self._session_manager = StreamableHTTPSessionManager(
+                app=self._mcp_server,
+                event_store=self._event_store,
+                retry_interval=self._retry_interval,
+                json_response=self.settings.json_response,
+                stateless=self.settings.stateless_http,
+                security_settings=self.settings.transport_security,
+            )
+
+        session_manager = self._session_manager
+        mcp_instance = self
+
+        class _NamespaceAwareHandler:
+            """ASGI handler that captures request for namespace extraction."""
+
+            async def __call__(self, scope, receive, send):
+                request = Request(scope, receive, send)
+                mcp_instance._current_request = request
+                try:
+                    await session_manager.handle_request(scope, receive, send)
+                finally:
+                    mcp_instance._current_request = None
+
+        handler = _NamespaceAwareHandler()
+        path = self.settings.streamable_http_path
+
+        return Starlette(
+            debug=self.settings.debug,
+            routes=[
+                Route(path, endpoint=handler),
+                Route(f"/{{namespace}}{path}", endpoint=handler),
+            ],
+            lifespan=lambda app: session_manager.run(),
+        )
+
+    async def run_streamable_http_async(self):
+        """Start streamable HTTP MCP server."""
+        import uvicorn
+
+        from agent_memory_server.utils.redis import get_redis_conn
+
+        await get_redis_conn()
+        # Must be set before streamable_http_app() — the session manager
+        # reads this flag at creation time and caches it.
+        self.settings.stateless_http = True
+
+        app = self.streamable_http_app()
+        config = uvicorn.Config(
+            app,
+            host=self.settings.host,
+            port=int(self.settings.port),
+            log_level=self.settings.log_level.lower(),
+        )
+        await uvicorn.Server(config).serve()
 
     async def run_stdio_async(self):
         """Start STDIO MCP server."""
@@ -191,6 +256,7 @@ INSTRUCTIONS = """
 
 mcp_app = FastMCP(
     "Redis Agent Memory Server",
+    host=settings.mcp_host,
     port=settings.mcp_port,
     instructions=INSTRUCTIONS,
     default_namespace=settings.default_mcp_namespace,
@@ -906,9 +972,12 @@ async def get_working_memory(
     Returns:
         Working memory containing messages, context, and structured memory records
     """
-    return await core_get_working_memory(
+    result = await working_memory_core.get_working_memory(
         session_id=session_id, recent_messages_limit=recent_messages_limit
     )
+    if result is None:
+        return WorkingMemory(session_id=session_id, messages=[], memories=[])
+    return result
 
 
 @mcp_app.tool()

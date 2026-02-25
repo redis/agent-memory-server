@@ -44,6 +44,9 @@ uv run agent-memory mcp
 # SSE mode for development
 uv run agent-memory mcp --mode sse
 
+# Streamable HTTP mode for network deployments
+uv run agent-memory mcp --mode streamable-http --port 9000
+
 # SSE mode for production (use Docket backend)
 uv run agent-memory mcp --mode sse --task-backend docket
 ```
