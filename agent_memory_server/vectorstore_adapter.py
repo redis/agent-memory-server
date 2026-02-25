@@ -336,8 +336,10 @@ class VectorStoreAdapter(ABC):
         if isinstance(field_value, str):
             # Prefer pipe separator (langchain-redis default) over comma (legacy)
             if "|" in field_value:
-                return field_value.split("|")
-            return field_value.split(",")
+                return [x for x in field_value.split("|") if x]
+            if field_value:
+                return [x for x in field_value.split(",") if x]
+            return []
         return []
 
     def memory_to_document(self, memory: MemoryRecord) -> Document:
