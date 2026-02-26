@@ -17,7 +17,7 @@ def get_fips_diagnostics() -> dict:
     try:
         with open("/proc/sys/crypto/fips_enabled") as f:
             diagnostics["kernel_fips_enabled"] = f.read().strip() == "1"
-    except FileNotFoundError:
+    except OSError:
         diagnostics["kernel_fips_enabled"] = None  # Not Linux or not available
 
     # Test if non-FIPS algorithms are blocked
@@ -30,8 +30,10 @@ def get_fips_diagnostics() -> dict:
     # Token hash algorithm
     diagnostics["token_hash_algorithm"] = settings.token_hash_algorithm
 
-    # Redis TLS
-    diagnostics["redis_tls_enabled"] = settings.redis_url.startswith("rediss://")
+    # Redis TLS — matches the logic in build_redis_tls_kwargs
+    diagnostics["redis_tls_enabled"] = settings.redis_url.startswith(
+        "rediss://"
+    ) or bool(settings.redis_ssl_ca_certs)
 
     # Overall assessment
     diagnostics["fips_capable"] = (

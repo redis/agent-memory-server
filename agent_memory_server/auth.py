@@ -276,13 +276,14 @@ def hash_token(token: str) -> str:
         )
     if algo == "pbkdf2-sha256":
         salt = secrets.token_bytes(16)
+        iterations = settings.token_hash_iterations
         dk = hashlib.pbkdf2_hmac(
             "sha256",
             token.encode("utf-8"),
             salt,
-            settings.token_hash_iterations,
+            iterations,
         )
-        return f"pbkdf2${salt.hex()}${dk.hex()}"
+        return f"pbkdf2${iterations}${salt.hex()}${dk.hex()}"
     if algo == "bcrypt":
         return bcrypt.hashpw(token.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     raise ValueError(f"Unsupported token hash algorithm: {algo}")
@@ -292,16 +293,27 @@ def verify_token_hash(token: str, token_hash: str) -> bool:
     """Verify a token against its hash, auto-detecting the scheme by prefix."""
     try:
         if token_hash.startswith("hmac$"):
-            expected = hash_token(token)
+            # Compute HMAC-SHA256 directly to avoid depending on the current
+            # settings.token_hash_algorithm, which may have changed since
+            # the token was originally issued.
+            secret = settings.token_hash_secret.encode("utf-8")
+            expected = (
+                "hmac$"
+                + hmac.new(secret, token.encode("utf-8"), hashlib.sha256).hexdigest()
+            )
             return hmac.compare_digest(expected, token_hash)
         if token_hash.startswith("pbkdf2$"):
-            _, salt_hex, hash_hex = token_hash.split("$")
+            parts = token_hash.split("$")
+            if len(parts) != 4:
+                return False
+            _, iterations_str, salt_hex, hash_hex = parts
+            iterations = int(iterations_str)
             salt = bytes.fromhex(salt_hex)
             dk = hashlib.pbkdf2_hmac(
                 "sha256",
                 token.encode("utf-8"),
                 salt,
-                settings.token_hash_iterations,
+                iterations,
             )
             return hmac.compare_digest(dk.hex(), hash_hex)
         if token_hash.startswith("$2b$") or token_hash.startswith("$2a$"):
@@ -451,6 +463,15 @@ def verify_auth_config():
         return
 
     if settings.auth_mode == "token" or settings.token_auth_enabled:
+        if (
+            settings.token_hash_algorithm == "hmac-sha256"
+            and settings.token_hash_secret == "change-me-in-production"
+        ):
+            raise ValueError(
+                "TOKEN_HASH_SECRET must be set to a secure value when using "
+                "hmac-sha256 token hashing. Generate one with: "
+                'python -c "import secrets; print(secrets.token_urlsafe(32))"'
+            )
         logger.info("Token authentication configured")
         return
 

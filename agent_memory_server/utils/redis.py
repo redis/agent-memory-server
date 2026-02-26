@@ -34,7 +34,15 @@ def build_redis_tls_kwargs(url: str, **kwargs) -> dict:
             connection_kwargs.setdefault("ssl_certfile", settings.redis_ssl_certfile)
         if settings.redis_ssl_keyfile:
             connection_kwargs.setdefault("ssl_keyfile", settings.redis_ssl_keyfile)
-        connection_kwargs.setdefault("ssl_cert_reqs", settings.redis_ssl_cert_reqs)
+        # Map string cert_reqs to ssl enum values
+        cert_reqs_str = settings.redis_ssl_cert_reqs
+        cert_reqs_map = {
+            "required": ssl.CERT_REQUIRED,
+            "optional": ssl.CERT_OPTIONAL,
+            "none": ssl.CERT_NONE,
+        }
+        cert_reqs = cert_reqs_map.get(cert_reqs_str.lower(), ssl.CERT_REQUIRED)
+        connection_kwargs.setdefault("ssl_cert_reqs", cert_reqs)
         min_ver = getattr(
             ssl.TLSVersion,
             settings.redis_ssl_min_version,
