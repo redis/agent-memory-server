@@ -1,0 +1,141 @@
+# ============================================
+# Dockerfile.fips — FIPS-hardened image variants
+#
+# Build targets:
+#   fips-ubi9        — Red Hat UBI 9 (RHEL 9 FIPS OpenSSL provider)
+#   fips-chainguard  — Chainguard FIPS Python image
+#
+# Build commands:
+#   docker build -f Dockerfile.fips --target fips-ubi9 \
+#       -t redislabs/agent-memory-server:fips-ubi9 .
+#
+#   docker build -f Dockerfile.fips --target fips-chainguard \
+#       -t redislabs/agent-memory-server:fips-chainguard .
+#
+# The existing Dockerfile is NOT modified — it remains the default
+# for non-FIPS deployments using python:3.12-slim-bookworm.
+# ============================================
+
+# ============================================
+# BUILDER - UBI 9 with Python 3.12
+# ============================================
+FROM registry.access.redhat.com/ubi9/python-312:latest AS builder-ubi9
+
+WORKDIR /app
+
+# Install uv from official image
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+
+# Install build dependencies
+USER 0
+RUN dnf install -y gcc gcc-c++ make && dnf clean all
+USER 1001
+
+# Create virtual environment
+RUN uv venv .venv
+
+# Copy dependency files first for better layer caching
+COPY pyproject.toml uv.lock ./
+COPY agent-memory-client ./agent-memory-client
+
+# Install dependencies — cryptography builds from source against system OpenSSL
+# which is the FIPS-validated module on UBI 9
+RUN --mount=type=cache,target=/root/.cache/uv \
+    VIRTUAL_ENV=/app/.venv uv sync --frozen --no-install-project --no-dev
+
+# Copy source code and install project
+COPY . /app
+RUN --mount=type=cache,target=/root/.cache/uv \
+    . .venv/bin/activate && uv pip install --no-deps .
+
+# ============================================
+# RUNTIME - UBI 9 FIPS
+# ============================================
+FROM registry.access.redhat.com/ubi9/python-312:latest AS fips-ubi9
+
+LABEL org.opencontainers.image.title="Redis Agent Memory Server (FIPS - UBI9)"
+LABEL org.opencontainers.image.description="FIPS-hardened Redis Agent Memory Server built on Red Hat UBI 9 with FIPS-validated OpenSSL."
+LABEL org.opencontainers.image.url="https://github.com/redis/agent-memory-server"
+LABEL org.opencontainers.image.source="https://github.com/redis/agent-memory-server"
+LABEL org.opencontainers.image.vendor="Redis"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+WORKDIR /app
+
+# Install curl for healthcheck
+USER 0
+RUN dnf install -y --nodocs curl && dnf clean all
+USER 1001
+
+COPY --from=builder-ubi9 /app /app
+
+ENV PATH="/app/.venv/bin:$PATH"
+ENV DISABLE_AUTH=false
+ENV TOKEN_HASH_ALGORITHM=hmac-sha256
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/v1/health || exit 1
+
+CMD ["agent-memory", "api", "--host", "0.0.0.0", "--port", "8000"]
+
+# ============================================
+# BUILDER - Chainguard FIPS
+# ============================================
+FROM cgr.dev/chainguard/python:latest-dev AS builder-chainguard
+
+WORKDIR /app
+
+# Install uv from official image
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+
+# Create virtual environment
+RUN uv venv .venv
+
+# Copy dependency files first for better layer caching
+COPY pyproject.toml uv.lock ./
+COPY agent-memory-client ./agent-memory-client
+
+# Install dependencies
+RUN --mount=type=cache,target=/root/.cache/uv \
+    VIRTUAL_ENV=/app/.venv uv sync --frozen --no-install-project --no-dev
+
+# Copy source code and install project
+COPY . /app
+RUN --mount=type=cache,target=/root/.cache/uv \
+    . .venv/bin/activate && uv pip install --no-deps .
+
+# ============================================
+# RUNTIME - Chainguard FIPS
+# ============================================
+FROM cgr.dev/chainguard/python:latest AS fips-chainguard
+
+LABEL org.opencontainers.image.title="Redis Agent Memory Server (FIPS - Chainguard)"
+LABEL org.opencontainers.image.description="FIPS-hardened Redis Agent Memory Server built on Chainguard with FIPS-validated OpenSSL."
+LABEL org.opencontainers.image.url="https://github.com/redis/agent-memory-server"
+LABEL org.opencontainers.image.source="https://github.com/redis/agent-memory-server"
+LABEL org.opencontainers.image.vendor="Redis"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+WORKDIR /app
+
+COPY --from=builder-chainguard /app /app
+
+ENV PATH="/app/.venv/bin:$PATH"
+ENV DISABLE_AUTH=false
+ENV TOKEN_HASH_ALGORITHM=hmac-sha256
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/health')"]
+
+ENTRYPOINT ["agent-memory"]
+CMD ["api", "--host", "0.0.0.0", "--port", "8000"]

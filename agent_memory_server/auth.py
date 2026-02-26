@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import secrets
 import threading
 import time
@@ -264,14 +266,47 @@ def generate_token() -> str:
 
 
 def hash_token(token: str) -> str:
-    """Hash a token using bcrypt."""
-    return bcrypt.hashpw(token.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    """Hash a token using the configured algorithm."""
+    algo = settings.token_hash_algorithm
+    if algo == "hmac-sha256":
+        secret = settings.token_hash_secret.encode("utf-8")
+        return (
+            "hmac$"
+            + hmac.new(secret, token.encode("utf-8"), hashlib.sha256).hexdigest()
+        )
+    if algo == "pbkdf2-sha256":
+        salt = secrets.token_bytes(16)
+        dk = hashlib.pbkdf2_hmac(
+            "sha256",
+            token.encode("utf-8"),
+            salt,
+            settings.token_hash_iterations,
+        )
+        return f"pbkdf2${salt.hex()}${dk.hex()}"
+    if algo == "bcrypt":
+        return bcrypt.hashpw(token.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    raise ValueError(f"Unsupported token hash algorithm: {algo}")
 
 
 def verify_token_hash(token: str, token_hash: str) -> bool:
-    """Verify a token against its hash."""
+    """Verify a token against its hash, auto-detecting the scheme by prefix."""
     try:
-        return bcrypt.checkpw(token.encode("utf-8"), token_hash.encode("utf-8"))
+        if token_hash.startswith("hmac$"):
+            expected = hash_token(token)
+            return hmac.compare_digest(expected, token_hash)
+        if token_hash.startswith("pbkdf2$"):
+            _, salt_hex, hash_hex = token_hash.split("$")
+            salt = bytes.fromhex(salt_hex)
+            dk = hashlib.pbkdf2_hmac(
+                "sha256",
+                token.encode("utf-8"),
+                salt,
+                settings.token_hash_iterations,
+            )
+            return hmac.compare_digest(dk.hex(), hash_hex)
+        if token_hash.startswith("$2b$") or token_hash.startswith("$2a$"):
+            return bcrypt.checkpw(token.encode("utf-8"), token_hash.encode("utf-8"))
+        return False
     except Exception as e:
         logger.warning("Token hash verification failed", error=str(e))
         return False
