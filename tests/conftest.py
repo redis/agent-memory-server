@@ -39,12 +39,25 @@ from agent_memory_server.working_memory_index import (
 load_dotenv()
 
 
-async def extract_with_retry(session_id, namespace, user_id, max_attempts=3):
-    """Retry LLM extraction up to max_attempts times, skip if all return empty."""
+async def extract_with_retry(
+    session_id, namespace, user_id, max_attempts=3, allow_empty=False
+):
+    """Retry LLM extraction up to max_attempts times.
+
+    Args:
+        session_id: The session to extract from.
+        namespace: The namespace for extraction.
+        user_id: The user ID for extraction.
+        max_attempts: Number of retries before giving up.
+        allow_empty: If True, return the (empty) result instead of skipping
+            when all attempts produce no memories. Useful for tests that
+            assert extraction correctly returns nothing.
+    """
     from agent_memory_server.long_term_memory import (
         extract_memories_from_session_thread,
     )
 
+    result = []
     for _attempt in range(max_attempts):
         result = await extract_memories_from_session_thread(
             session_id=session_id,
@@ -53,6 +66,8 @@ async def extract_with_retry(session_id, namespace, user_id, max_attempts=3):
         )
         if len(result) >= 1:
             return result
+    if allow_empty:
+        return result
     pytest.skip(f"LLM extraction returned empty results after {max_attempts} attempts")
 
 
