@@ -12,6 +12,7 @@ from agent_memory_server.long_term_memory import (
 )
 from agent_memory_server.models import MemoryMessage, WorkingMemory
 from agent_memory_server.working_memory import set_working_memory
+from tests.conftest import extract_with_retry  # noqa: F401
 
 
 # Pre-compiled regex patterns for better performance
@@ -213,9 +214,6 @@ class TestThreadAwareContextualGrounding:
         # Should return empty list without errors
         assert extracted_memories == []
 
-    @pytest.mark.skip(
-        reason="Flaky test - LLM extraction behavior is non-deterministic"
-    )
     @pytest.mark.requires_api_keys
     async def test_multi_entity_conversation(self):
         """Test contextual grounding with multiple entities in conversation."""
@@ -257,20 +255,12 @@ class TestThreadAwareContextualGrounding:
 
         await set_working_memory(working_memory)
 
-        # Extract memories
-        extracted_memories = await extract_memories_from_session_thread(
+        # Extract memories with retry for LLM non-determinism
+        extracted_memories = await extract_with_retry(
             session_id=session_id,
             namespace="test-namespace",
             user_id="test-user",
         )
-
-        # Handle case where LLM extraction fails due to JSON parsing issues
-        if len(extracted_memories) == 0:
-            pytest.skip(
-                "LLM extraction failed - likely due to JSON parsing issues in LLM response"
-            )
-
-        assert len(extracted_memories) > 0
 
         all_memory_text = " ".join([mem.text for mem in extracted_memories])
 

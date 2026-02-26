@@ -29,8 +29,9 @@ def skip_if_timeout(evaluation: dict) -> None:
 class MemoryExtractionJudge:
     """LLM-as-a-Judge system for evaluating discrete memory extraction quality"""
 
-    def __init__(self, judge_model: str = "gpt-4o"):
+    def __init__(self, judge_model: str = "gpt-4o", temperature: float = 0.0):
         self.judge_model = judge_model
+        self.temperature = temperature
         # Load the evaluation prompt from template file
         template_path = (
             Path(__file__).parent / "templates" / "extraction_evaluation_prompt.txt"
@@ -60,6 +61,7 @@ class MemoryExtractionJudge:
                     model=self.judge_model,
                     messages=[{"role": "user", "content": prompt}],
                     response_format={"type": "json_object"},
+                    temperature=self.temperature,
                 ),
                 timeout=60.0,  # 60 second timeout
             )
@@ -383,7 +385,6 @@ class TestLLMJudgeEvaluation:
         assert evaluation["spatial_grounding_score"] >= 0.7
         assert evaluation["overall_score"] >= 0.6
 
-    @pytest.mark.skip(reason="Flaky test - LLM judge evaluation can be inconsistent")
     async def test_judge_comprehensive_grounding_evaluation(self):
         """Test LLM judge on complex example with multiple grounding types"""
 
@@ -418,6 +419,9 @@ class TestLLMJudgeEvaluation:
         print(f"Expected: {expected_grounding}")
         print(f"Scores: {evaluation}")
         print(f"Explanation: {evaluation.get('explanation', 'N/A')}")
+
+        # Skip if LLM call timed out (external service issue)
+        skip_if_timeout(evaluation)
 
         # This is a complex example, so we expect good but not perfect scores
         # The LLM correctly identifies missing temporal grounding, so completeness can be lower

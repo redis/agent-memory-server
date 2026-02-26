@@ -20,6 +20,7 @@ from pydantic import BaseModel
 
 from agent_memory_server.config import settings
 from agent_memory_server.llm import LLMClient
+from tests.conftest import extract_with_retry  # noqa: F401
 
 
 def skip_if_timeout(evaluation: dict) -> None:
@@ -186,8 +187,9 @@ class ContextualGroundingBenchmark:
 class LLMContextualGroundingJudge:
     """LLM-as-a-Judge system for evaluating contextual grounding quality"""
 
-    def __init__(self, judge_model: str = "gpt-4o"):
+    def __init__(self, judge_model: str = "gpt-4o", temperature: float = 0.0):
         self.judge_model = judge_model
+        self.temperature = temperature
         # Load the evaluation prompt from template file
         template_path = (
             Path(__file__).parent
@@ -219,6 +221,7 @@ class LLMContextualGroundingJudge:
                     model=self.judge_model,
                     messages=[{"role": "user", "content": prompt}],
                     response_format={"type": "json_object"},
+                    temperature=self.temperature,
                 ),
                 timeout=60.0,  # 60 second timeout
             )
@@ -305,19 +308,12 @@ class TestContextualGroundingIntegration:
             example["messages"], example["context_date"], session_id
         )
 
-        # Use thread-aware extraction
-        from agent_memory_server.long_term_memory import (
-            extract_memories_from_session_thread,
-        )
-
-        extracted_memories = await extract_memories_from_session_thread(
+        # Use thread-aware extraction with retry
+        extracted_memories = await extract_with_retry(
             session_id=session_id,
             namespace="test-namespace",
             user_id="test-integration-user",
         )
-
-        # Verify extraction was successful
-        assert len(extracted_memories) >= 1, "Expected at least one extracted memory"
 
         # Check that pronoun grounding occurred
         all_memory_text = " ".join([mem.text for mem in extracted_memories])
@@ -354,19 +350,12 @@ class TestContextualGroundingIntegration:
             example["messages"], example["context_date"], session_id
         )
 
-        # Use thread-aware extraction
-        from agent_memory_server.long_term_memory import (
-            extract_memories_from_session_thread,
-        )
-
-        extracted_memories = await extract_memories_from_session_thread(
+        # Use thread-aware extraction with retry
+        await extract_with_retry(
             session_id=session_id,
             namespace="test-namespace",
             user_id="test-integration-user",
         )
-
-        # Verify extraction was successful
-        assert len(extracted_memories) >= 1, "Expected at least one extracted memory"
 
     async def test_spatial_grounding_integration_there(self):
         """Integration test for spatial grounding with real LLM"""
@@ -378,19 +367,12 @@ class TestContextualGroundingIntegration:
             example["messages"], example["context_date"], session_id
         )
 
-        # Use thread-aware extraction
-        from agent_memory_server.long_term_memory import (
-            extract_memories_from_session_thread,
-        )
-
-        extracted_memories = await extract_memories_from_session_thread(
+        # Use thread-aware extraction with retry
+        await extract_with_retry(
             session_id=session_id,
             namespace="test-namespace",
             user_id="test-integration-user",
         )
-
-        # Verify extraction was successful
-        assert len(extracted_memories) >= 1, "Expected at least one extracted memory"
 
     @pytest.mark.requires_api_keys
     async def test_comprehensive_grounding_evaluation_with_judge(self):
