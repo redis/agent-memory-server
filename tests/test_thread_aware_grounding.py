@@ -12,19 +12,7 @@ from agent_memory_server.long_term_memory import (
 )
 from agent_memory_server.models import MemoryMessage, WorkingMemory
 from agent_memory_server.working_memory import set_working_memory
-
-
-async def extract_with_retry(session_id, namespace, user_id, max_attempts=3):
-    """Retry LLM extraction up to max_attempts times, skip if all return empty."""
-    for _attempt in range(max_attempts):
-        result = await extract_memories_from_session_thread(
-            session_id=session_id,
-            namespace=namespace,
-            user_id=user_id,
-        )
-        if len(result) >= 1:
-            return result
-    pytest.skip(f"LLM extraction returned empty results after {max_attempts} attempts")
+from tests.conftest import extract_with_retry  # noqa: F401
 
 
 # Pre-compiled regex patterns for better performance

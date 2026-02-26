@@ -420,6 +420,9 @@ class TestLLMJudgeEvaluation:
         print(f"Scores: {evaluation}")
         print(f"Explanation: {evaluation.get('explanation', 'N/A')}")
 
+        # Skip if LLM call timed out (external service issue)
+        skip_if_timeout(evaluation)
+
         # This is a complex example, so we expect good but not perfect scores
         # The LLM correctly identifies missing temporal grounding, so completeness can be lower
         # Lowered thresholds to account for LLM judge variability (0.45 is close to 0.5)

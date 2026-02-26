@@ -20,23 +20,7 @@ from pydantic import BaseModel
 
 from agent_memory_server.config import settings
 from agent_memory_server.llm import LLMClient
-
-
-async def extract_with_retry(session_id, namespace, user_id, max_attempts=3):
-    """Retry LLM extraction up to max_attempts times, skip if all return empty."""
-    from agent_memory_server.long_term_memory import (
-        extract_memories_from_session_thread,
-    )
-
-    for _attempt in range(max_attempts):
-        result = await extract_memories_from_session_thread(
-            session_id=session_id,
-            namespace=namespace,
-            user_id=user_id,
-        )
-        if len(result) >= 1:
-            return result
-    pytest.skip(f"LLM extraction returned empty results after {max_attempts} attempts")
+from tests.conftest import extract_with_retry  # noqa: F401
 
 
 def skip_if_timeout(evaluation: dict) -> None:
@@ -367,13 +351,11 @@ class TestContextualGroundingIntegration:
         )
 
         # Use thread-aware extraction with retry
-        extracted_memories = await extract_with_retry(
+        await extract_with_retry(
             session_id=session_id,
             namespace="test-namespace",
             user_id="test-integration-user",
         )
-
-        assert len(extracted_memories) >= 1, "Expected at least one extracted memory"
 
     async def test_spatial_grounding_integration_there(self):
         """Integration test for spatial grounding with real LLM"""
@@ -386,13 +368,11 @@ class TestContextualGroundingIntegration:
         )
 
         # Use thread-aware extraction with retry
-        extracted_memories = await extract_with_retry(
+        await extract_with_retry(
             session_id=session_id,
             namespace="test-namespace",
             user_id="test-integration-user",
         )
-
-        assert len(extracted_memories) >= 1, "Expected at least one extracted memory"
 
     @pytest.mark.requires_api_keys
     async def test_comprehensive_grounding_evaluation_with_judge(self):
