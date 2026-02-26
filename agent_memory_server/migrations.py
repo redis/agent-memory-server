@@ -172,7 +172,11 @@ async def migrate_redis_key_naming_4(
         "indexes_dropped": 0,
     }
 
-    # Migration status keys to skip (they are themselves being renamed)
+    if batch_size < 1:
+        raise ValueError(f"batch_size must be >= 1, got {batch_size}")
+
+    # Migration status keys to skip (not renamed — the new-prefix keys are
+    # created fresh by the application after migration)
     migration_status_keys = {
         b"working_memory:migration:complete",
         b"working-memory:migration:complete",

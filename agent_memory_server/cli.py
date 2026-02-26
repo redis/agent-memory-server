@@ -268,6 +268,7 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
 @click.option(
     "--batch-size",
     default=50,
+    type=click.IntRange(min=1),
     help="Number of keys to rename per pipeline batch",
 )
 @click.option(
