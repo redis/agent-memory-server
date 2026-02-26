@@ -530,8 +530,6 @@ Response containing working memory
 | `updated_at` | string | No | Datetime when the working memory was last updated |
 | `context_percentage_total_used` | number \| null | No | Percentage of total context window currently used (0-100) |
 | `context_percentage_until_summarization` | number \| null | No | Percentage until auto-summarization triggers (0-100, reaches |
-| `new_session` | boolean \| null | No | True if session was created, False if existing session was f |
-| `unsaved` | boolean \| null | No | True if this session data has not been persisted to Redis ye |
 
 ### UpdateWorkingMemory
 

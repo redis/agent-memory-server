@@ -675,28 +675,48 @@ class TestMemoryEndpoints:
         response = await client.get(
             f"/v1/working-memory/{session_id}?namespace=test-namespace&user_id=test-user"
         )
-        # Should return 200 with unsaved session (deprecated behavior for old clients)
-        assert response.status_code == 200
-        data = response.json()
-        assert data["unsaved"] is True  # Not persisted (deprecated behavior)
-        assert len(data["messages"]) == 0  # Empty session
-        assert len(data["memories"]) == 0
+        # Should return 404 for missing sessions
+        assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_get_nonexistent_session_with_new_client_returns_404(self, client):
-        """Test that new clients (with version header) get 404 for missing sessions"""
-        # Simulate new client by sending version header
-        headers = {"X-Client-Version": "0.12.0"}
-
+    async def test_get_nonexistent_session_returns_404(self, client):
+        """Test that GET returns 404 for missing sessions"""
         response = await client.get(
             "/v1/working-memory/nonexistent-session?namespace=test-namespace&user_id=test-user",
-            headers=headers,
         )
 
-        # Should return 404 for proper REST behavior
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_response_omits_deprecated_fields_and_client_model_still_parses(
+        self, client, session
+    ):
+        """Verify the server no longer returns new_session/unsaved and the
+        client model (which still declares them with default=None) can
+        deserialize the response without errors."""
+        from agent_memory_client.models import (
+            WorkingMemoryResponse as ClientWorkingMemoryResponse,
+        )
+
+        session_id = session
+        response = await client.get(
+            f"/v1/working-memory/{session_id}?namespace=test-namespace&user_id=test-user"
+        )
+        assert response.status_code == 200
+
+        data = response.json()
+
+        # Server should no longer emit these fields
+        assert "new_session" not in data
+        assert "unsaved" not in data
+
+        # Client model must still parse the response (fields default to None)
+        client_response = ClientWorkingMemoryResponse(**data)
+        assert client_response.new_session is None
+        assert client_response.unsaved is None
+        assert client_response.session_id == session_id
 
     @pytest.mark.asyncio
     async def test_get_working_memory_with_recent_messages_limit(
