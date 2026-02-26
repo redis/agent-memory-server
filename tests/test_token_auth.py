@@ -266,6 +266,7 @@ class TestAuthConfig:
         """Test auth config verification for token mode."""
         mock_settings.disable_auth = False
         mock_settings.auth_mode = "token"
+        mock_settings.token_hash_secret = "a-real-secret"
 
         # Should not raise any exception
         verify_auth_config()
@@ -275,9 +276,20 @@ class TestAuthConfig:
         mock_settings.disable_auth = False
         mock_settings.auth_mode = "disabled"
         mock_settings.token_auth_enabled = True
+        mock_settings.token_hash_secret = "a-real-secret"
 
         # Should not raise any exception
         verify_auth_config()
+
+    def test_verify_auth_config_rejects_default_hmac_secret(self, mock_settings):
+        """Using hmac-sha256 with the default secret should raise ValueError."""
+        mock_settings.disable_auth = False
+        mock_settings.auth_mode = "token"
+        mock_settings.token_hash_algorithm = "hmac-sha256"
+        mock_settings.token_hash_secret = "change-me-in-production"
+
+        with pytest.raises(ValueError, match="TOKEN_HASH_SECRET must be set"):
+            verify_auth_config()
 
 
 class TestTokenInfo:

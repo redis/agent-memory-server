@@ -66,7 +66,8 @@ class TestFIPSTokenHashing:
 
         assert hashed.startswith("pbkdf2$")
         parts = hashed.split("$")
-        assert len(parts) == 3
+        assert len(parts) == 4  # pbkdf2$iterations$salt$hash
+        assert parts[1] == "1000"  # iteration count embedded
         assert verify_token_hash(token, hashed) is True
         assert verify_token_hash("wrong-token", hashed) is False
 
@@ -107,6 +108,36 @@ class TestFIPSTokenHashing:
         # Old bcrypt hash should still verify
         assert verify_token_hash(token, bcrypt_hash) is True
 
+    def test_backward_compat_hmac_after_algorithm_switch(self, _save_settings):
+        """HMAC hashes should still verify after switching to a different algorithm."""
+        settings.token_hash_algorithm = "hmac-sha256"
+        settings.token_hash_secret = "test-secret-key"
+
+        token = "my-secret-token"
+        hmac_hash = hash_token(token)
+
+        # Switch to pbkdf2-sha256
+        settings.token_hash_algorithm = "pbkdf2-sha256"
+        settings.token_hash_iterations = 1000
+
+        # Old HMAC hash should still verify (detection is prefix-based)
+        assert verify_token_hash(token, hmac_hash) is True
+
+    def test_pbkdf2_iterations_embedded_in_hash(self, _save_settings):
+        """PBKDF2 hashes should remain valid when iteration count setting changes."""
+        settings.token_hash_algorithm = "pbkdf2-sha256"
+        settings.token_hash_iterations = 1000
+
+        token = "my-secret-token"
+        pbkdf2_hash = hash_token(token)
+
+        # Change iteration count (simulates a config upgrade)
+        settings.token_hash_iterations = 2000
+
+        # Hash created with old iteration count still verifies
+        # because iterations are embedded in the hash string
+        assert verify_token_hash(token, pbkdf2_hash) is True
+
     def test_verify_unknown_prefix_returns_false(self, _save_settings):
         assert verify_token_hash("token", "unknown$prefix$hash") is False
 
@@ -117,7 +148,8 @@ class TestFIPSTokenHashing:
 
     def test_verify_malformed_hash_returns_false(self, _save_settings):
         """Malformed hashes should not raise, just return False."""
-        assert verify_token_hash("token", "pbkdf2$not-hex$data") is False
+        assert verify_token_hash("token", "pbkdf2$1000$not-hex$data") is False
+        assert verify_token_hash("token", "pbkdf2$only-two-parts") is False
         assert verify_token_hash("token", "") is False
 
 
@@ -182,10 +214,18 @@ class TestFIPSDiagnostics:
 
     def test_diagnostics_redis_tls(self, _save_settings):
         settings.redis_url = "redis://localhost:6379"
+        settings.redis_ssl_ca_certs = None
         diagnostics = get_fips_diagnostics()
         assert diagnostics["redis_tls_enabled"] is False
 
         settings.redis_url = "rediss://localhost:6380"
+        diagnostics = get_fips_diagnostics()
+        assert diagnostics["redis_tls_enabled"] is True
+
+    def test_diagnostics_redis_tls_via_ca_certs(self, _save_settings):
+        """TLS should be detected when redis_ssl_ca_certs is set, even with redis:// URL."""
+        settings.redis_url = "redis://localhost:6379"
+        settings.redis_ssl_ca_certs = "/path/to/ca.pem"
         diagnostics = get_fips_diagnostics()
         assert diagnostics["redis_tls_enabled"] is True
 
@@ -222,7 +262,7 @@ class TestRedisTLSConfig:
         assert kwargs["ssl_ca_certs"] == "/path/to/ca.pem"
         assert kwargs["ssl_certfile"] == "/path/to/cert.pem"
         assert kwargs["ssl_keyfile"] == "/path/to/key.pem"
-        assert kwargs["ssl_cert_reqs"] == "required"
+        assert kwargs["ssl_cert_reqs"] == ssl.CERT_REQUIRED
         assert kwargs["ssl_min_version"] == ssl.TLSVersion.TLSv1_2
 
     def test_no_tls_kwargs_with_redis_url(self, _save_settings):
@@ -251,7 +291,7 @@ class TestRedisTLSConfig:
         assert "ssl_certfile" not in kwargs
         assert "ssl_keyfile" not in kwargs
         # cert_reqs and min_version are always set when TLS is active
-        assert kwargs["ssl_cert_reqs"] == "required"
+        assert kwargs["ssl_cert_reqs"] == ssl.CERT_REQUIRED
         assert kwargs["ssl_min_version"] == ssl.TLSVersion.TLSv1_2
 
     def test_ssl_min_version_tls13(self, _save_settings):
