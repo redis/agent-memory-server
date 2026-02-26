@@ -33,6 +33,8 @@ release:
     changelog:
       formatted: ALWAYS
       preset: conventional-commits
+      paths:
+        - 'agent-memory-client/agent-memory-client-java/'
       includeLabels:
         - 'feat'
         - 'feature'
