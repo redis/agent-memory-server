@@ -43,6 +43,9 @@ def mock_settings():
         "disable_auth": settings.disable_auth,
         "auth_mode": settings.auth_mode,
         "token_auth_enabled": settings.token_auth_enabled,
+        "token_hash_algorithm": settings.token_hash_algorithm,
+        "token_hash_secret": settings.token_hash_secret,
+        "token_hash_iterations": settings.token_hash_iterations,
     }
 
     yield settings
@@ -83,14 +86,15 @@ class TestTokenGeneration:
         assert token != token2
 
     def test_hash_token(self):
-        """Test token hashing."""
+        """Test token hashing with default algorithm (hmac-sha256)."""
         token = "test_token_123"
         token_hash = hash_token(token)
 
         assert isinstance(token_hash, str)
         assert len(token_hash) > 0
         assert token_hash != token
-        assert token_hash.startswith("$2b$")
+        # Default algorithm is hmac-sha256
+        assert token_hash.startswith("hmac$")
 
     def test_verify_token_hash(self):
         """Test token hash verification."""
