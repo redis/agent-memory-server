@@ -690,6 +690,35 @@ class TestMemoryEndpoints:
         assert "not found" in data["detail"].lower()
 
     @pytest.mark.asyncio
+    async def test_response_omits_deprecated_fields_and_client_model_still_parses(
+        self, client, session
+    ):
+        """Verify the server no longer returns new_session/unsaved and the
+        client model (which still declares them with default=None) can
+        deserialize the response without errors."""
+        from agent_memory_client.models import (
+            WorkingMemoryResponse as ClientWorkingMemoryResponse,
+        )
+
+        session_id = session
+        response = await client.get(
+            f"/v1/working-memory/{session_id}?namespace=test-namespace&user_id=test-user"
+        )
+        assert response.status_code == 200
+
+        data = response.json()
+
+        # Server should no longer emit these fields
+        assert "new_session" not in data
+        assert "unsaved" not in data
+
+        # Client model must still parse the response (fields default to None)
+        client_response = ClientWorkingMemoryResponse(**data)
+        assert client_response.new_session is None
+        assert client_response.unsaved is None
+        assert client_response.session_id == session_id
+
+    @pytest.mark.asyncio
     async def test_get_working_memory_with_recent_messages_limit(
         self, client, async_redis_client
     ):
