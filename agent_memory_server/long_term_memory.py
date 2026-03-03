@@ -393,7 +393,10 @@ async def run_delayed_extraction(
 
         # Index the extracted memories
         if extracted_memories:
-            await index_long_term_memories(extracted_memories)
+            await index_long_term_memories(
+                extracted_memories,
+                deduplicate=True,
+            )
             logger.info(
                 f"Trailing extraction completed for session {session_id}: "
                 f"{len(extracted_memories)} memories extracted and indexed"
