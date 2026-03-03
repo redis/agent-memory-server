@@ -23,8 +23,8 @@ from agent_memory_server.utils.redis import get_redis_conn
 logger = logging.getLogger(__name__)
 
 # Redis keys for migration status (shared across workers, persists across restarts)
-MIGRATION_STATUS_KEY = "working_memory:migration:complete"
-MIGRATION_REMAINING_KEY = "working_memory:migration:remaining"
+MIGRATION_STATUS_KEY = "working-memory:migration:complete"
+MIGRATION_REMAINING_KEY = "working-memory:migration:remaining"
 
 
 async def check_and_set_migration_status(redis_client: Redis | None = None) -> bool:
@@ -62,32 +62,53 @@ async def check_and_set_migration_status(redis_client: Redis | None = None) -> b
             )
             return True
 
-    # Scan for working_memory:* keys of type STRING only
-    # This is much faster than scanning all keys and calling TYPE on each
+    # Scan for working-memory:* AND old working_memory:* keys of type STRING.
+    # If old-prefix keys still exist the key-naming migration hasn't run yet;
+    # we treat them the same as new-prefix string keys that need lazy migration.
     cursor = 0
     string_keys_found = 0
+    old_prefix_status_keys = {
+        "working_memory:migration:complete",
+        "working_memory:migration:remaining",
+    }
 
     try:
-        while True:
-            # Use _type="string" to only get string keys directly
-            cursor, keys = await redis_client.scan(
-                cursor=cursor, match="working_memory:*", count=1000, _type="string"
-            )
+        for pattern in ("working-memory:*", "working_memory:*"):
+            cursor = 0
+            while True:
+                cursor, keys = await redis_client.scan(
+                    cursor=cursor, match=pattern, count=1000, _type="string"
+                )
 
-            if keys:
-                # Filter out migration status keys (they're also strings)
-                keys = [
-                    k
-                    for k in keys
-                    if (k.decode("utf-8") if isinstance(k, bytes) else k)
-                    not in (MIGRATION_STATUS_KEY, MIGRATION_REMAINING_KEY)
-                ]
-                string_keys_found += len(keys)
+                if keys:
+                    # Filter out migration status keys (they're also strings)
+                    keys = [
+                        k
+                        for k in keys
+                        if (k.decode("utf-8") if isinstance(k, bytes) else k)
+                        not in (
+                            MIGRATION_STATUS_KEY,
+                            MIGRATION_REMAINING_KEY,
+                            *old_prefix_status_keys,
+                        )
+                    ]
+                    string_keys_found += len(keys)
 
-            if cursor == 0:
-                break
+                if cursor == 0:
+                    break
 
         if string_keys_found > 0:
+            # Check if any old-prefix keys exist and log a hint
+            old_cursor = 0
+            old_cursor, old_keys = await redis_client.scan(
+                cursor=old_cursor, match="working_memory:*", count=1
+            )
+            if old_keys:
+                logger.warning(
+                    "Found working_memory:* keys with old underscore prefix. "
+                    "Run 'agent-memory migrate-redis-naming' to rename them."
+                )
+
             # Store the count in Redis for atomic decrement during lazy migration
             await redis_client.set(MIGRATION_REMAINING_KEY, str(string_keys_found))
             logger.info(

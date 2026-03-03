@@ -62,7 +62,7 @@ async def cleanup_working_memory_keys(async_redis_client):
         deleted = 0
         while True:
             cursor, keys = await async_redis_client.scan(
-                cursor=cursor, match="working_memory:*", count=1000
+                cursor=cursor, match="working-memory:*", count=1000
             )
             if keys:
                 await async_redis_client.delete(*keys)
@@ -308,7 +308,7 @@ class TestMigrationBenchmark:
         cursor = 0
         while True:
             cursor, keys = await async_redis_client.scan(
-                cursor, match="working_memory:*", count=1000
+                cursor, match="working-memory:*", count=1000
             )
             if keys:
                 pipe = async_redis_client.pipeline()

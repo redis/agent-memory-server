@@ -338,10 +338,10 @@ class TestKeys:
         token_hash = "test_hash_123"
         key = Keys.auth_token_key(token_hash)
 
-        assert key == f"auth_token:{token_hash}"
+        assert key == f"auth-token:{token_hash}"
 
     def test_auth_tokens_list_key(self):
         """Test auth tokens list key generation."""
         key = Keys.auth_tokens_list_key()
 
-        assert key == "auth_tokens:list"
+        assert key == "auth-tokens:list"

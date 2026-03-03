@@ -101,10 +101,10 @@ INDEX_ALL_MESSAGES_IN_LONG_TERM_MEMORY=false  # Index every message (default: fa
 MEMORY_VECTOR_DB_FACTORY=agent_memory_server.memory_vector_db_factory.create_redis_memory_vector_db
 
 # RedisVL Settings (used by default Redis factory)
-REDISVL_INDEX_NAME=memory_records        # Index name (default: memory_records)
+REDISVL_INDEX_NAME=memory-records        # Index name (default: memory-records)
 REDISVL_DISTANCE_METRIC=COSINE           # Distance metric (default: COSINE)
 REDISVL_VECTOR_DIMENSIONS=1536           # Vector dimensions (default: 1536)
-REDISVL_INDEX_PREFIX=memory_idx          # Index prefix (default: memory_idx)
+REDISVL_INDEX_PREFIX=memory-idx          # Index prefix (default: memory-idx)
 REDISVL_INDEXING_ALGORITHM=HNSW          # Indexing algorithm (default: HNSW)
 ```
 

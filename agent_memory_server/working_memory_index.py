@@ -85,7 +85,7 @@ async def ensure_working_memory_index(redis_client: Redis) -> bool:
     """
     Ensure the working memory search index exists.
 
-    Creates a Redis Search index on JSON documents with prefix 'working_memory:'
+    Creates a Redis Search index on JSON documents with prefix 'working-memory:'
     if it doesn't already exist. The index enables efficient session listing
     with filtering by namespace and user_id.
 

@@ -610,7 +610,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                 memory_ids.append(memory.id)
 
             # Load into Redis via RedisVL -- use id_field so keys are
-            # auto-generated with the index prefix (e.g. "memory_idx:<id>").
+            # auto-generated with the index prefix (e.g. "memory-idx:<id>").
             # Do NOT pass explicit keys, as that bypasses the prefix.
             await self._index.load(data_list, id_field="id_")
             return memory_ids

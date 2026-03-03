@@ -21,6 +21,7 @@ from agent_memory_server.migrations import (
     migrate_add_discrete_memory_extracted_2,
     migrate_add_memory_hashes_1,
     migrate_add_memory_type_3,
+    migrate_redis_key_naming_4,
 )
 from agent_memory_server.utils.redis import get_redis_conn
 
@@ -259,6 +260,82 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
             click.echo(
                 "\nMigration completed with errors. Run again to retry failed keys."
             )
+
+    asyncio.run(run_migration())
+
+
+@cli.command()
+@click.option(
+    "--batch-size",
+    default=50,
+    type=click.IntRange(min=1),
+    help="Number of keys to rename per pipeline batch",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show what would change without executing",
+)
+def migrate_redis_naming(batch_size: int, dry_run: bool):
+    """
+    Migrate Redis key and index names from underscore to dash convention.
+
+    Renames keys:
+      memory_idx:* → memory-idx:*
+      working_memory:* → working-memory:*
+      auth_token:* → auth-token:*
+      auth_tokens:list → auth-tokens:list
+
+    Drops old indexes and rebuilds with new names.
+
+    Use --dry-run to see what would change without making modifications.
+    """
+    import asyncio
+
+    from agent_memory_server.memory_vector_db import RedisVLMemoryVectorDatabase
+    from agent_memory_server.memory_vector_db_factory import get_memory_vector_db
+    from agent_memory_server.working_memory_index import rebuild_working_memory_index
+
+    configure_logging()
+
+    async def run_migration():
+        redis = await get_redis_conn()
+
+        if dry_run:
+            click.echo("Dry run — no changes will be made.\n")
+
+        counts = await migrate_redis_key_naming_4(
+            redis=redis, batch_size=batch_size, dry_run=dry_run
+        )
+
+        click.echo("\nKey rename summary:")
+        click.echo(f"  memory_idx keys:     {counts['memory_idx']}")
+        click.echo(f"  working_memory keys: {counts['working_memory']}")
+        click.echo(f"  auth_token keys:     {counts['auth_token']}")
+        click.echo(f"  auth_tokens:list:    {counts['auth_tokens_list']}")
+        click.echo(f"  indexes dropped:     {counts['indexes_dropped']}")
+
+        if dry_run:
+            click.echo("\nNo changes were made (dry run).")
+            return
+
+        # Rebuild indexes with new names
+        click.echo("\nRebuilding indexes with new names...")
+
+        # Rebuild long-term memory index
+        db = await get_memory_vector_db()
+        if isinstance(db, RedisVLMemoryVectorDatabase):
+            index = db.index
+            await index.create(overwrite=True)
+            click.echo(f"  Rebuilt long-term memory index: {index.name}")
+
+        # Rebuild working memory index
+        await rebuild_working_memory_index(redis)
+        click.echo(
+            f"  Rebuilt working memory index: {settings.working_memory_index_name}"
+        )
+
+        click.echo("\nMigration completed successfully.")
 
     asyncio.run(run_migration())
 
