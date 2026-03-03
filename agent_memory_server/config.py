@@ -431,6 +431,20 @@ class Settings(BaseSettings):
     # Token Authentication settings
     token_auth_enabled: bool = False
 
+    # FIPS-compatible token hashing
+    token_hash_algorithm: Literal["hmac-sha256", "pbkdf2-sha256", "bcrypt"] = (
+        "hmac-sha256"
+    )
+    token_hash_secret: str = "change-me-in-production"  # Required for hmac-sha256
+    token_hash_iterations: int = 600_000  # For pbkdf2-sha256
+
+    # Redis TLS settings
+    redis_ssl_ca_certs: str | None = None
+    redis_ssl_certfile: str | None = None
+    redis_ssl_keyfile: str | None = None
+    redis_ssl_cert_reqs: str = "required"
+    redis_ssl_min_version: str = "TLSv1_2"
+
     # Auth0 Client Credentials (for testing and client applications)
     auth0_client_id: str | None = None
     auth0_client_secret: str | None = None

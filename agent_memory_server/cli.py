@@ -834,6 +834,35 @@ def delete_session_cmd(
     asyncio.run(run_delete())
 
 
+@cli.command("fips-check")
+def fips_check():
+    """Check FIPS 140-3 compliance posture of the runtime environment."""
+    from agent_memory_server.fips import get_fips_diagnostics
+
+    diagnostics = get_fips_diagnostics()
+
+    click.echo("FIPS Compliance Diagnostics")
+    click.echo("=" * 40)
+    click.echo(f"  OpenSSL version:       {diagnostics['openssl_version']}")
+    kernel = diagnostics["kernel_fips_enabled"]
+    if kernel is None:
+        click.echo("  Kernel FIPS mode:      N/A (not Linux)")
+    else:
+        click.echo(f"  Kernel FIPS mode:      {kernel}")
+    click.echo(f"  MD5 blocked:           {diagnostics['md5_blocked']}")
+    click.echo(f"  Token hash algorithm:  {diagnostics['token_hash_algorithm']}")
+    click.echo(f"  Redis TLS enabled:     {diagnostics['redis_tls_enabled']}")
+    click.echo("-" * 40)
+    if diagnostics["fips_capable"]:
+        click.echo("  Status: FIPS-capable")
+    else:
+        click.echo("  Status: NOT FIPS-capable")
+        if not diagnostics["md5_blocked"]:
+            click.echo("    - MD5 is not blocked (host may not be in FIPS mode)")
+        if diagnostics["token_hash_algorithm"] == "bcrypt":
+            click.echo("    - Token hash algorithm is bcrypt (not FIPS-approved)")
+
+
 @cli.group()
 def token():
     """Manage authentication tokens."""

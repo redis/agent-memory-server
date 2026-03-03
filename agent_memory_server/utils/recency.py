@@ -32,7 +32,7 @@ def generate_memory_hash(memory: MemoryRecord) -> str:
         "memory_type": memory.memory_type,
     }
     content_json = json.dumps(content_fields, sort_keys=True)
-    return hashlib.sha256(content_json.encode()).hexdigest()
+    return hashlib.sha256(content_json.encode(), usedforsecurity=False).hexdigest()
 
 
 def generate_memory_hash_from_fields(
@@ -65,7 +65,7 @@ def generate_memory_hash_from_fields(
         "memory_type": memory_type,
     }
     content_json = json.dumps(content_fields, sort_keys=True)
-    return hashlib.sha256(content_json.encode()).hexdigest()
+    return hashlib.sha256(content_json.encode(), usedforsecurity=False).hexdigest()
 
 
 def update_memory_hash_if_text_changed(memory: MemoryRecord, updates: dict) -> dict:
