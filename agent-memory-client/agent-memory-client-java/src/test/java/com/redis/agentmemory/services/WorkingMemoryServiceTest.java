@@ -277,4 +277,245 @@ class WorkingMemoryServiceTest {
         assertNotNull(request.getPath());
         assertTrue(request.getPath().contains("/v1/working-memory/session-123"));
     }
+
+    @Test
+    void testAppendMessagesToWorkingMemory_WithTokens() throws Exception {
+        // Mock GET response for existing memory with existing tokens
+        WorkingMemoryResponse existingResponse = new WorkingMemoryResponse();
+        existingResponse.setSessionId("session-123");
+        existingResponse.setNamespace("test-namespace");
+        existingResponse.setMessages(Arrays.asList(new MemoryMessage("user", "Hello")));
+        existingResponse.setMemories(new ArrayList<>());
+        existingResponse.setData(new HashMap<>());
+        existingResponse.setTokens(100);
+
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(existingResponse))
+                .addHeader("Content-Type", "application/json"));
+
+        // Mock PUT response after appending
+        WorkingMemoryResponse updatedResponse = new WorkingMemoryResponse();
+        updatedResponse.setSessionId("session-123");
+        updatedResponse.setNamespace("test-namespace");
+        updatedResponse.setMessages(Arrays.asList(
+                new MemoryMessage("user", "Hello"),
+                new MemoryMessage("assistant", "Hi there!")
+        ));
+        updatedResponse.setTokens(250);
+
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(updatedResponse))
+                .addHeader("Content-Type", "application/json"));
+
+        // Execute - append messages with explicit token count
+        List<MemoryMessage> newMessages = Arrays.asList(new MemoryMessage("assistant", "Hi there!"));
+        WorkingMemoryResponse response = client.workingMemory().appendMessagesToWorkingMemory(
+                "session-123", newMessages, "test-namespace", null, null, null, 250);
+
+        // Verify
+        assertNotNull(response);
+        assertEquals("session-123", response.getSessionId());
+        assertEquals(250, response.getTokens());
+
+        // Verify the PUT request contains the tokens
+        mockServer.takeRequest(); // GET request
+        RecordedRequest putRequest = mockServer.takeRequest();
+        assertEquals("PUT", putRequest.getMethod());
+        String body = putRequest.getBody().readUtf8();
+        assertTrue(body.contains("\"tokens\":250"));
+    }
+
+    @Test
+    void testAppendMessagesToWorkingMemory_PreservesExistingTokens() throws Exception {
+        // Mock GET response for existing memory with tokens
+        WorkingMemoryResponse existingResponse = new WorkingMemoryResponse();
+        existingResponse.setSessionId("session-123");
+        existingResponse.setNamespace("test-namespace");
+        existingResponse.setMessages(Arrays.asList(new MemoryMessage("user", "Hello")));
+        existingResponse.setMemories(new ArrayList<>());
+        existingResponse.setData(new HashMap<>());
+        existingResponse.setTokens(150);
+
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(existingResponse))
+                .addHeader("Content-Type", "application/json"));
+
+        // Mock PUT response
+        WorkingMemoryResponse updatedResponse = new WorkingMemoryResponse();
+        updatedResponse.setSessionId("session-123");
+        updatedResponse.setTokens(150); // Should preserve existing
+
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(updatedResponse))
+                .addHeader("Content-Type", "application/json"));
+
+        // Execute - append messages WITHOUT specifying tokens (should preserve existing)
+        List<MemoryMessage> newMessages = Arrays.asList(new MemoryMessage("assistant", "Hi!"));
+        WorkingMemoryResponse response = client.workingMemory().appendMessagesToWorkingMemory(
+                "session-123", newMessages, "test-namespace", null, null, null);
+
+        // Verify the PUT request preserves existing tokens
+        mockServer.takeRequest(); // GET request
+        RecordedRequest putRequest = mockServer.takeRequest();
+        String body = putRequest.getBody().readUtf8();
+        assertTrue(body.contains("\"tokens\":150"));
+    }
+
+    @Test
+    void testAppendMessagesToWorkingMemory_MinimalParams() throws Exception {
+        // Mock GET response
+        WorkingMemoryResponse existingResponse = new WorkingMemoryResponse();
+        existingResponse.setSessionId("session-123");
+        existingResponse.setMessages(new ArrayList<>());
+        existingResponse.setMemories(new ArrayList<>());
+        existingResponse.setData(new HashMap<>());
+        existingResponse.setTokens(0);
+
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(existingResponse))
+                .addHeader("Content-Type", "application/json"));
+
+        // Mock PUT response
+        WorkingMemoryResponse updatedResponse = new WorkingMemoryResponse();
+        updatedResponse.setSessionId("session-123");
+
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(updatedResponse))
+                .addHeader("Content-Type", "application/json"));
+
+        // Execute with minimal params
+        List<MemoryMessage> newMessages = Arrays.asList(new MemoryMessage("user", "Test"));
+        WorkingMemoryResponse response = client.workingMemory().appendMessagesToWorkingMemory(
+                "session-123", newMessages);
+
+        // Verify
+        assertNotNull(response);
+        assertEquals("session-123", response.getSessionId());
+
+        RecordedRequest getRequest = mockServer.takeRequest();
+        assertEquals("GET", getRequest.getMethod());
+
+        RecordedRequest putRequest = mockServer.takeRequest();
+        assertEquals("PUT", putRequest.getMethod());
+    }
+
+    @Test
+    void testAppendMessagesToWorkingMemory_WithTtl() throws Exception {
+        // Mock GET response for existing memory with TTL
+        WorkingMemoryResponse existingResponse = new WorkingMemoryResponse();
+        existingResponse.setSessionId("session-123");
+        existingResponse.setNamespace("test-namespace");
+        existingResponse.setMessages(Arrays.asList(new MemoryMessage("user", "Hello")));
+        existingResponse.setMemories(new ArrayList<>());
+        existingResponse.setData(new HashMap<>());
+        existingResponse.setTtlSeconds(1800); // 30 minutes
+
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(existingResponse))
+                .addHeader("Content-Type", "application/json"));
+
+        // Mock PUT response
+        WorkingMemoryResponse updatedResponse = new WorkingMemoryResponse();
+        updatedResponse.setSessionId("session-123");
+        updatedResponse.setTtlSeconds(3600); // 1 hour
+
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(updatedResponse))
+                .addHeader("Content-Type", "application/json"));
+
+        // Execute - append messages with new TTL (restart to 1 hour)
+        List<MemoryMessage> newMessages = Arrays.asList(new MemoryMessage("assistant", "Hi!"));
+        WorkingMemoryResponse response = client.workingMemory().appendMessagesToWorkingMemory(
+                "session-123", newMessages, "test-namespace", null, null, null, null, 3600);
+
+        // Verify
+        assertNotNull(response);
+        assertEquals(Integer.valueOf(3600), response.getTtlSeconds());
+
+        // Verify the PUT request contains the new TTL
+        mockServer.takeRequest(); // GET request
+        RecordedRequest putRequest = mockServer.takeRequest();
+        String body = putRequest.getBody().readUtf8();
+        assertTrue(body.contains("\"ttl_seconds\":3600"));
+    }
+
+    @Test
+    void testAppendMessagesToWorkingMemory_PreservesExistingTtl() throws Exception {
+        // Mock GET response for existing memory with TTL
+        WorkingMemoryResponse existingResponse = new WorkingMemoryResponse();
+        existingResponse.setSessionId("session-123");
+        existingResponse.setNamespace("test-namespace");
+        existingResponse.setMessages(Arrays.asList(new MemoryMessage("user", "Hello")));
+        existingResponse.setMemories(new ArrayList<>());
+        existingResponse.setData(new HashMap<>());
+        existingResponse.setTtlSeconds(1800); // 30 minutes
+
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(existingResponse))
+                .addHeader("Content-Type", "application/json"));
+
+        // Mock PUT response
+        WorkingMemoryResponse updatedResponse = new WorkingMemoryResponse();
+        updatedResponse.setSessionId("session-123");
+        updatedResponse.setTtlSeconds(1800);
+
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(updatedResponse))
+                .addHeader("Content-Type", "application/json"));
+
+        // Execute - append messages WITHOUT specifying TTL (should preserve existing)
+        List<MemoryMessage> newMessages = Arrays.asList(new MemoryMessage("assistant", "Hi!"));
+        WorkingMemoryResponse response = client.workingMemory().appendMessagesToWorkingMemory(
+                "session-123", newMessages, "test-namespace", null, null, null);
+
+        // Verify the PUT request preserves existing TTL
+        mockServer.takeRequest(); // GET request
+        RecordedRequest putRequest = mockServer.takeRequest();
+        String body = putRequest.getBody().readUtf8();
+        assertTrue(body.contains("\"ttl_seconds\":1800"));
+    }
+
+    @Test
+    void testAppendMessagesToWorkingMemory_WithTokensAndTtl() throws Exception {
+        // Mock GET response
+        WorkingMemoryResponse existingResponse = new WorkingMemoryResponse();
+        existingResponse.setSessionId("session-123");
+        existingResponse.setNamespace("test-namespace");
+        existingResponse.setMessages(Arrays.asList(new MemoryMessage("user", "Hello")));
+        existingResponse.setMemories(new ArrayList<>());
+        existingResponse.setData(new HashMap<>());
+        existingResponse.setTokens(100);
+        existingResponse.setTtlSeconds(1800);
+
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(existingResponse))
+                .addHeader("Content-Type", "application/json"));
+
+        // Mock PUT response
+        WorkingMemoryResponse updatedResponse = new WorkingMemoryResponse();
+        updatedResponse.setSessionId("session-123");
+        updatedResponse.setTokens(250);
+        updatedResponse.setTtlSeconds(3600);
+
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(updatedResponse))
+                .addHeader("Content-Type", "application/json"));
+
+        // Execute - append messages with both tokens and TTL
+        List<MemoryMessage> newMessages = Arrays.asList(new MemoryMessage("assistant", "Hi!"));
+        WorkingMemoryResponse response = client.workingMemory().appendMessagesToWorkingMemory(
+                "session-123", newMessages, "test-namespace", null, null, null, 250, 3600);
+
+        // Verify
+        assertNotNull(response);
+        assertEquals(250, response.getTokens());
+        assertEquals(Integer.valueOf(3600), response.getTtlSeconds());
+
+        // Verify the PUT request contains both values
+        mockServer.takeRequest(); // GET request
+        RecordedRequest putRequest = mockServer.takeRequest();
+        String body = putRequest.getBody().readUtf8();
+        assertTrue(body.contains("\"tokens\":250"));
+        assertTrue(body.contains("\"ttl_seconds\":3600"));
+    }
 }

@@ -298,4 +298,182 @@ class WorkingMemoryIntegrationTest extends BaseIntegrationTest {
         assertEquals("new_value", response.getData().get("new_field"));
         assertEquals("active", response.getData().get("status"));  // Should still exist
     }
+
+    @Test
+    void testAppendMessagesWithTokens() throws Exception {
+        String sessionId = "append-tokens-test-" + UUID.randomUUID();
+        String namespace = "integration-test";
+
+        // Create initial working memory with some tokens
+        WorkingMemory initialMemory = WorkingMemory.builder()
+                .sessionId(sessionId)
+                .namespace(namespace)
+                .messages(Collections.singletonList(
+                        MemoryMessage.builder().role("user").content("Hello").build()))
+                .tokens(100)
+                .build();
+
+        client.workingMemory().putWorkingMemory(sessionId, initialMemory, namespace, null, null, null);
+
+        // Verify initial tokens
+        WorkingMemoryResponse initial = client.workingMemory()
+                .getWorkingMemory(sessionId, namespace, null, null, null);
+        assertEquals(100, initial.getTokens());
+
+        // Append messages with updated token count
+        List<MemoryMessage> newMessages = Collections.singletonList(
+                MemoryMessage.builder().role("assistant").content("Hi there! How can I help?").build());
+
+        WorkingMemoryResponse response = client.workingMemory()
+                .appendMessagesToWorkingMemory(sessionId, newMessages, namespace, null, null, null, 250);
+
+        assertNotNull(response);
+        assertEquals(250, response.getTokens());
+        assertTrue(response.getMessages().size() >= 2);
+
+        // Verify tokens persisted
+        WorkingMemoryResponse retrieved = client.workingMemory()
+                .getWorkingMemory(sessionId, namespace, null, null, null);
+        assertEquals(250, retrieved.getTokens());
+    }
+
+    @Test
+    void testAppendMessagesPreservesExistingTokens() throws Exception {
+        String sessionId = "preserve-tokens-test-" + UUID.randomUUID();
+        String namespace = "integration-test";
+
+        // Create initial working memory with tokens
+        WorkingMemory initialMemory = WorkingMemory.builder()
+                .sessionId(sessionId)
+                .namespace(namespace)
+                .messages(Collections.singletonList(
+                        MemoryMessage.builder().role("user").content("Hello").build()))
+                .tokens(150)
+                .build();
+
+        client.workingMemory().putWorkingMemory(sessionId, initialMemory, namespace, null, null, null);
+
+        // Append messages WITHOUT specifying tokens (should preserve existing 150)
+        List<MemoryMessage> newMessages = Collections.singletonList(
+                MemoryMessage.builder().role("assistant").content("Hi!").build());
+
+        WorkingMemoryResponse response = client.workingMemory()
+                .appendMessagesToWorkingMemory(sessionId, newMessages, namespace, null, null, null);
+
+        assertNotNull(response);
+        assertEquals(150, response.getTokens()); // Should preserve existing
+        assertTrue(response.getMessages().size() >= 2);
+
+        // Verify tokens persisted
+        WorkingMemoryResponse retrieved = client.workingMemory()
+                .getWorkingMemory(sessionId, namespace, null, null, null);
+        assertEquals(150, retrieved.getTokens());
+    }
+
+    @Test
+    void testAppendMessagesWithTtl() throws Exception {
+        String sessionId = "append-ttl-test-" + UUID.randomUUID();
+        String namespace = "integration-test";
+
+        // Create initial working memory with TTL
+        WorkingMemory initialMemory = WorkingMemory.builder()
+                .sessionId(sessionId)
+                .namespace(namespace)
+                .messages(Collections.singletonList(
+                        MemoryMessage.builder().role("user").content("Hello").build()))
+                .ttlSeconds(1800) // 30 minutes
+                .build();
+
+        client.workingMemory().putWorkingMemory(sessionId, initialMemory, namespace, null, null, null);
+
+        // Verify initial TTL
+        WorkingMemoryResponse initial = client.workingMemory()
+                .getWorkingMemory(sessionId, namespace, null, null, null);
+        assertEquals(Integer.valueOf(1800), initial.getTtlSeconds());
+
+        // Append messages with new TTL (restart to 1 hour)
+        List<MemoryMessage> newMessages = Collections.singletonList(
+                MemoryMessage.builder().role("assistant").content("Hi there!").build());
+
+        WorkingMemoryResponse response = client.workingMemory()
+                .appendMessagesToWorkingMemory(sessionId, newMessages, namespace, null, null, null, null, 3600);
+
+        assertNotNull(response);
+        assertEquals(Integer.valueOf(3600), response.getTtlSeconds());
+        assertTrue(response.getMessages().size() >= 2);
+
+        // Verify TTL persisted
+        WorkingMemoryResponse retrieved = client.workingMemory()
+                .getWorkingMemory(sessionId, namespace, null, null, null);
+        assertEquals(Integer.valueOf(3600), retrieved.getTtlSeconds());
+    }
+
+    @Test
+    void testAppendMessagesPreservesExistingTtl() throws Exception {
+        String sessionId = "preserve-ttl-test-" + UUID.randomUUID();
+        String namespace = "integration-test";
+
+        // Create initial working memory with TTL
+        WorkingMemory initialMemory = WorkingMemory.builder()
+                .sessionId(sessionId)
+                .namespace(namespace)
+                .messages(Collections.singletonList(
+                        MemoryMessage.builder().role("user").content("Hello").build()))
+                .ttlSeconds(1800) // 30 minutes
+                .build();
+
+        client.workingMemory().putWorkingMemory(sessionId, initialMemory, namespace, null, null, null);
+
+        // Append messages WITHOUT specifying TTL (should preserve existing)
+        List<MemoryMessage> newMessages = Collections.singletonList(
+                MemoryMessage.builder().role("assistant").content("Hi!").build());
+
+        WorkingMemoryResponse response = client.workingMemory()
+                .appendMessagesToWorkingMemory(sessionId, newMessages, namespace, null, null, null);
+
+        assertNotNull(response);
+        assertEquals(Integer.valueOf(1800), response.getTtlSeconds()); // Should preserve existing
+        assertTrue(response.getMessages().size() >= 2);
+
+        // Verify TTL persisted
+        WorkingMemoryResponse retrieved = client.workingMemory()
+                .getWorkingMemory(sessionId, namespace, null, null, null);
+        assertEquals(Integer.valueOf(1800), retrieved.getTtlSeconds());
+    }
+
+    @Test
+    void testAppendMessagesWithTokensAndTtl() throws Exception {
+        String sessionId = "append-tokens-ttl-test-" + UUID.randomUUID();
+        String namespace = "integration-test";
+
+        // Create initial working memory with tokens and TTL
+        WorkingMemory initialMemory = WorkingMemory.builder()
+                .sessionId(sessionId)
+                .namespace(namespace)
+                .messages(Collections.singletonList(
+                        MemoryMessage.builder().role("user").content("Hello").build()))
+                .tokens(100)
+                .ttlSeconds(1800)
+                .build();
+
+        client.workingMemory().putWorkingMemory(sessionId, initialMemory, namespace, null, null, null);
+
+        // Append messages with both new tokens and new TTL
+        List<MemoryMessage> newMessages = Collections.singletonList(
+                MemoryMessage.builder().role("assistant").content("Hi there!").build());
+
+        WorkingMemoryResponse response = client.workingMemory()
+                .appendMessagesToWorkingMemory(sessionId, newMessages, namespace, null, null, null, 250, 3600);
+
+        assertNotNull(response);
+        assertEquals(250, response.getTokens());
+        assertEquals(Integer.valueOf(3600), response.getTtlSeconds());
+        assertTrue(response.getMessages().size() >= 2);
+
+        // Verify both persisted
+        WorkingMemoryResponse retrieved = client.workingMemory()
+                .getWorkingMemory(sessionId, namespace, null, null, null);
+        assertEquals(250, retrieved.getTokens());
+        assertEquals(Integer.valueOf(3600), retrieved.getTtlSeconds());
+    }
 }
