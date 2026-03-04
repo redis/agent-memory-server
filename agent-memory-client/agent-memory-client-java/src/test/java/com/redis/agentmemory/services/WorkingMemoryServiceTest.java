@@ -169,7 +169,7 @@ class WorkingMemoryServiceTest {
                 .addHeader("Content-Type", "application/json"));
 
         // Execute
-        AckResponse response = client.workingMemory().deleteWorkingMemory("session-123", "user-456", "test-namespace");
+        AckResponse response = client.workingMemory().deleteWorkingMemory("session-123", "test-namespace", "user-456");
 
         // Verify
         assertNotNull(response);

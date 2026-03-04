@@ -55,6 +55,7 @@ class WorkingMemoryIntegrationTest extends BaseIntegrationTest {
         Thread.sleep(100);
 
         // Retrieve working memory
+        // Note: getWorkingMemory signature is (sessionId, namespace, userId, modelName, contextWindowMax)
         WorkingMemoryResponse getResponse = client.workingMemory()
                 .getWorkingMemory(sessionId, namespace, null, null, null);
 
@@ -297,5 +298,70 @@ class WorkingMemoryIntegrationTest extends BaseIntegrationTest {
         assertEquals(2, response.getData().get("counter"));
         assertEquals("new_value", response.getData().get("new_field"));
         assertEquals("active", response.getData().get("status"));  // Should still exist
+    }
+
+    @Test
+    void testCreateMultipleWorkingMemoriesAndRetrieveEach() throws Exception {
+        String namespace = "integration-test-multiple";
+        String sessionId1 = "multi-session-1-" + UUID.randomUUID();
+        String sessionId2 = "multi-session-2-" + UUID.randomUUID();
+        String sessionId3 = "multi-session-3-" + UUID.randomUUID();
+
+        // Create three working memories with different content
+        // Note: userId is part of the Redis key, so we need to use the same userId when retrieving
+        WorkingMemory memory1 = WorkingMemory.builder()
+                .sessionId(sessionId1)
+                .namespace(namespace)
+                .messages(Collections.singletonList(
+                        MemoryMessage.builder().role("user").content("First session message").build()))
+                .build();
+
+        WorkingMemory memory2 = WorkingMemory.builder()
+                .sessionId(sessionId2)
+                .namespace(namespace)
+                .messages(Collections.singletonList(
+                        MemoryMessage.builder().role("user").content("Second session message").build()))
+                .build();
+
+        WorkingMemory memory3 = WorkingMemory.builder()
+                .sessionId(sessionId3)
+                .namespace(namespace)
+                .messages(Collections.singletonList(
+                        MemoryMessage.builder().role("user").content("Third session message").build()))
+                .build();
+
+        // Store all three working memories
+        client.workingMemory().putWorkingMemory(sessionId1, memory1, null, null, null, null);
+        client.workingMemory().putWorkingMemory(sessionId2, memory2, null, null, null, null);
+        client.workingMemory().putWorkingMemory(sessionId3, memory3, null, null, null, null);
+
+        // Small delay to ensure data is persisted
+        Thread.sleep(200);
+
+        // Retrieve each working memory individually and verify
+        // Note: getWorkingMemory signature is (sessionId, namespace, userId, modelName, contextWindowMax)
+        WorkingMemoryResponse retrieved1 = client.workingMemory()
+                .getWorkingMemory(sessionId1, namespace, null, null, null);
+        assertNotNull(retrieved1);
+        assertEquals(sessionId1, retrieved1.getSessionId());
+        assertNotNull(retrieved1.getMessages());
+        assertFalse(retrieved1.getMessages().isEmpty());
+        assertEquals("First session message", retrieved1.getMessages().get(0).getContent());
+
+        WorkingMemoryResponse retrieved2 = client.workingMemory()
+                .getWorkingMemory(sessionId2, namespace, null, null, null);
+        assertNotNull(retrieved2);
+        assertEquals(sessionId2, retrieved2.getSessionId());
+        assertNotNull(retrieved2.getMessages());
+        assertFalse(retrieved2.getMessages().isEmpty());
+        assertEquals("Second session message", retrieved2.getMessages().get(0).getContent());
+
+        WorkingMemoryResponse retrieved3 = client.workingMemory()
+                .getWorkingMemory(sessionId3, namespace, null, null, null);
+        assertNotNull(retrieved3);
+        assertEquals(sessionId3, retrieved3.getSessionId());
+        assertNotNull(retrieved3.getMessages());
+        assertFalse(retrieved3.getMessages().isEmpty());
+        assertEquals("Third session message", retrieved3.getMessages().get(0).getContent());
     }
 }
