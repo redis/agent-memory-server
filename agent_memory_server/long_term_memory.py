@@ -638,7 +638,7 @@ async def compact_long_term_memories(
     redis_client: Redis | None = None,
     vector_distance_threshold: float = 0.2,
     compact_hash_duplicates: bool = True,
-    compact_semantic_duplicates: bool = True,
+    compact_semantic_duplicates: bool = settings.compact_semantic_duplicates,
     perpetual: Perpetual = Perpetual(
         every=timedelta(minutes=settings.compaction_every_minutes), automatic=True
     ),
