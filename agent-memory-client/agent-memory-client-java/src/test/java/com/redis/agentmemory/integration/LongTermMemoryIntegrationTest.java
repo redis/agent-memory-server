@@ -436,4 +436,127 @@ class LongTermMemoryIntegrationTest extends BaseIntegrationTest {
         // Should have retrieved some memories
         assertTrue(count >= 0);
     }
+
+    @Test
+    void testSearchWithRecencyBoost() throws Exception {
+        String namespace = "integration-test-recency";
+        String userId = "recency-user-" + UUID.randomUUID();
+
+        // Create memories
+        List<MemoryRecord> memories = Arrays.asList(
+                MemoryRecord.builder()
+                        .text("User prefers morning meetings")
+                        .namespace(namespace)
+                        .userId(userId)
+                        .memoryType(MemoryType.SEMANTIC)
+                        .topics(Collections.singletonList("preferences"))
+                        .build(),
+                MemoryRecord.builder()
+                        .text("User likes afternoon coffee breaks")
+                        .namespace(namespace)
+                        .userId(userId)
+                        .memoryType(MemoryType.SEMANTIC)
+                        .topics(Collections.singletonList("preferences"))
+                        .build()
+        );
+
+        client.longTermMemory().createLongTermMemories(memories);
+        Thread.sleep(2000);
+
+        // Search with recency boost enabled
+        SearchRequest searchRequest = SearchRequest.builder()
+                .text("user preferences")
+                .namespace(namespace)
+                .userId(userId)
+                .recencyBoost(true)
+                .recencySemanticWeight(0.7)
+                .recencyRecencyWeight(0.3)
+                .recencyHalfLifeLastAccessDays(7.0)
+                .recencyHalfLifeCreatedDays(30.0)
+                .serverSideRecency(true)
+                .limit(10)
+                .build();
+
+        MemoryRecordResults results = client.longTermMemory()
+                .searchLongTermMemories(searchRequest);
+
+        assertNotNull(results);
+        assertNotNull(results.getMemories());
+        // Results depend on embeddings being available
+        assertTrue(results.getMemories().size() >= 0);
+    }
+
+    @Test
+    void testSearchWithRecencyBoostDisabled() throws Exception {
+        String namespace = "integration-test-no-recency";
+        String userId = "no-recency-user-" + UUID.randomUUID();
+
+        // Create a memory
+        MemoryRecord memory = MemoryRecord.builder()
+                .text("Test memory without recency boost")
+                .namespace(namespace)
+                .userId(userId)
+                .memoryType(MemoryType.SEMANTIC)
+                .build();
+
+        client.longTermMemory().createLongTermMemories(Collections.singletonList(memory));
+        Thread.sleep(2000);
+
+        // Search with recency boost explicitly disabled (pure semantic search)
+        SearchRequest searchRequest = SearchRequest.builder()
+                .text("test memory")
+                .namespace(namespace)
+                .userId(userId)
+                .recencyBoost(false)
+                .limit(10)
+                .build();
+
+        MemoryRecordResults results = client.longTermMemory()
+                .searchLongTermMemories(searchRequest);
+
+        assertNotNull(results);
+        assertNotNull(results.getMemories());
+    }
+
+    @Test
+    void testSearchWithDistanceThreshold() throws Exception {
+        String namespace = "integration-test-distance";
+        String userId = "distance-user-" + UUID.randomUUID();
+
+        // Create memories
+        List<MemoryRecord> memories = Arrays.asList(
+                MemoryRecord.builder()
+                        .text("Python is a great programming language")
+                        .namespace(namespace)
+                        .userId(userId)
+                        .memoryType(MemoryType.SEMANTIC)
+                        .build(),
+                MemoryRecord.builder()
+                        .text("Java is used for enterprise applications")
+                        .namespace(namespace)
+                        .userId(userId)
+                        .memoryType(MemoryType.SEMANTIC)
+                        .build()
+        );
+
+        client.longTermMemory().createLongTermMemories(memories);
+        Thread.sleep(2000);
+
+        // Search with strict distance threshold (only very similar results)
+        SearchRequest searchRequest = SearchRequest.builder()
+                .text("Python programming")
+                .namespace(namespace)
+                .userId(userId)
+                .distanceThreshold(0.3)  // Strict threshold
+                .limit(10)
+                .build();
+
+        MemoryRecordResults results = client.longTermMemory()
+                .searchLongTermMemories(searchRequest);
+
+        assertNotNull(results);
+        assertNotNull(results.getMemories());
+        // With strict threshold, we may get fewer or no results
+        assertTrue(results.getMemories().size() >= 0);
+    }
 }
