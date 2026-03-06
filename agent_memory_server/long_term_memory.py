@@ -516,16 +516,23 @@ async def extract_memory_structure(
     # Guard: only update if the key still exists. A race between semantic
     # deduplication (which deletes merged keys) and this background task
     # can recreate deleted keys as orphaned hashes with only topics/entities.
+    # Use a Lua script to perform the existence check and HSET atomically,
+    # closing the TOCTOU window where the key could be deleted between the
+    # EXISTS and HSET calls.
     key = Keys.memory_key(memory.id)
-    if await redis.exists(key):
-        await redis.hset(
-            key,
-            mapping={"topics": topics_joined, "entities": entities_joined},
-        )  # type: ignore
-    else:
-        logger.info(
-            f"Skipping topic/entity update for deleted memory {memory.id}"
-        )
+    lua_script = """
+    if redis.call('EXISTS', KEYS[1]) == 1 then
+        redis.call('HSET', KEYS[1], ARGV[1], ARGV[2], ARGV[3], ARGV[4])
+        return 1
+    else
+        return 0
+    end
+    """
+    result = await redis.eval(
+        lua_script, 1, key, "topics", topics_joined, "entities", entities_joined
+    )
+    if result == 0:
+        logger.info(f"Skipping topic/entity update for deleted memory {memory.id}")
 
 
 async def merge_memories_with_llm(
