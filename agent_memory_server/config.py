@@ -489,6 +489,7 @@ Optimized query:"""
 
     # Compaction settings
     compaction_every_minutes: int = 10
+    compact_semantic_duplicates: bool = True
 
     # Docket task timeout for LLM-dependent tasks (in minutes)
     # This controls how long tasks like memory compaction, extraction, and summarization
