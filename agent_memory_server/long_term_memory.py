@@ -638,7 +638,7 @@ async def compact_long_term_memories(
     redis_client: Redis | None = None,
     vector_distance_threshold: float = 0.2,
     compact_hash_duplicates: bool = True,
-    compact_semantic_duplicates: bool = settings.compact_semantic_duplicates,
+    compact_semantic_duplicates: bool | None = None,
     perpetual: Perpetual = Perpetual(
         every=timedelta(minutes=settings.compaction_every_minutes), automatic=True
     ),
@@ -653,6 +653,9 @@ async def compact_long_term_memories(
 
     Returns the count of remaining memories after compaction.
     """
+    if compact_semantic_duplicates is None:
+        compact_semantic_duplicates = settings.compact_semantic_duplicates
+
     if not redis_client:
         redis_client = await get_redis_conn()
 
