@@ -513,10 +513,19 @@ async def extract_memory_structure(
     topics_joined = "|".join(merged_topics) if merged_topics else ""
     entities_joined = "|".join(merged_entities) if merged_entities else ""
 
-    await redis.hset(
-        Keys.memory_key(memory.id),
-        mapping={"topics": topics_joined, "entities": entities_joined},
-    )  # type: ignore
+    # Guard: only update if the key still exists. A race between semantic
+    # deduplication (which deletes merged keys) and this background task
+    # can recreate deleted keys as orphaned hashes with only topics/entities.
+    key = Keys.memory_key(memory.id)
+    if await redis.exists(key):
+        await redis.hset(
+            key,
+            mapping={"topics": topics_joined, "entities": entities_joined},
+        )  # type: ignore
+    else:
+        logger.info(
+            f"Skipping topic/entity update for deleted memory {memory.id}"
+        )
 
 
 async def merge_memories_with_llm(
@@ -1021,8 +1030,8 @@ async def index_long_term_memories(
                 else:
                     current_memory = deduped_memory or current_memory
 
-            # Check for semantic duplicates
-            if not was_deduplicated:
+            # Check for semantic duplicates (respects compact_semantic_duplicates setting)
+            if not was_deduplicated and settings.compact_semantic_duplicates:
                 deduped_memory, was_merged = await deduplicate_by_semantic_search(
                     memory=current_memory,
                     redis_client=redis,
