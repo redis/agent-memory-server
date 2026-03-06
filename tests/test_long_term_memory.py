@@ -325,22 +325,30 @@ class TestLongTermMemory:
                 memory_type=MemoryTypeEnum.SEMANTIC,
             )
 
+            # Simulate key exists (Lua script returns 1)
+            mock_redis.eval.return_value = 1
+
             await extract_memory_structure(memory)
 
             # Verify extraction was called
             mock_extract.assert_called_once_with("Test text content")
 
-            # Verify Redis was updated with topics and entities
-            mock_redis.hset.assert_called_once()
-            args, kwargs = mock_redis.hset.call_args
+            # Verify Redis eval was called with atomic Lua script
+            mock_redis.eval.assert_called_once()
+            args = mock_redis.eval.call_args[0]
 
-            # Check the key format - it includes the memory ID in the key structure
-            assert "memory_idx:" in args[0] and "test-id" in args[0]
+            # args: (lua_script, 1, key, "topics", topics, "entities", entities)
+            lua_script = args[0]
+            assert "EXISTS" in lua_script
+            assert "HSET" in lua_script
+            key = args[2]
+            assert "memory_idx:" in key and "test-id" in key
 
-            # Check the mapping - direct Redis writes should match the schema.
-            mapping = kwargs["mapping"]
-            assert mapping["topics"] == "topic1,topic2"
-            assert mapping["entities"] == "entity1,entity2"
+            # Check comma-separated values passed to Lua script
+            assert args[3] == "topics"
+            assert args[4] == "topic1,topic2"
+            assert args[5] == "entities"
+            assert args[6] == "entity1,entity2"
 
     @pytest.mark.asyncio
     async def test_update_long_term_memory_preserves_decoded_tags_on_text_only_patch(
@@ -384,6 +392,46 @@ class TestLongTermMemory:
         persisted_memory = mock_adapter.update_memories.call_args[0][0][0]
         assert persisted_memory.topics == ["cooking", "italian"]
         assert persisted_memory.entities == ["pasta", "rome"]
+
+    @pytest.mark.asyncio
+    async def test_extract_memory_structure_skips_deleted_key(
+        self, mock_async_redis_client
+    ):
+        """Regression: extract_memory_structure must not recreate deleted keys.
+
+        When semantic deduplication deletes a memory key between scheduling
+        and execution of the background extraction task, the atomic Lua script
+        must detect the missing key and skip the HSET to avoid orphaned hashes.
+        """
+        with (
+            patch(
+                "agent_memory_server.long_term_memory.get_redis_conn"
+            ) as mock_get_redis,
+            patch(
+                "agent_memory_server.long_term_memory.handle_extraction"
+            ) as mock_extract,
+        ):
+            mock_redis = AsyncMock()
+            mock_get_redis.return_value = mock_redis
+            mock_extract.return_value = (["topic1"], ["entity1"])
+
+            # Simulate key does NOT exist (Lua script returns 0)
+            mock_redis.eval.return_value = 0
+
+            memory = MemoryRecord(
+                id="deleted-id",
+                text="This memory was deleted by dedup",
+                namespace="test-namespace",
+                memory_type=MemoryTypeEnum.SEMANTIC,
+            )
+
+            # Should complete without error, skipping the update
+            await extract_memory_structure(memory)
+
+            # Lua script was called (it handles the existence check internally)
+            mock_redis.eval.assert_called_once()
+            # hset should NOT have been called directly
+            mock_redis.hset.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_count_long_term_memories(self, mock_async_redis_client):
@@ -631,12 +679,64 @@ class TestLongTermMemory:
             assert remaining_count == 2  # Mocked total
 
     def test_compact_semantic_duplicates_env_var(self, monkeypatch):
-        """Regression: COMPACT_SEMANTIC_DUPLICATES env var must affect runtime behavior."""
+        """Regression: COMPACT_SEMANTIC_DUPLICATES env var must affect Settings."""
         monkeypatch.setenv("COMPACT_SEMANTIC_DUPLICATES", "false")
         from agent_memory_server.config import Settings
 
         s = Settings()
         assert s.compact_semantic_duplicates is False
+
+    @pytest.mark.asyncio
+    async def test_index_skips_semantic_dedup_when_disabled(
+        self, mock_async_redis_client
+    ):
+        """Regression: indexing-time semantic dedup must respect the setting.
+
+        When compact_semantic_duplicates is False, index_long_term_memories
+        must NOT call deduplicate_by_semantic_search even when deduplicate=True.
+        """
+        with (
+            patch("agent_memory_server.long_term_memory.settings") as mock_settings,
+            patch(
+                "agent_memory_server.long_term_memory.get_memory_vector_db"
+            ) as mock_get_db,
+            patch(
+                "agent_memory_server.long_term_memory.deduplicate_by_semantic_search"
+            ) as mock_semantic_dedup,
+            patch(
+                "agent_memory_server.long_term_memory.get_background_tasks"
+            ) as mock_get_bg,
+        ):
+            mock_settings.compact_semantic_duplicates = False
+            mock_settings.generation_model = "test-model"
+            mock_settings.long_term_memory_index_name = "memory_records"
+            mock_settings.llm_task_timeout_minutes = 5
+            mock_settings.enable_discrete_memory_extraction = False
+
+            mock_adapter = AsyncMock()
+            mock_get_db.return_value = mock_adapter
+            mock_adapter.search_memories.return_value = ([], 0)
+
+            mock_bg = MagicMock()
+            mock_get_bg.return_value = mock_bg
+
+            memories = [
+                MemoryRecord(
+                    id="test-id",
+                    text="test memory",
+                    namespace="test",
+                    memory_type=MemoryTypeEnum.SEMANTIC,
+                )
+            ]
+
+            await index_long_term_memories(
+                memories,
+                redis_client=mock_async_redis_client,
+                deduplicate=True,
+            )
+
+            # Semantic dedup should NOT be called when setting is disabled
+            mock_semantic_dedup.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_promote_working_memory_to_long_term(self, mock_async_redis_client):
