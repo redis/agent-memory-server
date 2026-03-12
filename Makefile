@@ -40,6 +40,21 @@ test-integration:  ## Run only integration tests
 test-cov:  ## Run tests with coverage report
 	uv run pytest --cov
 
+test-system:  ## Run system scale tests (requires running server)
+	uv run pytest tests/system/ --run-api-tests -v -s
+
+test-system-quick:  ## Run quick system scale tests
+	SCALE_SHORT_MESSAGES=5 SCALE_MEDIUM_MESSAGES=20 SCALE_LONG_MESSAGES=50 \
+	uv run pytest tests/system/ --run-api-tests -v -s
+
+test-system-production:  ## Run production-scale system tests
+	SCALE_SHORT_MESSAGES=20 SCALE_MEDIUM_MESSAGES=100 SCALE_LONG_MESSAGES=500 \
+	SCALE_PARALLEL_SESSIONS=10 SCALE_CONCURRENT_UPDATES=20 \
+	uv run pytest tests/system/ --run-api-tests -v -s
+
+test-travel-agent:  ## Run travel agent scenario tests only
+	uv run pytest tests/system/test_travel_agent_scenarios.py --run-api-tests -v -s
+
 # Running services
 server:  ## Start the REST API server
 	uv run agent-memory api
