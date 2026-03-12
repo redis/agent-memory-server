@@ -1,0 +1,447 @@
+{
+  "scenario": "Travel Agent Conversation",
+  "description": "Realistic conversation data for testing long conversation memory with a travel planning assistant",
+  "short_conversation": {
+    "description": "Quick inquiry about a weekend trip (10 messages)",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hi! I'm looking to plan a weekend getaway to Paris next month."
+      },
+      {
+        "role": "assistant",
+        "content": "I'd be happy to help you plan your Paris weekend! When exactly are you thinking of going, and how many people will be traveling?"
+      },
+      {
+        "role": "user",
+        "content": "It's just me, and I'm flexible on dates but preferably the first or second weekend of April."
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect! For a solo weekend trip to Paris in early April, I'd recommend April 6-8 or April 13-15. The weather should be pleasant, around 55-60°F. What's your budget range for this trip?"
+      },
+      {
+        "role": "user",
+        "content": "I'm thinking around $2000-2500 total including flights and hotel."
+      },
+      {
+        "role": "assistant",
+        "content": "That's a good budget for a weekend in Paris. I can find you round-trip flights from major US cities for $600-800 and a nice 3-star hotel in a central location for about $150-200 per night. That leaves you $800-1000 for meals, activities, and transportation. Does that sound good?"
+      },
+      {
+        "role": "user",
+        "content": "Yes, that works! I'd prefer to stay near the Louvre or Eiffel Tower area."
+      },
+      {
+        "role": "assistant",
+        "content": "Excellent choice! The 7th arrondissement near the Eiffel Tower is beautiful and walkable. I'll look for hotels there. Are you interested in any specific activities or do you have dietary restrictions I should know about?"
+      },
+      {
+        "role": "user",
+        "content": "I'm vegetarian and I'd love to visit museums and maybe take a cooking class."
+      },
+      {
+        "role": "assistant",
+        "content": "Wonderful! Paris has excellent vegetarian options and amazing museums. I'll put together a package with hotel near the Eiffel Tower, museum passes for the Louvre and Musée d'Orsay, and I'll include options for vegetarian cooking classes. I'll send you a detailed itinerary within 24 hours!"
+      }
+    ]
+  },
+  "medium_conversation": {
+    "description": "Detailed family vacation planning (50 messages)",
+    "conversation_flow": [
+      "Initial inquiry about family vacation to Italy",
+      "Discussion of family size (2 adults, 2 kids ages 8 and 12)",
+      "Date preferences (summer break, July 15-30)",
+      "Budget discussion ($8000-10000)",
+      "Destination preferences (Rome, Florence, Venice)",
+      "Accommodation preferences (family-friendly hotels, prefer apartments)",
+      "Dietary restrictions (one child has nut allergy)",
+      "Activity interests (history, art, food, kid-friendly activities)",
+      "Transportation options (trains vs rental car)",
+      "Specific hotel recommendations in Rome",
+      "Discussion of Vatican tours and skip-the-line tickets",
+      "Florence accommodation and Uffizi Gallery reservations",
+      "Venice hotel options and gondola rides",
+      "Day trip options from each city",
+      "Restaurant recommendations with allergy considerations",
+      "Travel insurance discussion",
+      "Packing tips for summer in Italy",
+      "Local SIM card vs international plan",
+      "Best gelato shops in each city",
+      "Kid-friendly museums and activities",
+      "Booking confirmations and final itinerary review"
+    ],
+    "sample_messages": [
+      {
+        "role": "user",
+        "content": "We're a family of four looking to spend two weeks in Italy this summer. Our kids are 8 and 12."
+      },
+      {
+        "role": "assistant",
+        "content": "How exciting! Italy is perfect for families. Two weeks gives you great flexibility. Are you thinking of focusing on specific regions, or would you like to see multiple cities? Also, what are your dates and budget range?"
+      },
+      {
+        "role": "user",
+        "content": "We'd love to see Rome, Florence, and Venice. Our dates are July 15-30, and we have about $8000-10000 to work with."
+      }
+    ]
+  },
+  "long_conversation": {
+    "description": "Complex multi-destination trip planning over several sessions (200 messages)",
+    "conversation_flow": [
+      "Phase 1: Initial Planning (messages 1-40)",
+      "- Honeymoon planning for 3-week European tour",
+      "- Budget: $15,000-20,000",
+      "- Interests: Romance, food, wine, history, beaches",
+      "- Dates: September (shoulder season)",
+      "- Starting city: London (has friends there)",
+      "Phase 2: Destination Selection (messages 41-80)",
+      "- London (3 days) - visiting friends, theater",
+      "- Paris (4 days) - romantic dinners, museums",
+      "- French Riviera (4 days) - Nice, Monaco, beach time",
+      "- Tuscany (5 days) - wine tours, countryside",
+      "- Amalfi Coast (4 days) - Positano, Capri",
+      "- Rome (3 days) - history, Vatican",
+      "Phase 3: Detailed Planning (messages 81-140)",
+      "- Flight bookings (business class discussion)",
+      "- Hotel selections for each destination",
+      "- Restaurant reservations (Michelin-starred options)",
+      "- Wine tour bookings in Tuscany",
+      "- Private boat tour in Amalfi",
+      "- Cooking class in Tuscany",
+      "- Spa treatments and couples activities",
+      "- Transportation between cities (trains, private transfers)",
+      "Phase 4: Refinements (messages 141-180)",
+      "- Dietary preferences (pescatarian)",
+      "- Anniversary dinner planning (special occasion)",
+      "- Photography session in Paris",
+      "- Surprise proposal ideas (client wants to propose in Positano)",
+      "- Ring shopping in Paris vs bringing ring",
+      "- Engagement celebration dinner planning",
+      "- Honeymoon suite upgrades",
+      "- Special amenities and surprises",
+      "Phase 5: Final Details (messages 181-200)",
+      "- Travel insurance with ring coverage",
+      "- Packing list for September weather",
+      "- Currency exchange and credit cards",
+      "- Emergency contacts and embassy info",
+      "- Mobile phone and data plans",
+      "- Final itinerary review",
+      "- Confirmation of all bookings",
+      "- Pre-trip checklist",
+      "- Bon voyage wishes and emergency contact info"
+    ],
+    "sample_messages": [
+      {
+        "role": "user",
+        "content": "My partner and I are planning our honeymoon for September. We want to spend about 3 weeks in Europe and have a budget of $15,000-20,000. We love food, wine, romance, and a mix of cities and beaches."
+      },
+      {
+        "role": "assistant",
+        "content": "Congratulations on your upcoming wedding! A 3-week European honeymoon in September is perfect - you'll have beautiful weather and fewer crowds. With your budget and interests, I'm thinking a combination of iconic cities and coastal relaxation. Have you been to Europe before, and are there any must-see destinations?"
+      }
+    ]
+  },
+  "very_large_messages": {
+    "description": "Conversation with detailed itineraries and long-form content",
+    "examples": [
+      {
+        "role": "assistant",
+        "content_type": "detailed_itinerary",
+        "content": "Here's your complete 14-day Italy itinerary:\n\nDAY 1 - ARRIVAL IN ROME\n- Arrive at Fiumicino Airport (FCO) at 10:30 AM on Flight AA123\n- Private transfer to Hotel Artemide (Via Nazionale 22, 00184 Roma)\n- Check-in at 2:00 PM (early check-in confirmed)\n- Afternoon: Rest and explore neighborhood, visit Trevi Fountain (5 min walk)\n- Evening: Dinner reservation at Armando al Pantheon at 8:00 PM (vegetarian options confirmed)\n- Overnight: Hotel Artemide, Superior Room with breakfast included\n\nDAY 2 - ANCIENT ROME\n- 8:00 AM: Breakfast at hotel\n- 9:00 AM: Skip-the-line Colosseum tour with guide Marco (confirmation #12345)\n- 12:00 PM: Lunch at Flavio al Velavevodetto (testaccio neighborhood, authentic Roman cuisine)\n- 2:00 PM: Roman Forum and Palatine Hill exploration\n- 5:00 PM: Gelato break at Giolitti\n- 7:00 PM: Sunset walk through Trastevere neighborhood\n- 8:30 PM: Dinner at Da Enzo al 29 (reservation confirmed, mention nut allergy)\n- Overnight: Hotel Artemide\n\n[Content continues with detailed daily itineraries for all 14 days, including addresses, confirmation numbers, phone numbers, dietary notes, backup options, weather considerations, and local tips - approximately 5000 characters total]"
+      },
+      {
+        "role": "user",
+        "content_type": "detailed_preferences",
+        "content": "Let me give you more details about our family's preferences and requirements:\n\nDIETARY RESTRICTIONS:\n- Sarah (daughter, age 8): Severe nut allergy (anaphylactic) - needs EpiPen, cannot have any tree nuts or peanuts, cross-contamination is serious concern\n- Michael (son, age 12): Vegetarian by choice, will eat dairy and eggs\n- Mom (me): Pescatarian, prefer seafood over meat\n- Dad: No restrictions but prefers Mediterranean diet\n\nACCOMMODATION PREFERENCES:\n- Need two bedrooms or suite with separate sleeping areas\n- Prefer apartments with kitchen for breakfast and snacks (helps with Sarah's allergies)\n- Must have air conditioning (traveling in July)\n- Prefer walkable neighborhoods, not too far from metro/public transport\n- Need reliable WiFi for kids' tablets and staying in touch with family\n- Laundry facilities important for 2-week trip\n\nACTIVITY INTERESTS:\n- Kids love: Interactive museums, gelato, pizza making, swimming, animals\n- Parents love: Art, history, architecture, wine (for dad), local food experiences\n- Family together: Cooking classes, bike tours, boat rides, outdoor activities\n- Pace: Not too rushed, kids need downtime, prefer 2-3 activities per day max\n\nTRAVEL STYLE:\n- Mix of guided tours and independent exploration\n- Prefer morning activities (kids are early risers)\n- Need flexibility for rest/nap time\n- Like to eat dinner early (6-7 PM) with kids\n- Want some special experiences but also authentic local life\n\n[Content continues with more details about budget breakdown, previous travel experience, specific concerns, and questions - approximately 5000 characters total]"
+      }
+    ]
+  },
+  "concurrent_updates_scenario": {
+    "description": "Multiple agents updating the same conversation simultaneously",
+    "scenario": "Travel agency with multiple agents helping the same client",
+    "updates": [
+      {
+        "agent": "Flight Specialist",
+        "message": "I've found great flight options for your Rome trip. Delta has a direct flight for $850 per person departing July 15 at 6:00 PM."
+      },
+      {
+        "agent": "Hotel Specialist",
+        "message": "I've secured a family suite at Hotel Artemide in Rome for July 15-19. It has two bedrooms, kitchen, and is near Termini station."
+      },
+      {
+        "agent": "Activities Coordinator",
+        "message": "I've booked your Colosseum skip-the-line tour for July 16 at 9:00 AM and a pizza-making class for the kids on July 17."
+      },
+      {
+        "agent": "Restaurant Specialist",
+        "message": "I've made reservations at three nut-free restaurants in Rome and confirmed they can accommodate Sarah's allergy with the chefs."
+      }
+    ]
+  },
+  "summarization_test_data": {
+    "description": "Data designed to trigger summarization",
+    "initial_context": "Client planning anniversary trip to Greece",
+    "messages_to_summarize": [
+      "Discussion of Greek islands (Santorini, Mykonos, Crete)",
+      "Budget conversation ($5000-7000)",
+      "Accommodation preferences (boutique hotels with sea views)",
+      "Activity interests (sailing, wine tasting, sunset dinners)",
+      "Dietary preferences (Mediterranean diet, seafood)",
+      "Transportation between islands (ferries vs flights)",
+      "Specific hotel recommendations in Santorini",
+      "Restaurant reservations in Oia",
+      "Sunset cruise booking",
+      "Wine tour in Santorini vineyards"
+    ],
+    "expected_summary": "Client planning romantic anniversary trip to Greek islands (Santorini, Mykonos) with $5000-7000 budget. Preferences include boutique hotels with sea views, sailing, wine tasting, and sunset dinners. Dietary focus on Mediterranean cuisine and seafood. Discussed transportation options and made preliminary bookings for Santorini accommodations and activities.",
+    "recent_messages_to_preserve": [
+      {
+        "role": "user",
+        "content": "Actually, we'd like to add Crete to the itinerary. Can we do 3 days in Santorini, 2 in Mykonos, and 3 in Crete?"
+      },
+      {
+        "role": "assistant",
+        "content": "Absolutely! Adding Crete is a great idea. That gives you 8 days total. I'd recommend flying into Santorini, ferry to Mykonos, then fly to Crete, and fly home from there. This minimizes backtracking."
+      },
+      {
+        "role": "user",
+        "content": "Perfect! What are the must-see things in Crete?"
+      }
+    ]
+  },
+  "returning_client_scenario": {
+    "description": "Same client planning multiple trips over time - tests long-term memory",
+    "client_id": "sarah-johnson-001",
+    "trips": [
+      {
+        "trip_number": 1,
+        "session_id": "trip-1-paris-2023",
+        "date": "2023-06-15",
+        "description": "First trip - Weekend in Paris",
+        "key_details": {
+          "destination": "Paris, France",
+          "duration": "3 days",
+          "budget": "$2500",
+          "travelers": "Solo",
+          "preferences": [
+            "vegetarian",
+            "museums",
+            "cooking classes"
+          ],
+          "hotels": [
+            "Hotel Artemide near Eiffel Tower"
+          ],
+          "activities": [
+            "Louvre",
+            "Musée d'Orsay",
+            "vegetarian cooking class"
+          ]
+        },
+        "sample_messages": [
+          {
+            "role": "user",
+            "content": "Hi! I'm Sarah. I'm looking to plan a weekend getaway to Paris next month."
+          },
+          {
+            "role": "assistant",
+            "content": "Welcome Sarah! I'd be happy to help you plan your Paris weekend. When exactly are you thinking of going?"
+          },
+          {
+            "role": "user",
+            "content": "First weekend of July, just me. I'm vegetarian and love museums."
+          },
+          {
+            "role": "assistant",
+            "content": "Perfect! I'll find you vegetarian-friendly restaurants and museum passes. Budget range?"
+          },
+          {
+            "role": "user",
+            "content": "Around $2500 total."
+          }
+        ]
+      },
+      {
+        "trip_number": 2,
+        "session_id": "trip-2-italy-2024",
+        "date": "2024-03-20",
+        "description": "Second trip - Italy with partner (9 months later)",
+        "key_details": {
+          "destination": "Rome and Florence, Italy",
+          "duration": "7 days",
+          "budget": "$6000",
+          "travelers": "2 people (Sarah + partner)",
+          "preferences": [
+            "vegetarian",
+            "art",
+            "wine tasting",
+            "romantic"
+          ],
+          "hotels": [
+            "Hotel Artemide Rome",
+            "Boutique hotel Florence"
+          ],
+          "activities": [
+            "Vatican",
+            "Uffizi Gallery",
+            "Tuscany wine tour",
+            "cooking class for two"
+          ]
+        },
+        "sample_messages": [
+          {
+            "role": "user",
+            "content": "Hi! It's Sarah again. I had such a great time on that Paris trip you planned last year! Now my partner and I want to do Italy."
+          },
+          {
+            "role": "assistant",
+            "content": "Sarah! So glad to hear from you again! I remember your Paris trip - you loved the vegetarian cooking class and museums. Are you still vegetarian? And tell me about this Italy trip!"
+          },
+          {
+            "role": "user",
+            "content": "Yes, still vegetarian! My partner eats everything though. We want to do Rome and Florence, maybe 7 days total. He's really into wine."
+          },
+          {
+            "role": "assistant",
+            "content": "Wonderful! I can plan vegetarian options for you and wine experiences for your partner. Since you enjoyed the cooking class in Paris, how about a couples cooking class in Tuscany?"
+          },
+          {
+            "role": "user",
+            "content": "That sounds perfect! Budget is around $6000 for both of us."
+          }
+        ],
+        "references_to_previous_trips": [
+          "Remember how much I loved the Louvre? I want that same museum experience in Italy.",
+          "The hotel you booked near the Eiffel Tower was perfect - can we get something similar in Rome?",
+          "I'm still vegetarian like last time, but my partner isn't."
+        ]
+      },
+      {
+        "trip_number": 3,
+        "session_id": "trip-3-japan-2024",
+        "date": "2024-10-05",
+        "description": "Third trip - Japan honeymoon (7 months after Italy)",
+        "key_details": {
+          "destination": "Tokyo, Kyoto, and Osaka, Japan",
+          "duration": "14 days",
+          "budget": "$12000",
+          "travelers": "2 people (newlyweds)",
+          "preferences": [
+            "vegetarian options",
+            "cultural experiences",
+            "temples",
+            "food tours",
+            "romantic"
+          ],
+          "special_notes": "Honeymoon - partner proposed in Florence during previous trip",
+          "hotels": [
+            "Luxury ryokan in Kyoto",
+            "Modern hotel Tokyo",
+            "Boutique hotel Osaka"
+          ],
+          "activities": [
+            "Temple tours",
+            "Tea ceremony",
+            "Vegetarian food tour",
+            "Sake tasting",
+            "Mt. Fuji day trip"
+          ]
+        },
+        "sample_messages": [
+          {
+            "role": "user",
+            "content": "Hi! It's Sarah - you've planned my Paris trip and Italy trip. Big news: we got engaged in Florence! Now we're planning our honeymoon to Japan!"
+          },
+          {
+            "role": "assistant",
+            "content": "Sarah! Congratulations on your engagement! I'm so honored to have been part of your journey - from solo Paris to romantic Italy where he proposed, and now your honeymoon! Japan is going to be incredible. Still vegetarian?"
+          },
+          {
+            "role": "user",
+            "content": "Yes! And he's learned to appreciate vegetarian food after all our trips. We want Tokyo, Kyoto, and Osaka. Two weeks, and budget is $12,000."
+          },
+          {
+            "role": "assistant",
+            "content": "Perfect! I remember you loved cultural experiences like the cooking classes in Paris and Tuscany. Japan has amazing temple tours, tea ceremonies, and vegetarian Buddhist cuisine. Let me plan something special for your honeymoon!"
+          },
+          {
+            "role": "user",
+            "content": "That sounds amazing! Can we do a mix of luxury (like that boutique hotel in Florence) and authentic experiences?"
+          }
+        ],
+        "references_to_previous_trips": [
+          "Remember the cooking classes from Paris and Italy? I want similar hands-on experiences in Japan.",
+          "The boutique hotel in Florence was perfect for romance - can we find something similar in Kyoto?",
+          "I've been vegetarian on all our trips and it's worked great. Can we do vegetarian food tours in Japan?",
+          "We loved the wine tour in Tuscany - maybe sake tasting in Japan?",
+          "You've planned all my trips and they've been perfect. I trust your recommendations!"
+        ]
+      }
+    ],
+    "expected_long_term_memories": [
+      {
+        "type": "preference",
+        "content": "Sarah is vegetarian and prefers vegetarian dining options on all trips"
+      },
+      {
+        "type": "preference",
+        "content": "Sarah loves cultural experiences, especially cooking classes and hands-on activities"
+      },
+      {
+        "type": "preference",
+        "content": "Sarah prefers boutique/smaller hotels over large chains, values romantic atmosphere"
+      },
+      {
+        "type": "preference",
+        "content": "Sarah enjoys museums, art, and cultural/historical sites"
+      },
+      {
+        "type": "history",
+        "content": "Trip 1 (June 2023): Solo weekend to Paris, $2500 budget, stayed near Eiffel Tower"
+      },
+      {
+        "type": "history",
+        "content": "Trip 2 (March 2024): 7-day Italy trip with partner, Rome and Florence, $6000 budget"
+      },
+      {
+        "type": "history",
+        "content": "Trip 3 (October 2024): 14-day Japan honeymoon, Tokyo/Kyoto/Osaka, $12,000 budget"
+      },
+      {
+        "type": "relationship",
+        "content": "Partner proposed in Florence during Italy trip, got married before Japan trip"
+      },
+      {
+        "type": "pattern",
+        "content": "Budget and trip complexity increasing over time: $2500 → $6000 → $12000"
+      },
+      {
+        "type": "pattern",
+        "content": "Consistent preferences across trips: vegetarian, cultural activities, boutique accommodations"
+      }
+    ],
+    "test_scenarios": [
+      {
+        "scenario": "Fourth trip planning - should reference all previous trips",
+        "user_message": "Hi! It's Sarah. After Paris, Italy, and Japan, we're thinking about our first anniversary trip. Maybe somewhere with beaches this time?",
+        "expected_agent_behavior": [
+          "Recognize returning client Sarah",
+          "Reference previous trips (Paris, Italy, Japan)",
+          "Remember vegetarian preference without asking",
+          "Recall she likes boutique hotels and cultural experiences",
+          "Note budget trend ($2500 → $6000 → $12000) and suggest appropriate range",
+          "Suggest beach destinations with vegetarian options and cultural activities"
+        ]
+      },
+      {
+        "scenario": "Switching context mid-conversation",
+        "conversation_flow": [
+          "Start planning Greece trip",
+          "User asks: 'Actually, before we continue, can you remind me what hotel we stayed at in Florence?'",
+          "Agent retrieves from long-term memory: 'Boutique hotel in Florence'",
+          "Return to Greece planning with context intact"
+        ]
+      }
+    ]
+  }
+}

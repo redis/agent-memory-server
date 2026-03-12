@@ -1,0 +1,215 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.8, pytest-9.0.1, pluggy-1.6.0 -- /Users/robert.shelton/Documents/agent-memory-server/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/robert.shelton/Documents/agent-memory-server
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: anyio-4.12.0, xdist-3.8.0, asyncio-1.3.0, cov-7.0.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collecting ... collected 25 items
+
+tests/system/test_long_conversation_scale.py::TestLongConversationPrepare::test_short_conversation PASSED [  4%]
+tests/system/test_long_conversation_scale.py::TestLongConversationPrepare::test_medium_conversation PASSED [  8%]
+tests/system/test_long_conversation_scale.py::TestLongConversationPrepare::test_long_conversation PASSED [ 12%]
+tests/system/test_long_conversation_scale.py::TestLongConversationPrepare::test_very_large_messages PASSED [ 16%]
+tests/system/test_long_conversation_scale.py::TestLongConversationRun::test_repeated_updates_to_session PASSED [ 20%]
+tests/system/test_long_conversation_scale.py::TestLongConversationRun::test_parallel_long_sessions PASSED [ 24%]
+tests/system/test_long_conversation_scale.py::TestLongConversationRun::test_concurrent_updates_same_session PASSED [ 28%]
+tests/system/test_long_conversation_scale.py::TestLongConversationCheck::test_summarization_triggers PASSED [ 32%]
+tests/system/test_long_conversation_scale.py::TestLongConversationCheck::test_message_order_preserved PASSED [ 36%]
+tests/system/test_long_conversation_scale.py::TestLongConversationCheck::test_recent_messages_available PASSED [ 40%]
+tests/system/test_long_conversation_scale.py::TestLongConversationCheck::test_memory_prompt_generation PASSED [ 44%]
+tests/system/test_long_conversation_scale.py::TestScaleMetrics::test_comprehensive_scale_report PASSED [ 48%]
+tests/system/test_travel_agent_scenarios.py::TestTravelAgentShortConversations::test_weekend_trip_inquiry PASSED [ 52%]
+tests/system/test_travel_agent_scenarios.py::TestTravelAgentShortConversations::test_retrieve_and_search_weekend_trip FAILED [ 56%]
+tests/system/test_travel_agent_scenarios.py::TestTravelAgentMediumConversations::test_family_vacation_planning PASSED [ 60%]
+tests/system/test_travel_agent_scenarios.py::TestTravelAgentMediumConversations::test_incremental_family_planning PASSED [ 64%]
+tests/system/test_travel_agent_scenarios.py::TestTravelAgentLongConversations::test_honeymoon_planning_full_journey PASSED [ 68%]
+tests/system/test_travel_agent_scenarios.py::TestTravelAgentLongConversations::test_honeymoon_with_very_large_itinerary PASSED [ 72%]
+tests/system/test_travel_agent_scenarios.py::TestTravelAgentConcurrentScenarios::test_multiple_agents_updating_booking FAILED [ 76%]
+tests/system/test_travel_agent_scenarios.py::TestTravelAgentConcurrentScenarios::test_parallel_client_conversations PASSED [ 80%]
+tests/system/test_travel_agent_scenarios.py::TestTravelAgentSummarization::test_summarization_with_greece_trip FAILED [ 84%]
+tests/system/test_travel_agent_scenarios.py::TestReturningClientScenarios::test_three_trips_same_client FAILED [ 88%]
+tests/system/test_travel_agent_scenarios.py::TestReturningClientScenarios::test_long_term_memory_creation FAILED [ 92%]
+tests/system/test_travel_agent_scenarios.py::TestReturningClientScenarios::test_context_switching_in_conversation FAILED [ 96%]
+tests/system/test_travel_agent_scenarios.py::TestReturningClientScenarios::test_preference_consistency_across_trips PASSED [100%]
+
+=================================== FAILURES ===================================
+___ TestTravelAgentShortConversations.test_retrieve_and_search_weekend_trip ____
+agent-memory-client/agent_memory_client/client.py:316: in get_working_memory
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://localhost:8001/v1/working-memory/weekend-search-1773324629?namespace=travel-agent&context_window_max=128000'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+During handling of the above exception, another exception occurred:
+tests/system/test_travel_agent_scenarios.py:113: in test_retrieve_and_search_weekend_trip
+    retrieved = await travel_agent_client.get_working_memory(session_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+agent-memory-client/agent_memory_client/client.py:324: in get_working_memory
+    self._handle_http_error(e.response)
+agent-memory-client/agent_memory_client/client.py:186: in _handle_http_error
+    raise MemoryNotFoundError(f"Resource not found: {response.url}")
+E   agent_memory_client.exceptions.MemoryNotFoundError: Resource not found: http://localhost:8001/v1/working-memory/weekend-search-1773324629?namespace=travel-agent&context_window_max=128000
+---------------------------- Captured stdout setup -----------------------------
+10:10:29 agent_memory_server.working_memory_index INFO   Created working memory index 'working_memory_idx' with prefix 'working_memory:'
+------------------------------ Captured log setup ------------------------------
+INFO     agent_memory_server.working_memory_index:working_memory_index.py:110 Created working memory index 'working_memory_idx' with prefix 'working_memory:'
+--------------------------- Captured stdout teardown ---------------------------
+10:10:29 agent_memory_server.working_memory_index INFO   Dropped working memory index 'working_memory_idx'
+---------------------------- Captured log teardown -----------------------------
+INFO     agent_memory_server.working_memory_index:working_memory_index.py:138 Dropped working memory index 'working_memory_idx'
+___ TestTravelAgentConcurrentScenarios.test_multiple_agents_updating_booking ___
+tests/system/test_travel_agent_scenarios.py:368: in test_multiple_agents_updating_booking
+    assert "Flight Specialist" in conversation_text
+E   assert 'Flight Specialist' in "[Activities Coordinator] I've booked your Colosseum skip-the-line tour for July 16 at 9:00 AM and a pizza-making class for the kids on July 17."
+---------------------------- Captured stdout setup -----------------------------
+10:10:29 agent_memory_server.working_memory_index INFO   Created working memory index 'working_memory_idx' with prefix 'working_memory:'
+------------------------------ Captured log setup ------------------------------
+INFO     agent_memory_server.working_memory_index:working_memory_index.py:110 Created working memory index 'working_memory_idx' with prefix 'working_memory:'
+----------------------------- Captured stdout call -----------------------------
+
+📝 Multi-Agent Update Scenario
+   Initial messages: 10
+
+✅ Concurrent agent updates completed
+   Agents: Flight Specialist, Hotel Specialist, Activities Coordinator, Restaurant Specialist
+   Total time: 0.014s
+   Final message count: 1
+--------------------------- Captured stdout teardown ---------------------------
+10:10:29 agent_memory_server.working_memory_index INFO   Dropped working memory index 'working_memory_idx'
+---------------------------- Captured log teardown -----------------------------
+INFO     agent_memory_server.working_memory_index:working_memory_index.py:138 Dropped working memory index 'working_memory_idx'
+_______ TestTravelAgentSummarization.test_summarization_with_greece_trip _______
+agent-memory-client/agent_memory_client/client.py:316: in get_working_memory
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://localhost:8001/v1/working-memory/greece-summarization-1773324629?namespace=travel-agent&context_window_max=4000'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+During handling of the above exception, another exception occurred:
+tests/system/test_travel_agent_scenarios.py:473: in test_summarization_with_greece_trip
+    result = await client.get_working_memory(session_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+agent-memory-client/agent_memory_client/client.py:324: in get_working_memory
+    self._handle_http_error(e.response)
+agent-memory-client/agent_memory_client/client.py:186: in _handle_http_error
+    raise MemoryNotFoundError(f"Resource not found: {response.url}")
+E   agent_memory_client.exceptions.MemoryNotFoundError: Resource not found: http://localhost:8001/v1/working-memory/greece-summarization-1773324629?namespace=travel-agent&context_window_max=4000
+---------------------------- Captured stdout setup -----------------------------
+10:10:29 agent_memory_server.working_memory_index INFO   Created working memory index 'working_memory_idx' with prefix 'working_memory:'
+------------------------------ Captured log setup ------------------------------
+INFO     agent_memory_server.working_memory_index:working_memory_index.py:110 Created working memory index 'working_memory_idx' with prefix 'working_memory:'
+----------------------------- Captured stdout call -----------------------------
+
+📝 Greece Trip Summarization Test
+   Total messages: 13
+   Context window: 4000 tokens
+--------------------------- Captured stdout teardown ---------------------------
+10:10:31 agent_memory_server.working_memory_index INFO   Dropped working memory index 'working_memory_idx'
+---------------------------- Captured log teardown -----------------------------
+INFO     agent_memory_server.working_memory_index:working_memory_index.py:138 Dropped working memory index 'working_memory_idx'
+__________ TestReturningClientScenarios.test_three_trips_same_client ___________
+agent-memory-client/agent_memory_client/client.py:316: in get_working_memory
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://localhost:8001/v1/working-memory/trip-1-paris-2023?namespace=travel-agent&context_window_max=128000'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+During handling of the above exception, another exception occurred:
+tests/system/test_travel_agent_scenarios.py:555: in test_three_trips_same_client
+    retrieved = await travel_agent_client.get_working_memory(session_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+agent-memory-client/agent_memory_client/client.py:324: in get_working_memory
+    self._handle_http_error(e.response)
+agent-memory-client/agent_memory_client/client.py:186: in _handle_http_error
+    raise MemoryNotFoundError(f"Resource not found: {response.url}")
+E   agent_memory_client.exceptions.MemoryNotFoundError: Resource not found: http://localhost:8001/v1/working-memory/trip-1-paris-2023?namespace=travel-agent&context_window_max=128000
+---------------------------- Captured stdout setup -----------------------------
+10:10:31 agent_memory_server.working_memory_index INFO   Created working memory index 'working_memory_idx' with prefix 'working_memory:'
+------------------------------ Captured log setup ------------------------------
+INFO     agent_memory_server.working_memory_index:working_memory_index.py:110 Created working memory index 'working_memory_idx' with prefix 'working_memory:'
+----------------------------- Captured stdout call -----------------------------
+
+📝 Returning Client: Sarah's Travel Journey
+   Client ID: sarah-johnson-001
+   Number of trips: 3
+
+   ✅ Trip 1: Paris, France
+      Session: trip-1-paris-2023
+      Budget: $2500
+      Messages: 5
+
+   ✅ Trip 2: Rome and Florence, Italy
+      Session: trip-2-italy-2024
+      Budget: $6000
+      Messages: 5
+
+   ✅ Trip 3: Tokyo, Kyoto, and Osaka, Japan
+      Session: trip-3-japan-2024
+      Budget: $12000
+      Messages: 5
+
+✅ All trips stored for returning client
+   Sessions: trip-1-paris-2023, trip-2-italy-2024, trip-3-japan-2024
+--------------------------- Captured stdout teardown ---------------------------
+10:10:31 agent_memory_server.working_memory_index INFO   Dropped working memory index 'working_memory_idx'
+---------------------------- Captured log teardown -----------------------------
+INFO     agent_memory_server.working_memory_index:working_memory_index.py:138 Dropped working memory index 'working_memory_idx'
+_________ TestReturningClientScenarios.test_long_term_memory_creation __________
+tests/system/test_travel_agent_scenarios.py:603: in test_long_term_memory_creation
+    await travel_agent_client.create_long_term_memories(
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: 'MemoryAPIClient' object has no attribute 'create_long_term_memories'. Did you mean: 'create_long_term_memory'?
+---------------------------- Captured stdout setup -----------------------------
+10:10:31 agent_memory_server.working_memory_index INFO   Created working memory index 'working_memory_idx' with prefix 'working_memory:'
+------------------------------ Captured log setup ------------------------------
+INFO     agent_memory_server.working_memory_index:working_memory_index.py:110 Created working memory index 'working_memory_idx' with prefix 'working_memory:'
+----------------------------- Captured stdout call -----------------------------
+
+📝 Long-term Memory Creation Test
+--------------------------- Captured stdout teardown ---------------------------
+10:10:31 agent_memory_server.working_memory_index INFO   Dropped working memory index 'working_memory_idx'
+---------------------------- Captured log teardown -----------------------------
+INFO     agent_memory_server.working_memory_index:working_memory_index.py:138 Dropped working memory index 'working_memory_idx'
+_____ TestReturningClientScenarios.test_context_switching_in_conversation ______
+agent-memory-client/agent_memory_client/client.py:316: in get_working_memory
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://localhost:8001/v1/working-memory/trip-2-italy-2024?namespace=travel-agent&context_window_max=128000'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+During handling of the above exception, another exception occurred:
+tests/system/test_travel_agent_scenarios.py:702: in test_context_switching_in_conversation
+    italy_memory = await travel_agent_client.get_working_memory(italy_session)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+agent-memory-client/agent_memory_client/client.py:324: in get_working_memory
+    self._handle_http_error(e.response)
+agent-memory-client/agent_memory_client/client.py:186: in _handle_http_error
+    raise MemoryNotFoundError(f"Resource not found: {response.url}")
+E   agent_memory_client.exceptions.MemoryNotFoundError: Resource not found: http://localhost:8001/v1/working-memory/trip-2-italy-2024?namespace=travel-agent&context_window_max=128000
+---------------------------- Captured stdout setup -----------------------------
+10:10:31 agent_memory_server.working_memory_index INFO   Created working memory index 'working_memory_idx' with prefix 'working_memory:'
+------------------------------ Captured log setup ------------------------------
+INFO     agent_memory_server.working_memory_index:working_memory_index.py:110 Created working memory index 'working_memory_idx' with prefix 'working_memory:'
+----------------------------- Captured stdout call -----------------------------
+
+📝 Context Switching Test
+   Stored Italy trip: trip-2-italy-2024
+   Started Greece planning: trip-4-greece-1773324631
+   User asked about previous Italy trip mid-conversation
+--------------------------- Captured stdout teardown ---------------------------
+10:10:31 agent_memory_server.working_memory_index INFO   Dropped working memory index 'working_memory_idx'
+---------------------------- Captured log teardown -----------------------------
+INFO     agent_memory_server.working_memory_index:working_memory_index.py:138 Dropped working memory index 'working_memory_idx'
+=========================== short test summary info ============================
+FAILED tests/system/test_travel_agent_scenarios.py::TestTravelAgentShortConversations::test_retrieve_and_search_weekend_trip
+FAILED tests/system/test_travel_agent_scenarios.py::TestTravelAgentConcurrentScenarios::test_multiple_agents_updating_booking
+FAILED tests/system/test_travel_agent_scenarios.py::TestTravelAgentSummarization::test_summarization_with_greece_trip
+FAILED tests/system/test_travel_agent_scenarios.py::TestReturningClientScenarios::test_three_trips_same_client
+FAILED tests/system/test_travel_agent_scenarios.py::TestReturningClientScenarios::test_long_term_memory_creation
+FAILED tests/system/test_travel_agent_scenarios.py::TestReturningClientScenarios::test_context_switching_in_conversation
+======================== 6 failed, 19 passed in 20.38s =========================
