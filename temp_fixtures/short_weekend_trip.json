@@ -1,0 +1,49 @@
+{
+  "data": {
+    "dataset_id": "weekend-paris-replay"
+  },
+  "namespace": "travel-agent",
+  "user_id": "test-user-001",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hi! I'm looking to plan a weekend getaway to Paris next month."
+    },
+    {
+      "role": "assistant",
+      "content": "I'd be happy to help you plan your Paris weekend! When exactly are you thinking of going, and how many people will be traveling?"
+    },
+    {
+      "role": "user",
+      "content": "It's just me, and I'm flexible on dates but preferably the first or second weekend of April."
+    },
+    {
+      "role": "assistant",
+      "content": "Perfect! For a solo weekend trip to Paris in early April, I'd recommend April 6-8 or April 13-15. The weather should be pleasant, around 55-60\u00b0F. What's your budget range for this trip?"
+    },
+    {
+      "role": "user",
+      "content": "I'm thinking around $2000-2500 total including flights and hotel."
+    },
+    {
+      "role": "assistant",
+      "content": "That's a good budget for a weekend in Paris. I can find you round-trip flights from major US cities for $600-800 and a nice 3-star hotel in a central location for about $150-200 per night. That leaves you $800-1000 for meals, activities, and transportation. Does that sound good?"
+    },
+    {
+      "role": "user",
+      "content": "Yes, that works! I'd prefer to stay near the Louvre or Eiffel Tower area."
+    },
+    {
+      "role": "assistant",
+      "content": "Excellent choice! The 7th arrondissement near the Eiffel Tower is beautiful and walkable. I'll look for hotels there. Are you interested in any specific activities or do you have dietary restrictions I should know about?"
+    },
+    {
+      "role": "user",
+      "content": "I'm vegetarian and I'd love to visit museums and maybe take a cooking class."
+    },
+    {
+      "role": "assistant",
+      "content": "Wonderful! Paris has excellent vegetarian options and amazing museums. I'll put together a package with hotel near the Eiffel Tower, museum passes for the Louvre and Mus\u00e9e d'Orsay, and I'll include options for vegetarian cooking classes. I'll send you a detailed itinerary within 24 hours!"
+    }
+  ]
+}

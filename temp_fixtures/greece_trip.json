@@ -1,0 +1,25 @@
+{
+  "data": {
+    "dataset_id": "greece-anniversary-replay"
+  },
+  "namespace": "travel-agent",
+  "user_id": "test-user-002",
+  "messages": [
+    {"role": "user", "content": "Hi! My partner and I are celebrating our 10th anniversary and want to go to Greece."},
+    {"role": "assistant", "content": "Congratulations on your anniversary! Greece is perfect for a romantic celebration. When are you thinking of traveling, and how long would you like to stay?"},
+    {"role": "user", "content": "We're thinking late September, maybe 10-12 days. We love beaches and history."},
+    {"role": "assistant", "content": "Late September is ideal - still warm but fewer crowds. For 10-12 days, I'd recommend splitting time between Athens (history) and the islands (beaches). What's your budget range?"},
+    {"role": "user", "content": "We have about $5000-7000 for the whole trip."},
+    {"role": "assistant", "content": "That's a great budget! I can plan Athens (3 days) for ancient sites, then island hopping. Are you interested in Santorini, Mykonos, or Crete?"},
+    {"role": "user", "content": "Santorini sounds amazing! We've seen so many photos of those blue-domed buildings."},
+    {"role": "assistant", "content": "Santorini is breathtaking! I'll include sunset views in Oia, wine tasting, and a catamaran cruise. Would you like to add another island or spend more time in Santorini?"},
+    {"role": "user", "content": "Maybe add Mykonos? We've heard it has great beaches and nightlife."},
+    {"role": "assistant", "content": "Perfect combination! Mykonos has beautiful beaches and vibrant atmosphere. I'm thinking: Athens (3 days) → Santorini (4 days) → Mykonos (3 days). Sound good?"},
+    {"role": "user", "content": "That sounds perfect! What about hotels? We want something romantic but not crazy expensive."},
+    {"role": "assistant", "content": "For your anniversary, I recommend boutique hotels with caldera views in Santorini ($200-300/night) and beachfront in Mykonos ($150-250/night). Athens can be more budget-friendly ($100-150/night). Total accommodation: ~$2000-2500."},
+    {"role": "user", "content": "Actually, we'd like to add Crete to the itinerary. Can we do 3 days in Santorini, 2 in Mykonos, and 3 in Crete?"},
+    {"role": "assistant", "content": "Absolutely! Adding Crete is a great idea. That gives you 8 days total. I'd recommend flying into Santorini, ferry to Mykonos, then fly to Crete, and fly home from there. This minimizes backtracking."},
+    {"role": "user", "content": "Perfect! What are the must-see things in Crete?"}
+  ]
+}
+
