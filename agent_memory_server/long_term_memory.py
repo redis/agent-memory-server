@@ -52,6 +52,7 @@ from agent_memory_server.utils.redis import get_redis_conn
 # Track pending extraction tasks to prevent garbage collection
 # This is only used when running without Docket (asyncio mode)
 _pending_extraction_tasks: set = set()
+SEMANTIC_DEDUP_SEARCH_LIMIT = 10
 
 
 def _parse_extraction_response_with_fallback(content: str, logger) -> dict:
@@ -1427,7 +1428,6 @@ async def _semantic_merge_group_is_cohesive(
         return True
 
     candidate_ids = {candidate.id for candidate in candidate_memories if candidate.id}
-    search_limit = 10
 
     for candidate_memory in candidate_memories:
         if not candidate_memory.text:
@@ -1439,7 +1439,8 @@ async def _semantic_merge_group_is_cohesive(
             user_id=user_id_filter,
             session_id=session_id_filter,
             distance_threshold=vector_distance_threshold,
-            limit=search_limit,
+            # Keep the cohesion probe aligned with the outer semantic dedup cap.
+            limit=SEMANTIC_DEDUP_SEARCH_LIMIT,
         )
         related_ids = {
             result.id
@@ -1549,7 +1550,7 @@ async def deduplicate_by_semantic_search(
         user_id=user_id_filter,
         session_id=session_id_filter,
         distance_threshold=vector_distance_threshold,
-        limit=10,
+        limit=SEMANTIC_DEDUP_SEARCH_LIMIT,
     )
 
     vector_search_result = search_result.memories if search_result else []

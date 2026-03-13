@@ -679,3 +679,76 @@ async def test_issue_200_valid_same_topic_pairs_still_merge(
 
     assert was_merged
     merge_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_capped_semantic_merge_group_still_passes_cohesion_check(
+    async_redis_client,
+    monkeypatch,
+):
+    await async_redis_client.flushdb()
+
+    namespace = f"ns-{ulid.ULID()}"
+    user_id = f"user-{ulid.ULID()}"
+
+    existing_texts = [
+        f"User prefers flat white coffee with oat milk variant {index}."
+        for index in range(10)
+    ]
+    candidate_text = "User prefers flat white coffee with oat milk."
+
+    db = install_controlled_memory_db(
+        monkeypatch,
+        {
+            **{text: [1.0, 0.0] for text in existing_texts},
+            candidate_text: [1.0, 0.0],
+        },
+    )
+
+    await index_long_term_memories(
+        [
+            MemoryRecord(
+                id=f"existing-{index}",
+                text=text,
+                namespace=namespace,
+                user_id=user_id,
+                memory_type="semantic",
+            )
+            for index, text in enumerate(existing_texts)
+        ],
+        redis_client=async_redis_client,
+        deduplicate=False,
+    )
+
+    search_result = await db.search_memories(
+        query=candidate_text,
+        namespace=Namespace(eq=namespace),
+        user_id=UserId(eq=user_id),
+        distance_threshold=0.35,
+        limit=10,
+    )
+
+    assert search_result.total == 10
+
+    async def fake_merge(memories: list[MemoryRecord]) -> MemoryRecord:
+        return memories[0]
+
+    merge_mock = AsyncMock(side_effect=fake_merge)
+    monkeypatch.setattr(ltm, "merge_memories_with_llm", merge_mock)
+
+    _, was_merged = await deduplicate_by_semantic_search(
+        memory=MemoryRecord(
+            id="candidate-memory",
+            text=candidate_text,
+            namespace=namespace,
+            user_id=user_id,
+            memory_type="semantic",
+        ),
+        redis_client=async_redis_client,
+        namespace=namespace,
+        user_id=user_id,
+        vector_distance_threshold=0.35,
+    )
+
+    assert was_merged
+    merge_mock.assert_awaited_once()
