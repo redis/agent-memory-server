@@ -21,6 +21,7 @@ from agent_memory_server.migrations import (
     migrate_add_discrete_memory_extracted_2,
     migrate_add_memory_hashes_1,
     migrate_add_memory_type_3,
+    migrate_delete_invalid_memories_4,
 )
 from agent_memory_server.utils.redis import get_redis_conn
 
@@ -28,6 +29,17 @@ from agent_memory_server.utils.redis import get_redis_conn
 logger = get_logger(__name__)
 
 VERSION = __version__
+DEFAULT_REDELIVERY_TIMEOUT_MULTIPLIER = 2
+
+
+def _default_redelivery_timeout_seconds() -> int:
+    """Compute worker redelivery timeout from LLM task timeout settings."""
+    return max(
+        60,
+        settings.llm_task_timeout_minutes
+        * 60
+        * DEFAULT_REDELIVERY_TIMEOUT_MULTIPLIER,
+    )
 
 
 @click.group()
@@ -85,6 +97,7 @@ def migrate_memories():
             migrate_add_memory_hashes_1,
             migrate_add_discrete_memory_extracted_2,
             migrate_add_memory_type_3,
+            migrate_delete_invalid_memories_4,
         ]
         for migration in migrations:
             await migration(redis=redis)
@@ -448,10 +461,14 @@ def schedule_task(task_path: str, args: list[str]):
 )
 @click.option(
     "--redelivery-timeout",
-    default=30,
-    help="Seconds to wait before redelivering a task to another worker",
+    default=None,
+    type=click.IntRange(min=1),
+    help=(
+        "Seconds to wait before redelivering a task to another worker. "
+        "Defaults to 2x llm_task_timeout_minutes."
+    ),
 )
-def task_worker(concurrency: int, redelivery_timeout: int):
+def task_worker(concurrency: int, redelivery_timeout: int | None):
     """
     Start a Docket worker using the Docket name from settings.
 
@@ -467,6 +484,9 @@ def task_worker(concurrency: int, redelivery_timeout: int):
     if not settings.use_docket:
         click.echo("Docket is disabled in settings. Cannot run worker.")
         sys.exit(1)
+
+    if redelivery_timeout is None:
+        redelivery_timeout = _default_redelivery_timeout_seconds()
 
     async def _ensure_stream_and_group():
         """Ensure the Docket stream and consumer group exist to avoid NOGROUP errors."""

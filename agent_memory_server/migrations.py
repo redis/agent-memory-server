@@ -133,3 +133,19 @@ async def migrate_add_memory_type_3(redis: Redis | None = None) -> None:
         migrated_count += 1
 
     logger.info(f"Migration completed. Added memory_type to {migrated_count} memories")
+
+
+async def migrate_delete_invalid_memories_4(redis: Redis | None = None) -> None:
+    """
+    Migration 4: Delete invalid memories with empty/placeholder id/text fields.
+    """
+    logger.info("Starting invalid memory cleanup migration")
+
+    # Keep import local to avoid unnecessary module initialization at import time.
+    from agent_memory_server.long_term_memory import delete_invalid_memories
+
+    deleted_count = await delete_invalid_memories(redis_client=redis)
+    logger.info(
+        "Migration completed. Deleted %s invalid memories",
+        deleted_count,
+    )

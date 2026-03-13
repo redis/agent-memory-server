@@ -114,12 +114,12 @@ agent-memory task-worker [OPTIONS]
 **Options:**
 
 - `--concurrency INTEGER`: Number of tasks to process concurrently. (Default: 10)
-- `--redelivery-timeout INTEGER`: Seconds to wait before a task is redelivered to another worker if the current worker fails or times out. (Default: 30)
+- `--redelivery-timeout INTEGER`: Seconds to wait before a task is redelivered to another worker if the current worker fails or times out. (Default: `2 x llm_task_timeout_minutes` from server settings; with the default config, this is 600 seconds.)
 
 Example:
 
 ```bash
-agent-memory task-worker --concurrency 5 --redelivery-timeout 60
+agent-memory task-worker --concurrency 5 --redelivery-timeout 600
 ```
 
 ### `rebuild_index`

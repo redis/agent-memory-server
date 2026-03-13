@@ -1,3 +1,4 @@
+import unicodedata
 from typing import Any
 
 import tiktoken
@@ -23,6 +24,7 @@ from agent_memory_server.models import (
     MemoryPromptRequest,
     MemoryPromptResponse,
     MemoryRecord,
+    MemoryRecordResults,
     MemoryRecordResultsResponse,
     ModelNameLiteral,
     RunSummaryViewPartitionRequest,
@@ -55,6 +57,40 @@ from agent_memory_server.utils.redis import get_redis_conn
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+def _sanitize_search_results(raw_results: MemoryRecordResults) -> None:
+    """Remove malformed records so clients never receive placeholder memories."""
+    def _has_meaningful_string(value: str | None) -> bool:
+        if not isinstance(value, str):
+            return False
+        if not value:
+            return False
+        for ch in value:
+            # Treat Unicode control/separator/mark-only strings as empty
+            # placeholders (for example U+2060 WORD JOINER or standalone
+            # combining marks like U+0301).
+            if not unicodedata.category(ch).startswith(("C", "Z", "M")):
+                return True
+        return False
+
+    cleaned = []
+    dropped = 0
+    for memory in raw_results.memories:
+        if not _has_meaningful_string(memory.id) or not _has_meaningful_string(
+            memory.text
+        ):
+            dropped += 1
+            continue
+        cleaned.append(memory)
+
+    if dropped:
+        logger.warning(
+            "Dropped %s malformed memory records from search response (empty id/text)",
+            dropped,
+        )
+        raw_results.memories = cleaned
+        raw_results.total = max((raw_results.total or 0) - dropped, 0)
 
 
 @router.post("/v1/long-term-memory/forget")
@@ -683,9 +719,12 @@ async def search_long_term_memory(
     if server_side_recency:
         kwargs["server_side_recency"] = True
         kwargs["recency_params"] = _build_recency_params(payload)
-        return await long_term_memory.search_long_term_memories(**kwargs)
+        raw_results = await long_term_memory.search_long_term_memories(**kwargs)
+        _sanitize_search_results(raw_results)
+        return raw_results
 
     raw_results = await long_term_memory.search_long_term_memories(**kwargs)
+    _sanitize_search_results(raw_results)
 
     # Soft-filter fallback: if strict filters yield no results, relax filters and
     # inject hints into the query text to guide semantic search.
@@ -738,6 +777,7 @@ async def search_long_term_memory(
             raw_results = await long_term_memory.search_long_term_memories(
                 **fallback_kwargs
             )
+            _sanitize_search_results(raw_results)
     except Exception as e:
         logger.warning(f"Soft-filter fallback failed: {e}")
 
@@ -765,8 +805,10 @@ async def search_long_term_memory(
             background_tasks.add_task(long_term_memory.update_last_accessed, ids)
 
         raw_results.memories = ranked
+        _sanitize_search_results(raw_results)
         return raw_results
     except Exception:
+        _sanitize_search_results(raw_results)
         return raw_results
 
 

@@ -3,6 +3,7 @@ import logging
 import numbers
 import re
 import time
+import unicodedata
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -52,6 +53,47 @@ from agent_memory_server.utils.redis import get_redis_conn
 # Track pending extraction tasks to prevent garbage collection
 # This is only used when running without Docket (asyncio mode)
 _pending_extraction_tasks: set = set()
+
+
+def _has_meaningful_string(value: str | None) -> bool:
+    if not isinstance(value, str):
+        return False
+    if not value:
+        return False
+    for ch in value:
+        # Treat Unicode control/separator/mark-only strings as empty
+        # placeholders (for example U+2060 WORD JOINER or standalone
+        # combining marks like U+0301).
+        if not unicodedata.category(ch).startswith(("C", "Z", "M")):
+            return True
+    return False
+
+
+def _sanitize_memory_results(results: MemoryRecordResults) -> MemoryRecordResults:
+    """Drop malformed placeholder records so all callers see consistent results."""
+    if not results.memories:
+        return results
+
+    original_count = len(results.memories)
+    filtered = [
+        memory
+        for memory in results.memories
+        if _has_meaningful_string(memory.id) and _has_meaningful_string(memory.text)
+    ]
+
+    if len(filtered) != original_count:
+        dropped = original_count - len(filtered)
+        logger.warning(
+            "Dropped %s malformed memory records from core search result (empty id/text)",
+            dropped,
+        )
+        results.memories = filtered
+        results.total = max((results.total or original_count) - dropped, 0)
+        if results.next_offset is not None and len(filtered) < original_count:
+            # Legacy malformed rows should not cause clients to skip valid pages.
+            results.next_offset = max(results.next_offset - dropped, 0)
+
+    return results
 
 
 def _parse_extraction_response_with_fallback(content: str, logger) -> dict:
@@ -960,16 +1002,16 @@ async def index_long_term_memories(
     """
     background_tasks = get_background_tasks()
 
-    # Filter out memories with empty text or id before processing
-    # Empty text causes OpenAI's embedding API to reject with "'$.input' is invalid"
+    # Filter out memories with empty/placeholder text or id before processing.
+    # Empty text causes embedding APIs to reject input.
     valid_memories = []
     for memory in memories:
-        if not memory.text:
+        if not _has_meaningful_string(memory.text):
             logger.warning(
                 f"Skipping memory with empty text: id={memory.id}",
             )
             continue
-        if not memory.id:
+        if not _has_meaningful_string(memory.id):
             logger.warning(
                 f"Skipping memory with empty id: text={memory.text[:50] if memory.text else ''}...",
             )
@@ -1113,7 +1155,7 @@ async def search_long_term_memories(
     # This enables patterns like: "return all memories for this user/namespace".
     if not (text or "").strip():
         db = await get_memory_vector_db()
-        return await db.list_memories(
+        results = await db.list_memories(
             session_id=session_id,
             user_id=user_id,
             namespace=namespace,
@@ -1127,6 +1169,7 @@ async def search_long_term_memories(
             limit=limit,
             offset=offset,
         )
+        return _sanitize_memory_results(results)
 
     # Optimize query for vector search if requested.
     search_query = text
@@ -1207,7 +1250,7 @@ async def search_long_term_memories(
         f"[search_long_term_memories] OUTPUT - {results.total} results: {memory_previews}"
     )
 
-    return results
+    return _sanitize_memory_results(results)
 
 
 async def count_long_term_memories(
@@ -1766,8 +1809,8 @@ async def delete_invalid_memories(
     Delete corrupted memory records from Redis.
 
     Corrupted records are those that:
-    1. Have empty key ID components (keys like "prefix:" or "prefix: ")
-    2. Are missing required fields (like 'text')
+    1. Have empty/placeholder-only key ID components
+    2. Have empty/placeholder-only required fields (like 'id_' or 'text')
 
     These records cannot be properly searched or deleted by ID, so they need
     to be cleaned up directly via Redis key operations.
@@ -1798,16 +1841,37 @@ async def delete_invalid_memories(
 
             # Check 1: Empty ID in key name
             id_part = key_str[len(prefix) + 1 :]  # +1 for the colon
-            if not id_part or not id_part.strip():
+            if not _has_meaningful_string(id_part):
                 should_delete = True
                 logger.info(f"Found invalid memory with empty key ID: {key_str}")
             else:
-                # Check 2: Missing required 'text' field
+                # Check 2: Missing/empty required fields in record payload
                 data = await redis_client.hgetall(key)
+                id_field = data.get(b"id_") or data.get("id_")
                 text_field = data.get(b"text") or data.get("text")
-                if text_field is None:
+                id_str = (
+                    id_field.decode("utf-8").strip()
+                    if isinstance(id_field, bytes)
+                    else str(id_field).strip()
+                    if id_field is not None
+                    else ""
+                )
+                text_str = (
+                    text_field.decode("utf-8").strip()
+                    if isinstance(text_field, bytes)
+                    else str(text_field).strip()
+                    if text_field is not None
+                    else ""
+                )
+
+                if not _has_meaningful_string(id_str):
                     should_delete = True
-                    logger.info(f"Found invalid memory missing 'text' field: {key_str}")
+                    logger.info(f"Found invalid memory with empty 'id_' field: {key_str}")
+                elif not _has_meaningful_string(text_str):
+                    should_delete = True
+                    logger.info(
+                        f"Found invalid memory with missing/empty 'text' field: {key_str}"
+                    )
 
             if should_delete:
                 await redis_client.delete(key)

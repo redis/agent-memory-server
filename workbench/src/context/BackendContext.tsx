@@ -13,6 +13,7 @@ import {
   type SearchRequest,
   type SearchResponse,
   type HealthResponse,
+  type AckResponse,
   type CreateMemoryRequest,
   type WorkingMemoryResponse,
   type MemoryRecord,
@@ -50,9 +51,9 @@ export interface MemoryPromptResponse {
 export interface MemoryBackend {
   health(): Promise<HealthResponse>
   search(request: SearchRequest): Promise<SearchResponse>
-  deleteMemory(id: string): Promise<{ acknowledged: boolean }>
-  deleteMemories(ids: string[]): Promise<{ status: string }>
-  compactMemories(params?: { namespace?: string; user_id?: string }): Promise<{ status: string }>
+  deleteMemory(id: string): Promise<AckResponse>
+  deleteMemories(ids: string[]): Promise<AckResponse>
+  compactMemories(params?: { namespace?: string; user_id?: string }): Promise<AckResponse>
   createMemory(memory: CreateMemoryRequest): Promise<unknown>
   getMemoryPrompt(params: MemoryPromptParams): Promise<MemoryPromptResponse>
   updateSession(
@@ -93,7 +94,8 @@ function createMcpBackend(client: McpSseClient): MemoryBackend {
 
     search: async (req) => {
       const args: Record<string, unknown> = { limit: req.limit ?? 10 }
-      if (req.text) args.text = req.text
+      // Keep behavior aligned with REST search: always pass text explicitly.
+      args.text = req.text ?? ''
       if (req.offset) args.offset = req.offset
       if (req.session_id) args.session_id = req.session_id
       if (req.namespace) args.namespace = req.namespace
@@ -115,7 +117,7 @@ function createMcpBackend(client: McpSseClient): MemoryBackend {
       await client.callTool('delete_long_term_memories', {
         memory_ids: [id],
       })
-      return { acknowledged: true }
+      return { status: 'ok, deleted 1 memories' }
     },
 
     deleteMemories: async (ids) => {

@@ -3,6 +3,48 @@
 const API_BASE = '/api'
 
 // Types
+export interface AckResponse {
+  status: string
+}
+
+type SearchMemoryLike = {
+  id?: unknown
+  id_?: unknown
+  text?: unknown
+  content?: unknown
+} & Partial<MemoryRecordResult>
+
+function hasMeaningfulString(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  const normalized = value.replace(/[\p{C}\p{Z}\p{M}]/gu, '')
+  return normalized.length > 0
+}
+
+function normalizeSearchMemory(memory: unknown): MemoryRecordResult | null {
+  if (!memory || typeof memory !== 'object') return null
+  const record = memory as SearchMemoryLike
+  const normalizedId = hasMeaningfulString(record.id)
+    ? record.id
+    : hasMeaningfulString(record.id_)
+      ? record.id_
+      : null
+  const normalizedText = hasMeaningfulString(record.text)
+    ? record.text
+    : hasMeaningfulString(record.content)
+      ? record.content
+      : null
+
+  if (!normalizedId || !normalizedText) {
+    return null
+  }
+
+  return {
+    ...(record as MemoryRecordResult),
+    id: normalizedId,
+    text: normalizedText,
+  }
+}
+
 export interface MemoryRecord {
   id: string
   text: string
@@ -118,16 +160,24 @@ async function fetchApi<T>(
   options?: RequestInit
 ): Promise<T> {
   const url = `${API_BASE}${endpoint}`
+  const hasBody = options?.body !== undefined && options?.body !== null
+  const hasExplicitContentType =
+    !!options?.headers &&
+    new Headers(options.headers).has('Content-Type')
   const response = await fetch(url, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      ...(hasBody && !hasExplicitContentType
+        ? { 'Content-Type': 'application/json' }
+        : {}),
       ...options?.headers,
     },
   })
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+    const error = await response
+      .json()
+      .catch(async () => ({ detail: (await response.text()) || 'Unknown error' }))
     throw new Error(error.detail || `API error: ${response.status}`)
   }
 
@@ -135,6 +185,16 @@ async function fetchApi<T>(
   const text = await response.text()
   if (!text) return {} as T
   return JSON.parse(text)
+}
+
+function buildQuery(params?: Record<string, string | number | undefined>): string {
+  if (!params) return ''
+  const qs = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) qs.set(key, String(value))
+  }
+  const query = qs.toString()
+  return query ? `?${query}` : ''
 }
 
 export const memoryApi = {
@@ -154,21 +214,52 @@ export const memoryApi = {
   },
 
   // Long-term Memory - Search
-  search: (request: SearchRequest) =>
-    fetchApi<SearchResponse>('/long-term-memory/search', {
+  search: async (request: SearchRequest) => {
+    // Some server versions take a different (and buggy) path when `text`
+    // is omitted entirely. Always send text explicitly, including empty string.
+    const normalizedRequest: SearchRequest = {
+      ...request,
+      text: request.text ?? '',
+    }
+
+    const result = await fetchApi<SearchResponse>('/long-term-memory/search', {
       method: 'POST',
-      body: JSON.stringify(request),
-    }),
+      body: JSON.stringify(normalizedRequest),
+    })
+
+    const original = Array.isArray(result.memories) ? result.memories : []
+    const memories = original
+      .map((memory) => normalizeSearchMemory(memory))
+      .filter((memory): memory is MemoryRecordResult => memory !== null)
+
+    const dropped = original.length - memories.length
+    if (dropped > 0) {
+      // Defensive fallback for older/dirty backends that return placeholder
+      // rows with empty id/text. The server should already filter these.
+      console.warn(
+        `[workbench] dropped ${dropped} malformed memories from search response (empty id/text)`
+      )
+    }
+
+    return {
+      ...result,
+      memories,
+      total:
+        typeof result.total === 'number'
+          ? Math.max(0, result.total - dropped)
+          : memories.length,
+    }
+  },
 
   // Long-term Memory - CRUD
   createMemory: (memory: CreateMemoryRequest) =>
-    fetchApi<{ memories: MemoryRecord[] }>('/long-term-memory/', {
+    fetchApi<AckResponse>('/long-term-memory/', {
       method: 'POST',
       body: JSON.stringify({ memories: [memory] }),
     }),
 
   createMemories: (memories: CreateMemoryRequest[]) =>
-    fetchApi<{ memories: MemoryRecord[] }>('/long-term-memory/', {
+    fetchApi<AckResponse>('/long-term-memory/', {
       method: 'POST',
       body: JSON.stringify({ memories }),
     }),
@@ -183,7 +274,7 @@ export const memoryApi = {
     }),
 
   deleteMemory: (id: string) =>
-    fetchApi<{ acknowledged: boolean }>(
+    fetchApi<AckResponse>(
       `/long-term-memory?memory_ids=${encodeURIComponent(id)}`,
       { method: 'DELETE' }
     ),
@@ -198,22 +289,12 @@ export const memoryApi = {
   // Note: list returns session IDs as strings, not full WorkingMemory objects
   listSessions: (params?: { limit?: number; offset?: number; namespace?: string }) =>
     fetchApi<{ sessions: string[]; total: number }>(
-      `/working-memory/?${new URLSearchParams(
-        Object.entries(params || {}).reduce(
-          (acc, [k, v]) => (v !== undefined ? { ...acc, [k]: String(v) } : acc),
-          {}
-        )
-      )}`
+      `/working-memory/${buildQuery(params)}`
     ),
 
   getSession: (sessionId: string, params?: { namespace?: string; user_id?: string }) =>
     fetchApi<WorkingMemoryResponse>(
-      `/working-memory/${sessionId}?${new URLSearchParams(
-        Object.entries(params || {}).reduce(
-          (acc, [k, v]) => (v !== undefined ? { ...acc, [k]: String(v) } : acc),
-          {}
-        )
-      )}`
+      `/working-memory/${sessionId}${buildQuery(params)}`
     ),
 
   updateSession: (
@@ -233,13 +314,8 @@ export const memoryApi = {
     }),
 
   deleteSession: (sessionId: string, params?: { namespace?: string; user_id?: string }) =>
-    fetchApi<{ acknowledged: boolean }>(
-      `/working-memory/${sessionId}?${new URLSearchParams(
-        Object.entries(params || {}).reduce(
-          (acc, [k, v]) => (v !== undefined ? { ...acc, [k]: String(v) } : acc),
-          {}
-        )
-      )}`,
+    fetchApi<AckResponse>(
+      `/working-memory/${sessionId}${buildQuery(params)}`,
       { method: 'DELETE' }
     ),
 

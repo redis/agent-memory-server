@@ -90,8 +90,17 @@ the memory server automatically:
 
 | Path | Proxied to |
 |------|-----------|
-| `/api/*` | `http://localhost:8000/v1/*` (REST API) |
+| `/api/*` | `${MEMORY_SERVER_URL:-$VITE_MEMORY_SERVER_URL}/v1/*` (REST API) |
 | `/mcp/*` | `http://localhost:9000/*` (MCP SSE) |
+
+Set both `MEMORY_SERVER_URL` and `VITE_MEMORY_SERVER_URL` in
+`workbench/.env` to the same value. The workbench now fails fast if neither is
+set, and also fails if they differ. Example:
+
+```env
+MEMORY_SERVER_URL=http://localhost:8081
+VITE_MEMORY_SERVER_URL=http://localhost:8081
+```
 
 ### 3. Start the memory server
 

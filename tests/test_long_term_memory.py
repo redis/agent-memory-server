@@ -66,6 +66,43 @@ class TestLongTermMemory:
         assert memories_arg[1].text == "France is a country in Europe"
 
     @pytest.mark.asyncio
+    async def test_index_memories_skips_unicode_placeholder_id_or_text(
+        self, mock_async_redis_client
+    ):
+        """Indexing should reject id/text that are only Unicode placeholders."""
+        bad_id = MemoryRecord(
+            id="\u2060",  # WORD JOINER (format char)
+            text="valid text",
+            memory_type=MemoryTypeEnum.SEMANTIC,
+        )
+        bad_text = MemoryRecord(
+            id="valid-id-2",
+            text="\u2009",  # THIN SPACE (separator char)
+            memory_type=MemoryTypeEnum.SEMANTIC,
+        )
+        good = MemoryRecord(
+            id="valid-id-3",
+            text="fully valid memory",
+            memory_type=MemoryTypeEnum.SEMANTIC,
+        )
+
+        mock_adapter = AsyncMock()
+        mock_adapter.add_memories.return_value = [good.id]
+
+        with mock.patch(
+            "agent_memory_server.long_term_memory.get_memory_vector_db",
+            return_value=mock_adapter,
+        ):
+            await index_long_term_memories(
+                [bad_id, bad_text, good],
+                redis_client=mock_async_redis_client,
+            )
+
+        mock_adapter.add_memories.assert_called_once()
+        indexed_memories = mock_adapter.add_memories.call_args.args[0]
+        assert [m.id for m in indexed_memories] == ["valid-id-3"]
+
+    @pytest.mark.asyncio
     async def test_search_memories(self, mock_async_redis_client):
         """Test searching memories using memory vector database"""
         from agent_memory_server.models import MemoryRecordResult, MemoryRecordResults
@@ -122,6 +159,92 @@ class TestLongTermMemory:
         assert results.memories[0].text == "Hello, world!"
         assert results.memories[0].dist == 0.25
         assert results.memories[0].memory_type == "message"
+
+    @pytest.mark.asyncio
+    async def test_search_memories_sanitizes_malformed_results(self):
+        """Core search should drop placeholder rows with empty id/text."""
+        mock_adapter = AsyncMock()
+        now = datetime.now(UTC)
+        malformed = MemoryRecordResult(
+            id="",
+            text="",
+            dist=0.0,
+            created_at=now,
+            updated_at=now,
+            last_accessed=now,
+            memory_type=MemoryTypeEnum.MESSAGE,
+        )
+        valid = MemoryRecordResult(
+            id="valid-id",
+            text="valid text",
+            dist=0.1,
+            created_at=now,
+            updated_at=now,
+            last_accessed=now,
+            memory_type=MemoryTypeEnum.SEMANTIC,
+        )
+        mock_adapter.search_memories.return_value = MemoryRecordResults(
+            memories=[malformed, valid],
+            total=2,
+            next_offset=2,
+        )
+
+        with mock.patch(
+            "agent_memory_server.long_term_memory.get_memory_vector_db",
+            return_value=mock_adapter,
+        ):
+            results = await search_long_term_memories(
+                "query",
+                optimize_query=False,
+            )
+
+        assert len(results.memories) == 1
+        assert results.memories[0].id == "valid-id"
+        assert results.total == 1
+        assert results.next_offset == 1
+
+    @pytest.mark.asyncio
+    async def test_filter_only_search_sanitizes_malformed_results(self):
+        """Filter-only path should also sanitize malformed rows."""
+        mock_adapter = AsyncMock()
+        now = datetime.now(UTC)
+        malformed = MemoryRecordResult(
+            id="",
+            text="",
+            dist=0.0,
+            created_at=now,
+            updated_at=now,
+            last_accessed=now,
+            memory_type=MemoryTypeEnum.MESSAGE,
+        )
+        valid = MemoryRecordResult(
+            id="valid-id",
+            text="valid text",
+            dist=0.0,
+            created_at=now,
+            updated_at=now,
+            last_accessed=now,
+            memory_type=MemoryTypeEnum.SEMANTIC,
+        )
+        mock_adapter.list_memories.return_value = MemoryRecordResults(
+            memories=[malformed, valid],
+            total=2,
+            next_offset=2,
+        )
+
+        with mock.patch(
+            "agent_memory_server.long_term_memory.get_memory_vector_db",
+            return_value=mock_adapter,
+        ):
+            results = await search_long_term_memories(
+                "",
+                optimize_query=False,
+            )
+
+        assert len(results.memories) == 1
+        assert results.memories[0].id == "valid-id"
+        assert results.total == 1
+        assert results.next_offset == 1
 
     @pytest.mark.asyncio
     async def test_deduplicate_by_id(self, mock_async_redis_client):
@@ -1292,8 +1415,10 @@ class TestDeleteInvalidMemories:
 
         mock_async_redis_client.scan = AsyncMock(side_effect=mock_scan)
         mock_async_redis_client.delete = AsyncMock(return_value=1)
-        # Valid key has text field
-        mock_async_redis_client.hgetall = AsyncMock(return_value={b"text": b"content"})
+        # Valid key has required id_ and text fields
+        mock_async_redis_client.hgetall = AsyncMock(
+            return_value={b"id_": b"valid-id", b"text": b"content"}
+        )
 
         with (
             patch(
@@ -1323,8 +1448,8 @@ class TestDeleteInvalidMemories:
         async def mock_hgetall(key):
             key_str = key.decode() if isinstance(key, bytes) else key
             if key_str == "memory:id3":
-                return {b"text": b"valid content", b"topics": b"test"}
-            return {b"topics": b"test"}  # Missing text field
+                return {b"id_": b"id3", b"text": b"valid content", b"topics": b"test"}
+            return {b"id_": key_str.split(":")[-1].encode(), b"topics": b"test"}  # Missing text field
 
         mock_async_redis_client.scan = AsyncMock(side_effect=mock_scan)
         mock_async_redis_client.hgetall = AsyncMock(side_effect=mock_hgetall)
@@ -1346,6 +1471,79 @@ class TestDeleteInvalidMemories:
         assert mock_async_redis_client.delete.call_count == 2
 
     @pytest.mark.asyncio
+    async def test_delete_invalid_memories_empty_text_or_id_field(
+        self, mock_async_redis_client
+    ):
+        """Test deleting memories with empty id_ or empty text values."""
+
+        async def mock_scan(cursor, match, count):
+            return (0, [b"memory:id1", b"memory:id2", b"memory:id3"])
+
+        async def mock_hgetall(key):
+            key_str = key.decode() if isinstance(key, bytes) else key
+            if key_str == "memory:id1":
+                return {b"id_": b"", b"text": b"has text"}
+            if key_str == "memory:id2":
+                return {b"id_": b"id2", b"text": b"   "}
+            return {b"id_": b"id3", b"text": b"valid content"}
+
+        mock_async_redis_client.scan = AsyncMock(side_effect=mock_scan)
+        mock_async_redis_client.hgetall = AsyncMock(side_effect=mock_hgetall)
+        mock_async_redis_client.delete = AsyncMock(return_value=1)
+
+        with (
+            patch(
+                "agent_memory_server.long_term_memory.get_redis_conn",
+                return_value=mock_async_redis_client,
+            ),
+            patch("agent_memory_server.long_term_memory.settings") as mock_settings,
+        ):
+            mock_settings.redisvl_index_prefix = "memory"
+
+            count = await delete_invalid_memories()
+
+        # id1 has empty id_, id2 has empty text; id3 should be kept
+        assert count == 2
+        assert mock_async_redis_client.delete.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_delete_invalid_memories_placeholder_only_id_or_text(
+        self, mock_async_redis_client
+    ):
+        """Test deleting memories with control/separator-only id_ or text values."""
+        invisible = "\u2060".encode("utf-8")  # WORD JOINER
+
+        async def mock_scan(cursor, match, count):
+            return (0, [b"memory:id1", b"memory:id2", b"memory:id3"])
+
+        async def mock_hgetall(key):
+            key_str = key.decode() if isinstance(key, bytes) else key
+            if key_str == "memory:id1":
+                return {b"id_": invisible, b"text": b"has text"}
+            if key_str == "memory:id2":
+                return {b"id_": b"id2", b"text": invisible}
+            return {b"id_": b"id3", b"text": b"valid content"}
+
+        mock_async_redis_client.scan = AsyncMock(side_effect=mock_scan)
+        mock_async_redis_client.hgetall = AsyncMock(side_effect=mock_hgetall)
+        mock_async_redis_client.delete = AsyncMock(return_value=1)
+
+        with (
+            patch(
+                "agent_memory_server.long_term_memory.get_redis_conn",
+                return_value=mock_async_redis_client,
+            ),
+            patch("agent_memory_server.long_term_memory.settings") as mock_settings,
+        ):
+            mock_settings.redisvl_index_prefix = "memory"
+
+            count = await delete_invalid_memories()
+
+        # id1 has placeholder-only id_, id2 has placeholder-only text
+        assert count == 2
+        assert mock_async_redis_client.delete.call_count == 2
+
+    @pytest.mark.asyncio
     async def test_delete_invalid_memories_none_found(self, mock_async_redis_client):
         """Test when no invalid memories exist."""
 
@@ -1355,8 +1553,10 @@ class TestDeleteInvalidMemories:
 
         mock_async_redis_client.scan = AsyncMock(side_effect=mock_scan)
         mock_async_redis_client.delete = AsyncMock(return_value=1)
-        # All keys have text field
-        mock_async_redis_client.hgetall = AsyncMock(return_value={b"text": b"content"})
+        # All keys have required id_ and text fields
+        mock_async_redis_client.hgetall = AsyncMock(
+            return_value={b"id_": b"id", b"text": b"content"}
+        )
 
         with (
             patch(
@@ -1387,8 +1587,10 @@ class TestDeleteInvalidMemories:
 
         mock_async_redis_client.scan = AsyncMock(side_effect=mock_scan)
         mock_async_redis_client.delete = AsyncMock(return_value=1)
-        # Valid keys have text field
-        mock_async_redis_client.hgetall = AsyncMock(return_value={b"text": b"content"})
+        # Valid keys have required id_ and text fields
+        mock_async_redis_client.hgetall = AsyncMock(
+            return_value={b"id_": b"id", b"text": b"content"}
+        )
 
         with (
             patch(

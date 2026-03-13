@@ -1,5 +1,7 @@
 import logging
+import re
 import threading
+import unicodedata
 from collections.abc import Callable
 from contextvars import ContextVar
 from datetime import UTC, datetime, timedelta
@@ -28,6 +30,20 @@ from agent_memory_server.filters import (
 logger = logging.getLogger(__name__)
 
 JSONTypes = str | float | int | bool | list | dict
+
+
+def _has_meaningful_string(value: str | None) -> bool:
+    if not isinstance(value, str):
+        return False
+    if not value:
+        return False
+    for ch in value:
+        # Treat Unicode control/separator/mark-only strings as empty
+        # placeholders (for example U+2060 WORD JOINER or standalone
+        # combining marks like U+0301).
+        if not unicodedata.category(ch).startswith(("C", "Z", "M")):
+            return True
+    return False
 
 
 class MemoryTypeEnum(str, Enum):
@@ -564,12 +580,16 @@ class UpdateWorkingMemory(BaseModel):
 
     @model_validator(mode="after")
     def validate_memories_not_empty(self) -> "UpdateWorkingMemory":
-        """Validate that no memories have empty text or id."""
+        """Validate that no memories have empty or placeholder text/id."""
         for i, memory in enumerate(self.memories):
-            if not memory.id:
-                raise ValueError(f"Memory at index {i} has empty id")
-            if not memory.text:
-                raise ValueError(f"Memory at index {i} has empty text")
+            if not _has_meaningful_string(memory.id):
+                raise ValueError(
+                    f"Memory at index {i} has empty or placeholder-only id"
+                )
+            if not _has_meaningful_string(memory.text):
+                raise ValueError(
+                    f"Memory at index {i} has empty or placeholder-only text"
+                )
         return self
 
     def to_working_memory(self, session_id: str) -> "WorkingMemory":
@@ -641,6 +661,24 @@ class MemoryRecordResults(BaseModel):
 class MemoryRecordResultsResponse(MemoryRecordResults):
     """Response containing memory search results"""
 
+    @model_validator(mode="after")
+    def sanitize_memories(self) -> "MemoryRecordResultsResponse":
+        """Drop malformed placeholder memories with empty id/text."""
+        original_count = len(self.memories)
+        filtered = [
+            memory
+            for memory in self.memories
+            if _has_meaningful_string(memory.id)
+            and _has_meaningful_string(memory.text)
+        ]
+
+        if len(filtered) != original_count:
+            dropped = original_count - len(filtered)
+            self.memories = filtered
+            self.total = max((self.total or original_count) - dropped, 0)
+
+        return self
+
 
 class CreateMemoryRecordRequest(BaseModel):
     """Payload for creating memory records"""
@@ -653,12 +691,16 @@ class CreateMemoryRecordRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_memories_not_empty(self) -> "CreateMemoryRecordRequest":
-        """Validate that no memories have empty text or id."""
+        """Validate that no memories have empty or placeholder text/id."""
         for i, memory in enumerate(self.memories):
-            if not memory.id:
-                raise ValueError(f"Memory at index {i} has empty id")
-            if not memory.text:
-                raise ValueError(f"Memory at index {i} has empty text")
+            if not _has_meaningful_string(memory.id):
+                raise ValueError(
+                    f"Memory at index {i} has empty or placeholder-only id"
+                )
+            if not _has_meaningful_string(memory.text):
+                raise ValueError(
+                    f"Memory at index {i} has empty or placeholder-only text"
+                )
         return self
 
 
@@ -840,9 +882,11 @@ class LenientMemoryRecord(ExtractedMemoryRecord):
 
     @model_validator(mode="after")
     def validate_text_not_empty(self) -> "LenientMemoryRecord":
-        """Validate that text is not empty."""
-        if not self.text:
-            raise ValueError("Memory text cannot be empty")
+        """Validate that text is not empty or placeholder-only."""
+        if not _has_meaningful_string(self.text):
+            raise ValueError("Memory text cannot be empty or placeholder-only")
+        if not _has_meaningful_string(self.id):
+            raise ValueError("Memory id cannot be empty or placeholder-only")
         return self
 
 
