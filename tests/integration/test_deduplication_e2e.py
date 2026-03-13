@@ -202,6 +202,54 @@ class TestDeduplicationE2E:
             "Distinct memories were incorrectly merged."
         )
 
+    async def test_real_embeddings_do_not_merge_diet_and_basketball_memories(
+        self, use_test_redis_connection, unique_namespace, unique_user_id
+    ):
+        """
+        Test the reported false-positive shape directly with real embeddings.
+
+        - "User eats a healthy diet with vegetables and lean protein"
+        - "User played basketball in high school"
+
+        These should not be selected as semantic duplicates.
+        """
+        memory1 = MemoryRecord(
+            id=str(ulid.ULID()),
+            text="User eats a healthy diet with vegetables and lean protein",
+            namespace=unique_namespace,
+            user_id=unique_user_id,
+            memory_type="semantic",
+        )
+
+        await index_long_term_memories(
+            [memory1],
+            redis_client=use_test_redis_connection,
+            deduplicate=False,
+        )
+
+        await asyncio.sleep(1)
+
+        memory2 = MemoryRecord(
+            id=str(ulid.ULID()),
+            text="User played basketball in high school",
+            namespace=unique_namespace,
+            user_id=unique_user_id,
+            memory_type="semantic",
+        )
+
+        _, was_merged = await deduplicate_by_semantic_search(
+            memory=memory2,
+            redis_client=use_test_redis_connection,
+            namespace=unique_namespace,
+            user_id=unique_user_id,
+            vector_distance_threshold=0.35,
+        )
+
+        assert not was_merged, (
+            "Healthy-diet and high-school basketball memories should not be "
+            "selected as semantic duplicates at threshold 0.35."
+        )
+
     async def test_vector_search_catches_paraphrased_duplicates(
         self, use_test_redis_connection, unique_namespace, unique_user_id
     ):

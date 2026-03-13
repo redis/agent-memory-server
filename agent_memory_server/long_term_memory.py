@@ -1411,6 +1411,64 @@ async def deduplicate_by_id(
     return memory, False
 
 
+async def _semantic_merge_group_is_cohesive(
+    *,
+    db: Any,
+    memory: MemoryRecord,
+    candidate_memories: list[MemoryRecordResult],
+    namespace_filter: Namespace | None,
+    user_id_filter: UserId | None,
+    session_id_filter: SessionId | None,
+    vector_distance_threshold: float,
+) -> bool:
+    """Reject bridge memories and non-cohesive semantic merge groups."""
+
+    if not candidate_memories:
+        return True
+
+    candidate_ids = {candidate.id for candidate in candidate_memories if candidate.id}
+    search_limit = 10
+
+    for candidate_memory in candidate_memories:
+        if not candidate_memory.text:
+            return False
+
+        search_result = await db.search_memories(
+            query=candidate_memory.text,
+            namespace=namespace_filter,
+            user_id=user_id_filter,
+            session_id=session_id_filter,
+            distance_threshold=vector_distance_threshold,
+            limit=search_limit,
+        )
+        related_ids = {
+            result.id
+            for result in (search_result.memories if search_result else [])
+            if result.id not in {candidate_memory.id, memory.id}
+        }
+        extra_ids = related_ids - candidate_ids
+        if extra_ids:
+            logger.info(
+                "Skipping ambiguous semantic merge group for %s via %s; extra neighbors=%s",
+                memory.id,
+                candidate_memory.id,
+                sorted(extra_ids),
+            )
+            return False
+
+        missing_ids = candidate_ids - {candidate_memory.id} - related_ids
+        if missing_ids:
+            logger.info(
+                "Skipping non-cohesive semantic merge group for %s via %s; missing neighbors=%s",
+                memory.id,
+                candidate_memory.id,
+                sorted(missing_ids),
+            )
+            return False
+
+    return True
+
+
 async def deduplicate_by_semantic_search(
     memory: MemoryRecord,
     redis_client: Redis | None = None,
@@ -1500,12 +1558,24 @@ async def deduplicate_by_semantic_search(
     vector_search_result = [m for m in vector_search_result if m.id != memory.id]
 
     if vector_search_result and len(vector_search_result) > 0:
+        merge_group = [memory] + vector_search_result
+        if not await _semantic_merge_group_is_cohesive(
+            db=db,
+            memory=memory,
+            candidate_memories=vector_search_result,
+            namespace_filter=namespace_filter,
+            user_id_filter=user_id_filter,
+            session_id_filter=session_id_filter,
+            vector_distance_threshold=vector_distance_threshold,
+        ):
+            return memory, False
+
         # Found semantically similar memories
         similar_memory_ids = [memory.id for memory in vector_search_result]
 
         # Merge the memories
         merged_memory = await merge_memories_with_llm(
-            [memory] + vector_search_result,
+            merge_group,
         )
 
         # Delete the similar memories using the database
