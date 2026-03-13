@@ -1017,6 +1017,7 @@ async def edit_long_term_memory(
     user_id: str | None = None,
     session_id: str | None = None,
     event_date: str | None = None,
+    pinned: bool | None = None,
 ) -> MemoryRecord:
     """
     Edit an existing long-term memory by its ID.
@@ -1037,6 +1038,7 @@ async def edit_long_term_memory(
         user_id: Updated user ID associated with the memory
         session_id: Updated session ID where the memory originated
         event_date: Updated event date for episodic memories (ISO 8601 format: "2024-01-15T14:30:00Z")
+        pinned: Whether this memory is pinned and protected from auto-deletion
 
     Returns:
         The updated memory record
@@ -1124,6 +1126,7 @@ async def edit_long_term_memory(
         "event_date": (
             _parse_iso8601_datetime(event_date) if event_date is not None else None
         ),
+        "pinned": pinned,
     }
 
     # Filter out None values to only include fields that should be updated

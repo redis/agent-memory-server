@@ -1,4 +1,5 @@
-from unittest.mock import MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -1421,6 +1422,94 @@ class TestLongTermMemoryEndpoint:
 
         # Verify delete function was called with empty list
         mock_delete.assert_called_once_with(ids=[])
+
+    @pytest.mark.asyncio
+    async def test_patch_long_term_memory_allows_pinned_only(self, client):
+        """Test patching a long-term memory with only pinned."""
+        mock_settings = Settings(long_term_memory=True)
+        now = datetime.now(UTC).isoformat()
+        updated_memory = {
+            "id": "memory-1",
+            "text": "Pinned memory",
+            "session_id": "session-1",
+            "user_id": "user-1",
+            "namespace": "ns-1",
+            "memory_type": "semantic",
+            "topics": [],
+            "entities": [],
+            "memory_hash": "hash-1",
+            "discrete_memory_extracted": "f",
+            "pinned": True,
+            "access_count": 0,
+            "created_at": now,
+            "updated_at": now,
+            "last_accessed": now,
+            "persisted_at": now,
+            "extraction_strategy": "discrete",
+            "extraction_strategy_config": {},
+        }
+
+        with (
+            patch("agent_memory_server.api.settings", mock_settings),
+            patch(
+                "agent_memory_server.api.long_term_memory.update_long_term_memory",
+                new=AsyncMock(return_value=updated_memory),
+            ) as mock_update,
+        ):
+            response = await client.patch(
+                "/v1/long-term-memory/memory-1",
+                json={"pinned": True},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["pinned"] is True
+        mock_update.assert_awaited_once_with("memory-1", {"pinned": True})
+
+    @pytest.mark.asyncio
+    async def test_patch_long_term_memory_allows_pinned_with_text(self, client):
+        """Test patching pinned alongside another editable field."""
+        mock_settings = Settings(long_term_memory=True)
+        now = datetime.now(UTC).isoformat()
+        updated_memory = {
+            "id": "memory-1",
+            "text": "Updated memory",
+            "session_id": "session-1",
+            "user_id": "user-1",
+            "namespace": "ns-1",
+            "memory_type": "semantic",
+            "topics": [],
+            "entities": [],
+            "memory_hash": "hash-2",
+            "discrete_memory_extracted": "f",
+            "pinned": False,
+            "access_count": 0,
+            "created_at": now,
+            "updated_at": now,
+            "last_accessed": now,
+            "persisted_at": now,
+            "extraction_strategy": "discrete",
+            "extraction_strategy_config": {},
+        }
+
+        with (
+            patch("agent_memory_server.api.settings", mock_settings),
+            patch(
+                "agent_memory_server.api.long_term_memory.update_long_term_memory",
+                new=AsyncMock(return_value=updated_memory),
+            ) as mock_update,
+        ):
+            response = await client.patch(
+                "/v1/long-term-memory/memory-1",
+                json={"text": "Updated memory", "pinned": False},
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["text"] == "Updated memory"
+        assert body["pinned"] is False
+        mock_update.assert_awaited_once_with(
+            "memory-1", {"text": "Updated memory", "pinned": False}
+        )
 
 
 class TestDeprecationHeader:

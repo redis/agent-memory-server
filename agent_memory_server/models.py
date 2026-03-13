@@ -879,6 +879,10 @@ class EditMemoryRecordRequest(BaseModel):
     event_date: datetime | None = Field(
         default=None, description="Updated event date for episodic memories"
     )
+    pinned: bool | None = Field(
+        default=None,
+        description="Whether this memory is pinned and should not be auto-deleted",
+    )
 
 
 class TaskStatusEnum(str, Enum):

@@ -681,3 +681,30 @@ class TestMCP:
                     user_id="user-123",
                     session_id=None,
                 )
+
+    @pytest.mark.asyncio
+    async def test_edit_long_term_memory_allows_pinned(self, mcp_test_setup):
+        """Test the MCP edit_long_term_memory tool passes pinned updates through."""
+        async with client_session(mcp_app._mcp_server) as client:
+            with mock.patch(
+                "agent_memory_server.mcp.core_update_long_term_memory"
+            ) as mock_update:
+                mock_update.return_value = MemoryRecord(
+                    id="memory-1",
+                    text="Pinned memory",
+                    session_id="session-1",
+                    user_id="user-1",
+                    namespace="ns-1",
+                    pinned=True,
+                )
+
+                result = await client.call_tool(
+                    "edit_long_term_memory",
+                    {"memory_id": "memory-1", "pinned": True},
+                )
+
+                assert isinstance(result, CallToolResult)
+                mock_update.assert_awaited_once()
+                call_args = mock_update.await_args
+                assert call_args.kwargs["memory_id"] == "memory-1"
+                assert call_args.kwargs["updates"].pinned is True

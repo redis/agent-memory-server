@@ -17,6 +17,7 @@ from agent_memory_server.long_term_memory import (
     merge_memories_with_llm,
     promote_working_memory_to_long_term,
     search_long_term_memories,
+    update_long_term_memory,
 )
 from agent_memory_server.models import (
     MemoryRecord,
@@ -122,6 +123,70 @@ class TestLongTermMemory:
         assert results.memories[0].text == "Hello, world!"
         assert results.memories[0].dist == 0.25
         assert results.memories[0].memory_type == "message"
+
+    @pytest.mark.asyncio
+    async def test_update_long_term_memory_allows_pinned_true(self):
+        """Test pinning an existing long-term memory."""
+        existing_memory = MemoryRecord(
+            id="memory-1",
+            text="Original memory",
+            session_id="session-1",
+            user_id="user-1",
+            namespace="ns-1",
+            memory_type=MemoryTypeEnum.SEMANTIC,
+            pinned=False,
+        )
+        mock_adapter = AsyncMock()
+
+        with (
+            patch(
+                "agent_memory_server.long_term_memory.get_long_term_memory_by_id",
+                new=AsyncMock(return_value=existing_memory),
+            ),
+            patch(
+                "agent_memory_server.long_term_memory.get_memory_vector_db",
+                new=AsyncMock(return_value=mock_adapter),
+            ),
+        ):
+            updated = await update_long_term_memory("memory-1", {"pinned": True})
+
+        assert updated is not None
+        assert updated.pinned is True
+        mock_adapter.update_memories.assert_awaited_once()
+        stored_memory = mock_adapter.update_memories.await_args.args[0][0]
+        assert stored_memory.pinned is True
+
+    @pytest.mark.asyncio
+    async def test_update_long_term_memory_allows_pinned_false(self):
+        """Test unpinning an existing long-term memory."""
+        existing_memory = MemoryRecord(
+            id="memory-1",
+            text="Original memory",
+            session_id="session-1",
+            user_id="user-1",
+            namespace="ns-1",
+            memory_type=MemoryTypeEnum.SEMANTIC,
+            pinned=True,
+        )
+        mock_adapter = AsyncMock()
+
+        with (
+            patch(
+                "agent_memory_server.long_term_memory.get_long_term_memory_by_id",
+                new=AsyncMock(return_value=existing_memory),
+            ),
+            patch(
+                "agent_memory_server.long_term_memory.get_memory_vector_db",
+                new=AsyncMock(return_value=mock_adapter),
+            ),
+        ):
+            updated = await update_long_term_memory("memory-1", {"pinned": False})
+
+        assert updated is not None
+        assert updated.pinned is False
+        mock_adapter.update_memories.assert_awaited_once()
+        stored_memory = mock_adapter.update_memories.await_args.args[0][0]
+        assert stored_memory.pinned is False
 
     @pytest.mark.asyncio
     async def test_deduplicate_by_id(self, mock_async_redis_client):
