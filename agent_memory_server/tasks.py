@@ -13,6 +13,23 @@ logger = logging.getLogger(__name__)
 _TASK_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
 
 
+class _UnsetType:
+    """Sentinel type for distinguishing 'not provided' from ``None``."""
+
+    _instance: "_UnsetType | None" = None
+
+    def __new__(cls) -> "_UnsetType":
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+        return "<UNSET>"
+
+
+_UNSET = _UnsetType()
+
+
 def _task_key(task_id: str) -> str:
     """Return the Redis key for a task JSON payload."""
 
@@ -60,11 +77,14 @@ async def update_task_status(
     status: TaskStatusEnum | None = None,
     started_at: datetime | None = None,
     completed_at: datetime | None = None,
-    error_message: str | None = None,
+    error_message: str | None | _UnsetType = _UNSET,
 ) -> None:
     """Update status and timestamps for an existing Task.
 
     If the task does not exist, this is a no-op.
+
+    Pass ``error_message=""`` to clear a previously set error message.
+    Omit ``error_message`` (or pass the default) to leave it unchanged.
     """
 
     redis = await get_redis_conn()
@@ -89,8 +109,11 @@ async def update_task_status(
         task.started_at = started_at
     if completed_at is not None:
         task.completed_at = completed_at
-    if error_message is not None:
-        task.error_message = error_message
+    if error_message is not _UNSET:
+        if error_message is None or error_message == "":
+            task.error_message = None
+        else:
+            task.error_message = error_message
 
     # Ensure created_at is always set
     if task.created_at is None:
