@@ -198,6 +198,7 @@ class TestExtractionLogicFixes:
                 indexed_memories = mock_index.call_args[0][0]
                 assert len(indexed_memories) == 1
                 assert indexed_memories[0].id == "extracted-1"
+                assert mock_index.call_args.kwargs.get("deduplicate") is True
 
                 # Verify working memory was updated - messages marked as extracted
                 updated_wm = await get_working_memory(
