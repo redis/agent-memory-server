@@ -65,6 +65,10 @@ async def update_task_status(
     """Update status and timestamps for an existing Task.
 
     If the task does not exist, this is a no-op.
+
+    Raises:
+        ValueError: If the update would result in started_at > completed_at.
+            Only checked when started_at or completed_at is provided.
     """
 
     redis = await get_redis_conn()
@@ -91,6 +95,19 @@ async def update_task_status(
         task.completed_at = completed_at
     if error_message is not None:
         task.error_message = error_message
+
+    # Validate timestamp ordering only when timestamps are being changed.
+    # This avoids rejecting status-only updates on tasks that already have
+    # invalid timestamps persisted from older code.
+    if (started_at is not None or completed_at is not None) and (
+        task.started_at is not None
+        and task.completed_at is not None
+        and task.started_at > task.completed_at
+    ):
+        raise ValueError(
+            f"Task {task_id}: started_at ({task.started_at}) must not "
+            f"be after completed_at ({task.completed_at})"
+        )
 
     # Ensure created_at is always set
     if task.created_at is None:
