@@ -1882,6 +1882,7 @@ async def update_long_term_memory(
         "user_id",
         "session_id",
         "event_date",
+        "pinned",
     }
 
     # Validate update fields
