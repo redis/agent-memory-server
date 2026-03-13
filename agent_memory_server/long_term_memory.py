@@ -53,6 +53,7 @@ from agent_memory_server.utils.redis import get_redis_conn
 # This is only used when running without Docket (asyncio mode)
 _pending_extraction_tasks: set = set()
 SEMANTIC_DEDUP_SEARCH_LIMIT = 10
+SEMANTIC_DEDUP_QUERY_LIMIT = SEMANTIC_DEDUP_SEARCH_LIMIT + 1
 
 
 def _parse_extraction_response_with_fallback(content: str, logger) -> dict:
@@ -1439,8 +1440,9 @@ async def _semantic_merge_group_is_cohesive(
             user_id=user_id_filter,
             session_id=session_id_filter,
             distance_threshold=vector_distance_threshold,
-            # Keep the cohesion probe aligned with the outer semantic dedup cap.
-            limit=SEMANTIC_DEDUP_SEARCH_LIMIT,
+            # During compaction the anchor memory is already indexed and can
+            # consume one search slot before we filter it out locally.
+            limit=SEMANTIC_DEDUP_QUERY_LIMIT,
         )
         related_ids = {
             result.id
@@ -1550,13 +1552,17 @@ async def deduplicate_by_semantic_search(
         user_id=user_id_filter,
         session_id=session_id_filter,
         distance_threshold=vector_distance_threshold,
-        limit=SEMANTIC_DEDUP_SEARCH_LIMIT,
+        # Keep one extra slot so an already-indexed anchor memory does not
+        # reduce the number of semantic candidates we can evaluate.
+        limit=SEMANTIC_DEDUP_QUERY_LIMIT,
     )
 
     vector_search_result = search_result.memories if search_result else []
 
     # Filter out the memory itself from the search results (avoid self-duplication)
-    vector_search_result = [m for m in vector_search_result if m.id != memory.id]
+    vector_search_result = [m for m in vector_search_result if m.id != memory.id][
+        :SEMANTIC_DEDUP_SEARCH_LIMIT
+    ]
 
     if vector_search_result and len(vector_search_result) > 0:
         merge_group = [memory] + vector_search_result

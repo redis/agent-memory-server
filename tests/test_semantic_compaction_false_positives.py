@@ -752,3 +752,108 @@ async def test_capped_semantic_merge_group_still_passes_cohesion_check(
 
     assert was_merged
     merge_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_compaction_preserves_candidate_window_for_indexed_anchor(
+    async_redis_client,
+    monkeypatch,
+):
+    await async_redis_client.flushdb()
+
+    namespace = f"ns-{ulid.ULID()}"
+    user_id = f"user-{ulid.ULID()}"
+
+    anchor_text = "User prefers flat white coffee with oat milk."
+    candidate_texts = [
+        f"User prefers flat white coffee with oat milk variant {index}."
+        for index in range(9)
+    ]
+    extra_text = "User prefers a flat white with oat milk and a cinnamon sprinkle."
+
+    vectors_by_text: dict[str, Sequence[float]] = {anchor_text: [1.0] + [0.0] * 10}
+    for index, text in enumerate(candidate_texts, start=1):
+        vector = [1.0] + [0.0] * 10
+        vector[index] = 0.1
+        vectors_by_text[text] = vector
+
+    extra_vector = [1.0] + [0.0] * 10
+    extra_vector[1] = 0.1
+    extra_vector[10] = 0.05
+    vectors_by_text[extra_text] = extra_vector
+
+    db = install_controlled_memory_db(monkeypatch, vectors_by_text)
+
+    anchor_memory = MemoryRecord(
+        id="anchor-memory",
+        text=anchor_text,
+        namespace=namespace,
+        user_id=user_id,
+        memory_type="semantic",
+    )
+    candidate_memories = [
+        MemoryRecord(
+            id=f"candidate-{index}",
+            text=text,
+            namespace=namespace,
+            user_id=user_id,
+            memory_type="semantic",
+        )
+        for index, text in enumerate(candidate_texts)
+    ]
+    extra_memory = MemoryRecord(
+        id="extra-memory",
+        text=extra_text,
+        namespace=namespace,
+        user_id=user_id,
+        memory_type="semantic",
+    )
+
+    await index_long_term_memories(
+        [anchor_memory, *candidate_memories, extra_memory],
+        redis_client=async_redis_client,
+        deduplicate=False,
+    )
+
+    capped_result = await db.search_memories(
+        query=anchor_text,
+        namespace=Namespace(eq=namespace),
+        user_id=UserId(eq=user_id),
+        distance_threshold=0.35,
+        limit=ltm.SEMANTIC_DEDUP_SEARCH_LIMIT,
+    )
+    headroom_result = await db.search_memories(
+        query=anchor_text,
+        namespace=Namespace(eq=namespace),
+        user_id=UserId(eq=user_id),
+        distance_threshold=0.35,
+        limit=ltm.SEMANTIC_DEDUP_QUERY_LIMIT,
+    )
+
+    assert extra_memory.id not in {memory.id for memory in capped_result.memories}
+    assert extra_memory.id in {memory.id for memory in headroom_result.memories}
+
+    merged_groups: list[list[str]] = []
+
+    async def fake_merge(memories: list[MemoryRecord]) -> MemoryRecord:
+        merged_groups.append([memory.id for memory in memories])
+        return memories[0]
+
+    merge_mock = AsyncMock(side_effect=fake_merge)
+    monkeypatch.setattr(ltm, "merge_memories_with_llm", merge_mock)
+
+    _, was_merged = await deduplicate_by_semantic_search(
+        memory=anchor_memory,
+        redis_client=async_redis_client,
+        namespace=namespace,
+        user_id=user_id,
+        vector_distance_threshold=0.35,
+    )
+
+    assert was_merged
+    assert merge_mock.await_count == 1
+    assert set(merged_groups[0]) == {
+        anchor_memory.id,
+        extra_memory.id,
+        *(memory.id for memory in candidate_memories),
+    }
