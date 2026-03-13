@@ -389,54 +389,54 @@ class TestMemoryEndpoints:
         # Verify summarization occurred (message count should be reduced)
         original_message_count = len(payload["messages"])
         final_message_count = len(data["messages"])
-        assert (
-            final_message_count < original_message_count
-        ), f"Expected summarization to reduce messages from {original_message_count} to less, but got {final_message_count}"
+        assert final_message_count < original_message_count, (
+            f"Expected summarization to reduce messages from {original_message_count} to less, but got {final_message_count}"
+        )
 
         # Verify context summary was created
-        assert (
-            data["context"] is not None
-        ), "Context should not be None after summarization"
-        assert (
-            data["context"].strip() != ""
-        ), "Context should not be empty after summarization"
+        assert data["context"] is not None, (
+            "Context should not be None after summarization"
+        )
+        assert data["context"].strip() != "", (
+            "Context should not be empty after summarization"
+        )
 
         # REGRESSION TEST: Context percentages should NOT be null even after summarization
         # They should reflect the current state (post-summarization) with small percentages
         assert "context_percentage_total_used" in data
         assert "context_percentage_until_summarization" in data
-        assert (
-            data["context_percentage_total_used"] is not None
-        ), "BUG REGRESSION: context_percentage_total_used should not be null when context_window_max is provided"
-        assert (
-            data["context_percentage_until_summarization"] is not None
-        ), "BUG REGRESSION: context_percentage_until_summarization should not be null when context_window_max is provided"
+        assert data["context_percentage_total_used"] is not None, (
+            "BUG REGRESSION: context_percentage_total_used should not be null when context_window_max is provided"
+        )
+        assert data["context_percentage_until_summarization"] is not None, (
+            "BUG REGRESSION: context_percentage_until_summarization should not be null when context_window_max is provided"
+        )
 
         # Verify the percentages are valid numbers
         total_used = data["context_percentage_total_used"]
         until_summarization = data["context_percentage_until_summarization"]
 
-        assert isinstance(
-            total_used, int | float
-        ), f"context_percentage_total_used should be a number, got {type(total_used)}"
-        assert isinstance(
-            until_summarization, int | float
-        ), f"context_percentage_until_summarization should be a number, got {type(until_summarization)}"
-        assert (
-            0 <= total_used <= 100
-        ), f"context_percentage_total_used should be 0-100, got {total_used}"
-        assert (
-            0 <= until_summarization <= 100
-        ), f"context_percentage_until_summarization should be 0-100, got {until_summarization}"
+        assert isinstance(total_used, int | float), (
+            f"context_percentage_total_used should be a number, got {type(total_used)}"
+        )
+        assert isinstance(until_summarization, int | float), (
+            f"context_percentage_until_summarization should be a number, got {type(until_summarization)}"
+        )
+        assert 0 <= total_used <= 100, (
+            f"context_percentage_total_used should be 0-100, got {total_used}"
+        )
+        assert 0 <= until_summarization <= 100, (
+            f"context_percentage_until_summarization should be 0-100, got {until_summarization}"
+        )
 
         # After summarization, percentages should be reasonable (not necessarily high)
         # They represent the current state of the session post-summarization
-        assert (
-            total_used >= 0
-        ), f"Expected non-negative total usage percentage, got {total_used}"
-        assert (
-            until_summarization >= 0
-        ), f"Expected non-negative until_summarization percentage, got {until_summarization}"
+        assert total_used >= 0, (
+            f"Expected non-negative total usage percentage, got {total_used}"
+        )
+        assert until_summarization >= 0, (
+            f"Expected non-negative until_summarization percentage, got {until_summarization}"
+        )
 
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio

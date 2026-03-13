@@ -774,9 +774,9 @@ class TestWorkingMemory:
             limit=10,
             offset=0,
         )
-        assert (
-            session_id not in sessions_after
-        ), "Session should be removed from index after delete"
+        assert session_id not in sessions_after, (
+            "Session should be removed from index after delete"
+        )
 
     @pytest.mark.asyncio
     async def test_list_sessions_returns_indexed_sessions(self, async_redis_client):
@@ -803,9 +803,9 @@ class TestWorkingMemory:
         )
 
         assert total == 3, f"Expected 3 sessions, got {total}"
-        assert set(listed_sessions) == set(
-            session_ids
-        ), f"Expected {session_ids}, got {listed_sessions}"
+        assert set(listed_sessions) == set(session_ids), (
+            f"Expected {session_ids}, got {listed_sessions}"
+        )
 
     @pytest.mark.asyncio
     async def test_list_sessions_filters_by_user_id(self, async_redis_client):
@@ -846,6 +846,6 @@ class TestWorkingMemory:
         )
 
         assert total == 2, f"Expected 2 sessions for user1, got {total}"
-        assert set(listed_sessions) == set(
-            user1_sessions
-        ), f"Expected {user1_sessions}, got {listed_sessions}"
+        assert set(listed_sessions) == set(user1_sessions), (
+            f"Expected {user1_sessions}, got {listed_sessions}"
+        )
