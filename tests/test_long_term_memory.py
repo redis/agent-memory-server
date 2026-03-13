@@ -17,6 +17,7 @@ from agent_memory_server.long_term_memory import (
     merge_memories_with_llm,
     promote_working_memory_to_long_term,
     search_long_term_memories,
+    update_long_term_memory,
 )
 from agent_memory_server.models import (
     MemoryRecord,
@@ -236,9 +237,8 @@ class TestLongTermMemory:
     async def test_extract_memory_structure(self, mock_async_redis_client):
         """Test memory structure extraction.
 
-        Issue #156 fix: Topics and entities must be stored with pipe (|) separator
-        to match langchain-redis TAG field format. Using comma separator causes
-        search filters to fail with 500 errors.
+        Topics and entities should be written using AMS's canonical comma
+        separator so direct Redis writes match the RedisVL schema.
         """
         with (
             patch(
@@ -273,10 +273,53 @@ class TestLongTermMemory:
             # Check the key format - it includes the memory ID in the key structure
             assert "memory_idx:" in args[0] and "test-id" in args[0]
 
-            # Check the mapping - must use pipe separator to match langchain-redis
+            # Check the mapping - direct Redis writes should match the schema.
             mapping = kwargs["mapping"]
-            assert mapping["topics"] == "topic1|topic2"
-            assert mapping["entities"] == "entity1|entity2"
+            assert mapping["topics"] == "topic1,topic2"
+            assert mapping["entities"] == "entity1,entity2"
+
+    @pytest.mark.asyncio
+    async def test_update_long_term_memory_preserves_decoded_tags_on_text_only_patch(
+        self,
+    ):
+        """Regression test for issue #176: text-only PATCH must not collapse tag lists."""
+        existing_memory = MemoryRecord(
+            id="memory-176",
+            text="Original memory text",
+            session_id="test-session",
+            user_id="test-user",
+            namespace="test-namespace",
+            topics=["cooking", "italian"],
+            entities=["pasta", "rome"],
+            memory_type=MemoryTypeEnum.SEMANTIC,
+        )
+
+        mock_adapter = AsyncMock()
+
+        with (
+            patch(
+                "agent_memory_server.long_term_memory.get_long_term_memory_by_id",
+                return_value=existing_memory,
+            ),
+            patch(
+                "agent_memory_server.long_term_memory.get_memory_vector_db",
+                return_value=mock_adapter,
+            ),
+        ):
+            updated_memory = await update_long_term_memory(
+                "memory-176",
+                {"text": "Updated memory text"},
+            )
+
+        assert updated_memory is not None
+        assert updated_memory.text == "Updated memory text"
+        assert updated_memory.topics == ["cooking", "italian"]
+        assert updated_memory.entities == ["pasta", "rome"]
+
+        mock_adapter.update_memories.assert_called_once()
+        persisted_memory = mock_adapter.update_memories.call_args[0][0][0]
+        assert persisted_memory.topics == ["cooking", "italian"]
+        assert persisted_memory.entities == ["pasta", "rome"]
 
     @pytest.mark.asyncio
     async def test_count_long_term_memories(self, mock_async_redis_client):
@@ -980,8 +1023,8 @@ class TestLongTermMemoryIntegration:
         Issue #156: Searching long-term memory with a topics filter returns a 500
         Internal Server Error. The same search without the topics filter works correctly.
 
-        Root cause: TAG field separator mismatch - topics were stored with comma (,)
-        separator but langchain-redis expects pipe (|) separator.
+        Root cause: inconsistent TAG serialization in AMS caused filter and
+        hydration issues across different code paths.
 
         This test verifies:
         1. Search without topics filter works (baseline)
@@ -989,10 +1032,9 @@ class TestLongTermMemoryIntegration:
         3. Search with topics.eq filter works (was failing with 500 error)
         4. Search with entities filter works (same underlying issue)
         """
-        # Create memories with topics stored using pipe separator (the fix)
-        # This simulates the real-world scenario from the issue where topics
-        # are stored as pipe-delimited strings like:
-        # "family|qnap-docs-reorg-phase3-log.md|home|documents|importance:2|temporal:stable"
+        # Create memories using the canonical list representation. The RedisVL
+        # adapter is responsible for serializing them to the configured TAG
+        # separator for storage.
         long_term_memories = [
             MemoryRecord(
                 id="issue-156-test-1",

@@ -47,6 +47,7 @@ from agent_memory_server.utils.recency import (
     update_memory_hash_if_text_changed,
 )
 from agent_memory_server.utils.redis import get_redis_conn
+from agent_memory_server.utils.tag_codec import encode_tag_values
 
 
 # Track pending extraction tasks to prevent garbage collection
@@ -508,14 +509,12 @@ async def extract_memory_structure(
     merged_topics = memory.topics + topics if memory.topics else topics
     merged_entities = memory.entities + entities if memory.entities else entities
 
-    # Convert lists to pipe-separated strings for TAG fields
-    # Issue #156 fix: langchain-redis uses pipe (|) as the default TAG separator
-    topics_joined = "|".join(merged_topics) if merged_topics else ""
-    entities_joined = "|".join(merged_entities) if merged_entities else ""
-
     await redis.hset(
         Keys.memory_key(memory.id),
-        mapping={"topics": topics_joined, "entities": entities_joined},
+        mapping={
+            "topics": encode_tag_values(merged_topics),
+            "entities": encode_tag_values(merged_entities),
+        },
     )  # type: ignore
 
 
