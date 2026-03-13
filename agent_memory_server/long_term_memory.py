@@ -1429,6 +1429,10 @@ async def _semantic_merge_group_is_cohesive(
         return True
 
     candidate_ids = {candidate.id for candidate in candidate_memories if candidate.id}
+    # Once the merge group is already at the hard cap, extra neighbors can
+    # simply mean "there are more same-topic memories than we are willing to
+    # merge in one pass" rather than "this group is ambiguous".
+    merge_group_is_capped = len(candidate_memories) >= SEMANTIC_DEDUP_SEARCH_LIMIT
 
     for candidate_memory in candidate_memories:
         if not candidate_memory.text:
@@ -1450,7 +1454,7 @@ async def _semantic_merge_group_is_cohesive(
             if result.id not in {candidate_memory.id, memory.id}
         }
         extra_ids = related_ids - candidate_ids
-        if extra_ids:
+        if extra_ids and not merge_group_is_capped:
             logger.info(
                 "Skipping ambiguous semantic merge group for %s via %s; extra neighbors=%s",
                 memory.id,

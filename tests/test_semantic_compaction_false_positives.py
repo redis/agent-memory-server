@@ -857,3 +857,82 @@ async def test_compaction_preserves_candidate_window_for_indexed_anchor(
         extra_memory.id,
         *(memory.id for memory in candidate_memories),
     }
+
+
+@pytest.mark.asyncio
+async def test_capped_dense_cluster_with_extra_neighbor_still_merges(
+    async_redis_client,
+    monkeypatch,
+):
+    await async_redis_client.flushdb()
+
+    namespace = f"ns-{ulid.ULID()}"
+    user_id = f"user-{ulid.ULID()}"
+
+    existing_texts = [
+        f"User prefers flat white coffee with oat milk variant {index}."
+        for index in range(11)
+    ]
+    candidate_text = "User prefers flat white coffee with oat milk."
+
+    db = install_controlled_memory_db(
+        monkeypatch,
+        {
+            **{text: [1.0, 0.0] for text in existing_texts},
+            candidate_text: [1.0, 0.0],
+        },
+    )
+
+    existing_memories = [
+        MemoryRecord(
+            id=f"existing-{index}",
+            text=text,
+            namespace=namespace,
+            user_id=user_id,
+            memory_type="semantic",
+        )
+        for index, text in enumerate(existing_texts)
+    ]
+
+    await index_long_term_memories(
+        existing_memories,
+        redis_client=async_redis_client,
+        deduplicate=False,
+    )
+
+    search_result = await db.search_memories(
+        query=candidate_text,
+        namespace=Namespace(eq=namespace),
+        user_id=UserId(eq=user_id),
+        distance_threshold=0.35,
+        limit=ltm.SEMANTIC_DEDUP_QUERY_LIMIT,
+    )
+
+    assert search_result.total == ltm.SEMANTIC_DEDUP_QUERY_LIMIT
+
+    merged_groups: list[list[str]] = []
+
+    async def fake_merge(memories: list[MemoryRecord]) -> MemoryRecord:
+        merged_groups.append([memory.id for memory in memories])
+        return memories[0]
+
+    merge_mock = AsyncMock(side_effect=fake_merge)
+    monkeypatch.setattr(ltm, "merge_memories_with_llm", merge_mock)
+
+    _, was_merged = await deduplicate_by_semantic_search(
+        memory=MemoryRecord(
+            id="candidate-memory",
+            text=candidate_text,
+            namespace=namespace,
+            user_id=user_id,
+            memory_type="semantic",
+        ),
+        redis_client=async_redis_client,
+        namespace=namespace,
+        user_id=user_id,
+        vector_distance_threshold=0.35,
+    )
+
+    assert was_merged
+    assert merge_mock.await_count == 1
+    assert len(merged_groups[0]) == ltm.SEMANTIC_DEDUP_SEARCH_LIMIT + 1
