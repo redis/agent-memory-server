@@ -1146,9 +1146,9 @@ class TestLongTermMemoryIntegration:
             namespace=Namespace(eq="issue-156-ns"),
             limit=10,
         )
-        assert results_no_filter.total >= 1, (
-            "Baseline search without topics filter failed"
-        )
+        assert (
+            results_no_filter.total >= 1
+        ), "Baseline search without topics filter failed"
 
         # Test 2: Search WITH topics.any filter (was failing with 500 error)
         results_topics_any = await search_long_term_memories(
@@ -1161,9 +1161,9 @@ class TestLongTermMemoryIntegration:
         # Verify the returned memories have the expected topic
         for memory in results_topics_any.memories:
             assert memory.topics is not None, "Memory should have topics"
-            assert "family" in memory.topics, (
-                f"Memory topics {memory.topics} should contain 'family'"
-            )
+            assert (
+                "family" in memory.topics
+            ), f"Memory topics {memory.topics} should contain 'family'"
 
         # Test 3: Search WITH topics.eq filter (was also failing with 500 error)
         results_topics_eq = await search_long_term_memories(
@@ -1175,9 +1175,9 @@ class TestLongTermMemoryIntegration:
         assert results_topics_eq.total >= 1, "Search with topics.eq filter failed"
         for memory in results_topics_eq.memories:
             assert memory.topics is not None, "Memory should have topics"
-            assert "documents" in memory.topics, (
-                f"Memory topics {memory.topics} should contain 'documents'"
-            )
+            assert (
+                "documents" in memory.topics
+            ), f"Memory topics {memory.topics} should contain 'documents'"
 
         # Test 4: Search WITH entities filter (same underlying issue)
         results_entities = await search_long_term_memories(
@@ -1189,9 +1189,9 @@ class TestLongTermMemoryIntegration:
         assert results_entities.total >= 1, "Search with entities filter failed"
         for memory in results_entities.memories:
             assert memory.entities is not None, "Memory should have entities"
-            assert "folder" in memory.entities, (
-                f"Memory entities {memory.entities} should contain 'folder'"
-            )
+            assert (
+                "folder" in memory.entities
+            ), f"Memory entities {memory.entities} should contain 'folder'"
 
         # Test 5: Combined topics and namespace filter (real-world scenario from issue)
         results_combined = await search_long_term_memories(
