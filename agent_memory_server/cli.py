@@ -21,6 +21,7 @@ from agent_memory_server.migrations import (
     migrate_add_discrete_memory_extracted_2,
     migrate_add_memory_hashes_1,
     migrate_add_memory_type_3,
+    migrate_normalize_tag_separators_4,
 )
 from agent_memory_server.utils.redis import get_redis_conn
 
@@ -85,6 +86,7 @@ def migrate_memories():
             migrate_add_memory_hashes_1,
             migrate_add_discrete_memory_extracted_2,
             migrate_add_memory_type_3,
+            migrate_normalize_tag_separators_4,
         ]
         for migration in migrations:
             await migration(redis=redis)
