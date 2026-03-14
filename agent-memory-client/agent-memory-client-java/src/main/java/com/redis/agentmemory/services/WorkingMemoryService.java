@@ -365,10 +365,12 @@ public class WorkingMemoryService extends BaseService {
                 .data(data)
                 .context(existing.getContext())
                 .userId(existing.getUserId())
+                .tokens(existing.getTokens())
+                .ttlSeconds(existing.getTtlSeconds())
                 .longTermMemoryStrategy(existing.getLongTermMemoryStrategy())
                 .build();
 
-        return putWorkingMemory(sessionId, updated, userId, namespace, null, null);
+        return putWorkingMemory(sessionId, updated, namespace, userId, null, null);
     }
 
     /**
@@ -434,10 +436,12 @@ public class WorkingMemoryService extends BaseService {
                 .data(existing.getData())
                 .context(existing.getContext())
                 .userId(existing.getUserId())
+                .tokens(existing.getTokens())
+                .ttlSeconds(existing.getTtlSeconds())
                 .longTermMemoryStrategy(existing.getLongTermMemoryStrategy())
                 .build();
 
-        return putWorkingMemory(sessionId, updated, null, namespace, null, null);
+        return putWorkingMemory(sessionId, updated, namespace, null, null, null);
     }
 
     /**
@@ -505,15 +509,100 @@ public class WorkingMemoryService extends BaseService {
                 .data(finalData)
                 .context(existing.getContext())
                 .userId(existing.getUserId())
+                .tokens(existing.getTokens())
+                .ttlSeconds(existing.getTtlSeconds())
                 .longTermMemoryStrategy(existing.getLongTermMemoryStrategy())
                 .build();
 
-        return putWorkingMemory(sessionId, updated, userId, namespace, null, null);
+        return putWorkingMemory(sessionId, updated, namespace, userId, null, null);
     }
 
     /**
      * Append new messages to existing working memory.
      * More efficient than retrieving, modifying, and setting full memory.
+     *
+     * @param sessionId The session ID
+     * @param messages List of messages to append
+     * @param namespace Optional namespace
+     * @param modelName Optional model name for token-based summarization
+     * @param contextWindowMax Optional context window max tokens
+     * @param userId Optional user ID
+     * @param tokens Optional token count for the updated messages (if null, preserves existing token count)
+     * @param ttlSeconds Optional TTL in seconds to restart the session expiration (if null, preserves existing TTL)
+     * @return WorkingMemoryResponse with updated memory (potentially summarized if token limit exceeded)
+     * @throws MemoryClientException if the request fails
+     */
+    public WorkingMemoryResponse appendMessagesToWorkingMemory(
+            @NotNull String sessionId,
+            @NotNull List<MemoryMessage> messages,
+            @Nullable String namespace,
+            @Nullable String modelName,
+            @Nullable Integer contextWindowMax,
+            @Nullable String userId,
+            @Nullable Integer tokens,
+            @Nullable Integer ttlSeconds) throws MemoryClientException {
+        // Get existing memory
+        WorkingMemoryResult result = getOrCreateWorkingMemory(sessionId, namespace, userId, null, null, null);
+        WorkingMemoryResponse existing = result.getMemory();
+
+        // Get existing messages
+        List<MemoryMessage> existingMessages = new ArrayList<>(existing.getMessages());
+
+        // Append new messages
+        existingMessages.addAll(messages);
+
+        // Determine token count: use provided value, or preserve existing
+        int tokenCount = tokens != null ? tokens : existing.getTokens();
+
+        // Determine TTL: use provided value, or preserve existing
+        Integer ttl = ttlSeconds != null ? ttlSeconds : existing.getTtlSeconds();
+
+        // Create updated working memory
+        WorkingMemory updated = WorkingMemory.builder()
+                .sessionId(sessionId)
+                .namespace(namespace != null ? namespace : defaultNamespace)
+                .messages(existingMessages)
+                .memories(existing.getMemories())
+                .data(existing.getData())
+                .context(existing.getContext())
+                .userId(userId != null ? userId : existing.getUserId())
+                .tokens(tokenCount)
+                .ttlSeconds(ttl)
+                .longTermMemoryStrategy(existing.getLongTermMemoryStrategy())
+                .build();
+
+        return putWorkingMemory(sessionId, updated, namespace, userId, modelName, contextWindowMax);
+    }
+
+    /**
+     * Append new messages to existing working memory without specifying tokens or TTL.
+     * Preserves the existing token count and TTL from the session.
+     *
+     * @param sessionId The session ID
+     * @param messages List of messages to append
+     * @param namespace Optional namespace
+     * @param modelName Optional model name for token-based summarization
+     * @param contextWindowMax Optional context window max tokens
+     * @param userId Optional user ID
+     * @param tokens Optional token count for the updated messages (if null, preserves existing token count)
+     * @return WorkingMemoryResponse with updated memory (potentially summarized if token limit exceeded)
+     * @throws MemoryClientException if the request fails
+     */
+    public WorkingMemoryResponse appendMessagesToWorkingMemory(
+            @NotNull String sessionId,
+            @NotNull List<MemoryMessage> messages,
+            @Nullable String namespace,
+            @Nullable String modelName,
+            @Nullable Integer contextWindowMax,
+            @Nullable String userId,
+            @Nullable Integer tokens) throws MemoryClientException {
+        return appendMessagesToWorkingMemory(sessionId, messages, namespace, modelName,
+                contextWindowMax, userId, tokens, null);
+    }
+
+    /**
+     * Append new messages to existing working memory without specifying tokens or TTL.
+     * Preserves the existing token count and TTL from the session.
      *
      * @param sessionId The session ID
      * @param messages List of messages to append
@@ -531,29 +620,8 @@ public class WorkingMemoryService extends BaseService {
             @Nullable String modelName,
             @Nullable Integer contextWindowMax,
             @Nullable String userId) throws MemoryClientException {
-        // Get existing memory
-        WorkingMemoryResult result = getOrCreateWorkingMemory(sessionId, namespace, userId, null, null, null);
-        WorkingMemoryResponse existing = result.getMemory();
-
-        // Get existing messages
-        List<MemoryMessage> existingMessages = new ArrayList<>(existing.getMessages());
-
-        // Append new messages
-        existingMessages.addAll(messages);
-
-        // Create updated working memory
-        WorkingMemory updated = WorkingMemory.builder()
-                .sessionId(sessionId)
-                .namespace(namespace != null ? namespace : defaultNamespace)
-                .messages(existingMessages)
-                .memories(existing.getMemories())
-                .data(existing.getData())
-                .context(existing.getContext())
-                .userId(userId != null ? userId : existing.getUserId())
-                .longTermMemoryStrategy(existing.getLongTermMemoryStrategy())
-                .build();
-
-        return putWorkingMemory(sessionId, updated, userId, namespace, modelName, contextWindowMax);
+        return appendMessagesToWorkingMemory(sessionId, messages, namespace, modelName,
+                contextWindowMax, userId, null, null);
     }
 
     /**
@@ -568,7 +636,7 @@ public class WorkingMemoryService extends BaseService {
             @NotNull String sessionId,
             @NotNull List<MemoryMessage> messages) throws MemoryClientException {
         return appendMessagesToWorkingMemory(sessionId, messages, defaultNamespace,
-                null, null, null);
+                null, null, null, null, null);
     }
 
     // ===== Helper Methods =====
