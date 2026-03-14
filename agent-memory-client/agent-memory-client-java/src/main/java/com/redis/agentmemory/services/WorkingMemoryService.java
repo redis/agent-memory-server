@@ -89,8 +89,8 @@ public class WorkingMemoryService extends BaseService {
      * Get working memory for a session.
      *
      * @param sessionId The session ID to retrieve working memory for
-     * @param userId The user ID to retrieve working memory for
      * @param namespace Optional namespace for the session
+     * @param userId The user ID to retrieve working memory for
      * @param modelName Optional model name to determine context window size
      * @param contextWindowMax Optional direct specification of context window tokens
      * @return WorkingMemoryResponse containing messages, context and metadata
@@ -98,8 +98,8 @@ public class WorkingMemoryService extends BaseService {
      */
     public WorkingMemoryResponse getWorkingMemory(
             @NotNull String sessionId,
-            @Nullable String userId,
             @Nullable String namespace,
+            @Nullable String userId,
             @Nullable String modelName,
             @Nullable Integer contextWindowMax
     ) throws MemoryClientException {
@@ -160,8 +160,8 @@ public class WorkingMemoryService extends BaseService {
      *
      * @param sessionId The session ID
      * @param memory The working memory to store
-     * @param userId Optional user ID
      * @param namespace Optional namespace
+     * @param userId Optional user ID
      * @param modelName Optional model name
      * @param contextWindowMax Optional context window max
      * @return WorkingMemoryResponse with the stored memory
@@ -170,8 +170,8 @@ public class WorkingMemoryService extends BaseService {
     public WorkingMemoryResponse putWorkingMemory(
             @NotNull String sessionId,
             @NotNull WorkingMemory memory,
-            @Nullable String userId,
             @Nullable String namespace,
+            @Nullable String userId,
             @Nullable String modelName,
             @Nullable Integer contextWindowMax
     ) throws MemoryClientException {
@@ -238,15 +238,15 @@ public class WorkingMemoryService extends BaseService {
      * Delete working memory for a session.
      *
      * @param sessionId The session ID to delete
-     * @param userId Optional user ID
      * @param namespace Optional namespace
+     * @param userId Optional user ID
      * @return AckResponse indicating success
      * @throws MemoryClientException if the request fails
      */
     public AckResponse deleteWorkingMemory(
             @NotNull String sessionId,
-            @Nullable String userId,
-            @Nullable String namespace
+            @Nullable String namespace,
+            @Nullable String userId
     ) throws MemoryClientException {
         HttpUrl.Builder urlBuilder = HttpUrl.parse(
                 baseUrl + "/v1/working-memory/" + sessionId
@@ -309,7 +309,7 @@ public class WorkingMemoryService extends BaseService {
             @Nullable MemoryStrategyConfig longTermMemoryStrategy) throws MemoryClientException {
         try {
             // Try to get existing memory
-            WorkingMemoryResponse existing = getWorkingMemory(sessionId, userId, namespace, modelName, contextWindowMax);
+            WorkingMemoryResponse existing = getWorkingMemory(sessionId, namespace, userId, modelName, contextWindowMax);
             return new WorkingMemoryResult(false, existing);
         } catch (MemoryNotFoundException e) {
             // Memory doesn't exist, create it
@@ -323,7 +323,7 @@ public class WorkingMemoryService extends BaseService {
                     .longTermMemoryStrategy(longTermMemoryStrategy != null ? longTermMemoryStrategy : MemoryStrategyConfig.builder().build())
                     .build();
 
-            WorkingMemoryResponse created = putWorkingMemory(sessionId, emptyMemory, userId, namespace, modelName, contextWindowMax);
+            WorkingMemoryResponse created = putWorkingMemory(sessionId, emptyMemory, namespace, userId, modelName, contextWindowMax);
             return new WorkingMemoryResult(true, created);
         }
     }
@@ -368,7 +368,7 @@ public class WorkingMemoryService extends BaseService {
                 .longTermMemoryStrategy(existing.getLongTermMemoryStrategy())
                 .build();
 
-        return putWorkingMemory(sessionId, updated, userId, namespace, null, null);
+        return putWorkingMemory(sessionId, updated, namespace, userId, null, null);
     }
 
     /**
@@ -508,7 +508,7 @@ public class WorkingMemoryService extends BaseService {
                 .longTermMemoryStrategy(existing.getLongTermMemoryStrategy())
                 .build();
 
-        return putWorkingMemory(sessionId, updated, userId, namespace, null, null);
+        return putWorkingMemory(sessionId, updated, namespace, userId, null, null);
     }
 
     /**
@@ -553,7 +553,7 @@ public class WorkingMemoryService extends BaseService {
                 .longTermMemoryStrategy(existing.getLongTermMemoryStrategy())
                 .build();
 
-        return putWorkingMemory(sessionId, updated, userId, namespace, modelName, contextWindowMax);
+        return putWorkingMemory(sessionId, updated, namespace, userId, modelName, contextWindowMax);
     }
 
     /**
