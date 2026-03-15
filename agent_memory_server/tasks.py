@@ -1,5 +1,5 @@
 import logging
-from datetime import UTC, datetime
+from datetime import datetime
 
 from agent_memory_server.models import Task, TaskStatusEnum
 from agent_memory_server.utils.redis import get_redis_conn
@@ -115,9 +115,5 @@ async def update_task_status(
         task.completed_at = completed_at
     if error_message is not None:
         task.error_message = error_message
-
-    # Ensure created_at is always set
-    if task.created_at is None:
-        task.created_at = datetime.now(UTC)
 
     await redis.set(key, task.model_dump_json(), ex=_TASK_TTL_SECONDS)
