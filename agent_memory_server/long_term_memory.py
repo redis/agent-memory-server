@@ -515,10 +515,20 @@ async def extract_memory_structure(
     topics_joined = "|".join(merged_topics) if merged_topics else ""
     entities_joined = "|".join(merged_entities) if merged_entities else ""
 
-    await redis.hset(
-        Keys.memory_key(memory.id),
+    # Guard: only update if the key still exists. A race between semantic
+    # deduplication (which deletes merged keys) and this background task
+    # can recreate deleted keys as orphaned hashes with only topics/entities.
+    # Use HSETEX with FXX to atomically update only if the fields already
+    # exist on the hash — a deleted key has no fields, so nothing is written.
+    key = Keys.memory_key(memory.id)
+    result = await redis.hsetex(
+        key,
         mapping={"topics": topics_joined, "entities": entities_joined},
-    )  # type: ignore
+        data_persist_option="FXX",
+        keepttl=True,
+    )
+    if result == 0:
+        logger.info(f"Skipping topic/entity update for deleted memory {memory.id}")
 
 
 async def merge_memories_with_llm(
@@ -640,7 +650,7 @@ async def compact_long_term_memories(
     redis_client: Redis | None = None,
     vector_distance_threshold: float = 0.2,
     compact_hash_duplicates: bool = True,
-    compact_semantic_duplicates: bool = True,
+    compact_semantic_duplicates: bool | None = None,
     perpetual: Perpetual = Perpetual(
         every=timedelta(minutes=settings.compaction_every_minutes), automatic=True
     ),
@@ -655,6 +665,9 @@ async def compact_long_term_memories(
 
     Returns the count of remaining memories after compaction.
     """
+    if compact_semantic_duplicates is None:
+        compact_semantic_duplicates = settings.compact_semantic_duplicates
+
     if not redis_client:
         redis_client = await get_redis_conn()
 
@@ -1020,8 +1033,8 @@ async def index_long_term_memories(
                 else:
                     current_memory = deduped_memory or current_memory
 
-            # Check for semantic duplicates
-            if not was_deduplicated:
+            # Check for semantic duplicates (respects compact_semantic_duplicates setting)
+            if not was_deduplicated and settings.compact_semantic_duplicates:
                 deduped_memory, was_merged = await deduplicate_by_semantic_search(
                     memory=current_memory,
                     redis_client=redis,
