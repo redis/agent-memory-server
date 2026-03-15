@@ -116,6 +116,19 @@ async def update_task_status(
     if error_message is not None:
         task.error_message = error_message
 
+    # Validate timestamp ordering only when timestamps are being changed.
+    # This avoids rejecting status-only updates on tasks that already have
+    # invalid timestamps persisted from older code.
+    if (started_at is not None or completed_at is not None) and (
+        task.started_at is not None
+        and task.completed_at is not None
+        and task.started_at > task.completed_at
+    ):
+        raise ValueError(
+            f"Task {task_id}: started_at ({task.started_at}) must not "
+            f"be after completed_at ({task.completed_at})"
+        )
+
     # Ensure created_at is always set
     if task.created_at is None:
         task.created_at = datetime.now(UTC)
