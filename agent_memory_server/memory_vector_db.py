@@ -34,6 +34,7 @@ from agent_memory_server.models import (
 )
 from agent_memory_server.utils.recency import generate_memory_hash, rerank_with_recency
 from agent_memory_server.utils.redis_query import RecencyAggregationQuery
+from agent_memory_server.utils.tag_codec import decode_tag_values, encode_tag_values
 
 
 logger = logging.getLogger(__name__)
@@ -196,7 +197,7 @@ class MemoryVectorDatabase(ABC):
         pass
 
     def _parse_list_field(self, field_value: Any) -> list[str]:
-        """Parse a field that might be a list, comma-separated string, or None.
+        """Parse a field that might be a list, serialized TAG string, or None.
 
         Args:
             field_value: Value that may be a list, string, or None
@@ -204,13 +205,7 @@ class MemoryVectorDatabase(ABC):
         Returns:
             List of strings, empty list if field_value is falsy
         """
-        if not field_value:
-            return []
-        if isinstance(field_value, list):
-            return field_value
-        if isinstance(field_value, str):
-            return field_value.split(",") if field_value else []
-        return []
+        return decode_tag_values(field_value)
 
     def generate_memory_hash(self, memory: MemoryRecord) -> str:
         """Generate a stable hash for a memory based on text, user_id, and session_id.
@@ -347,12 +342,10 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         pinned_int = 1 if getattr(memory, "pinned", False) else 0
         access_count_int = int(getattr(memory, "access_count", 0) or 0)
 
-        # Convert list fields to comma-separated strings for Redis tag fields
-        topics_str = ",".join(memory.topics) if memory.topics else ""
-        entities_str = ",".join(memory.entities) if memory.entities else ""
-        extracted_from_str = (
-            ",".join(memory.extracted_from) if memory.extracted_from else ""
-        )
+        # Normalize list fields to AMS's canonical comma-separated tag format.
+        topics_str = encode_tag_values(memory.topics)
+        entities_str = encode_tag_values(memory.entities)
+        extracted_from_str = encode_tag_values(memory.extracted_from)
 
         memory_type_val = (
             memory.memory_type.value

@@ -1632,7 +1632,11 @@ class TestLargeMemoryThresholdWarning:
         import logging
         from unittest.mock import AsyncMock
 
-        from agent_memory_server.models import MemoryRecord, SummaryView
+        from agent_memory_server.models import (
+            MemoryRecord,
+            SummaryView,
+            SummaryViewPartitionResult,
+        )
         from agent_memory_server.summary_views import (
             refresh_summary_view,
             save_summary_view,
@@ -1659,7 +1663,14 @@ class TestLargeMemoryThresholdWarning:
         )
 
         # Mock the summarization to avoid actual LLM calls
-        mock_summarize = AsyncMock()
+        mock_summarize = AsyncMock(
+            return_value=SummaryViewPartitionResult(
+                view_id=view.id,
+                group={},
+                summary="test summary",
+                memory_count=len(large_memories),
+            )
+        )
         monkeypatch.setattr(
             "agent_memory_server.summary_views.summarize_partition_long_term",
             mock_summarize,
