@@ -54,6 +54,10 @@ expects a separate `agent-memory task-worker` process for non-blocking
 background tasks. The example above shows how to override this to use the
 asyncio backend for a single-container development setup.
 
+If you are connecting to a Redis Cluster and want Docket-backed workers, set
+`REDIS_URL` to a `redis+cluster://...` or `rediss+cluster://...` URL. AMS will
+translate that URL for its other Redis clients internally.
+
 **Production Deployment**:
 
 For production, run separate containers for the API and background workers:

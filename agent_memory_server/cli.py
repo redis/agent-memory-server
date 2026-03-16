@@ -23,7 +23,11 @@ from agent_memory_server.migrations import (
     migrate_add_memory_type_3,
     migrate_normalize_tag_separators_4,
 )
-from agent_memory_server.utils.redis import get_redis_conn
+from agent_memory_server.utils.redis import (
+    docket_stream_key,
+    get_redis_conn,
+    redis_url_for_docket,
+)
 
 
 logger = get_logger(__name__)
@@ -435,7 +439,7 @@ def schedule_task(task_path: str, args: list[str]):
         # Initialize Docket client
         async with Docket(
             name=settings.docket_name,
-            url=settings.redis_url,
+            url=redis_url_for_docket(settings.redis_url),
         ) as docket:
             click.echo(f"Scheduling task {task_path} with arguments: {task_args}")
             await docket.add(task_func)(**task_args)
@@ -475,7 +479,7 @@ def task_worker(concurrency: int, redelivery_timeout: int):
         from redis.exceptions import ResponseError
 
         redis = await get_redis_conn()
-        stream_key = f"{settings.docket_name}:stream"
+        stream_key = docket_stream_key(settings.docket_name, settings.redis_url)
         group_name = "docket-workers"
 
         try:
@@ -493,7 +497,7 @@ def task_worker(concurrency: int, redelivery_timeout: int):
         await get_redis_conn()
         await Worker.run(
             docket_name=settings.docket_name,
-            url=settings.redis_url,
+            url=redis_url_for_docket(settings.redis_url),
             concurrency=concurrency,
             redelivery_timeout=timedelta(seconds=redelivery_timeout),
             tasks=["agent_memory_server.docket_tasks:task_collection"],

@@ -1,6 +1,7 @@
 import contextlib
 import os
 import time
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 from unittest import mock
@@ -12,7 +13,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from redis.asyncio import Redis as AsyncRedis
-from testcontainers.compose import DockerCompose
+from testcontainers.redis import RedisContainer
 
 from agent_memory_server.api import router as memory_router
 from agent_memory_server.config import settings
@@ -254,13 +255,13 @@ async def session(use_test_redis_connection, async_redis_client, request):
 @pytest.fixture(scope="session", autouse=True)
 def redis_container(request):
     """
-    If using xdist, create a unique Compose project for each xdist worker by
-    setting COMPOSE_PROJECT_NAME. That prevents collisions on container/volume
-    names.
+    Start a dedicated Redis test container for this test session.
 
-    Skips container startup if Docker is not available or returns errors.
+    Skips container startup if Docker is not available or returns errors after
+    several retries.
     """
     import subprocess
+    import warnings
 
     # Check if Docker is available and working
     try:
@@ -278,49 +279,58 @@ def redis_container(request):
         yield None
         return
 
-    # In xdist, the config has "workerid" in workerinput
-    workerinput = getattr(request.config, "workerinput", {})
-    worker_id = workerinput.get("workerid", "master")
+    redis_image = os.environ.setdefault("REDIS_IMAGE", "redis:8.0.3")
 
-    # Set the Compose project name so containers do not clash across workers
-    os.environ["COMPOSE_PROJECT_NAME"] = f"redis_test_{worker_id}"
-    os.environ.setdefault("REDIS_IMAGE", "redis:8.0.3")
+    max_start_attempts = 3
+    start_retry_delay = 3
 
-    current_dir = os.path.dirname(os.path.abspath(__file__))
+    for attempt in range(max_start_attempts):
+        container = RedisContainer(
+            image=redis_image,
+            env={"REDIS_ARGS": "--save '' --appendonly no"},
+            name=f"redis-test-{uuid.uuid4().hex[:12]}",
+        )
+        try:
+            container.start()
+            break
+        except Exception as exc:
+            # Container startup can fail transiently in CI while pulling or
+            # starting the selected Redis image. Retry a few times before giving
+            # up.
+            with contextlib.suppress(Exception):
+                container.stop()
 
-    compose = DockerCompose(
-        context=current_dir,
-        compose_file_name="docker-compose.yml",
-        pull=True,
-    )
+            if attempt == max_start_attempts - 1:
+                warnings.warn(
+                    "Failed to start Redis test container "
+                    f"using image {redis_image} after "
+                    f"{max_start_attempts} attempts: {exc!r}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                yield None
+                return
 
-    try:
-        compose.start()
-    except Exception:
-        # Docker compose failed (e.g., image pull failed)
-        # Attempt cleanup to avoid leaking containers/resources
-        with contextlib.suppress(Exception):
-            compose.stop()
-        yield None
-        return
+            time.sleep(start_retry_delay * (attempt + 1))
 
-    yield compose
+    yield container
 
-    compose.stop()
+    container.stop()
 
 
 @pytest.fixture(scope="session")
 def redis_url(redis_container):
     """
-    Use the `DockerCompose` fixture to get host/port of the 'redis' service
-    on container port 6379 (mapped to an ephemeral port on the host).
+    Use the Redis test container fixture to get host/port for container port
+    6379 (mapped to an ephemeral port on the host).
 
     Returns None if Redis is not available (allows unit tests to run without Redis).
     """
     if redis_container is None:
         return None
 
-    host, port = redis_container.get_service_host_and_port("redis", 6379)
+    host = redis_container.get_container_host_ip()
+    port = redis_container.get_exposed_port(6379)
 
     # On macOS, testcontainers sometimes returns 0.0.0.0 which doesn't work
     # Replace with localhost if we get 0.0.0.0

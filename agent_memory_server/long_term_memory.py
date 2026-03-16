@@ -46,7 +46,7 @@ from agent_memory_server.utils.recency import (
     rerank_with_recency,
     update_memory_hash_if_text_changed,
 )
-from agent_memory_server.utils.redis import get_redis_conn
+from agent_memory_server.utils.redis import get_redis_conn, redis_url_for_docket
 from agent_memory_server.utils.tag_codec import encode_tag_values
 
 
@@ -249,7 +249,7 @@ async def schedule_trailing_extraction(
         try:
             async with Docket(
                 name=settings.docket_name,
-                url=settings.redis_url,
+                url=redis_url_for_docket(settings.redis_url),
             ) as docket:
                 # Schedule with a unique key per session
                 # If there's already a pending task for this session, the new one
