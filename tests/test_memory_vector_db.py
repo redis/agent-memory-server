@@ -9,6 +9,7 @@ from agent_memory_server.memory_vector_db import (
     RedisVLMemoryVectorDatabase,
 )
 from agent_memory_server.memory_vector_db_factory import (
+    _build_redis_schema,
     create_embeddings,
     create_memory_vector_db,
 )
@@ -89,6 +90,9 @@ class TestMemoryVectorDatabase:
 
         # Test with comma-separated string
         assert db._parse_list_field("a,b,c") == ["a", "b", "c"]
+
+        # Test with legacy pipe-separated string
+        assert db._parse_list_field("a|b|c") == ["a", "b", "c"]
 
         # Test with list
         assert db._parse_list_field(["a", "b"]) == ["a", "b"]
@@ -367,6 +371,42 @@ class TestMemoryVectorDatabase:
         assert result.memory_type == "semantic"
         assert result.namespace == "user_preferences"
         assert result.text == "User likes green tea"
+
+    def test_data_to_memory_result_decodes_legacy_pipe_delimited_tags(self):
+        """Regression test: legacy pipe-delimited TAG values must hydrate as lists."""
+        mock_index = MagicMock()
+        mock_embeddings = MockEmbeddings()
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        fields = {
+            "id_": "memory_002",
+            "text": "User likes Italian cooking",
+            "session_id": "session-123",
+            "user_id": "user-123",
+            "namespace": "prefs",
+            "topics": "cooking|italian",
+            "entities": "pasta|rome",
+            "memory_hash": "hash-123",
+            "memory_type": "semantic",
+            "created_at": "1704067200",
+            "last_accessed": "1704067200",
+            "updated_at": "1704067200",
+            "discrete_memory_extracted": "t",
+        }
+
+        result = db._data_to_memory_result(fields, score=0.1)
+
+        assert result.topics == ["cooking", "italian"]
+        assert result.entities == ["pasta", "rome"]
+
+    def test_build_redis_schema_explicit_tag_separators(self):
+        """Regression test: list-backed TAG fields must explicitly use comma separators."""
+        schema = _build_redis_schema()
+        field_map = {field["name"]: field for field in schema["fields"]}
+
+        assert field_map["topics"]["attrs"]["separator"] == ","
+        assert field_map["entities"]["attrs"]["separator"] == ","
+        assert field_map["extracted_from"]["attrs"]["separator"] == ","
 
 
 class TestCreateEmbeddings:
