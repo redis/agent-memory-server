@@ -48,11 +48,14 @@ from agent_memory_server.utils.recency import (
     update_memory_hash_if_text_changed,
 )
 from agent_memory_server.utils.redis import get_redis_conn
+from agent_memory_server.utils.tag_codec import encode_tag_values
 
 
 # Track pending extraction tasks to prevent garbage collection
 # This is only used when running without Docket (asyncio mode)
 _pending_extraction_tasks: set = set()
+SEMANTIC_DEDUP_SEARCH_LIMIT = 10
+SEMANTIC_DEDUP_QUERY_LIMIT = SEMANTIC_DEDUP_SEARCH_LIMIT + 1
 
 
 def _has_meaningful_string(value: str | None) -> bool:
@@ -60,13 +63,7 @@ def _has_meaningful_string(value: str | None) -> bool:
         return False
     if not value:
         return False
-    for ch in value:
-        # Treat Unicode control/separator/mark-only strings as empty
-        # placeholders (for example U+2060 WORD JOINER or standalone
-        # combining marks like U+0301).
-        if not unicodedata.category(ch).startswith(("C", "Z", "M")):
-            return True
-    return False
+    return any(not unicodedata.category(ch).startswith(("C", "Z", "M")) for ch in value)
 
 
 def _sanitize_memory_results(results: MemoryRecordResults) -> MemoryRecordResults:
@@ -550,14 +547,12 @@ async def extract_memory_structure(
     merged_topics = memory.topics + topics if memory.topics else topics
     merged_entities = memory.entities + entities if memory.entities else entities
 
-    # Convert lists to pipe-separated strings for TAG fields
-    # Issue #156 fix: langchain-redis uses pipe (|) as the default TAG separator
-    topics_joined = "|".join(merged_topics) if merged_topics else ""
-    entities_joined = "|".join(merged_entities) if merged_entities else ""
-
     await redis.hset(
         Keys.memory_key(memory.id),
-        mapping={"topics": topics_joined, "entities": entities_joined},
+        mapping={
+            "topics": encode_tag_values(merged_topics),
+            "entities": encode_tag_values(merged_entities),
+        },
     )  # type: ignore
 
 
@@ -1454,6 +1449,69 @@ async def deduplicate_by_id(
     return memory, False
 
 
+async def _semantic_merge_group_is_cohesive(
+    *,
+    db: Any,
+    memory: MemoryRecord,
+    candidate_memories: list[MemoryRecordResult],
+    namespace_filter: Namespace | None,
+    user_id_filter: UserId | None,
+    session_id_filter: SessionId | None,
+    vector_distance_threshold: float,
+) -> bool:
+    """Reject bridge memories and non-cohesive semantic merge groups."""
+
+    if not candidate_memories:
+        return True
+
+    candidate_ids = {candidate.id for candidate in candidate_memories if candidate.id}
+    # Once the merge group is already at the hard cap, extra neighbors can
+    # simply mean "there are more same-topic memories than we are willing to
+    # merge in one pass" rather than "this group is ambiguous".
+    merge_group_is_capped = len(candidate_memories) >= SEMANTIC_DEDUP_SEARCH_LIMIT
+
+    for candidate_memory in candidate_memories:
+        if not candidate_memory.text:
+            return False
+
+        search_result = await db.search_memories(
+            query=candidate_memory.text,
+            namespace=namespace_filter,
+            user_id=user_id_filter,
+            session_id=session_id_filter,
+            distance_threshold=vector_distance_threshold,
+            # During compaction the anchor memory is already indexed and can
+            # consume one search slot before we filter it out locally.
+            limit=SEMANTIC_DEDUP_QUERY_LIMIT,
+        )
+        related_ids = {
+            result.id
+            for result in (search_result.memories if search_result else [])
+            if result.id not in {candidate_memory.id, memory.id}
+        }
+        extra_ids = related_ids - candidate_ids
+        if extra_ids and not merge_group_is_capped:
+            logger.info(
+                "Skipping ambiguous semantic merge group for %s via %s; extra neighbors=%s",
+                memory.id,
+                candidate_memory.id,
+                sorted(extra_ids),
+            )
+            return False
+
+        missing_ids = candidate_ids - {candidate_memory.id} - related_ids
+        if missing_ids:
+            logger.info(
+                "Skipping non-cohesive semantic merge group for %s via %s; missing neighbors=%s",
+                memory.id,
+                candidate_memory.id,
+                sorted(missing_ids),
+            )
+            return False
+
+    return True
+
+
 async def deduplicate_by_semantic_search(
     memory: MemoryRecord,
     redis_client: Redis | None = None,
@@ -1534,21 +1592,37 @@ async def deduplicate_by_semantic_search(
         user_id=user_id_filter,
         session_id=session_id_filter,
         distance_threshold=vector_distance_threshold,
-        limit=10,
+        # Keep one extra slot so an already-indexed anchor memory does not
+        # reduce the number of semantic candidates we can evaluate.
+        limit=SEMANTIC_DEDUP_QUERY_LIMIT,
     )
 
     vector_search_result = search_result.memories if search_result else []
 
     # Filter out the memory itself from the search results (avoid self-duplication)
-    vector_search_result = [m for m in vector_search_result if m.id != memory.id]
+    vector_search_result = [m for m in vector_search_result if m.id != memory.id][
+        :SEMANTIC_DEDUP_SEARCH_LIMIT
+    ]
 
     if vector_search_result and len(vector_search_result) > 0:
+        merge_group = [memory] + vector_search_result
+        if not await _semantic_merge_group_is_cohesive(
+            db=db,
+            memory=memory,
+            candidate_memories=vector_search_result,
+            namespace_filter=namespace_filter,
+            user_id_filter=user_id_filter,
+            session_id_filter=session_id_filter,
+            vector_distance_threshold=vector_distance_threshold,
+        ):
+            return memory, False
+
         # Found semantically similar memories
         similar_memory_ids = [memory.id for memory in vector_search_result]
 
         # Merge the memories
         merged_memory = await merge_memories_with_llm(
-            [memory] + vector_search_result,
+            merge_group,
         )
 
         # Delete the similar memories using the database
@@ -1869,7 +1943,9 @@ async def delete_invalid_memories(
 
                 if not _has_meaningful_string(id_str):
                     should_delete = True
-                    logger.info(f"Found invalid memory with empty 'id_' field: {key_str}")
+                    logger.info(
+                        f"Found invalid memory with empty 'id_' field: {key_str}"
+                    )
                 elif not _has_meaningful_string(text_str):
                     should_delete = True
                     logger.info(
@@ -1946,6 +2022,7 @@ async def update_long_term_memory(
         "user_id",
         "session_id",
         "event_date",
+        "pinned",
     }
 
     # Validate update fields

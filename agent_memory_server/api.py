@@ -61,6 +61,7 @@ router = APIRouter()
 
 def _sanitize_search_results(raw_results: MemoryRecordResults) -> None:
     """Remove malformed records so clients never receive placeholder memories."""
+
     def _has_meaningful_string(value: str | None) -> bool:
         if not isinstance(value, str):
             return False

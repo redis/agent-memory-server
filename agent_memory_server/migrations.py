@@ -9,6 +9,7 @@ from agent_memory_server.logging import get_logger
 from agent_memory_server.long_term_memory import generate_memory_hash
 from agent_memory_server.utils.keys import Keys
 from agent_memory_server.utils.redis import get_redis_conn
+from agent_memory_server.utils.tag_codec import decode_tag_values, encode_tag_values
 
 
 logger = get_logger(__name__)
@@ -135,9 +136,81 @@ async def migrate_add_memory_type_3(redis: Redis | None = None) -> None:
     logger.info(f"Migration completed. Added memory_type to {migrated_count} memories")
 
 
-async def migrate_delete_invalid_memories_4(redis: Redis | None = None) -> None:
+async def migrate_normalize_tag_separators_4(redis: Redis | None = None) -> None:
     """
-    Migration 4: Delete invalid memories with empty/placeholder id/text fields.
+    Migration 4: Normalize long-term memory TAG fields to comma separators.
+
+    This rewrites legacy pipe-delimited values in list-backed TAG fields so the
+    stored hash values match the canonical RedisVL schema configuration.
+    """
+    logger.info("Starting TAG separator normalization migration")
+    redis = redis or await get_redis_conn()
+
+    cursor = 0
+    batch_size = 50
+    normalized_count = 0
+    pattern = Keys.memory_key("*")
+
+    while True:
+        cursor, keys = await redis.scan(cursor=cursor, match=pattern, count=batch_size)
+
+        if keys:
+            read_pipeline = redis.pipeline(transaction=False)
+            for key in keys:
+                read_pipeline.hgetall(key)
+
+            results = await read_pipeline.execute()
+
+            write_pipeline = redis.pipeline(transaction=False)
+            pending_updates = 0
+
+            for key, result in zip(keys, results, strict=False):
+                if not result:
+                    continue
+
+                try:
+                    decoded_result = {
+                        k.decode() if isinstance(k, bytes) else k: v.decode()
+                        if isinstance(v, bytes)
+                        else v
+                        for k, v in result.items()
+                    }
+                except Exception as e:
+                    logger.error(f"Error decoding memory during TAG migration: {e}")
+                    continue
+
+                field_updates: dict[str, str] = {}
+                for field in ("topics", "entities", "extracted_from"):
+                    if field not in decoded_result:
+                        continue
+
+                    current_value = decoded_result.get(field) or ""
+                    normalized_value = encode_tag_values(
+                        decode_tag_values(current_value)
+                    )
+
+                    if normalized_value != current_value:
+                        field_updates[field] = normalized_value
+
+                if field_updates:
+                    write_pipeline.hset(key, mapping=field_updates)
+                    pending_updates += 1
+                    normalized_count += 1
+
+            if pending_updates:
+                await write_pipeline.execute()
+
+        if cursor == 0:
+            break
+
+    logger.info(
+        f"Migration completed. Normalized TAG separators for {normalized_count} memories"
+    )
+
+
+async def migrate_delete_invalid_memories_5(redis: Redis | None = None) -> None:
+    """
+    Migration 5: Delete invalid memories with empty/placeholder id/text fields.
     """
     logger.info("Starting invalid memory cleanup migration")
 

@@ -21,7 +21,8 @@ from agent_memory_server.migrations import (
     migrate_add_discrete_memory_extracted_2,
     migrate_add_memory_hashes_1,
     migrate_add_memory_type_3,
-    migrate_delete_invalid_memories_4,
+    migrate_delete_invalid_memories_5,
+    migrate_normalize_tag_separators_4,
 )
 from agent_memory_server.utils.redis import get_redis_conn
 
@@ -36,9 +37,7 @@ def _default_redelivery_timeout_seconds() -> int:
     """Compute worker redelivery timeout from LLM task timeout settings."""
     return max(
         60,
-        settings.llm_task_timeout_minutes
-        * 60
-        * DEFAULT_REDELIVERY_TIMEOUT_MULTIPLIER,
+        settings.llm_task_timeout_minutes * 60 * DEFAULT_REDELIVERY_TIMEOUT_MULTIPLIER,
     )
 
 
@@ -97,7 +96,8 @@ def migrate_memories():
             migrate_add_memory_hashes_1,
             migrate_add_discrete_memory_extracted_2,
             migrate_add_memory_type_3,
-            migrate_delete_invalid_memories_4,
+            migrate_normalize_tag_separators_4,
+            migrate_delete_invalid_memories_5,
         ]
         for migration in migrations:
             await migration(redis=redis)

@@ -1,5 +1,6 @@
 import contextlib
 import os
+import platform
 import time
 from datetime import UTC, datetime
 from typing import Any
@@ -284,13 +285,17 @@ def redis_container(request):
 
     # Set the Compose project name so containers do not clash across workers
     os.environ["COMPOSE_PROJECT_NAME"] = f"redis_test_{worker_id}"
-    os.environ.setdefault("REDIS_IMAGE", "redis:8.0.3")
+    os.environ.setdefault("REDIS_IMAGE", "redis:8.6")
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
 
+    compose_file_name = "docker-compose.yml"
+    if platform.machine().lower() in {"arm64", "aarch64"}:
+        compose_file_name = "docker-compose.amd64.yml"
+
     compose = DockerCompose(
         context=current_dir,
-        compose_file_name="docker-compose.yml",
+        compose_file_name=compose_file_name,
         pull=True,
     )
 

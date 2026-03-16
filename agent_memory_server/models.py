@@ -1,5 +1,4 @@
 import logging
-import re
 import threading
 import unicodedata
 from collections.abc import Callable
@@ -37,13 +36,7 @@ def _has_meaningful_string(value: str | None) -> bool:
         return False
     if not value:
         return False
-    for ch in value:
-        # Treat Unicode control/separator/mark-only strings as empty
-        # placeholders (for example U+2060 WORD JOINER or standalone
-        # combining marks like U+0301).
-        if not unicodedata.category(ch).startswith(("C", "Z", "M")):
-            return True
-    return False
+    return any(not unicodedata.category(ch).startswith(("C", "Z", "M")) for ch in value)
 
 
 class MemoryTypeEnum(str, Enum):
@@ -668,8 +661,7 @@ class MemoryRecordResultsResponse(MemoryRecordResults):
         filtered = [
             memory
             for memory in self.memories
-            if _has_meaningful_string(memory.id)
-            and _has_meaningful_string(memory.text)
+            if _has_meaningful_string(memory.id) and _has_meaningful_string(memory.text)
         ]
 
         if len(filtered) != original_count:
@@ -922,6 +914,10 @@ class EditMemoryRecordRequest(BaseModel):
     )
     event_date: datetime | None = Field(
         default=None, description="Updated event date for episodic memories"
+    )
+    pinned: bool | None = Field(
+        default=None,
+        description="Whether this memory is pinned and should not be auto-deleted",
     )
 
 

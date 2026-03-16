@@ -67,7 +67,8 @@ class TestRebuildIndex:
 class TestMigrateMemories:
     """Tests for the migrate_memories command."""
 
-    @patch("agent_memory_server.cli.migrate_delete_invalid_memories_4")
+    @patch("agent_memory_server.cli.migrate_normalize_tag_separators_4")
+    @patch("agent_memory_server.cli.migrate_delete_invalid_memories_5")
     @patch("agent_memory_server.cli.migrate_add_memory_type_3")
     @patch("agent_memory_server.cli.migrate_add_discrete_memory_extracted_2")
     @patch("agent_memory_server.cli.migrate_add_memory_hashes_1")
@@ -79,6 +80,7 @@ class TestMigrateMemories:
         mock_migration2,
         mock_migration3,
         mock_migration4,
+        mock_migration5,
     ):
         """Test migrate_memories command execution."""
         # Use AsyncMock which returns completed awaitables
@@ -90,6 +92,7 @@ class TestMigrateMemories:
             mock_migration2,
             mock_migration3,
             mock_migration4,
+            mock_migration5,
         ]:
             migration.return_value = None
 
@@ -104,6 +107,7 @@ class TestMigrateMemories:
         mock_migration2.assert_called_once_with(redis=mock_redis)
         mock_migration3.assert_called_once_with(redis=mock_redis)
         mock_migration4.assert_called_once_with(redis=mock_redis)
+        mock_migration5.assert_called_once_with(redis=mock_redis)
 
 
 class TestApiCommand:
