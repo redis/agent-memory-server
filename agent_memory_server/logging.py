@@ -38,6 +38,9 @@ def configure_logging():
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("docket.worker").setLevel(logging.WARNING)
     logging.getLogger("agent_memory_server.dependencies").setLevel(logging.WARNING)
+    logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+    logging.getLogger("LiteLLM Router").setLevel(logging.WARNING)
+    logging.getLogger("LiteLLM Proxy").setLevel(logging.WARNING)
 
     # Set PyTorch to be less verbose about device selection
     logging.getLogger("torch").setLevel(logging.WARNING)
