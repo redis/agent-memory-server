@@ -51,6 +51,7 @@ def test_docket_stream_key_hash_tags_cluster_names():
         == "memory-server:stream"
     )
 
+
 def test_redis_url_for_async_redis_strips_cluster_scheme():
     assert (
         redis_utils.redis_url_for_async_redis("redis+cluster://redis-cluster:6379")

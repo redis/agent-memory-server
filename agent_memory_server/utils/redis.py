@@ -87,7 +87,9 @@ def docket_stream_key(name: str, redis_url: str) -> str:
     return f"{docket_prefix(name, redis_url)}:stream"
 
 
-async def get_redis_conn(url: str = settings.redis_url, **kwargs) -> Redis | RedisCluster:
+async def get_redis_conn(
+    url: str = settings.redis_url, **kwargs
+) -> Redis | RedisCluster:
     """Get a Redis connection.
 
     Args:
