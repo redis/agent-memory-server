@@ -1,6 +1,7 @@
 import contextlib
 import os
 import time
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 from unittest import mock
@@ -261,6 +262,7 @@ def redis_container(request):
     Skips container startup if Docker is not available or returns errors.
     """
     import subprocess
+    import warnings
 
     # Check if Docker is available and working
     try:
@@ -282,8 +284,10 @@ def redis_container(request):
     workerinput = getattr(request.config, "workerinput", {})
     worker_id = workerinput.get("workerid", "master")
 
-    # Set the Compose project name so containers do not clash across workers
-    os.environ["COMPOSE_PROJECT_NAME"] = f"redis_test_{worker_id}"
+    # Use a unique Compose project per test session to avoid collisions with
+    # stale local containers and concurrent retries.
+    project_suffix = uuid.uuid4().hex[:8]
+    os.environ["COMPOSE_PROJECT_NAME"] = f"redis_test_{worker_id}_{project_suffix}"
     os.environ.setdefault("REDIS_IMAGE", "redis:8.0.3")
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -294,15 +298,31 @@ def redis_container(request):
         pull=True,
     )
 
-    try:
-        compose.start()
-    except Exception:
-        # Docker compose failed (e.g., image pull failed)
-        # Attempt cleanup to avoid leaking containers/resources
-        with contextlib.suppress(Exception):
-            compose.stop()
-        yield None
-        return
+    max_start_attempts = 3
+    start_retry_delay = 3
+
+    for attempt in range(max_start_attempts):
+        try:
+            compose.start()
+            break
+        except Exception as exc:
+            # Docker compose can fail transiently in CI while pulling or starting
+            # the selected Redis image. Retry a few times before giving up.
+            with contextlib.suppress(Exception):
+                compose.stop()
+
+            if attempt == max_start_attempts - 1:
+                warnings.warn(
+                    "Failed to start Redis test container "
+                    f"using image {os.environ.get('REDIS_IMAGE')} after "
+                    f"{max_start_attempts} attempts: {exc!r}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                yield None
+                return
+
+            time.sleep(start_retry_delay * (attempt + 1))
 
     yield compose
 
