@@ -15,6 +15,11 @@ _redis_pool: Redis | RedisCluster | None = None
 _CLUSTER_SCHEMES = {"redis+cluster", "rediss+cluster"}
 
 
+def _netloc_has_multiple_hosts(netloc: str) -> bool:
+    host_part = netloc.rsplit("@", 1)[-1]
+    return "," in host_part
+
+
 def is_redis_cluster_url(url: str) -> bool:
     """Return True when the URL targets a Redis Cluster deployment."""
     parsed = urlparse(url)
@@ -25,7 +30,7 @@ def is_redis_cluster_url(url: str) -> bool:
     if query.get("cluster", "").lower() == "true":
         return True
 
-    return "," in parsed.netloc
+    return _netloc_has_multiple_hosts(parsed.netloc)
 
 
 def _strip_cluster_query(url: str) -> str:

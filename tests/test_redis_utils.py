@@ -6,7 +6,9 @@ def test_is_redis_cluster_url_detects_supported_forms():
     assert redis_utils.is_redis_cluster_url("rediss+cluster://redis-cluster:6379")
     assert redis_utils.is_redis_cluster_url("redis://redis-cluster:6379?cluster=true")
     assert redis_utils.is_redis_cluster_url("redis://host1:6379,host2:6379")
+    assert redis_utils.is_redis_cluster_url("redis://:pass@host1:6379,host2:6379")
     assert not redis_utils.is_redis_cluster_url("redis://localhost:6379")
+    assert not redis_utils.is_redis_cluster_url("redis://:pass,word@localhost:6379")
 
 
 def test_redis_url_for_docket_uses_cluster_scheme():
