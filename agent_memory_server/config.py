@@ -436,9 +436,21 @@ class Settings(BaseSettings):
     auth0_client_secret: str | None = None
 
     # Working memory settings
-    summarization_threshold: float = (
-        0.7  # Fraction of context window that triggers summarization
+    enable_working_memory_summarization: bool = (
+        True  # If False, skip working-memory summarization entirely
     )
+    summarization_threshold: float = 0.7  # Fraction of context window that triggers summarization (must be in (0, 1])
+
+    @field_validator("summarization_threshold")
+    @classmethod
+    def validate_summarization_threshold(cls, v: float) -> float:
+        """Validate summarization_threshold is in valid range (0, 1]."""
+        if v <= 0 or v > 1:
+            raise ValueError(
+                f"summarization_threshold must be in range (0, 1], got {v}. "
+                "To disable summarization, set ENABLE_WORKING_MEMORY_SUMMARIZATION=false instead."
+            )
+        return v
 
     # Message timestamp validation settings
     # If true, reject messages without created_at timestamp.

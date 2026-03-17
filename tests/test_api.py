@@ -439,6 +439,60 @@ class TestMemoryEndpoints:
             until_summarization >= 0
         ), f"Expected non-negative until_summarization percentage, got {until_summarization}"
 
+    @pytest.mark.asyncio
+    async def test_put_memory_summarization_disabled_skips_summarization(self, client):
+        """
+        Test that when enable_working_memory_summarization=False, summarization is skipped
+        even when token threshold would be exceeded.
+        """
+        from agent_memory_server.config import settings
+
+        # Create many messages that would normally trigger summarization
+        messages = []
+        for i in range(25):
+            messages.append(
+                {
+                    "role": "user" if i % 2 == 0 else "assistant",
+                    "content": f"Message {i}: This is substantial content that uses many tokens and would trigger summarization when context window is limited. "
+                    * 3,
+                }
+            )
+
+        payload = {
+            "messages": messages,
+            "memories": [],
+            "context": "",
+            "namespace": "test-namespace",
+        }
+
+        # Disable summarization
+        original_setting = settings.enable_working_memory_summarization
+        settings.enable_working_memory_summarization = False
+
+        try:
+            # Use small context_window_max that would normally trigger summarization
+            response = await client.put(
+                "/v1/working-memory/disabled-summarization-test?context_window_max=500",
+                json=payload,
+            )
+
+            assert response.status_code == 200
+
+            data = response.json()
+
+            # All messages should be preserved (no summarization occurred)
+            assert (
+                len(data["messages"]) == len(payload["messages"])
+            ), f"Expected all {len(payload['messages'])} messages to be preserved when summarization is disabled, but got {len(data['messages'])}"
+
+            # Context should remain empty (no summary was created)
+            assert (
+                data["context"] == "" or data["context"] is None
+            ), "Context should remain empty when summarization is disabled"
+        finally:
+            # Restore original setting
+            settings.enable_working_memory_summarization = original_setting
+
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
     async def test_working_memory_reconstruction_from_long_term(

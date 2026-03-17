@@ -217,6 +217,10 @@ async def _summarize_working_memory(
     Returns:
         Updated working memory with summary and trimmed messages
     """
+    # Skip summarization entirely if disabled via config
+    if not settings.enable_working_memory_summarization:
+        return memory
+
     # Calculate current token usage
     current_tokens = _calculate_messages_token_count(memory.messages)
 
