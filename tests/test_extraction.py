@@ -1,4 +1,5 @@
-from unittest.mock import Mock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, Mock, patch
 
 import numpy as np
 import pytest
@@ -8,6 +9,7 @@ from agent_memory_server.config import settings
 from agent_memory_server.extraction import (
     extract_entities_bert,
     extract_entities_llm,
+    extract_memories_with_strategy,
     extract_topics_bertopic,
     extract_topics_llm,
     handle_extraction,
@@ -340,3 +342,50 @@ class TestHandleExtractionPathSelection:
         finally:
             settings.topic_model_source = original_topic_source
             settings.ner_model_source = original_ner_source
+
+
+@pytest.mark.asyncio
+async def test_extract_memories_with_strategy_maps_event_date():
+    """Test strategy-based extraction preserves event_date when indexing."""
+    source_memory = MemoryRecord(
+        id=str(ulid.ULID()),
+        text="User finished onboarding yesterday.",
+        memory_type=MemoryTypeEnum.MESSAGE,
+        discrete_memory_extracted="f",
+    )
+
+    mock_db = AsyncMock()
+    mock_strategy = AsyncMock()
+    mock_strategy.extract_memories.return_value = [
+        {
+            "type": "episodic",
+            "text": "User finished onboarding on January 15, 2024.",
+            "topics": ["onboarding"],
+            "entities": ["User"],
+            "event_date": "2024-01-15T00:00:00Z",
+        }
+    ]
+
+    with (
+        patch(
+            "agent_memory_server.memory_vector_db_factory.get_memory_vector_db",
+            return_value=mock_db,
+        ),
+        patch(
+            "agent_memory_server.memory_strategies.get_memory_strategy",
+            return_value=mock_strategy,
+        ),
+        patch(
+            "agent_memory_server.long_term_memory.index_long_term_memories",
+            new_callable=AsyncMock,
+        ) as mock_index,
+    ):
+        await extract_memories_with_strategy(memories=[source_memory])
+
+    mock_db.update_memories.assert_awaited_once()
+    mock_index.assert_awaited_once()
+    indexed_memories = mock_index.await_args.args[0]
+    assert len(indexed_memories) == 1
+    assert indexed_memories[0].event_date == datetime(
+        2024, 1, 15, 0, 0, tzinfo=UTC
+    )

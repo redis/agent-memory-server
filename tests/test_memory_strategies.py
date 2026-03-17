@@ -113,6 +113,30 @@ class TestDiscreteMemoryStrategy:
             assert isinstance(result, list)
             mock_create.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_extract_memories_prompt_requests_event_date(self):
+        """Test discrete extraction prompt asks for event_date."""
+        strategy = DiscreteMemoryStrategy()
+
+        mock_response = ChatCompletionResponse(
+            content='{"memories": []}',
+            finish_reason="stop",
+            prompt_tokens=100,
+            completion_tokens=20,
+            total_tokens=120,
+            model="gpt-4o-mini",
+        )
+
+        with patch(
+            "agent_memory_server.memory_strategies.LLMClient.create_chat_completion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_create:
+            await strategy.extract_memories("I traveled yesterday.")
+
+            prompt = mock_create.call_args.kwargs["messages"][0]["content"]
+            assert "event_date" in prompt
+
 
 class TestSummaryMemoryStrategy:
     """Test summary memory strategy."""

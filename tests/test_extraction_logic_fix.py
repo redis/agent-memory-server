@@ -6,11 +6,13 @@ promote_working_memory_to_long_term. Instead, extraction is scheduled to run
 after a period of inactivity via run_delayed_extraction.
 """
 
-from unittest.mock import patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from agent_memory_server.long_term_memory import (
+    extract_memories_from_session_thread,
     promote_working_memory_to_long_term,
     run_delayed_extraction,
 )
@@ -213,6 +215,57 @@ class TestExtractionLogicFixes:
 
         finally:
             settings.enable_discrete_memory_extraction = original_setting
+
+    @pytest.mark.asyncio
+    async def test_thread_aware_extraction_maps_event_date(self, async_redis_client):
+        """Test thread-aware extraction preserves event_date on episodic memories."""
+        session_id = "test-thread-event-date"
+        user_id = "test-user"
+        namespace = "test"
+
+        working_memory = WorkingMemory(
+            session_id=session_id,
+            user_id=user_id,
+            namespace=namespace,
+            messages=[
+                MemoryMessage(
+                    id="msg-1",
+                    role="user",
+                    content="I met the client on January 15, 2024.",
+                    created_at=datetime.now(UTC),
+                    discrete_memory_extracted="f",
+                ),
+            ],
+            memories=[],
+        )
+
+        await set_working_memory(working_memory, redis_client=async_redis_client)
+
+        mock_strategy = AsyncMock()
+        mock_strategy.extract_memories.return_value = [
+            {
+                "type": "episodic",
+                "text": "User met the client on January 15, 2024.",
+                "topics": ["meeting"],
+                "entities": ["User", "client"],
+                "event_date": "2024-01-15T00:00:00Z",
+            }
+        ]
+
+        with patch(
+            "agent_memory_server.memory_strategies.get_memory_strategy",
+            return_value=mock_strategy,
+        ):
+            extracted_memories = await extract_memories_from_session_thread(
+                session_id=session_id,
+                namespace=namespace,
+                user_id=user_id,
+            )
+
+        assert len(extracted_memories) == 1
+        assert extracted_memories[0].event_date == datetime(
+            2024, 1, 15, 0, 0, tzinfo=UTC
+        )
 
     @pytest.mark.asyncio
     async def test_delayed_extraction_marks_messages_even_with_no_memories(
