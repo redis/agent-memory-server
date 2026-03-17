@@ -171,6 +171,9 @@ FORGETTING_BUDGET_KEEP_TOP_N=1000 # Keep only top N most recent memories
 
 # Compaction settings
 COMPACTION_EVERY_MINUTES=10       # Run memory compaction every N minutes (default: 10)
+
+# Summary view refresh settings
+SUMMARY_VIEW_REFRESH_EVERY_MINUTES=60  # Refresh continuous summary views every N minutes (default: 60)
 ```
 
 ## Background Tasks
