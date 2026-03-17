@@ -630,6 +630,14 @@ class TestLongTermMemory:
             # Should return count from final search
             assert remaining_count == 2  # Mocked total
 
+    def test_compact_semantic_duplicates_env_var(self, monkeypatch):
+        """Regression: COMPACT_SEMANTIC_DUPLICATES env var must affect runtime behavior."""
+        monkeypatch.setenv("COMPACT_SEMANTIC_DUPLICATES", "false")
+        from agent_memory_server.config import Settings
+
+        s = Settings()
+        assert s.compact_semantic_duplicates is False
+
     @pytest.mark.asyncio
     async def test_promote_working_memory_to_long_term(self, mock_async_redis_client):
         """Test promoting memories from working memory to long-term storage"""
