@@ -1,5 +1,5 @@
 import logging
-from datetime import UTC, datetime
+from datetime import datetime
 
 from agent_memory_server.models import Task, TaskStatusEnum
 from agent_memory_server.utils.redis import get_redis_conn
@@ -28,6 +28,20 @@ class _UnsetType:
 
 
 _UNSET = _UnsetType()
+
+
+class InvalidTaskTransitionError(Exception):
+    """Raised when a task status transition is not allowed."""
+
+
+# Valid state machine transitions.  A same-status "transition" (e.g.
+# RUNNING → RUNNING) is always allowed as an idempotent no-op.
+_VALID_TRANSITIONS: dict[TaskStatusEnum, set[TaskStatusEnum]] = {
+    TaskStatusEnum.PENDING: {TaskStatusEnum.RUNNING, TaskStatusEnum.FAILED},
+    TaskStatusEnum.RUNNING: {TaskStatusEnum.SUCCESS, TaskStatusEnum.FAILED},
+    TaskStatusEnum.SUCCESS: set(),
+    TaskStatusEnum.FAILED: set(),
+}
 
 
 def _task_key(task_id: str) -> str:
@@ -85,6 +99,10 @@ async def update_task_status(
 
     Pass ``error_message=""`` to clear a previously set error message.
     Omit ``error_message`` (or pass the default) to leave it unchanged.
+
+    Raises:
+        InvalidTaskTransitionError: If the requested status transition
+            violates the task state machine.
     """
 
     redis = await get_redis_conn()
@@ -103,7 +121,13 @@ async def update_task_status(
         logger.exception("Failed to decode task JSON for %s during update", task_id)
         return
 
-    if status is not None:
+    if status is not None and status != task.status:
+        allowed = _VALID_TRANSITIONS.get(task.status, set())
+        if status not in allowed:
+            raise InvalidTaskTransitionError(
+                f"Cannot transition task {task_id} from {task.status.value!r} "
+                f"to {status.value!r}"
+            )
         task.status = status
     if started_at is not None:
         task.started_at = started_at
@@ -115,8 +139,17 @@ async def update_task_status(
         else:
             task.error_message = error_message
 
-    # Ensure created_at is always set
-    if task.created_at is None:
-        task.created_at = datetime.now(UTC)
+    # Validate timestamp ordering only when timestamps are being changed.
+    # This avoids rejecting status-only updates on tasks that already have
+    # invalid timestamps persisted from older code.
+    if (started_at is not None or completed_at is not None) and (
+        task.started_at is not None
+        and task.completed_at is not None
+        and task.started_at > task.completed_at
+    ):
+        raise ValueError(
+            f"Task {task_id}: started_at ({task.started_at}) must not "
+            f"be after completed_at ({task.completed_at})"
+        )
 
     await redis.set(key, task.model_dump_json(), ex=_TASK_TTL_SECONDS)

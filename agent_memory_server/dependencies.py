@@ -8,6 +8,7 @@ from starlette.concurrency import run_in_threadpool
 
 from agent_memory_server.config import settings
 from agent_memory_server.logging import get_logger
+from agent_memory_server.utils.redis import redis_url_for_docket
 
 
 logger = get_logger(__name__)
@@ -49,7 +50,7 @@ class HybridBackgroundTasks(BackgroundTasks):
                 async def schedule_task():
                     async with Docket(
                         name=settings.docket_name,
-                        url=settings.redis_url,
+                        url=redis_url_for_docket(settings.redis_url),
                     ) as docket:
                         # Schedule task in Docket's queue
                         await docket.add(func)(*args, **kwargs)

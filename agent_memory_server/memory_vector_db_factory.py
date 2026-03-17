@@ -31,6 +31,7 @@ from agent_memory_server.memory_vector_db import (
     MemoryVectorDatabase,
     RedisVLMemoryVectorDatabase,
 )
+from agent_memory_server.utils.redis import redis_url_for_redisvl
 
 
 logger = logging.getLogger(__name__)
@@ -145,12 +146,12 @@ def _build_redis_schema() -> dict:
             {"name": "user_id", "type": "tag"},
             {"name": "namespace", "type": "tag"},
             {"name": "memory_type", "type": "tag"},
-            {"name": "topics", "type": "tag"},
-            {"name": "entities", "type": "tag"},
+            {"name": "topics", "type": "tag", "attrs": {"separator": ","}},
+            {"name": "entities", "type": "tag", "attrs": {"separator": ","}},
             {"name": "memory_hash", "type": "tag"},
             {"name": "discrete_memory_extracted", "type": "tag"},
             {"name": "pinned", "type": "tag"},
-            {"name": "extracted_from", "type": "tag"},
+            {"name": "extracted_from", "type": "tag", "attrs": {"separator": ","}},
             {"name": "id_", "type": "tag"},
             {"name": "access_count", "type": "numeric"},
             {"name": "created_at", "type": "numeric"},
@@ -187,7 +188,10 @@ def create_redis_memory_vector_db(
     """
     try:
         schema = _build_redis_schema()
-        index = AsyncSearchIndex.from_dict(schema, redis_url=settings.redis_url)
+        index = AsyncSearchIndex.from_dict(
+            schema,
+            redis_url=redis_url_for_redisvl(settings.redis_url),
+        )
         return RedisVLMemoryVectorDatabase(index, embeddings)
     except Exception as e:
         logger.error(f"Error creating Redis memory vector database: {e}")

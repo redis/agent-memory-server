@@ -40,6 +40,39 @@ public class SearchRequest {
 
     private int offset = 0;
 
+    // Recency boost parameters
+    @Nullable
+    @JsonProperty("recency_boost")
+    private Boolean recencyBoost;
+
+    @Nullable
+    @JsonProperty("recency_semantic_weight")
+    private Double recencySemanticWeight;
+
+    @Nullable
+    @JsonProperty("recency_recency_weight")
+    private Double recencyRecencyWeight;
+
+    @Nullable
+    @JsonProperty("recency_freshness_weight")
+    private Double recencyFreshnessWeight;
+
+    @Nullable
+    @JsonProperty("recency_novelty_weight")
+    private Double recencyNoveltyWeight;
+
+    @Nullable
+    @JsonProperty("recency_half_life_last_access_days")
+    private Double recencyHalfLifeLastAccessDays;
+
+    @Nullable
+    @JsonProperty("recency_half_life_created_days")
+    private Double recencyHalfLifeCreatedDays;
+
+    @Nullable
+    @JsonProperty("server_side_recency")
+    private Boolean serverSideRecency;
+
     public SearchRequest() {
     }
 
@@ -122,6 +155,78 @@ public class SearchRequest {
         this.offset = offset;
     }
 
+    @Nullable
+    public Boolean getRecencyBoost() {
+        return recencyBoost;
+    }
+
+    public void setRecencyBoost(@Nullable Boolean recencyBoost) {
+        this.recencyBoost = recencyBoost;
+    }
+
+    @Nullable
+    public Double getRecencySemanticWeight() {
+        return recencySemanticWeight;
+    }
+
+    public void setRecencySemanticWeight(@Nullable Double recencySemanticWeight) {
+        this.recencySemanticWeight = recencySemanticWeight;
+    }
+
+    @Nullable
+    public Double getRecencyRecencyWeight() {
+        return recencyRecencyWeight;
+    }
+
+    public void setRecencyRecencyWeight(@Nullable Double recencyRecencyWeight) {
+        this.recencyRecencyWeight = recencyRecencyWeight;
+    }
+
+    @Nullable
+    public Double getRecencyFreshnessWeight() {
+        return recencyFreshnessWeight;
+    }
+
+    public void setRecencyFreshnessWeight(@Nullable Double recencyFreshnessWeight) {
+        this.recencyFreshnessWeight = recencyFreshnessWeight;
+    }
+
+    @Nullable
+    public Double getRecencyNoveltyWeight() {
+        return recencyNoveltyWeight;
+    }
+
+    public void setRecencyNoveltyWeight(@Nullable Double recencyNoveltyWeight) {
+        this.recencyNoveltyWeight = recencyNoveltyWeight;
+    }
+
+    @Nullable
+    public Double getRecencyHalfLifeLastAccessDays() {
+        return recencyHalfLifeLastAccessDays;
+    }
+
+    public void setRecencyHalfLifeLastAccessDays(@Nullable Double recencyHalfLifeLastAccessDays) {
+        this.recencyHalfLifeLastAccessDays = recencyHalfLifeLastAccessDays;
+    }
+
+    @Nullable
+    public Double getRecencyHalfLifeCreatedDays() {
+        return recencyHalfLifeCreatedDays;
+    }
+
+    public void setRecencyHalfLifeCreatedDays(@Nullable Double recencyHalfLifeCreatedDays) {
+        this.recencyHalfLifeCreatedDays = recencyHalfLifeCreatedDays;
+    }
+
+    @Nullable
+    public Boolean getServerSideRecency() {
+        return serverSideRecency;
+    }
+
+    public void setServerSideRecency(@Nullable Boolean serverSideRecency) {
+        this.serverSideRecency = serverSideRecency;
+    }
+
     @Override
     public String toString() {
         return "SearchRequest{" +
@@ -134,6 +239,14 @@ public class SearchRequest {
                 ", distanceThreshold=" + distanceThreshold +
                 ", limit=" + limit +
                 ", offset=" + offset +
+                ", recencyBoost=" + recencyBoost +
+                ", recencySemanticWeight=" + recencySemanticWeight +
+                ", recencyRecencyWeight=" + recencyRecencyWeight +
+                ", recencyFreshnessWeight=" + recencyFreshnessWeight +
+                ", recencyNoveltyWeight=" + recencyNoveltyWeight +
+                ", recencyHalfLifeLastAccessDays=" + recencyHalfLifeLastAccessDays +
+                ", recencyHalfLifeCreatedDays=" + recencyHalfLifeCreatedDays +
+                ", serverSideRecency=" + serverSideRecency +
                 '}';
     }
 
@@ -193,6 +306,46 @@ public class SearchRequest {
 
         public Builder offset(int offset) {
             request.offset = offset;
+            return this;
+        }
+
+        public Builder recencyBoost(@Nullable Boolean recencyBoost) {
+            request.recencyBoost = recencyBoost;
+            return this;
+        }
+
+        public Builder recencySemanticWeight(@Nullable Double recencySemanticWeight) {
+            request.recencySemanticWeight = recencySemanticWeight;
+            return this;
+        }
+
+        public Builder recencyRecencyWeight(@Nullable Double recencyRecencyWeight) {
+            request.recencyRecencyWeight = recencyRecencyWeight;
+            return this;
+        }
+
+        public Builder recencyFreshnessWeight(@Nullable Double recencyFreshnessWeight) {
+            request.recencyFreshnessWeight = recencyFreshnessWeight;
+            return this;
+        }
+
+        public Builder recencyNoveltyWeight(@Nullable Double recencyNoveltyWeight) {
+            request.recencyNoveltyWeight = recencyNoveltyWeight;
+            return this;
+        }
+
+        public Builder recencyHalfLifeLastAccessDays(@Nullable Double recencyHalfLifeLastAccessDays) {
+            request.recencyHalfLifeLastAccessDays = recencyHalfLifeLastAccessDays;
+            return this;
+        }
+
+        public Builder recencyHalfLifeCreatedDays(@Nullable Double recencyHalfLifeCreatedDays) {
+            request.recencyHalfLifeCreatedDays = recencyHalfLifeCreatedDays;
+            return this;
+        }
+
+        public Builder serverSideRecency(@Nullable Boolean serverSideRecency) {
+            request.serverSideRecency = serverSideRecency;
             return this;
         }
 
