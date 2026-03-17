@@ -96,6 +96,35 @@ public class LongTermMemoryService extends BaseService {
         if (request.getEntities() != null && !request.getEntities().isEmpty()) {
             payload.put("entities", Map.of("any", request.getEntities()));
         }
+        if (request.getDistanceThreshold() != null) {
+            payload.put("distance_threshold", request.getDistanceThreshold());
+        }
+
+        // Add recency boost parameters if present
+        if (request.getRecencyBoost() != null) {
+            payload.put("recency_boost", request.getRecencyBoost());
+        }
+        if (request.getRecencySemanticWeight() != null) {
+            payload.put("recency_semantic_weight", request.getRecencySemanticWeight());
+        }
+        if (request.getRecencyRecencyWeight() != null) {
+            payload.put("recency_recency_weight", request.getRecencyRecencyWeight());
+        }
+        if (request.getRecencyFreshnessWeight() != null) {
+            payload.put("recency_freshness_weight", request.getRecencyFreshnessWeight());
+        }
+        if (request.getRecencyNoveltyWeight() != null) {
+            payload.put("recency_novelty_weight", request.getRecencyNoveltyWeight());
+        }
+        if (request.getRecencyHalfLifeLastAccessDays() != null) {
+            payload.put("recency_half_life_last_access_days", request.getRecencyHalfLifeLastAccessDays());
+        }
+        if (request.getRecencyHalfLifeCreatedDays() != null) {
+            payload.put("recency_half_life_created_days", request.getRecencyHalfLifeCreatedDays());
+        }
+        if (request.getServerSideRecency() != null) {
+            payload.put("server_side_recency", request.getServerSideRecency());
+        }
 
         try {
             String json = objectMapper.writeValueAsString(payload);

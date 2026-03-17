@@ -290,4 +290,129 @@ class LongTermMemoryServiceTest {
         assertTrue(request.getPath().contains("dry_run=true"));
     }
 
+    @Test
+    void testSearchLongTermMemories_WithRecencyBoost() throws Exception {
+        // Mock response
+        MemoryRecordResults expectedResponse = new MemoryRecordResults();
+        expectedResponse.setMemories(new ArrayList<>());
+        expectedResponse.setTotal(0);
+
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(expectedResponse))
+                .addHeader("Content-Type", "application/json"));
+
+        // Execute - with recency boost parameters
+        SearchRequest searchRequest = SearchRequest.builder()
+                .text("test query")
+                .userId("user-123")
+                .recencyBoost(true)
+                .recencySemanticWeight(0.7)
+                .recencyRecencyWeight(0.3)
+                .recencyFreshnessWeight(0.6)
+                .recencyNoveltyWeight(0.4)
+                .recencyHalfLifeLastAccessDays(7.0)
+                .recencyHalfLifeCreatedDays(30.0)
+                .serverSideRecency(true)
+                .build();
+        MemoryRecordResults response = client.longTermMemory().searchLongTermMemories(searchRequest);
+
+        // Verify response
+        assertNotNull(response);
+        assertEquals(0, response.getTotal());
+
+        // Verify request payload contains recency parameters
+        RecordedRequest request = mockServer.takeRequest();
+        assertEquals("POST", request.getMethod());
+        String requestBody = request.getBody().readUtf8();
+
+        assertTrue(requestBody.contains("\"recency_boost\":true"));
+        assertTrue(requestBody.contains("\"recency_semantic_weight\":0.7"));
+        assertTrue(requestBody.contains("\"recency_recency_weight\":0.3"));
+        assertTrue(requestBody.contains("\"recency_freshness_weight\":0.6"));
+        assertTrue(requestBody.contains("\"recency_novelty_weight\":0.4"));
+        assertTrue(requestBody.contains("\"recency_half_life_last_access_days\":7.0"));
+        assertTrue(requestBody.contains("\"recency_half_life_created_days\":30.0"));
+        assertTrue(requestBody.contains("\"server_side_recency\":true"));
+    }
+
+    @Test
+    void testSearchLongTermMemories_WithRecencyBoostDisabled() throws Exception {
+        // Mock response
+        MemoryRecordResults expectedResponse = new MemoryRecordResults();
+        expectedResponse.setMemories(new ArrayList<>());
+        expectedResponse.setTotal(0);
+
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(expectedResponse))
+                .addHeader("Content-Type", "application/json"));
+
+        // Execute - with recency boost disabled
+        SearchRequest searchRequest = SearchRequest.builder()
+                .text("test query")
+                .recencyBoost(false)
+                .build();
+        MemoryRecordResults response = client.longTermMemory().searchLongTermMemories(searchRequest);
+
+        // Verify response
+        assertNotNull(response);
+
+        // Verify request payload contains recency_boost: false
+        RecordedRequest request = mockServer.takeRequest();
+        String requestBody = request.getBody().readUtf8();
+        assertTrue(requestBody.contains("\"recency_boost\":false"));
+    }
+
+    @Test
+    void testSearchLongTermMemories_WithDistanceThreshold() throws Exception {
+        // Mock response
+        MemoryRecordResults expectedResponse = new MemoryRecordResults();
+        expectedResponse.setMemories(new ArrayList<>());
+        expectedResponse.setTotal(0);
+
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(expectedResponse))
+                .addHeader("Content-Type", "application/json"));
+
+        // Execute - with distance threshold
+        SearchRequest searchRequest = SearchRequest.builder()
+                .text("test query")
+                .distanceThreshold(0.35)
+                .build();
+        MemoryRecordResults response = client.longTermMemory().searchLongTermMemories(searchRequest);
+
+        // Verify response
+        assertNotNull(response);
+
+        // Verify request payload contains distance_threshold
+        RecordedRequest request = mockServer.takeRequest();
+        String requestBody = request.getBody().readUtf8();
+        assertTrue(requestBody.contains("\"distance_threshold\":0.35"));
+    }
+
+    @Test
+    void testSearchRequestBuilder_AllRecencyFields() {
+        // Test that all recency fields can be set via builder
+        SearchRequest request = SearchRequest.builder()
+                .text("query")
+                .recencyBoost(true)
+                .recencySemanticWeight(0.8)
+                .recencyRecencyWeight(0.2)
+                .recencyFreshnessWeight(0.5)
+                .recencyNoveltyWeight(0.5)
+                .recencyHalfLifeLastAccessDays(14.0)
+                .recencyHalfLifeCreatedDays(60.0)
+                .serverSideRecency(false)
+                .build();
+
+        assertEquals("query", request.getText());
+        assertTrue(request.getRecencyBoost());
+        assertEquals(0.8, request.getRecencySemanticWeight());
+        assertEquals(0.2, request.getRecencyRecencyWeight());
+        assertEquals(0.5, request.getRecencyFreshnessWeight());
+        assertEquals(0.5, request.getRecencyNoveltyWeight());
+        assertEquals(14.0, request.getRecencyHalfLifeLastAccessDays());
+        assertEquals(60.0, request.getRecencyHalfLifeCreatedDays());
+        assertFalse(request.getServerSideRecency());
+    }
+
 }
