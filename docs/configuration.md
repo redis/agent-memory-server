@@ -36,6 +36,10 @@ log_level: INFO
 REDIS_URL=redis://localhost:6379  # Redis connection string
 ```
 
+For Redis Cluster deployments, use `redis+cluster://host:port` or
+`rediss+cluster://host:port`. AMS translates that setting for Docket,
+RedisVL, and direct Redis connections internally.
+
 ### AI Model Configuration
 ```bash
 # Generation models for LLM tasks
@@ -324,7 +328,7 @@ compaction_every_minutes: 15
 ### High-Performance Setup
 ```yaml
 # config-performance.yaml
-redis_url: redis://redis-cluster:6379
+redis_url: redis+cluster://redis-cluster:6379
 fast_model: gpt-4o-mini
 slow_model: gpt-4o
 redisvl_indexing_algorithm: HNSW

@@ -588,8 +588,13 @@ class TestCreateEmbeddings:
                 result = create_embeddings()
 
                 # Should emit deprecation warning for unprefixed model
-                assert len(w) == 1
-                assert issubclass(w[0].category, DeprecationWarning)
+                matching_warnings = [
+                    warning
+                    for warning in w
+                    if issubclass(warning.category, DeprecationWarning)
+                    and "should use 'bedrock/' prefix" in str(warning.message)
+                ]
+                assert len(matching_warnings) == 1
 
             assert isinstance(result, LiteLLMEmbeddings)
             assert result.model == "bedrock/amazon.titan-embed-text-v2:0"

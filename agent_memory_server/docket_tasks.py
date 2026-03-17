@@ -26,6 +26,7 @@ from agent_memory_server.summary_views import (
     periodic_refresh_summary_views,
     refresh_summary_view,
 )
+from agent_memory_server.utils.redis import redis_url_for_docket
 
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ async def register_tasks() -> None:
     # Initialize Docket client
     async with Docket(
         name=settings.docket_name,
-        url=settings.redis_url,
+        url=redis_url_for_docket(settings.redis_url),
     ) as docket:
         # Register all tasks
         for task in task_collection:
