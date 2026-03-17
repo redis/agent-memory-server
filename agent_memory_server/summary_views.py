@@ -628,7 +628,7 @@ async def refresh_summary_view(
 
 async def periodic_refresh_summary_views(
     perpetual: Perpetual = Perpetual(
-        every=timedelta(minutes=60),
+        every=timedelta(minutes=settings.summary_view_refresh_every_minutes),
         automatic=True,
     ),
     timeout: Timeout = Timeout(
