@@ -15,9 +15,11 @@ from agent_memory_server.filters import (
 )
 from agent_memory_server.models import (
     CreateMemoryRecordRequest,
+    EditMemoryRecordRequest,
     ExtractedMemoryRecord,
     LenientMemoryRecord,
     MemoryMessage,
+    MemoryRecord,
     MemoryRecordResult,
     SearchRequest,
     UpdateWorkingMemory,
@@ -412,3 +414,63 @@ class TestEmptyTextValidation:
         # Whitespace is accepted (it's not empty, just whitespace)
         record = LenientMemoryRecord(text="   ")
         assert record.text == "   "
+
+
+class TestTagCommaValidation:
+    """Tests for comma rejection in tag fields (topics, entities, extracted_from)."""
+
+    def test_memory_record_rejects_comma_in_topics(self):
+        with pytest.raises(ValueError, match="topics.*contains a comma"):
+            MemoryRecord(id="m1", text="hi", topics=["Austin, TX"])
+
+    def test_memory_record_rejects_comma_in_entities(self):
+        with pytest.raises(ValueError, match="entities.*contains a comma"):
+            MemoryRecord(id="m1", text="hi", entities=["Smith, John"])
+
+    def test_memory_record_rejects_comma_in_extracted_from(self):
+        with pytest.raises(ValueError, match="extracted_from.*contains a comma"):
+            MemoryRecord(id="m1", text="hi", extracted_from=["a, b"])
+
+    def test_memory_record_accepts_clean_values(self):
+        record = MemoryRecord(
+            id="m1",
+            text="hi",
+            topics=["python", "redis"],
+            entities=["Alice"],
+            extracted_from=["msg-1"],
+        )
+        assert record.topics == ["python", "redis"]
+        assert record.entities == ["Alice"]
+        assert record.extracted_from == ["msg-1"]
+
+    def test_memory_record_accepts_none(self):
+        record = MemoryRecord(id="m1", text="hi")
+        assert record.topics is None
+        assert record.entities is None
+        assert record.extracted_from is None
+
+    def test_extracted_memory_record_inherits_rejection(self):
+        with pytest.raises(ValueError, match="topics.*contains a comma"):
+            ExtractedMemoryRecord(id="m1", text="hi", topics=["bad, value"])
+
+    def test_lenient_memory_record_inherits_rejection(self):
+        with pytest.raises(ValueError, match="entities.*contains a comma"):
+            LenientMemoryRecord(text="hi", entities=["bad, value"])
+
+    def test_edit_memory_record_rejects_comma_in_topics(self):
+        with pytest.raises(ValueError, match="topics.*contains a comma"):
+            EditMemoryRecordRequest(topics=["Austin, TX"])
+
+    def test_edit_memory_record_rejects_comma_in_entities(self):
+        with pytest.raises(ValueError, match="entities.*contains a comma"):
+            EditMemoryRecordRequest(entities=["Smith, John"])
+
+    def test_edit_memory_record_accepts_clean_values(self):
+        req = EditMemoryRecordRequest(topics=["python"], entities=["Alice"])
+        assert req.topics == ["python"]
+        assert req.entities == ["Alice"]
+
+    def test_edit_memory_record_accepts_none(self):
+        req = EditMemoryRecordRequest()
+        assert req.topics is None
+        assert req.entities is None
