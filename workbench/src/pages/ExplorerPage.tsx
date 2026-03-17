@@ -37,7 +37,7 @@ export default function ExplorerPage() {
     queryKey: ['memories', submittedSearch, filters, transport],
     queryFn: () =>
       backend.search({
-        text: submittedSearch || undefined,
+        text: submittedSearch,
         memory_type: filters.memory_type
           ? { eq: filters.memory_type }
           : undefined,

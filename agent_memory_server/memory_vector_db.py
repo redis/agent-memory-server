@@ -560,7 +560,9 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                 fields = dict(fields) if fields else {}
 
             score = float(fields.get("__vector_score", 1.0) or 1.0)
-            memory_results.append(self._data_to_memory_result(fields, score))
+            memory_result = self._data_to_memory_result(fields, score)
+            if memory_result is not None:
+                memory_results.append(memory_result)
 
         next_offset = offset + limit if len(memory_results) == limit else None
         return MemoryRecordResults(

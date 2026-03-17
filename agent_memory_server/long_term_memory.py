@@ -1510,8 +1510,8 @@ async def deduplicate_by_semantic_search(
     # OpenAI's embedding API rejects empty strings with "'$.input' is invalid"
     if not memory.text:
         logger.debug(
-            "Skipping semantic deduplication for memory with empty text",
-            memory_id=memory.id,
+            "Skipping semantic deduplication for memory with empty text: memory_id=%s",
+            memory.id,
         )
         return memory, False
 

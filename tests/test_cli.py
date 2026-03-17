@@ -3,6 +3,7 @@ Tests for the CLI module.
 """
 
 import sys
+from datetime import timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
 from click.testing import CliRunner
@@ -566,6 +567,8 @@ class TestTaskWorker:
 
         assert result.exit_code == 0
         mock_worker_run.assert_called_once()
+        kwargs = mock_worker_run.call_args.kwargs
+        assert kwargs["redelivery_timeout"] == timedelta(seconds=60)
 
     @patch("agent_memory_server.cli.settings")
     def test_task_worker_docket_disabled(self, mock_settings):
@@ -577,6 +580,14 @@ class TestTaskWorker:
 
         assert result.exit_code == 1
         assert "Docket is disabled in settings" in result.output
+
+    def test_task_worker_rejects_non_positive_redelivery_timeout(self):
+        """Redelivery timeout should be a positive integer."""
+        runner = CliRunner()
+        result = runner.invoke(task_worker, ["--redelivery-timeout", "0"])
+
+        assert result.exit_code == 2
+        assert "Invalid value for '--redelivery-timeout'" in result.output
 
     @patch("agent_memory_server.cli.get_redis_conn")
     @patch("docket.Worker.run")
@@ -592,6 +603,7 @@ class TestTaskWorker:
         mock_settings.use_docket = True
         mock_settings.docket_name = "test-docket"
         mock_settings.redis_url = redis_url
+        mock_settings.llm_task_timeout_minutes = 5
 
         mock_worker_run.return_value = None
         mock_redis = AsyncMock()
@@ -602,6 +614,36 @@ class TestTaskWorker:
 
         assert result.exit_code == 0
         mock_worker_run.assert_called_once()
+        kwargs = mock_worker_run.call_args.kwargs
+        assert kwargs["redelivery_timeout"] == timedelta(seconds=600)
+
+    @patch("agent_memory_server.cli.get_redis_conn")
+    @patch("docket.Worker.run")
+    @patch("agent_memory_server.cli.settings")
+    def test_task_worker_default_redelivery_timeout_has_minimum_floor(
+        self,
+        mock_settings,
+        mock_worker_run,
+        mock_get_redis_conn,
+        redis_url,
+    ):
+        """Default redelivery timeout should never be less than 60 seconds."""
+        mock_settings.use_docket = True
+        mock_settings.docket_name = "test-docket"
+        mock_settings.redis_url = redis_url
+        mock_settings.llm_task_timeout_minutes = 0
+
+        mock_worker_run.return_value = None
+        mock_redis = AsyncMock()
+        mock_get_redis_conn.return_value = mock_redis
+
+        runner = CliRunner()
+        result = runner.invoke(task_worker)
+
+        assert result.exit_code == 0
+        mock_worker_run.assert_called_once()
+        kwargs = mock_worker_run.call_args.kwargs
+        assert kwargs["redelivery_timeout"] == timedelta(seconds=60)
 
 
 class TestSearch:

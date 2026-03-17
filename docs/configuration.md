@@ -181,6 +181,24 @@ USE_DOCKET=true           # Enable background task processing (default: true)
 DOCKET_NAME=memory-server # Docket instance name (default: memory-server)
 ```
 
+### Worker Lease and Task Timeout
+
+Background workers use two separate timeout concepts:
+
+- **Task timeout (`Timeout` dependency):** Limits how long a task is allowed to run. For LLM-dependent tasks this defaults to `LLM_TASK_TIMEOUT_MINUTES` (default: `5` minutes).
+- **Redelivery timeout (`--redelivery-timeout`):** Worker lease duration before an in-flight task may be redelivered to another worker if the current worker appears stalled.
+
+The `task-worker` CLI default for `--redelivery-timeout` is derived from task timeout settings:
+
+- `redelivery_timeout_seconds = max(60, 2 x llm_task_timeout_minutes x 60)`
+- With default settings, this is `600` seconds (10 minutes).
+
+Operational guidance:
+
+- Keep redelivery timeout **higher** than expected task runtime.
+- A practical baseline is at least **2x** your configured task timeout.
+- If redelivery timeout is too low, long-running tasks can be cancelled/retried prematurely.
+
 ### Task Backend Options
 
 The server supports two task backends, configured via the `--task-backend` CLI option:
@@ -230,7 +248,7 @@ uv run agent-memory task-worker
 You can customize the concurrency and redelivery timeout:
 
 ```bash
-uv run agent-memory task-worker --concurrency 5 --redelivery-timeout 60
+uv run agent-memory task-worker --concurrency 5 --redelivery-timeout 600
 ```
 
 ## Supported Models

@@ -2,7 +2,6 @@
 // Vite proxy rewrites /api/* to /v1/* on the target server
 const API_BASE = '/api'
 
-// Types
 export interface MemoryRecord {
   id: string
   text: string
@@ -157,7 +156,7 @@ export const memoryApi = {
   search: (request: SearchRequest) =>
     fetchApi<SearchResponse>('/long-term-memory/search', {
       method: 'POST',
-      body: JSON.stringify(request),
+      body: JSON.stringify({ ...request, text: request.text ?? '' }),
     }),
 
   // Long-term Memory - CRUD

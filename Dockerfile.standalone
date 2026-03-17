@@ -59,7 +59,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ============================================
 # RUNTIME STAGE - Redis 8 + Python app
 # ============================================
-FROM redis:8.4 AS standalone
+FROM redis:8.6 AS standalone
 
 # OCI labels
 LABEL org.opencontainers.image.title="Redis Agent Memory Server (Standalone)"

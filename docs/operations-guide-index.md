@@ -67,6 +67,7 @@ Configure, secure, and deploy your Redis Agent Memory Server in production. This
 | Topic | Description |
 |-------|-------------|
 | [Configuration](configuration.md) | All environment variables and YAML settings |
+| [Worker timeout tuning](configuration.md#worker-lease-and-task-timeout) | How to size task timeout vs redelivery timeout for Docket workers |
 | [Authentication](authentication.md) | OAuth2, token auth, and development mode |
 | [Security](security-custom-prompts.md) | Custom prompt security and best practices |
 | [LLM Providers](llm-providers.md) | Generation models including AWS Bedrock |
