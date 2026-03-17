@@ -114,6 +114,7 @@ class DiscreteMemoryStrategy(BaseMemoryStrategy):
     - text: str -- The actual information to store (with all contextual references grounded)
     - topics: list[str] -- The topics of the memory (top {top_k_topics})
     - entities: list[str] -- The entities of the memory
+    - event_date: str | null -- For episodic memories, the date/time when the event occurred (ISO 8601 format); null for semantic memories
 
     Return a list of memories, for example:
     {{
@@ -123,12 +124,14 @@ class DiscreteMemoryStrategy(BaseMemoryStrategy):
                 "text": "User prefers window seats",
                 "topics": ["travel", "airline"],
                 "entities": ["User", "window seat"],
+                "event_date": null,
             }},
             {{
                 "type": "episodic",
                 "text": "Trek discontinued the Trek 520 steel touring bike in 2023",
                 "topics": ["travel", "bicycle"],
                 "entities": ["Trek", "Trek 520 steel touring bike"],
+                "event_date": "2023-01-01T00:00:00Z",
             }},
         ]
     }}

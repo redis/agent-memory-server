@@ -40,6 +40,7 @@ from agent_memory_server.models import (
     MemoryTypeEnum,
 )
 from agent_memory_server.utils.keys import Keys
+from agent_memory_server.utils.datetime import parse_iso8601_datetime
 from agent_memory_server.utils.recency import (
     _days_between,
     generate_memory_hash,
@@ -479,12 +480,26 @@ async def extract_memories_from_session_thread(
         # Convert to MemoryRecord objects
         extracted_memories = []
         for memory_data in memories_data:
+            event_date = None
+            event_date_str = memory_data.get("event_date")
+            if event_date_str:
+                try:
+                    event_date = parse_iso8601_datetime(event_date_str)
+                except ValueError:
+                    logger.warning(
+                        "Skipping invalid extracted event_date %r for memory %r in session %s",
+                        event_date_str,
+                        memory_data.get("text"),
+                        session_id,
+                    )
+
             memory = MemoryRecord(
                 id=str(ULID()),
                 text=memory_data["text"],
                 memory_type=memory_data.get("type", "semantic"),
                 topics=memory_data.get("topics", []),
                 entities=memory_data.get("entities", []),
+                event_date=event_date,
                 session_id=session_id,
                 namespace=namespace,
                 user_id=user_id,
