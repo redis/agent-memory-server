@@ -206,19 +206,3 @@ async def migrate_normalize_tag_separators_4(redis: Redis | None = None) -> None
     logger.info(
         f"Migration completed. Normalized TAG separators for {normalized_count} memories"
     )
-
-
-async def migrate_delete_invalid_memories_5(redis: Redis | None = None) -> None:
-    """
-    Migration 5: Delete invalid memories with empty/placeholder id/text fields.
-    """
-    logger.info("Starting invalid memory cleanup migration")
-
-    # Keep import local to avoid unnecessary module initialization at import time.
-    from agent_memory_server.long_term_memory import delete_invalid_memories
-
-    deleted_count = await delete_invalid_memories(redis_client=redis)
-    logger.info(
-        "Migration completed. Deleted %s invalid memories",
-        deleted_count,
-    )

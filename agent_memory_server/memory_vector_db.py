@@ -4,7 +4,6 @@ with a RedisVL-based implementation for Redis backends.
 """
 
 import logging
-import unicodedata
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from functools import reduce
@@ -39,14 +38,6 @@ from agent_memory_server.utils.tag_codec import decode_tag_values, encode_tag_va
 
 
 logger = logging.getLogger(__name__)
-
-
-def _has_meaningful_string(value: Any) -> bool:
-    if not isinstance(value, str):
-        return False
-    if not value:
-        return False
-    return any(not unicodedata.category(ch).startswith(("C", "Z", "M")) for ch in value)
 
 
 class MemoryVectorDatabase(ABC):
@@ -283,9 +274,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
 
     RETURN_FIELDS = [
         "id_",
-        "id",
         "text",
-        "content",
         "session_id",
         "user_id",
         "namespace",
@@ -303,10 +292,6 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         "extracted_from",
         "event_date",
     ]
-    # Over-fetch to compensate for legacy malformed rows that are skipped during
-    # response parsing. This keeps pagination stable for valid records.
-    QUERY_OVERFETCH_FACTOR = 5
-    QUERY_MAX_RESULTS = 5000
 
     def __init__(self, index: AsyncSearchIndex, embeddings: Any):
         """Initialize the RedisVL memory vector database.
@@ -400,7 +385,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
 
     def _data_to_memory_result(
         self, fields: dict[str, Any], score: float = 0.0
-    ) -> MemoryRecordResult | None:
+    ) -> MemoryRecordResult:
         """Convert a search result dict to a MemoryRecordResult.
 
         Handles parsing of Unix timestamps back to datetime objects,
@@ -411,34 +396,8 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
             score: Distance score (0 = perfect match for cosine)
 
         Returns:
-            MemoryRecordResult with converted data, or None if required fields
-            are missing.
+            MemoryRecordResult with converted data
         """
-
-        def first_nonempty_string(*candidates: Any) -> str | None:
-            for value in candidates:
-                if _has_meaningful_string(value):
-                    return value
-            return None
-
-        # Compatibility: some legacy/alternate producers may store id/text with
-        # different aliases (e.g., "id" instead of "id_").
-        memory_id = first_nonempty_string(
-            fields.get("id_"),
-            fields.get("id"),
-        )
-        text = first_nonempty_string(
-            fields.get("text"),
-            fields.get("content"),
-        )
-
-        # Do not fabricate records when required fields are missing.
-        # Returning placeholders (id="", text="") creates misleading data
-        # in API/UI responses and can distort recency ranking.
-        if not memory_id:
-            return None
-        if not text:
-            return None
 
         def parse_timestamp(val: Any) -> datetime | None:
             if val is None:
@@ -487,8 +446,8 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         namespace = fields.get("namespace") or None
 
         return MemoryRecordResult(
-            text=text,
-            id=memory_id,
+            text=fields.get("text", ""),
+            id=fields.get("id_", ""),
             session_id=session_id,
             user_id=user_id,
             namespace=namespace,
@@ -714,14 +673,6 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         # Embed the query
         embedding_vector = await self.embeddings.aembed_query(query)
 
-        # Over-fetch to avoid sparse/empty pages when legacy malformed rows are
-        # present in the index and skipped by _data_to_memory_result().
-        requested_count = max(limit + offset, 1)
-        query_result_count = min(
-            requested_count * self.QUERY_OVERFETCH_FACTOR,
-            self.QUERY_MAX_RESULTS,
-        )
-
         # Build vector query
         if distance_threshold is not None:
             vq = RangeQuery(
@@ -729,7 +680,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                 vector_field_name="vector",
                 filter_expression=redis_filter,
                 distance_threshold=float(distance_threshold),
-                num_results=query_result_count,
+                num_results=limit + offset,
                 return_fields=self.RETURN_FIELDS,
             )
         else:
@@ -737,7 +688,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                 vector=embedding_vector,
                 vector_field_name="vector",
                 filter_expression=redis_filter,
-                num_results=query_result_count,
+                num_results=limit + offset,
                 return_fields=self.RETURN_FIELDS,
             )
 
@@ -745,26 +696,18 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         results = await self._index.query(vq)
 
         # Parse results (query() returns List[Dict[str, Any]])
-        # Pagination is applied against valid parsed records (not raw rows),
-        # so malformed rows do not shift offsets unpredictably.
         memory_results: list[MemoryRecordResult] = []
-        valid_count = 0
-        for fields in results:
-            memory_result = self._data_to_memory_result(
-                fields,
-                float(
-                    fields.get("vector_distance", fields.get("__vector_score", 0.0))
-                    or 0.0
-                ),
+        for i, fields in enumerate(results):
+            # Apply offset - RedisVL doesn't support native offset for KNN
+            if i < offset:
+                continue
+
+            # Get vector distance score
+            score = float(
+                fields.get("vector_distance", fields.get("__vector_score", 0.0)) or 0.0
             )
-            if memory_result is None:
-                continue
 
-            if valid_count < offset:
-                valid_count += 1
-                continue
-
-            valid_count += 1
+            memory_result = self._data_to_memory_result(fields, score)
             memory_results.append(memory_result)
 
             if len(memory_results) >= limit:
@@ -776,11 +719,11 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                 memory_results, recency_params
             )
 
-        next_offset = offset + limit if valid_count > offset + limit else None
+        next_offset = offset + limit if len(results) > offset + limit else None
 
         return MemoryRecordResults(
             memories=memory_results[:limit],
-            total=max(valid_count, offset + len(memory_results)),
+            total=len(results),
             next_offset=next_offset,
         )
 
@@ -865,49 +808,30 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                 discrete_memory_extracted=discrete_memory_extracted,
             )
 
-            # Over-fetch to avoid sparse/empty pages when legacy malformed rows are
-            # present in the index and skipped by _data_to_memory_result().
-            requested_count = max(limit + offset, 1)
-            query_result_count = min(
-                requested_count * self.QUERY_OVERFETCH_FACTOR,
-                self.QUERY_MAX_RESULTS,
-            )
-
             # Create FilterQuery for non-vector search
             filter_query = FilterQuery(
                 filter_expression=redis_filter,
                 return_fields=self.RETURN_FIELDS,
-                num_results=query_result_count,
+                num_results=limit + offset,
             )
 
             # Execute query using index.query() which properly handles params
             results = await self._index.query(filter_query)
 
             # Parse results (query() returns List[Dict[str, Any]])
-            # Pagination is applied against valid parsed records (not raw rows),
-            # so malformed rows do not shift offsets unpredictably.
             memory_results: list[MemoryRecordResult] = []
-            valid_count = 0
-            for fields in results:
+            for fields in results[offset:]:
                 memory_result = self._data_to_memory_result(fields, score=0.0)
-                if memory_result is None:
-                    continue
-
-                if valid_count < offset:
-                    valid_count += 1
-                    continue
-
-                valid_count += 1
                 memory_results.append(memory_result)
 
                 if len(memory_results) >= limit:
                     break
 
-            next_offset = offset + limit if valid_count > offset + limit else None
+            next_offset = offset + limit if len(results) > offset + limit else None
 
             return MemoryRecordResults(
                 memories=memory_results[:limit],
-                total=max(valid_count, offset + len(memory_results)),
+                total=len(results),
                 next_offset=next_offset,
             )
 

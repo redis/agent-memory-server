@@ -344,7 +344,7 @@ class TestEmptyTextValidation:
             text="",
         )
 
-        with pytest.raises(ValueError, match="placeholder-only text"):
+        with pytest.raises(ValueError, match="has empty text"):
             CreateMemoryRecordRequest(memories=[valid_memory, empty_text_memory])
 
     def test_create_memory_record_request_rejects_empty_id(self):
@@ -354,7 +354,7 @@ class TestEmptyTextValidation:
             text="Valid text",
         )
 
-        with pytest.raises(ValueError, match="placeholder-only id"):
+        with pytest.raises(ValueError, match="has empty id"):
             CreateMemoryRecordRequest(memories=[empty_id_memory])
 
     def test_create_memory_record_request_accepts_valid_memories(self):
@@ -375,7 +375,7 @@ class TestEmptyTextValidation:
             text="",
         )
 
-        with pytest.raises(ValueError, match="placeholder-only text"):
+        with pytest.raises(ValueError, match="has empty text"):
             UpdateWorkingMemory(memories=[empty_text_memory])
 
     def test_update_working_memory_rejects_empty_id(self):
@@ -385,7 +385,7 @@ class TestEmptyTextValidation:
             text="Valid text",
         )
 
-        with pytest.raises(ValueError, match="placeholder-only id"):
+        with pytest.raises(ValueError, match="has empty id"):
             UpdateWorkingMemory(memories=[empty_id_memory])
 
     def test_update_working_memory_accepts_valid_memories(self):
@@ -407,7 +407,8 @@ class TestEmptyTextValidation:
         record = LenientMemoryRecord(text="Valid memory text")
         assert record.text == "Valid memory text"
 
-    def test_lenient_memory_record_rejects_whitespace(self):
-        """Test that LenientMemoryRecord rejects whitespace-only text."""
-        with pytest.raises(ValueError, match="placeholder-only"):
-            LenientMemoryRecord(text="   ")
+    def test_lenient_memory_record_accepts_whitespace(self):
+        """Test that LenientMemoryRecord accepts whitespace-only text."""
+        # Whitespace is accepted (it's not empty, just whitespace)
+        record = LenientMemoryRecord(text="   ")
+        assert record.text == "   "

@@ -454,7 +454,7 @@ class TestEmbeddingsInputValidation:
             text="",  # Empty string
         )
 
-        with pytest.raises(ValueError, match="placeholder-only text"):
+        with pytest.raises(ValueError, match="has empty text"):
             CreateMemoryRecordRequest(memories=[valid_memory, empty_memory])
 
     async def test_legacy_empty_text_filtered_on_index(
