@@ -14,6 +14,7 @@ from agent_memory_server.filters import DiscreteMemoryExtracted, MemoryType
 from agent_memory_server.llm import LLMClient
 from agent_memory_server.logging import get_logger
 from agent_memory_server.models import MemoryRecord
+from agent_memory_server.utils.tag_codec import sanitize_tag_values
 
 
 if TYPE_CHECKING:
@@ -385,8 +386,8 @@ async def extract_memories_with_strategy(
                 id=str(ulid.ULID()),
                 text=new_memory["text"],
                 memory_type=new_memory.get("type", "episodic"),
-                topics=new_memory.get("topics", []),
-                entities=new_memory.get("entities", []),
+                topics=sanitize_tag_values(new_memory.get("topics", [])),
+                entities=sanitize_tag_values(new_memory.get("entities", [])),
                 discrete_memory_extracted="t",
                 extraction_strategy="discrete",  # These are already extracted
                 extraction_strategy_config={},
