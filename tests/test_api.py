@@ -491,8 +491,8 @@ class TestMemoryEndpoints:
         data = response.json()
 
         # All messages should be preserved (no summarization occurred)
-        assert len(data["messages"]) == len(
-            payload["messages"]
+        assert (
+            len(data["messages"]) == len(payload["messages"])
         ), f"Expected all {len(payload['messages'])} messages to be preserved when summarization is disabled, but got {len(data['messages'])}"
 
         # Context should remain empty (no summary was created)
