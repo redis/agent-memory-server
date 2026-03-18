@@ -1200,6 +1200,8 @@ class MemoryAPIClient:
         self,
         query: str,
         search_mode: SearchModeEnum | str = SearchModeEnum.SEMANTIC,
+        hybrid_alpha: float = 0.7,
+        text_scorer: str = "BM25STD",
         topics: Sequence[str] | None = None,
         entities: Sequence[str] | None = None,
         memory_type: str | None = None,
@@ -1219,6 +1221,9 @@ class MemoryAPIClient:
 
         Args:
             query: The query for vector search
+            search_mode: Search strategy to use ("semantic", "keyword", or "hybrid")
+            hybrid_alpha: Weight assigned to vector similarity in hybrid search
+            text_scorer: Redis full-text scoring algorithm for keyword and hybrid search
             topics: Optional list of topic strings to filter by
             entities: Optional list of entity strings to filter by
             memory_type: Optional memory type ("episodic", "semantic", "message")
@@ -1274,6 +1279,8 @@ class MemoryAPIClient:
         results = await self.search_long_term_memory(
             text=query,
             search_mode=search_mode,
+            hybrid_alpha=hybrid_alpha,
+            text_scorer=text_scorer,
             topics=topics_filter,
             entities=entities_filter,
             memory_type=memory_type_filter,
@@ -1373,6 +1380,24 @@ class MemoryAPIClient:
                             "query": {
                                 "type": "string",
                                 "description": "The query for vector search describing what information you're looking for",
+                            },
+                            "search_mode": {
+                                "type": "string",
+                                "enum": ["semantic", "keyword", "hybrid"],
+                                "default": "semantic",
+                                "description": "Search strategy to use. Choose 'keyword' for lexical search, 'semantic' for vector similarity, or 'hybrid' to blend both.",
+                            },
+                            "hybrid_alpha": {
+                                "type": "number",
+                                "minimum": 0.0,
+                                "maximum": 1.0,
+                                "default": 0.7,
+                                "description": "Weight assigned to vector similarity in hybrid search. Higher values favor semantic matches more strongly.",
+                            },
+                            "text_scorer": {
+                                "type": "string",
+                                "default": "BM25STD",
+                                "description": "Redis full-text scoring algorithm to use for keyword and hybrid search (for example: BM25STD, BM25, TFIDF, DISMAX, DOCSCORE).",
                             },
                             "topics": {
                                 "type": "array",

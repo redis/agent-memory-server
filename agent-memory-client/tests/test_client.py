@@ -371,6 +371,50 @@ class TestRecencyConfig:
             assert body["hybrid_alpha"] == 0.55
             assert body["text_scorer"] == "BM25"
 
+    @pytest.mark.asyncio
+    async def test_search_memory_tool_forwards_hybrid_parameters(
+        self, enhanced_test_client
+    ):
+        """Test that the LLM helper forwards hybrid tuning parameters."""
+        response = MemoryRecordResults(
+            total=0,
+            memories=[],
+            next_offset=None,
+        )
+
+        with patch.object(
+            enhanced_test_client, "search_long_term_memory"
+        ) as mock_search:
+            mock_search.return_value = response
+
+            await enhanced_test_client.search_memory_tool(
+                query="alpha beta",
+                search_mode=SearchModeEnum.HYBRID,
+                hybrid_alpha=0.35,
+                text_scorer="TFIDF",
+            )
+
+            mock_search.assert_awaited_once()
+            _, kwargs = mock_search.call_args
+            assert kwargs["text"] == "alpha beta"
+            assert kwargs["search_mode"] == SearchModeEnum.HYBRID
+            assert kwargs["hybrid_alpha"] == 0.35
+            assert kwargs["text_scorer"] == "TFIDF"
+
+    def test_memory_search_tool_schema_exposes_search_controls(self):
+        """Test that the LLM tool schema advertises keyword/hybrid controls."""
+        schema = MemoryAPIClient.get_memory_search_tool_schema().to_dict()
+        properties = schema["function"]["parameters"]["properties"]
+
+        assert properties["search_mode"]["enum"] == [
+            "semantic",
+            "keyword",
+            "hybrid",
+        ]
+        assert properties["search_mode"]["default"] == "semantic"
+        assert properties["hybrid_alpha"]["default"] == 0.7
+        assert properties["text_scorer"]["default"] == "BM25STD"
+
 
 class TestClientSideValidation:
     """Tests for client-side validation methods."""
