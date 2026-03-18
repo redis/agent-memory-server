@@ -1123,6 +1123,11 @@ async def search_long_term_memories(
     Returns:
         MemoryRecordResults containing matching memories
     """
+    if distance_threshold is not None and search_mode != SearchModeEnum.SEMANTIC:
+        raise ValueError(
+            "distance_threshold is only supported for semantic search mode"
+        )
+
     # If no query text is provided, perform a filter-only listing (no semantic search).
     # This enables patterns like: "return all memories for this user/namespace".
     if not (text or "").strip():

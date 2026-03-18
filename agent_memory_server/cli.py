@@ -613,6 +613,12 @@ def search(
 
     configure_logging()
 
+    if distance_threshold is not None and search_mode != "semantic":
+        raise click.BadParameter(
+            "distance_threshold is only supported for semantic search mode",
+            param_hint="--distance-threshold",
+        )
+
     async def run_search():
         # Build filter objects
         namespace_filter = Namespace(eq=namespace) if namespace else None

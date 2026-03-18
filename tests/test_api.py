@@ -902,6 +902,27 @@ class TestSearchEndpoint:
         assert data["memories"][0]["id"] == "1"
         assert data["memories"][0]["text"] == "Optimized result"
 
+    @patch("agent_memory_server.api.long_term_memory.search_long_term_memories")
+    @pytest.mark.asyncio
+    async def test_search_rejects_distance_threshold_for_keyword_mode(
+        self, mock_search, client
+    ):
+        """distance_threshold only applies to semantic search."""
+        payload = {
+            "text": "preference",
+            "search_mode": "keyword",
+            "distance_threshold": 0.5,
+        }
+
+        response = await client.post("/v1/long-term-memory/search", json=payload)
+
+        assert response.status_code == 400
+        assert (
+            response.json()["detail"]
+            == "distance_threshold is only supported for semantic search mode"
+        )
+        mock_search.assert_not_called()
+
 
 @pytest.mark.requires_api_keys
 class TestMemoryPromptEndpoint:

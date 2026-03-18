@@ -27,6 +27,7 @@ from agent_memory_server.models import (
     ModelNameLiteral,
     RunSummaryViewPartitionRequest,
     RunSummaryViewRequest,
+    SearchModeEnum,
     SearchRequest,
     SessionListResponse,
     SummaryView,
@@ -656,6 +657,15 @@ async def search_long_term_memory(
     """
     if not settings.long_term_memory:
         raise HTTPException(status_code=400, detail="Long-term memory is disabled")
+
+    if (
+        payload.distance_threshold is not None
+        and payload.search_mode != SearchModeEnum.SEMANTIC
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="distance_threshold is only supported for semantic search mode",
+        )
 
     # Extract filter objects from the payload
     filters = payload.get_filters()

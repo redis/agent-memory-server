@@ -488,6 +488,14 @@ class TestMemoryVectorDatabase:
         assert result.topics == ["cooking", "italian"]
         assert result.entities == ["pasta", "rome"]
 
+    def test_normalize_rank_scores_zero_scores_remain_zero(self):
+        """Zero-score batches should not be normalized into perfect matches."""
+        mock_index = MagicMock()
+        mock_embeddings = MockEmbeddings()
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        assert db._normalize_rank_scores([0.0, 0.0]) == [0.0, 0.0]
+
     @pytest.mark.asyncio
     async def test_list_memories_does_not_overwrite_dist_with_score(self):
         """Filter-only listings should keep neutral distance semantics."""

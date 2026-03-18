@@ -585,6 +585,11 @@ async def search_long_term_memory(
     if namespace is None and settings.default_mcp_namespace:
         namespace = Namespace(eq=settings.default_mcp_namespace)
 
+    if distance_threshold is not None and search_mode != SearchModeEnum.SEMANTIC:
+        raise ValueError(
+            "distance_threshold is only supported for semantic search mode"
+        )
+
     try:
         payload = SearchRequest(
             text=text,

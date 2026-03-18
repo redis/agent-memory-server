@@ -499,7 +499,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
 
         max_score = max(raw_scores)
         if max_score <= 0:
-            return [1.0 for _ in raw_scores]
+            return [0.0 for _ in raw_scores]
 
         return [min(max(score / max_score, 0.0), 1.0) for score in raw_scores]
 
