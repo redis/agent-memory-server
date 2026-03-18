@@ -15,6 +15,7 @@ from agent_memory_server.extraction import (
     handle_extraction,
 )
 from agent_memory_server.models import MemoryRecord, MemoryTypeEnum
+from agent_memory_server.utils.datetime import parse_iso8601_datetime
 
 
 @pytest.fixture
@@ -386,6 +387,55 @@ async def test_extract_memories_with_strategy_maps_event_date():
     mock_index.assert_awaited_once()
     indexed_memories = mock_index.await_args.args[0]
     assert len(indexed_memories) == 1
-    assert indexed_memories[0].event_date == datetime(
-        2024, 1, 15, 0, 0, tzinfo=UTC
+    assert indexed_memories[0].event_date == datetime(2024, 1, 15, 0, 0, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_extract_memories_with_strategy_skips_non_string_event_date():
+    """Test malformed non-string event_date does not abort indexing."""
+    source_memory = MemoryRecord(
+        id=str(ulid.ULID()),
+        text="User finished onboarding yesterday.",
+        memory_type=MemoryTypeEnum.MESSAGE,
+        discrete_memory_extracted="f",
     )
+
+    mock_db = AsyncMock()
+    mock_strategy = AsyncMock()
+    mock_strategy.extract_memories.return_value = [
+        {
+            "type": "episodic",
+            "text": "User finished onboarding on January 15, 2024.",
+            "topics": ["onboarding"],
+            "entities": ["User"],
+            "event_date": 1705276800,
+        }
+    ]
+
+    with (
+        patch(
+            "agent_memory_server.memory_vector_db_factory.get_memory_vector_db",
+            return_value=mock_db,
+        ),
+        patch(
+            "agent_memory_server.memory_strategies.get_memory_strategy",
+            return_value=mock_strategy,
+        ),
+        patch(
+            "agent_memory_server.long_term_memory.index_long_term_memories",
+            new_callable=AsyncMock,
+        ) as mock_index,
+    ):
+        await extract_memories_with_strategy(memories=[source_memory])
+
+    mock_db.update_memories.assert_awaited_once()
+    mock_index.assert_awaited_once()
+    indexed_memories = mock_index.await_args.args[0]
+    assert len(indexed_memories) == 1
+    assert indexed_memories[0].event_date is None
+
+
+def test_parse_iso8601_datetime_normalizes_naive_values_to_utc():
+    """Test naive ISO timestamps are normalized to UTC."""
+    parsed = parse_iso8601_datetime("2024-01-15T00:00:00")
+    assert parsed == datetime(2024, 1, 15, 0, 0, tzinfo=UTC)

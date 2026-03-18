@@ -268,6 +268,57 @@ class TestExtractionLogicFixes:
         )
 
     @pytest.mark.asyncio
+    async def test_thread_aware_extraction_skips_non_string_event_date(
+        self, async_redis_client
+    ):
+        """Test thread-aware extraction skips malformed non-string event_date."""
+        session_id = "test-thread-event-date-non-string"
+        user_id = "test-user"
+        namespace = "test"
+
+        working_memory = WorkingMemory(
+            session_id=session_id,
+            user_id=user_id,
+            namespace=namespace,
+            messages=[
+                MemoryMessage(
+                    id="msg-1",
+                    role="user",
+                    content="I met the client on January 15, 2024.",
+                    created_at=datetime.now(UTC),
+                    discrete_memory_extracted="f",
+                ),
+            ],
+            memories=[],
+        )
+
+        await set_working_memory(working_memory, redis_client=async_redis_client)
+
+        mock_strategy = AsyncMock()
+        mock_strategy.extract_memories.return_value = [
+            {
+                "type": "episodic",
+                "text": "User met the client on January 15, 2024.",
+                "topics": ["meeting"],
+                "entities": ["User", "client"],
+                "event_date": 1705276800,
+            }
+        ]
+
+        with patch(
+            "agent_memory_server.memory_strategies.get_memory_strategy",
+            return_value=mock_strategy,
+        ):
+            extracted_memories = await extract_memories_from_session_thread(
+                session_id=session_id,
+                namespace=namespace,
+                user_id=user_id,
+            )
+
+        assert len(extracted_memories) == 1
+        assert extracted_memories[0].event_date is None
+
+    @pytest.mark.asyncio
     async def test_delayed_extraction_marks_messages_even_with_no_memories(
         self, async_redis_client
     ):
