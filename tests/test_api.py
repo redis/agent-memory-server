@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agent_memory_server.config import Settings
+from agent_memory_server.config import Settings, settings
 from agent_memory_server.models import (
     MemoryMessage,
     MemoryRecordResult,
@@ -12,6 +12,24 @@ from agent_memory_server.models import (
     WorkingMemory,
     WorkingMemoryResponse,
 )
+
+
+@pytest.fixture
+def disable_summarization():
+    """Temporarily disable working memory summarization for a test."""
+    original_setting = settings.enable_working_memory_summarization
+    settings.enable_working_memory_summarization = False
+    yield
+    settings.enable_working_memory_summarization = original_setting
+
+
+@pytest.fixture
+def enable_message_indexing():
+    """Temporarily enable index_all_messages_in_long_term_memory for a test."""
+    original_setting = settings.index_all_messages_in_long_term_memory
+    settings.index_all_messages_in_long_term_memory = True
+    yield
+    settings.index_all_messages_in_long_term_memory = original_setting
 
 
 @pytest.fixture
@@ -123,10 +141,7 @@ class TestMemoryEndpoints:
     async def test_search_long_term_memory_respects_recency_boost(self, client):
         from datetime import UTC, datetime, timedelta
 
-        from agent_memory_server.models import (
-            MemoryRecordResult,
-            MemoryRecordResults,
-        )
+        from agent_memory_server.models import MemoryRecordResult, MemoryRecordResults
 
         now = datetime.now(UTC)
 
@@ -439,82 +454,119 @@ class TestMemoryEndpoints:
             until_summarization >= 0
         ), f"Expected non-negative until_summarization percentage, got {until_summarization}"
 
+    @pytest.mark.asyncio
+    async def test_put_memory_summarization_disabled_skips_summarization(
+        self, client, disable_summarization
+    ):
+        """
+        Test that when enable_working_memory_summarization=False, summarization is skipped
+        even when token threshold would be exceeded.
+        """
+        # Create many messages that would normally trigger summarization
+        messages = []
+        for i in range(25):
+            messages.append(
+                {
+                    "role": "user" if i % 2 == 0 else "assistant",
+                    "content": f"Message {i}: This is substantial content that uses many tokens and would trigger summarization when context window is limited. "
+                    * 3,
+                }
+            )
+
+        payload = {
+            "messages": messages,
+            "memories": [],
+            "context": "",
+            "namespace": "test-namespace",
+        }
+
+        # Use small context_window_max that would normally trigger summarization
+        response = await client.put(
+            "/v1/working-memory/disabled-summarization-test?context_window_max=500",
+            json=payload,
+        )
+
+        assert response.status_code == 200
+
+        data = response.json()
+
+        # All messages should be preserved (no summarization occurred)
+        assert (
+            len(data["messages"]) == len(payload["messages"])
+        ), f"Expected all {len(payload['messages'])} messages to be preserved when summarization is disabled, but got {len(data['messages'])}"
+
+        # Context should remain empty (no summary was created)
+        assert (
+            data["context"] == "" or data["context"] is None
+        ), "Context should remain empty when summarization is disabled"
+
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
     async def test_working_memory_reconstruction_from_long_term(
-        self, client, async_redis_client
+        self, client, async_redis_client, enable_message_indexing
     ):
         """Test working memory reconstruction from long-term memory when index_all_messages_in_long_term_memory is enabled"""
         from datetime import UTC, datetime
 
-        from agent_memory_server.config import settings
         from agent_memory_server.long_term_memory import index_long_term_memories
         from agent_memory_server.models import MemoryRecord
 
-        # Enable message indexing
-        original_setting = settings.index_all_messages_in_long_term_memory
-        settings.index_all_messages_in_long_term_memory = True
+        session_id = "reconstruction-api-test"
+        user_id = "test-user"
+        namespace = "test"
 
-        try:
-            session_id = "reconstruction-api-test"
-            user_id = "test-user"
-            namespace = "test"
+        # Create message memories in long-term storage (simulating expired working memory)
+        message_memories = [
+            MemoryRecord(
+                id="api-msg-1",
+                text="user: Hello from API test",
+                memory_type="message",
+                session_id=session_id,
+                user_id=user_id,
+                namespace=namespace,
+                persisted_at=datetime.now(UTC),
+            ),
+            MemoryRecord(
+                id="api-msg-2",
+                text="assistant: Hello! How can I help you?",
+                memory_type="message",
+                session_id=session_id,
+                user_id=user_id,
+                namespace=namespace,
+                persisted_at=datetime.now(UTC),
+            ),
+        ]
 
-            # Create message memories in long-term storage (simulating expired working memory)
-            message_memories = [
-                MemoryRecord(
-                    id="api-msg-1",
-                    text="user: Hello from API test",
-                    memory_type="message",
-                    session_id=session_id,
-                    user_id=user_id,
-                    namespace=namespace,
-                    persisted_at=datetime.now(UTC),
-                ),
-                MemoryRecord(
-                    id="api-msg-2",
-                    text="assistant: Hello! How can I help you?",
-                    memory_type="message",
-                    session_id=session_id,
-                    user_id=user_id,
-                    namespace=namespace,
-                    persisted_at=datetime.now(UTC),
-                ),
-            ]
+        # Index messages in long-term memory
+        await index_long_term_memories(
+            message_memories,
+            redis_client=async_redis_client,
+            deduplicate=False,
+        )
 
-            # Index messages in long-term memory
-            await index_long_term_memories(
-                message_memories,
-                redis_client=async_redis_client,
-                deduplicate=False,
-            )
+        # Try to get working memory - should reconstruct from long-term
+        response = await client.get(
+            f"/v1/working-memory/{session_id}?namespace={namespace}&user_id={user_id}"
+        )
 
-            # Try to get working memory - should reconstruct from long-term
-            response = await client.get(
-                f"/v1/working-memory/{session_id}?namespace={namespace}&user_id={user_id}"
-            )
+        assert response.status_code == 200
+        result = response.json()
 
-            assert response.status_code == 200
-            result = response.json()
+        # Should have reconstructed the working memory
+        assert result["session_id"] == session_id
+        assert result["user_id"] == user_id
+        assert result["namespace"] == namespace
+        assert len(result["messages"]) == 2
 
-            # Should have reconstructed the working memory
-            assert result["session_id"] == session_id
-            assert result["user_id"] == user_id
-            assert result["namespace"] == namespace
-            assert len(result["messages"]) == 2
+        # Check message content
+        message_contents = [msg["content"] for msg in result["messages"]]
+        assert "Hello from API test" in message_contents
+        assert "Hello! How can I help you?" in message_contents
 
-            # Check message content
-            message_contents = [msg["content"] for msg in result["messages"]]
-            assert "Hello from API test" in message_contents
-            assert "Hello! How can I help you?" in message_contents
-
-            # Should have empty memories, context, and data (reconstruction only includes messages)
-            assert result["memories"] == []
-            assert result["context"] == ""
-            assert result["data"] == {}
-
-        finally:
-            settings.index_all_messages_in_long_term_memory = original_setting
+        # Should have empty memories, context, and data (reconstruction only includes messages)
+        assert result["memories"] == []
+        assert result["context"] == ""
+        assert result["data"] == {}
 
     @pytest.mark.requires_api_keys
     @pytest.mark.asyncio
