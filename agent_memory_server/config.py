@@ -5,9 +5,8 @@ from typing import Any, Literal
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings
-
 
 load_dotenv()
 
@@ -439,18 +438,8 @@ class Settings(BaseSettings):
     enable_working_memory_summarization: bool = (
         True  # If False, skip working-memory summarization entirely
     )
-    summarization_threshold: float = 0.7  # Fraction of context window that triggers summarization (must be in (0, 1])
 
-    @field_validator("summarization_threshold")
-    @classmethod
-    def validate_summarization_threshold(cls, v: float) -> float:
-        """Validate summarization_threshold is in valid range (0, 1]."""
-        if v <= 0 or v > 1:
-            raise ValueError(
-                f"summarization_threshold must be in range (0, 1], got {v}. "
-                "To disable summarization, set ENABLE_WORKING_MEMORY_SUMMARIZATION=false instead."
-            )
-        return v
+    summarization_threshold: float = Field(default=0.7, gt=0.0, le=1.0)
 
     # Message timestamp validation settings
     # If true, reject messages without created_at timestamp.

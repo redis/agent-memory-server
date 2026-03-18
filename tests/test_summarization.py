@@ -6,10 +6,7 @@ from pydantic import ValidationError
 
 from agent_memory_server.config import Settings, settings
 from agent_memory_server.llm import ChatCompletionResponse
-from agent_memory_server.summarization import (
-    _incremental_summary,
-    summarize_session,
-)
+from agent_memory_server.summarization import _incremental_summary, summarize_session
 from agent_memory_server.utils.keys import Keys
 
 
@@ -315,30 +312,28 @@ class TestSummarizationThresholdValidation:
         with pytest.raises(ValidationError) as exc_info:
             Settings(summarization_threshold=0.0)
 
-        assert "summarization_threshold must be in range (0, 1]" in str(exc_info.value)
+        assert "greater_than" in str(exc_info.value)
 
     def test_invalid_threshold_negative(self):
         """Test that negative threshold is rejected."""
         with pytest.raises(ValidationError) as exc_info:
             Settings(summarization_threshold=-0.5)
 
-        assert "summarization_threshold must be in range (0, 1]" in str(exc_info.value)
+        assert "greater_than" in str(exc_info.value)
 
     def test_invalid_threshold_greater_than_one(self):
         """Test that threshold > 1 is rejected."""
         with pytest.raises(ValidationError) as exc_info:
             Settings(summarization_threshold=1.5)
 
-        assert "summarization_threshold must be in range (0, 1]" in str(exc_info.value)
+        assert "less_than_equal" in str(exc_info.value)
 
     def test_invalid_threshold_large_value(self):
-        """Test that large threshold (e.g., 100.0) is rejected with helpful message."""
+        """Test that large threshold (e.g., 100.0) is rejected."""
         with pytest.raises(ValidationError) as exc_info:
             Settings(summarization_threshold=100.0)
 
-        error_str = str(exc_info.value)
-        assert "summarization_threshold must be in range (0, 1]" in error_str
-        assert "ENABLE_WORKING_MEMORY_SUMMARIZATION=false" in error_str
+        assert "less_than_equal" in str(exc_info.value)
 
 
 class TestEnableWorkingMemorySummarizationSetting:
