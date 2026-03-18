@@ -94,6 +94,9 @@ function createMcpBackend(client: McpSseClient): MemoryBackend {
     search: async (req) => {
       const args: Record<string, unknown> = { limit: req.limit ?? 10 }
       args.text = req.text ?? ''
+      if (req.search_mode) args.search_mode = req.search_mode
+      if (req.hybrid_alpha !== undefined) args.hybrid_alpha = req.hybrid_alpha
+      if (req.text_scorer) args.text_scorer = req.text_scorer
       if (req.offset) args.offset = req.offset
       if (req.session_id) args.session_id = req.session_id
       if (req.namespace) args.namespace = req.namespace

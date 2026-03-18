@@ -56,6 +56,22 @@ class MemoryTypeEnum(str, Enum):
     MESSAGE = "message"
 
 
+class SearchModeEnum(str, Enum):
+    """Enum for supported search strategies."""
+
+    SEMANTIC = "semantic"
+    KEYWORD = "keyword"
+    HYBRID = "hybrid"
+
+
+class SearchScoreTypeEnum(str, Enum):
+    """Enum describing how the normalized score field was produced."""
+
+    SEMANTIC = "semantic"
+    KEYWORD = "keyword"
+    HYBRID = "hybrid"
+
+
 class MemoryStrategyConfig(BaseModel):
     """Configuration for memory extraction strategy."""
 
@@ -352,6 +368,14 @@ class MemoryRecordResult(MemoryRecord):
     """Result from a memory search"""
 
     dist: float
+    score: float | None = Field(
+        default=None,
+        description="Normalized relevance score for the selected search mode (0-1)",
+    )
+    score_type: SearchScoreTypeEnum | None = Field(
+        default=None,
+        description="Search mode used to produce the normalized score",
+    )
 
 
 class RecencyConfig(BaseModel):

@@ -11,7 +11,13 @@ from typing import Any
 
 import numpy as np
 from redisvl.index import AsyncSearchIndex
-from redisvl.query import FilterQuery, RangeQuery, VectorQuery
+from redisvl.query import (
+    AggregateHybridQuery,
+    FilterQuery,
+    RangeQuery,
+    TextQuery,
+    VectorQuery,
+)
 
 from agent_memory_server.filters import (
     CreatedAt,
@@ -31,6 +37,8 @@ from agent_memory_server.models import (
     MemoryRecord,
     MemoryRecordResult,
     MemoryRecordResults,
+    SearchModeEnum,
+    SearchScoreTypeEnum,
 )
 from agent_memory_server.utils.recency import generate_memory_hash, rerank_with_recency
 from agent_memory_server.utils.redis_query import RecencyAggregationQuery
@@ -63,6 +71,9 @@ class MemoryVectorDatabase(ABC):
     async def search_memories(
         self,
         query: str,
+        search_mode: SearchModeEnum = SearchModeEnum.SEMANTIC,
+        hybrid_alpha: float = 0.7,
+        text_scorer: str = "BM25STD",
         session_id: SessionId | None = None,
         user_id: UserId | None = None,
         namespace: Namespace | None = None,
@@ -84,7 +95,10 @@ class MemoryVectorDatabase(ABC):
         """Search memories in the database.
 
         Args:
-            query: Text query for semantic search
+            query: Text query for semantic, keyword, or hybrid search
+            search_mode: Which search strategy to use
+            hybrid_alpha: Weight assigned to vector similarity in hybrid search
+            text_scorer: Redis full-text scorer to use for keyword or hybrid search
             session_id: Optional session ID filter
             user_id: Optional user ID filter
             namespace: Optional namespace filter
@@ -384,7 +398,12 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         return data
 
     def _data_to_memory_result(
-        self, fields: dict[str, Any], score: float = 0.0
+        self,
+        fields: dict[str, Any],
+        *,
+        dist: float = 0.0,
+        score: float | None = None,
+        score_type: SearchScoreTypeEnum | None = None,
     ) -> MemoryRecordResult:
         """Convert a search result dict to a MemoryRecordResult.
 
@@ -393,11 +412,15 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
 
         Args:
             fields: Dictionary of field values from search results
-            score: Distance score (0 = perfect match for cosine)
+            dist: Legacy distance-like value (0 = best match)
+            score: Normalized relevance score for the selected search mode
+            score_type: How the normalized score was produced
 
         Returns:
             MemoryRecordResult with converted data
         """
+        if score is not None and dist == 0.0 and score_type is None:
+            dist = score
 
         def parse_timestamp(val: Any) -> datetime | None:
             if val is None:
@@ -464,8 +487,21 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
             persisted_at=persisted_at,
             extracted_from=self._parse_list_field(fields.get("extracted_from")),
             event_date=event_date,
-            dist=score,
+            dist=dist,
+            score=score,
+            score_type=score_type,
         )
+
+    def _normalize_rank_scores(self, raw_scores: list[float]) -> list[float]:
+        """Normalize arbitrary descending rank scores into the 0-1 range."""
+        if not raw_scores:
+            return []
+
+        max_score = max(raw_scores)
+        if max_score <= 0:
+            return [1.0 for _ in raw_scores]
+
+        return [min(max(score / max_score, 0.0), 1.0) for score in raw_scores]
 
     def _build_filter_expression(self, **filter_kwargs: Any) -> Any | None:
         """Build a combined RedisVL filter expression from filter objects.
@@ -559,10 +595,15 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
             else:
                 fields = dict(fields) if fields else {}
 
-            score = float(fields.get("__vector_score", 1.0) or 1.0)
-            memory_result = self._data_to_memory_result(fields, score)
-            if memory_result is not None:
-                memory_results.append(memory_result)
+            dist = float(fields.get("__vector_score", 1.0) or 1.0)
+            memory_results.append(
+                self._data_to_memory_result(
+                    fields,
+                    dist=dist,
+                    score=max(0.0, 1.0 - dist),
+                    score_type=SearchScoreTypeEnum.SEMANTIC,
+                )
+            )
 
         next_offset = offset + limit if len(memory_results) == limit else None
         return MemoryRecordResults(
@@ -617,6 +658,9 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
     async def search_memories(
         self,
         query: str,
+        search_mode: SearchModeEnum = SearchModeEnum.SEMANTIC,
+        hybrid_alpha: float = 0.7,
+        text_scorer: str = "BM25STD",
         session_id: SessionId | None = None,
         user_id: UserId | None = None,
         namespace: Namespace | None = None,
@@ -635,7 +679,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         limit: int = 10,
         offset: int = 0,
     ) -> MemoryRecordResults:
-        """Search memories using RedisVL vector search."""
+        """Search memories using RedisVL semantic, keyword, or hybrid search."""
         await self._ensure_index()
 
         # Build combined filter expression
@@ -654,8 +698,9 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
             discrete_memory_extracted=discrete_memory_extracted,
         )
 
-        # If server-side recency is requested, attempt aggregation path first
-        if server_side_recency:
+        # If server-side recency is requested, attempt aggregation path first.
+        # This path currently supports semantic vector search only.
+        if server_side_recency and search_mode == SearchModeEnum.SEMANTIC:
             try:
                 return await self._search_with_recency_aggregation(
                     query=query,
@@ -670,48 +715,122 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                     f"RedisVL DB-level recency search failed; falling back to standard path: {e}"
                 )
 
-        # Embed the query
-        embedding_vector = await self.embeddings.aembed_query(query)
-
-        # Build vector query
-        if distance_threshold is not None:
-            vq = RangeQuery(
-                vector=embedding_vector,
-                vector_field_name="vector",
-                filter_expression=redis_filter,
-                distance_threshold=float(distance_threshold),
-                num_results=limit + offset,
-                return_fields=self.RETURN_FIELDS,
-            )
-        else:
-            vq = VectorQuery(
-                vector=embedding_vector,
-                vector_field_name="vector",
-                filter_expression=redis_filter,
-                num_results=limit + offset,
-                return_fields=self.RETURN_FIELDS,
-            )
-
-        # Execute search using index.query() which properly passes vector params
-        results = await self._index.query(vq)
-
-        # Parse results (query() returns List[Dict[str, Any]])
+        raw_results: list[dict[str, Any]]
         memory_results: list[MemoryRecordResult] = []
-        for i, fields in enumerate(results):
-            # Apply offset - RedisVL doesn't support native offset for KNN
-            if i < offset:
-                continue
 
-            # Get vector distance score
-            score = float(
-                fields.get("vector_distance", fields.get("__vector_score", 0.0)) or 0.0
+        if search_mode == SearchModeEnum.KEYWORD:
+            text_query = TextQuery(
+                text=query,
+                text_field_name="text",
+                text_scorer=text_scorer,
+                filter_expression=redis_filter,
+                return_fields=self.RETURN_FIELDS,
+                num_results=limit + offset,
+                stopwords=None,
             )
+            raw_results = await self._index.query(text_query)
+            normalized_scores = self._normalize_rank_scores(
+                [float(fields.get("score", 0.0) or 0.0) for fields in raw_results]
+            )
+            for i, fields in enumerate(raw_results):
+                if i < offset:
+                    continue
 
-            memory_result = self._data_to_memory_result(fields, score)
-            memory_results.append(memory_result)
+                score = normalized_scores[i]
+                memory_results.append(
+                    self._data_to_memory_result(
+                        fields,
+                        dist=max(0.0, 1.0 - score),
+                        score=score,
+                        score_type=SearchScoreTypeEnum.KEYWORD,
+                    )
+                )
+                if len(memory_results) >= limit:
+                    break
+        elif search_mode == SearchModeEnum.HYBRID:
+            embedding_vector = await self.embeddings.aembed_query(query)
+            hybrid_query = AggregateHybridQuery(
+                text=query,
+                text_field_name="text",
+                vector=embedding_vector,
+                vector_field_name="vector",
+                text_scorer=text_scorer,
+                filter_expression=redis_filter,
+                alpha=hybrid_alpha,
+                num_results=limit + offset,
+                return_fields=self.RETURN_FIELDS,
+                stopwords=None,
+            )
+            raw = await self._index.aggregate(hybrid_query, hybrid_query.params)
+            raw_results = getattr(raw, "rows", raw) or []
 
-            if len(memory_results) >= limit:
-                break
+            parsed_rows: list[dict[str, Any]] = []
+            for row in raw_results:
+                fields = getattr(row, "__dict__", None) or row
+                if not isinstance(fields, dict):
+                    fields = dict(fields) if fields else {}
+                parsed_rows.append(fields)
+
+            normalized_scores = self._normalize_rank_scores(
+                [
+                    float(fields.get("hybrid_score", 0.0) or 0.0)
+                    for fields in parsed_rows
+                ]
+            )
+            for i, fields in enumerate(parsed_rows):
+                if i < offset:
+                    continue
+
+                score = normalized_scores[i]
+                memory_results.append(
+                    self._data_to_memory_result(
+                        fields,
+                        dist=max(0.0, 1.0 - score),
+                        score=score,
+                        score_type=SearchScoreTypeEnum.HYBRID,
+                    )
+                )
+                if len(memory_results) >= limit:
+                    break
+        else:
+            embedding_vector = await self.embeddings.aembed_query(query)
+            if distance_threshold is not None:
+                vector_query = RangeQuery(
+                    vector=embedding_vector,
+                    vector_field_name="vector",
+                    filter_expression=redis_filter,
+                    distance_threshold=float(distance_threshold),
+                    num_results=limit + offset,
+                    return_fields=self.RETURN_FIELDS,
+                )
+            else:
+                vector_query = VectorQuery(
+                    vector=embedding_vector,
+                    vector_field_name="vector",
+                    filter_expression=redis_filter,
+                    num_results=limit + offset,
+                    return_fields=self.RETURN_FIELDS,
+                )
+
+            raw_results = await self._index.query(vector_query)
+            for i, fields in enumerate(raw_results):
+                if i < offset:
+                    continue
+
+                dist = float(
+                    fields.get("vector_distance", fields.get("__vector_score", 0.0))
+                    or 0.0
+                )
+                memory_results.append(
+                    self._data_to_memory_result(
+                        fields,
+                        dist=dist,
+                        score=max(0.0, 1.0 - dist),
+                        score_type=SearchScoreTypeEnum.SEMANTIC,
+                    )
+                )
+                if len(memory_results) >= limit:
+                    break
 
         # Client-side recency fallback if server-side was requested
         if server_side_recency:
@@ -719,11 +838,11 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                 memory_results, recency_params
             )
 
-        next_offset = offset + limit if len(results) > offset + limit else None
+        next_offset = offset + limit if len(raw_results) > offset + limit else None
 
         return MemoryRecordResults(
             memories=memory_results[:limit],
-            total=len(results),
+            total=len(raw_results),
             next_offset=next_offset,
         )
 
@@ -821,7 +940,12 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
             # Parse results (query() returns List[Dict[str, Any]])
             memory_results: list[MemoryRecordResult] = []
             for fields in results[offset:]:
-                memory_result = self._data_to_memory_result(fields, score=0.0)
+                memory_result = self._data_to_memory_result(
+                    fields,
+                    dist=0.0,
+                    score=1.0,
+                    score_type=None,
+                )
                 memory_results.append(memory_result)
 
                 if len(memory_results) >= limit:

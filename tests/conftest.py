@@ -662,6 +662,9 @@ class MockMemoryVectorDatabase(MemoryVectorDatabase):
     async def search_memories(
         self,
         query: str,
+        search_mode: Any = None,
+        hybrid_alpha: float = 0.7,
+        text_scorer: str = "BM25STD",
         session_id: Any = None,
         user_id: Any = None,
         namespace: Any = None,

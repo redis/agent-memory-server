@@ -13,7 +13,12 @@ from agent_memory_server.memory_vector_db_factory import (
     create_embeddings,
     create_memory_vector_db,
 )
-from agent_memory_server.models import MemoryRecord, MemoryRecordResults, MemoryTypeEnum
+from agent_memory_server.models import (
+    MemoryRecord,
+    MemoryRecordResults,
+    MemoryTypeEnum,
+    SearchModeEnum,
+)
 
 
 class MockEmbeddings:
@@ -259,6 +264,90 @@ class TestMemoryVectorDatabase:
 
         mock_index.drop_documents.assert_called_once_with(["mem1", "mem2"])
         assert deleted == 2
+
+    @pytest.mark.asyncio
+    async def test_search_memories_keyword_mode_uses_text_query(self):
+        """Test keyword search uses TextQuery and normalizes scores."""
+        mock_index = MagicMock()
+        mock_index.exists = AsyncMock(return_value=True)
+        mock_index.query = AsyncMock(
+            return_value=[
+                {
+                    "id_": "mem1",
+                    "text": "alpha beta",
+                    "memory_type": "semantic",
+                    "score": "4.0",
+                },
+                {
+                    "id_": "mem2",
+                    "text": "alpha",
+                    "memory_type": "semantic",
+                    "score": "2.0",
+                },
+            ]
+        )
+        mock_embeddings = MockEmbeddings()
+        mock_embeddings.aembed_query = AsyncMock(return_value=[0.1] * 1536)
+
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        results = await db.search_memories(
+            query="alpha",
+            search_mode=SearchModeEnum.KEYWORD,
+            limit=10,
+        )
+
+        assert results.total == 2
+        assert results.memories[0].score == pytest.approx(1.0)
+        assert results.memories[0].dist == pytest.approx(0.0)
+        assert results.memories[0].score_type == "keyword"
+        assert results.memories[1].score == pytest.approx(0.5)
+        assert results.memories[1].dist == pytest.approx(0.5)
+        mock_index.query.assert_called_once()
+        mock_embeddings.aembed_query.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_search_memories_hybrid_mode_uses_aggregate_hybrid_query(self):
+        """Test hybrid search uses aggregate queries and normalizes scores."""
+        mock_index = MagicMock()
+        mock_index.exists = AsyncMock(return_value=True)
+        mock_index.aggregate = AsyncMock(
+            return_value=MagicMock(
+                rows=[
+                    {
+                        "id_": "mem1",
+                        "text": "alpha beta",
+                        "memory_type": "semantic",
+                        "hybrid_score": "3.0",
+                    },
+                    {
+                        "id_": "mem2",
+                        "text": "alpha",
+                        "memory_type": "semantic",
+                        "hybrid_score": "1.5",
+                    },
+                ]
+            )
+        )
+        mock_embeddings = MockEmbeddings()
+        mock_embeddings.aembed_query = AsyncMock(return_value=[0.1] * 1536)
+
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        results = await db.search_memories(
+            query="alpha",
+            search_mode=SearchModeEnum.HYBRID,
+            hybrid_alpha=0.6,
+            text_scorer="BM25",
+            limit=10,
+        )
+
+        assert results.total == 2
+        assert results.memories[0].score == pytest.approx(1.0)
+        assert results.memories[0].score_type == "hybrid"
+        assert results.memories[1].score == pytest.approx(0.5)
+        mock_index.aggregate.assert_called_once()
+        mock_embeddings.aembed_query.assert_called_once_with("alpha")
 
     @pytest.mark.asyncio
     async def test_factory_creates_redisvl_db(self):

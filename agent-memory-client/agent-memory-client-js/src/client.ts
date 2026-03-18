@@ -71,6 +71,9 @@ export interface MemoryClientConfig {
  */
 export interface SearchOptions {
   text: string;
+  searchMode?: "semantic" | "keyword" | "hybrid";
+  hybridAlpha?: number;
+  textScorer?: string;
   sessionId?: SessionId | { eq?: string; in_?: string[]; not_eq?: string; not_in?: string[] };
   namespace?: Namespace | { eq?: string; in_?: string[]; not_eq?: string; not_in?: string[] };
   topics?: Topics | { any?: string[]; all?: string[]; none?: string[] };
@@ -382,6 +385,9 @@ export class MemoryAPIClient {
   async searchLongTermMemory(options: SearchOptions): Promise<MemoryRecordResults> {
     const body: Record<string, unknown> = {
       text: options.text,
+      search_mode: options.searchMode ?? "semantic",
+      hybrid_alpha: options.hybridAlpha ?? 0.7,
+      text_scorer: options.textScorer ?? "BM25STD",
       limit: options.limit,
       offset: options.offset,
       distance_threshold: options.distanceThreshold,

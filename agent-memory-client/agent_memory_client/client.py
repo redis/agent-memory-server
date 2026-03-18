@@ -48,6 +48,7 @@ from .models import (
     MemoryTypeEnum,
     ModelNameLiteral,
     RecencyConfig,
+    SearchModeEnum,
     SessionListResponse,
     SummaryView,
     SummaryViewPartitionResult,
@@ -1033,6 +1034,9 @@ class MemoryAPIClient:
     async def search_long_term_memory(
         self,
         text: str,
+        search_mode: SearchModeEnum | str = SearchModeEnum.SEMANTIC,
+        hybrid_alpha: float = 0.7,
+        text_scorer: str = "BM25STD",
         session_id: SessionId | dict[str, Any] | None = None,
         namespace: Namespace | dict[str, Any] | None = None,
         topics: Topics | dict[str, Any] | None = None,
@@ -1048,10 +1052,13 @@ class MemoryAPIClient:
         optimize_query: bool = False,
     ) -> MemoryRecordResults:
         """
-        Search long-term memories using semantic search and filters.
+        Search long-term memories using semantic, keyword, or hybrid search.
 
         Args:
-            text: Query for vector search - will be used for semantic similarity matching
+            text: Query text used for semantic, keyword, or hybrid search
+            search_mode: Search strategy to use
+            hybrid_alpha: Weight assigned to vector similarity in hybrid search
+            text_scorer: Redis full-text scoring algorithm for keyword and hybrid search
             session_id: Optional session ID filter
             namespace: Optional namespace filter
             topics: Optional topics filter
@@ -1141,6 +1148,13 @@ class MemoryAPIClient:
             payload["memory_type"] = memory_type.model_dump(exclude_none=True)
         if distance_threshold is not None:
             payload["distance_threshold"] = distance_threshold
+        payload["search_mode"] = (
+            search_mode.value
+            if isinstance(search_mode, SearchModeEnum)
+            else str(search_mode)
+        )
+        payload["hybrid_alpha"] = hybrid_alpha
+        payload["text_scorer"] = text_scorer
 
         # Add recency config if provided
         if recency is not None:
@@ -1185,6 +1199,7 @@ class MemoryAPIClient:
     async def search_memory_tool(
         self,
         query: str,
+        search_mode: SearchModeEnum | str = SearchModeEnum.SEMANTIC,
         topics: Sequence[str] | None = None,
         entities: Sequence[str] | None = None,
         memory_type: str | None = None,
@@ -1258,6 +1273,7 @@ class MemoryAPIClient:
 
         results = await self.search_long_term_memory(
             text=query,
+            search_mode=search_mode,
             topics=topics_filter,
             entities=entities_filter,
             memory_type=memory_type_filter,
@@ -1281,9 +1297,13 @@ class MemoryAPIClient:
                     "created_at": memory.created_at.isoformat()
                     if memory.created_at
                     else None,
-                    "relevance_score": 1.0 - memory.dist
-                    if hasattr(memory, "dist") and memory.dist is not None
-                    else None,
+                    "relevance_score": memory.score
+                    if hasattr(memory, "score") and memory.score is not None
+                    else (
+                        1.0 - memory.dist
+                        if hasattr(memory, "dist") and memory.dist is not None
+                        else None
+                    ),
                 }
             )
 

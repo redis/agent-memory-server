@@ -534,6 +534,26 @@ def task_worker(concurrency: int, redelivery_timeout: int | None):
 @click.option("--limit", "-l", default=10, help="Maximum number of results")
 @click.option("--offset", "-o", default=0, help="Offset for pagination")
 @click.option(
+    "--search-mode",
+    type=click.Choice(["semantic", "keyword", "hybrid"]),
+    default="semantic",
+    show_default=True,
+    help="Search strategy to use",
+)
+@click.option(
+    "--hybrid-alpha",
+    type=float,
+    default=0.7,
+    show_default=True,
+    help="Weight assigned to vector similarity in hybrid search",
+)
+@click.option(
+    "--text-scorer",
+    default="BM25STD",
+    show_default=True,
+    help="Redis full-text scoring algorithm for keyword and hybrid search",
+)
+@click.option(
     "--distance-threshold",
     "-d",
     type=float,
@@ -557,13 +577,16 @@ def search(
     entities: str | None,
     limit: int,
     offset: int,
+    search_mode: str,
+    hybrid_alpha: float,
+    text_scorer: str,
     distance_threshold: float | None,
     output_format: str,
 ):
     """
     Search long-term memories.
 
-    QUERY is the search text for semantic similarity matching.
+    QUERY is the search text for semantic, keyword, or hybrid retrieval.
     If empty, lists all memories matching the filters.
 
     Examples:
@@ -586,6 +609,7 @@ def search(
         UserId,
     )
     from agent_memory_server.long_term_memory import search_long_term_memories
+    from agent_memory_server.models import SearchModeEnum
 
     configure_logging()
 
@@ -599,6 +623,9 @@ def search(
 
         results = await search_long_term_memories(
             text=query,
+            search_mode=SearchModeEnum(search_mode),
+            hybrid_alpha=hybrid_alpha,
+            text_scorer=text_scorer,
             namespace=namespace_filter,
             session_id=session_filter,
             user_id=user_filter,
@@ -618,6 +645,15 @@ def search(
             click.echo("=" * 60)
             for i, memory in enumerate(results.memories, 1):
                 click.echo(f"\n[{i}] ID: {memory.id}")
+                if memory.score is not None:
+                    click.echo(
+                        f"    Score: {memory.score:.4f}"
+                        + (
+                            f" ({memory.score_type.value})"
+                            if memory.score_type is not None
+                            else ""
+                        )
+                    )
                 click.echo(f"    Distance: {memory.dist:.4f}")
                 if memory.namespace:
                     click.echo(f"    Namespace: {memory.namespace}")

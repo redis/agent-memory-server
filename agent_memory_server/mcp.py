@@ -43,6 +43,7 @@ from agent_memory_server.models import (
     MemoryStrategyConfig,
     MemoryTypeEnum,
     ModelNameLiteral,
+    SearchModeEnum,
     SearchRequest,
     WorkingMemory,
     WorkingMemoryRequest,
@@ -458,6 +459,9 @@ async def create_long_term_memories(
 @mcp_app.tool()
 async def search_long_term_memory(
     text: str | None,
+    search_mode: SearchModeEnum = SearchModeEnum.SEMANTIC,
+    hybrid_alpha: float = 0.7,
+    text_scorer: str = "BM25STD",
     session_id: SessionId | None = None,
     namespace: Namespace | None = None,
     topics: Topics | None = None,
@@ -472,12 +476,16 @@ async def search_long_term_memory(
     optimize_query: bool = False,
 ) -> MemoryRecordResults:
     """
-    Search for memories related to a query for vector search.
+    Search for memories using semantic, keyword, or hybrid retrieval.
 
-    Finds memories based on a combination of semantic similarity and input filters.
+    Finds memories based on the selected search mode and input filters.
 
-    This tool performs a semantic search on stored memories using the query for vector search and filters
-    in the payload. Results are ranked by relevance.
+    This tool can perform:
+    - semantic vector search
+    - keyword full-text search
+    - lexical+vector hybrid search
+
+    Results are ranked by relevance for the selected mode.
 
     DATETIME INPUT FORMAT:
     - All datetime filters accept ISO 8601 formatted strings (e.g., "2023-01-01T00:00:00Z")
@@ -553,7 +561,10 @@ async def search_long_term_memory(
     ```
 
     Args:
-        text: The query for vector search (required). Use empty string "" to get all memories for a user.
+        text: The query text. Use empty string "" to get all memories for a user.
+        search_mode: Search strategy to use
+        hybrid_alpha: Weight assigned to vector similarity in hybrid search
+        text_scorer: Redis full-text scoring algorithm for keyword and hybrid search
         session_id: Filter by session ID
         namespace: Filter by namespace
         topics: Filter by topics
@@ -578,6 +589,9 @@ async def search_long_term_memory(
     try:
         payload = SearchRequest(
             text=text,
+            search_mode=search_mode,
+            hybrid_alpha=hybrid_alpha,
+            text_scorer=text_scorer,
             session_id=session_id,
             namespace=namespace,
             topics=topics,
@@ -764,11 +778,12 @@ async def memory_prompt(
 
     background_tasks = HybridBackgroundTasks()
 
-    return await core_memory_prompt(
+    result = await core_memory_prompt(
         params=MemoryPromptRequest(query=query, **_params),
         background_tasks=background_tasks,
         optimize_query=optimize_query,
     )
+    return result.model_dump(mode="json")
 
 
 @mcp_app.tool()
