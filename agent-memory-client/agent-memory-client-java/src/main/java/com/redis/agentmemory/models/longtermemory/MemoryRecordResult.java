@@ -29,6 +29,7 @@ public class MemoryRecordResult extends MemoryRecord {
         this.score = score;
     }
 
+    @com.fasterxml.jackson.annotation.JsonProperty("score_type")
     public String getScoreType() {
         return scoreType;
     }

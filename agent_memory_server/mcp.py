@@ -37,7 +37,6 @@ from agent_memory_server.models import (
     LenientMemoryRecord,
     MemoryMessage,
     MemoryPromptRequest,
-    MemoryPromptResponse,
     MemoryRecord,
     MemoryRecordResults,
     MemoryStrategyConfig,
@@ -642,7 +641,7 @@ async def memory_prompt(
     limit: int = 10,
     offset: int = 0,
     optimize_query: bool = False,
-) -> MemoryPromptResponse:
+) -> dict[str, Any]:
     """
     Hydrate a query for vector search with relevant session history and long-term memories.
 
@@ -732,7 +731,7 @@ async def memory_prompt(
         - optimize_query: Whether to optimize the query for vector search (default: False - LLMs typically provide already optimized queries)
 
     Returns:
-        A list of messages, including memory context and the user's query
+        JSON-serializable memory prompt payload including memory context and the user's query
     """
     _session_id = session_id.eq if session_id and session_id.eq else None
     session = None

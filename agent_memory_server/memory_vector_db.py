@@ -943,7 +943,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                 memory_result = self._data_to_memory_result(
                     fields,
                     dist=0.0,
-                    score=1.0,
+                    score=None,
                     score_type=None,
                 )
                 memory_results.append(memory_result)

@@ -488,6 +488,34 @@ class TestMemoryVectorDatabase:
         assert result.topics == ["cooking", "italian"]
         assert result.entities == ["pasta", "rome"]
 
+    @pytest.mark.asyncio
+    async def test_list_memories_does_not_overwrite_dist_with_score(self):
+        """Filter-only listings should keep neutral distance semantics."""
+        mock_index = MagicMock()
+        mock_index.exists = AsyncMock(return_value=True)
+        mock_index.query = AsyncMock(
+            return_value=[
+                {
+                    "id_": "memory_003",
+                    "text": "User prefers tea",
+                    "memory_type": "semantic",
+                    "created_at": "1704067200",
+                    "last_accessed": "1704067200",
+                    "updated_at": "1704067200",
+                    "discrete_memory_extracted": "t",
+                }
+            ]
+        )
+        mock_embeddings = MockEmbeddings()
+
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        results = await db.list_memories(limit=10)
+
+        assert results.total == 1
+        assert results.memories[0].dist == 0.0
+        assert results.memories[0].score is None
+
     def test_build_redis_schema_explicit_tag_separators(self):
         """Regression test: list-backed TAG fields must explicitly use comma separators."""
         schema = _build_redis_schema()
