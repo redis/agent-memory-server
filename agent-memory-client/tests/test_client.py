@@ -401,6 +401,21 @@ class TestRecencyConfig:
             assert kwargs["hybrid_alpha"] == 0.35
             assert kwargs["text_scorer"] == "TFIDF"
 
+    @pytest.mark.asyncio
+    async def test_search_memory_tool_rejects_min_relevance_for_keyword_mode(
+        self, enhanced_test_client
+    ):
+        """Test that non-semantic tool searches fail early on min_relevance."""
+        with pytest.raises(
+            ValueError,
+            match="min_relevance is only supported when search_mode='semantic'",
+        ):
+            await enhanced_test_client.search_memory_tool(
+                query="alpha beta",
+                search_mode=SearchModeEnum.KEYWORD,
+                min_relevance=0.5,
+            )
+
     def test_memory_search_tool_schema_exposes_search_controls(self):
         """Test that the LLM tool schema advertises keyword/hybrid controls."""
         schema = MemoryAPIClient.get_memory_search_tool_schema().to_dict()
@@ -414,6 +429,8 @@ class TestRecencyConfig:
         assert properties["search_mode"]["default"] == "semantic"
         assert properties["hybrid_alpha"]["default"] == 0.7
         assert properties["text_scorer"]["default"] == "BM25STD"
+        assert "search_mode" in properties["min_relevance"]["description"]
+        assert "semantic" in properties["min_relevance"]["description"]
 
 
 class TestClientSideValidation:

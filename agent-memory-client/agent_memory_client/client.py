@@ -1265,11 +1265,22 @@ class MemoryAPIClient:
         """
         from .filters import Entities, MemoryType, Topics
 
+        normalized_search_mode = (
+            search_mode.value
+            if isinstance(search_mode, SearchModeEnum)
+            else search_mode
+        ).lower()
+
         # Convert simple parameters to filter objects
         topics_filter = Topics(any=list(topics)) if topics else None
         entities_filter = Entities(any=list(entities)) if entities else None
         memory_type_filter = MemoryType(eq=memory_type) if memory_type else None
         user_id_filter = UserId(eq=user_id) if user_id else None
+
+        if min_relevance is not None and normalized_search_mode != "semantic":
+            raise ValueError(
+                "min_relevance is only supported when search_mode='semantic'"
+            )
 
         # Convert min_relevance to distance_threshold (assuming 0-1 relevance maps to 1-0 distance)
         distance_threshold = (
@@ -1431,7 +1442,7 @@ class MemoryAPIClient:
                                 "type": "number",
                                 "minimum": 0.0,
                                 "maximum": 1.0,
-                                "description": "Optional minimum relevance score (0.0-1.0, higher = more relevant)",
+                                "description": "Optional minimum relevance score (0.0-1.0, higher = more relevant). Supported only when `search_mode` is `semantic`.",
                             },
                             "user_id": {
                                 "type": "string",
