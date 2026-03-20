@@ -204,9 +204,7 @@ async def cleanup_deprecated_sessions_zsets(
             break
 
     if deleted_keys > 0:
-        logger.info(
-            "Deleted %d deprecated sessions sorted set key(s)", deleted_keys
-        )
+        logger.info("Deleted %d deprecated sessions sorted set key(s)", deleted_keys)
 
     return deleted_keys
 
