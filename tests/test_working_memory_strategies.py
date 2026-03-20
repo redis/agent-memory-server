@@ -217,7 +217,11 @@ class TestWorkingMemoryStorageWithStrategy:
         ) as mock_get_redis:
             mock_redis = MagicMock()
             mock_redis.expire = AsyncMock()
-            mock_redis.zadd = AsyncMock()  # For session indexing
+            mock_redis.zadd = AsyncMock(
+                side_effect=AssertionError(
+                    "Deprecated sessions zset writes should not be used"
+                )
+            )
             # json() is synchronous but returns an object with async methods
             mock_json = MagicMock()
             mock_json.set = AsyncMock()
@@ -238,6 +242,7 @@ class TestWorkingMemoryStorageWithStrategy:
                 stored_data["long_term_memory_strategy"]["config"]["max_summary_length"]
                 == 400
             )
+            mock_redis.zadd.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_get_working_memory_with_strategy(self):
