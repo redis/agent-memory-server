@@ -356,6 +356,87 @@ async def list_sessions(
         return 0, []
 
 
+async def _resolve_working_memory_key_via_index(
+    redis_client: Redis,
+    session_id: str,
+    user_id: str | None = None,
+    namespace: str | None = None,
+) -> str | None:
+    """
+    Resolve the actual Redis key for a working memory session using the search index.
+
+    When a direct key lookup fails (e.g. because user_id/namespace were provided
+    during PUT but omitted during GET), this function queries the search index
+    by session_id to find the document and derive the correct Redis key.
+
+    If multiple sessions share the same session_id (different namespace/user_id)
+    and the caller did not supply enough filters to disambiguate, the function
+    logs a warning and returns ``None`` to avoid silently returning the wrong
+    session.
+
+    Args:
+        redis_client: Redis client
+        session_id: The session ID to look up
+        user_id: Optional user_id filter (narrows results if multiple sessions
+            share an ID)
+        namespace: Optional namespace filter
+
+    Returns:
+        The Redis key string if exactly one match is found, None otherwise
+    """
+    from functools import reduce
+
+    from agent_memory_server.working_memory_index import get_working_memory_index
+
+    try:
+        index = await get_working_memory_index(redis_client)
+
+        filters = [Tag("session_id") == session_id]
+        if namespace:
+            filters.append(Tag("namespace") == namespace)
+        if user_id:
+            filters.append(Tag("user_id") == user_id)
+
+        filter_expression = reduce(lambda x, y: x & y, filters)
+
+        # Request up to 2 results so we can detect ambiguity.
+        filter_query = FilterQuery(
+            filter_expression=filter_expression,
+            return_fields=["session_id", "namespace", "user_id"],
+            num_results=2,
+        )
+
+        raw_results = await index.search(filter_query)
+        docs = getattr(raw_results, "docs", raw_results) or []
+
+        if not docs:
+            return None
+
+        total = getattr(raw_results, "total", len(docs))
+        if total > 1:
+            logger.warning(
+                "Ambiguous working-memory lookup for session_id=%s: "
+                "%d sessions matched. Provide namespace/user_id to disambiguate.",
+                session_id,
+                total,
+            )
+            return None
+
+        doc = docs[0]
+        # RedisVL returns doc.id as the full Redis key
+        doc_key = getattr(doc, "id", None)
+        if doc_key:
+            if isinstance(doc_key, bytes):
+                doc_key = doc_key.decode("utf-8")
+            return doc_key
+
+        return None
+
+    except Exception as e:
+        logger.debug(f"Index-based key resolution failed for session {session_id}: {e}")
+        return None
+
+
 async def get_working_memory(
     session_id: str,
     user_id: str | None = None,
@@ -418,6 +499,21 @@ async def get_working_memory(
                     )
             # If key_type is "none", the key doesn't exist - working_memory_data stays None
 
+        # Fallback: if direct key lookup failed, try resolving via the search
+        # index.  This handles the case where PUT stored with user_id/namespace
+        # but GET was called without them (issue #235).
+        if not working_memory_data:
+            resolved_key = await _resolve_working_memory_key_via_index(
+                redis_client, session_id, user_id, namespace
+            )
+            if resolved_key and resolved_key != key:
+                logger.debug(
+                    f"Resolved working memory key via index: {resolved_key} "
+                    f"(original key: {key})"
+                )
+                key = resolved_key
+                working_memory_data = await redis_client.json().get(key)
+
         if not working_memory_data:
             logger.debug(
                 f"No working memory found for parameters: {session_id}, {user_id}, {namespace}"
@@ -467,14 +563,19 @@ async def get_working_memory(
                 MemoryStrategyConfig()
             )  # Default to discrete strategy
 
+        # Use stored values for namespace/user_id — the caller may not have
+        # provided them (index-fallback path, issue #235).
+        stored_namespace = working_memory_data.get("namespace") or namespace
+        stored_user_id = working_memory_data.get("user_id") or user_id
+
         return WorkingMemory(
             messages=messages,
             memories=memories,
             context=working_memory_data.get("context"),
-            user_id=working_memory_data.get("user_id"),
+            user_id=stored_user_id,
             tokens=working_memory_data.get("tokens", 0),
             session_id=session_id,
-            namespace=namespace,
+            namespace=stored_namespace,
             ttl_seconds=working_memory_data.get("ttl_seconds", None),
             data=working_memory_data.get("data") or {},
             long_term_memory_strategy=long_term_memory_strategy,
@@ -589,6 +690,16 @@ async def delete_working_memory(
     )
 
     try:
+        # Check if the key exists; if not, try resolving via the search index
+        # (same fallback as get_working_memory for issue #235).
+        exists = await redis_client.exists(key)
+        if not exists:
+            resolved_key = await _resolve_working_memory_key_via_index(
+                redis_client, session_id, user_id, namespace
+            )
+            if resolved_key:
+                key = resolved_key
+
         # Delete the JSON key - the working memory search index automatically
         # removes the document from the index when the key is deleted
         await redis_client.delete(key)

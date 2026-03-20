@@ -960,6 +960,8 @@ async def set_working_memory(
 @mcp_app.tool()
 async def get_working_memory(
     session_id: str,
+    user_id: str | None = None,
+    namespace: str | None = None,
     recent_messages_limit: int | None = None,
 ) -> WorkingMemory:
     """
@@ -967,13 +969,18 @@ async def get_working_memory(
 
     Args:
         session_id: The session ID to retrieve working memory for
+        user_id: Optional user ID to scope the session lookup
+        namespace: Optional namespace to scope the session lookup
         recent_messages_limit: Optional limit on number of recent messages to return (most recent first)
 
     Returns:
         Working memory containing messages, context, and structured memory records
     """
     result = await working_memory_core.get_working_memory(
-        session_id=session_id, recent_messages_limit=recent_messages_limit
+        session_id=session_id,
+        user_id=user_id,
+        namespace=namespace,
+        recent_messages_limit=recent_messages_limit,
     )
     if result is None:
         return WorkingMemory(session_id=session_id, messages=[], memories=[])
