@@ -134,6 +134,7 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
 
     from agent_memory_server.utils.keys import Keys
     from agent_memory_server.working_memory import (
+        cleanup_deprecated_sessions_zsets,
         set_migration_complete,
     )
 
@@ -169,14 +170,20 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
         click.echo(f"Scan completed in {scan_time:.2f}s")
         click.echo(f"  String format (need migration): {len(string_keys)}")
 
+        if dry_run:
+            click.echo("\n--dry-run specified, no changes made.")
+            return
+
+        cleaned_sessions_zsets = await cleanup_deprecated_sessions_zsets(redis)
+        if cleaned_sessions_zsets > 0:
+            click.echo(
+                f"  Removed {cleaned_sessions_zsets} legacy sessions sorted set key(s)"
+            )
+
         if not string_keys:
             click.echo("\nNo keys need migration. All done!")
             # Mark migration as complete
             await set_migration_complete(redis)
-            return
-
-        if dry_run:
-            click.echo("\n--dry-run specified, no changes made.")
             return
 
         # Migrate keys in batches using pipeline

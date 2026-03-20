@@ -130,12 +130,35 @@ Rebuilds the search index for Redis Memory Server.
 agent-memory rebuild_index
 ```
 
-### `migrate_memories`
+### `migrate-memories`
 
-Runs data migrations. Migrations are reentrant.
+Runs the built-in long-term memory migrations. Safe to rerun.
+
+Use this after upgrading if you need to backfill fields on existing memory
+records.
 
 ```bash
-agent-memory migrate_memories
+uv run agent-memory migrate-memories
+```
+
+### `migrate-working-memory`
+
+Migrates legacy `working_memory:*` string keys to Redis JSON.
+
+Use this if you are upgrading from an older working-memory format or if you
+want to remove deprecated legacy `sessions` / `sessions:*` sorted sets from the
+old session-listing path.
+
+Check what needs migration first:
+
+```bash
+uv run agent-memory migrate-working-memory --dry-run
+```
+
+Run the migration:
+
+```bash
+uv run agent-memory migrate-working-memory
 ```
 
 ### `token` Commands

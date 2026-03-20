@@ -172,6 +172,45 @@ async def set_migration_complete(redis_client: Redis | None = None) -> None:
     logger.info("Working memory migration marked as complete.")
 
 
+async def cleanup_deprecated_sessions_zsets(
+    redis_client: Redis | None = None,
+) -> int:
+    """Delete legacy sessions sorted sets replaced by the working memory index."""
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    deleted_keys = 0
+
+    root_key = "sessions"
+    root_type = await redis_client.type(root_key)
+    if isinstance(root_type, bytes):
+        root_type = root_type.decode("utf-8")
+    if root_type == "zset":
+        deleted_keys += await redis_client.delete(root_key)
+
+    cursor = 0
+    while True:
+        cursor, keys = await redis_client.scan(
+            cursor=cursor,
+            match="sessions:*",
+            count=1000,
+            _type="zset",
+        )
+
+        if keys:
+            deleted_keys += await redis_client.delete(*keys)
+
+        if cursor == 0:
+            break
+
+    if deleted_keys > 0:
+        logger.info(
+            "Deleted %d deprecated sessions sorted set key(s)", deleted_keys
+        )
+
+    return deleted_keys
+
+
 async def _migrate_string_to_json(
     redis_client: Redis,
     key: str,
@@ -509,16 +548,8 @@ async def set_working_memory(
     try:
         # Use Redis native JSON storage
         # The working memory search index automatically indexes this document
-        # for session listing (no need for separate sorted set)
+        # for session listing.
         await redis_client.json().set(key, "$", data)
-
-        # Add session to the sessions sorted set for listing
-        # Use updated_at timestamp as score for ordering
-        sessions_key = Keys.sessions_key(namespace=working_memory.namespace)
-        await redis_client.zadd(
-            sessions_key,
-            {working_memory.session_id: int(working_memory.updated_at.timestamp())},
-        )
 
         if working_memory.ttl_seconds is not None:
             # Set TTL separately for JSON keys
@@ -563,10 +594,6 @@ async def delete_working_memory(
         # Delete the JSON key - the working memory search index automatically
         # removes the document from the index when the key is deleted
         await redis_client.delete(key)
-
-        # Remove session from the sessions sorted set
-        sessions_key = Keys.sessions_key(namespace=namespace)
-        await redis_client.zrem(sessions_key, session_id)
 
         logger.info(f"Deleted working memory for session {session_id}")
 
