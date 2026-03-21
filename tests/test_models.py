@@ -470,6 +470,24 @@ class TestTagCommaValidation:
         assert req.topics == ["python"]
         assert req.entities == ["Alice"]
 
+    def test_working_memory_union_both_members_reject_commas(self):
+        """Test that both MemoryRecord and ClientMemoryRecord reject commas in union."""
+        from agent_memory_client.models import ClientMemoryRecord
+        
+        # Test that server MemoryRecord rejects commas (should already work)
+        with pytest.raises(ValueError, match="topics.*contains a comma"):
+            WorkingMemory(
+                session_id="test", 
+                memories=[MemoryRecord(id="m1", text="hi", topics=["bad, value"])]
+            )
+        
+        # Test that ClientMemoryRecord also rejects commas (this was the bug)
+        with pytest.raises(ValueError, match="topics.*contains a comma"):
+            WorkingMemory(
+                session_id="test", 
+                memories=[ClientMemoryRecord(id="m1", text="hi", topics=["bad, value"])]
+            )
+
     def test_edit_memory_record_accepts_none(self):
         req = EditMemoryRecordRequest()
         assert req.topics is None
