@@ -130,6 +130,29 @@ class LongTermMemoryServiceTest {
     }
 
     @Test
+    void testSearchLongTermMemories_OmitsHybridAlphaWhenUnset() throws Exception {
+        MemoryRecordResults expectedResponse = new MemoryRecordResults();
+        expectedResponse.setMemories(new ArrayList<>());
+        expectedResponse.setTotal(0);
+
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(expectedResponse))
+                .addHeader("Content-Type", "application/json"));
+
+        SearchRequest searchRequest = SearchRequest.builder()
+                .text("test query")
+                .searchMode("hybrid")
+                .build();
+        MemoryRecordResults response = client.longTermMemory().searchLongTermMemories(searchRequest);
+
+        assertNotNull(response);
+
+        RecordedRequest request = mockServer.takeRequest();
+        String requestBody = request.getBody().readUtf8();
+        assertFalse(requestBody.contains("\"hybrid_alpha\""));
+    }
+
+    @Test
     void testSearchLongTermMemories_MinimalParams() throws Exception {
         // Mock response
         MemoryRecordResults expectedResponse = new MemoryRecordResults();

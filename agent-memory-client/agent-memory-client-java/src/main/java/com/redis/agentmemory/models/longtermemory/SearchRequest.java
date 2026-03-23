@@ -19,8 +19,9 @@ public class SearchRequest {
     @JsonProperty("search_mode")
     private String searchMode;
 
+    @Nullable
     @JsonProperty("hybrid_alpha")
-    private double hybridAlpha = 0.7;
+    private Double hybridAlpha;
 
     @JsonProperty("text_scorer")
     private String textScorer = "BM25STD";
@@ -104,11 +105,12 @@ public class SearchRequest {
         this.searchMode = searchMode;
     }
 
-    public double getHybridAlpha() {
+    @Nullable
+    public Double getHybridAlpha() {
         return hybridAlpha;
     }
 
-    public void setHybridAlpha(double hybridAlpha) {
+    public void setHybridAlpha(@Nullable Double hybridAlpha) {
         this.hybridAlpha = hybridAlpha;
     }
 
@@ -313,7 +315,7 @@ public class SearchRequest {
             return this;
         }
 
-        public Builder hybridAlpha(double hybridAlpha) {
+        public Builder hybridAlpha(@Nullable Double hybridAlpha) {
             request.hybridAlpha = hybridAlpha;
             return this;
         }

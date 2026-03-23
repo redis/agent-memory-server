@@ -707,7 +707,12 @@ async def search_long_term_memory(
             key in kwargs and kwargs[key] is not None
             for key in ("topics", "entities", "namespace", "memory_type", "event_date")
         )
-        if raw_results.total == 0 and had_any_strict_filters:
+        if (
+            raw_results.total == 0
+            and had_any_strict_filters
+            and kwargs.get("search_mode", SearchModeEnum.SEMANTIC)
+            == SearchModeEnum.SEMANTIC
+        ):
             fallback_kwargs = dict(kwargs)
             for key in ("topics", "entities", "namespace", "memory_type", "event_date"):
                 fallback_kwargs.pop(key, None)

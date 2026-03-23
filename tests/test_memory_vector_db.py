@@ -442,6 +442,42 @@ class TestMemoryVectorDatabase:
         assert '(@text:("scarlet dolphin") ~@text:(orchard))' in str(aggregate_query)
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("search_mode", "mode_name"),
+        [
+            (SearchModeEnum.KEYWORD, "keyword"),
+            (SearchModeEnum.HYBRID, "hybrid"),
+        ],
+    )
+    async def test_search_memories_warns_when_server_side_recency_is_nonsemantic(
+        self, caplog, search_mode, mode_name
+    ):
+        """Non-semantic searches should log when server-side recency degrades."""
+        mock_index = MagicMock()
+        mock_index.exists = AsyncMock(return_value=True)
+        mock_index.query = AsyncMock(return_value=[])
+        mock_index.aggregate = AsyncMock(return_value=MagicMock(rows=[]))
+        mock_embeddings = MockEmbeddings()
+
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        await db.search_memories(
+            query="scarlet dolphin",
+            search_mode=search_mode,
+            server_side_recency=True,
+            limit=10,
+        )
+
+        assert (
+            "server_side_recency is only supported for semantic search; "
+            f"falling back to client-side reranking for {mode_name} search"
+        ) in caplog.text
+        if search_mode == SearchModeEnum.KEYWORD:
+            mock_index.aggregate.assert_not_called()
+        else:
+            mock_index.query.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_factory_creates_redisvl_db(self):
         """Test that the factory creates a RedisVLMemoryVectorDatabase."""
         import agent_memory_server.memory_vector_db_factory

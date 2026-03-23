@@ -843,6 +843,12 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                 logger.warning(
                     f"RedisVL DB-level recency search failed; falling back to standard path: {e}"
                 )
+        elif server_side_recency:
+            logger.warning(
+                "server_side_recency is only supported for semantic search; "
+                "falling back to client-side reranking for %s search",
+                search_mode.value,
+            )
 
         raw_results: list[dict[str, Any]]
         memory_results: list[MemoryRecordResult] = []
