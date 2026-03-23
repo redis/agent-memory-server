@@ -3,15 +3,44 @@
 ## Running the servers locally
 
 The easiest way to run the API server(s) is with Docker Compose:
+```bash
+# Create and activate a virtual environment
+uv venv
+source .venv/bin/activate
 
+# Install dependencies (including optional groups used in development)
+uv sync --all-extras
 ```
-$ docker-compose up
+
+## Running the servers locally
+
+Use Docker Compose from the repository root:
+
+```bash
+# Development mode (API + Redis)
+docker compose up api redis
+
+# Production-like mode (API + MCP + worker + Redis)
+docker compose up api task-worker redis mcp
 ```
 
 ## Running Tests
 
 ```bash
 uv run pytest
+```
+
+Run API-key-dependent tests as well:
+
+```bash
+uv run pytest --run-api-tests
+```
+
+## Linting and formatting
+
+```bash
+uv run ruff check
+uv run ruff format
 ```
 
 ## Contributing
