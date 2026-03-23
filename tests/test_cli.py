@@ -806,6 +806,26 @@ class TestSearch:
         assert call_kwargs["distance_threshold"] == 0.5
 
     @patch("agent_memory_server.long_term_memory.search_long_term_memories")
+    def test_search_omits_hybrid_defaults_when_unset(self, mock_search):
+        """CLI should let the server own hybrid defaults unless explicitly set."""
+        from agent_memory_server.models import MemoryRecordResults
+
+        mock_search.return_value = MemoryRecordResults(
+            memories=[],
+            total=0,
+            next_offset=None,
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(search, ["test query", "--search-mode", "hybrid"])
+
+        assert result.exit_code == 0
+        call_kwargs = mock_search.call_args[1]
+        assert call_kwargs["search_mode"].value == "hybrid"
+        assert call_kwargs["hybrid_alpha"] is None
+        assert call_kwargs["text_scorer"] is None
+
+    @patch("agent_memory_server.long_term_memory.search_long_term_memories")
     def test_search_rejects_distance_threshold_for_keyword_mode(self, mock_search):
         """distance_threshold should fail fast outside semantic mode."""
         runner = CliRunner()

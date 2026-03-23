@@ -543,15 +543,13 @@ def task_worker(concurrency: int, redelivery_timeout: int | None):
 @click.option(
     "--hybrid-alpha",
     type=float,
-    default=0.7,
-    show_default=True,
-    help="Weight assigned to vector similarity in hybrid search",
+    default=None,
+    help="Optional weight assigned to vector similarity in hybrid search",
 )
 @click.option(
     "--text-scorer",
-    default="BM25STD",
-    show_default=True,
-    help="Redis full-text scoring algorithm for keyword and hybrid search",
+    default=None,
+    help="Optional Redis full-text scoring algorithm for keyword and hybrid search",
 )
 @click.option(
     "--distance-threshold",
@@ -578,8 +576,8 @@ def search(
     limit: int,
     offset: int,
     search_mode: str,
-    hybrid_alpha: float,
-    text_scorer: str,
+    hybrid_alpha: float | None,
+    text_scorer: str | None,
     distance_threshold: float | None,
     output_format: str,
 ):
