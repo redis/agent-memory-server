@@ -386,12 +386,17 @@ export class MemoryAPIClient {
     const body: Record<string, unknown> = {
       text: options.text,
       search_mode: options.searchMode ?? "semantic",
-      hybrid_alpha: options.hybridAlpha ?? 0.7,
-      text_scorer: options.textScorer ?? "BM25STD",
       limit: options.limit,
       offset: options.offset,
       distance_threshold: options.distanceThreshold,
     };
+
+    if (options.hybridAlpha !== undefined) {
+      body.hybrid_alpha = options.hybridAlpha;
+    }
+    if (options.textScorer !== undefined) {
+      body.text_scorer = options.textScorer;
+    }
 
     // Add filters
     if (options.sessionId) {

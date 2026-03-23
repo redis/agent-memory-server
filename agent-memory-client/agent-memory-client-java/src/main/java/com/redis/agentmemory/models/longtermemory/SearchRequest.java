@@ -23,8 +23,9 @@ public class SearchRequest {
     @JsonProperty("hybrid_alpha")
     private Double hybridAlpha;
 
+    @Nullable
     @JsonProperty("text_scorer")
-    private String textScorer = "BM25STD";
+    private String textScorer;
 
     @Nullable
     @JsonProperty("session_id")

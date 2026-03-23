@@ -75,11 +75,13 @@ public class LongTermMemoryService extends BaseService {
         Map<String, Object> payload = new HashMap<>();
         payload.put("text", request.getText());
         payload.put("search_mode", request.getSearchMode() != null ? request.getSearchMode() : "semantic");
-        payload.put("text_scorer", request.getTextScorer() != null ? request.getTextScorer() : "BM25STD");
         payload.put("limit", request.getLimit());
         payload.put("offset", request.getOffset());
         if (request.getHybridAlpha() != null) {
             payload.put("hybrid_alpha", request.getHybridAlpha());
+        }
+        if (request.getTextScorer() != null) {
+            payload.put("text_scorer", request.getTextScorer());
         }
 
         // Add filters if present
