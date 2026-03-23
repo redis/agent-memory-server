@@ -410,7 +410,7 @@ class TestMemoryVectorDatabase:
         assert '@text:("scarlet dolphin" | orchard)' in str(query)
 
     def test_phrase_aware_hybrid_query_preserves_quoted_phrases(self):
-        """Hybrid lexical query should preserve quoted strings as phrases."""
+        """Hybrid query should require quoted phrases and keep terms optional."""
         query = PhraseAwareAggregateHybridQuery(
             text='"scarlet dolphin" orchard',
             text_field_name="text",
@@ -419,7 +419,27 @@ class TestMemoryVectorDatabase:
             stopwords=None,
         )
 
-        assert '(~@text:("scarlet dolphin" | orchard)' in str(query)
+        assert '(@text:("scarlet dolphin") ~@text:(orchard))' in str(query)
+
+    @pytest.mark.asyncio
+    async def test_search_memories_hybrid_mode_uses_strict_phrases(self):
+        """Quoted phrases in hybrid mode should become required lexical clauses."""
+        mock_index = MagicMock()
+        mock_index.exists = AsyncMock(return_value=True)
+        mock_index.aggregate = AsyncMock(return_value=MagicMock(rows=[]))
+        mock_embeddings = MockEmbeddings()
+        mock_embeddings.aembed_query = AsyncMock(return_value=[0.1] * 1536)
+
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        await db.search_memories(
+            query='"scarlet dolphin" orchard',
+            search_mode=SearchModeEnum.HYBRID,
+            limit=10,
+        )
+
+        aggregate_query = mock_index.aggregate.call_args.args[0]
+        assert '(@text:("scarlet dolphin") ~@text:(orchard))' in str(aggregate_query)
 
     @pytest.mark.asyncio
     async def test_factory_creates_redisvl_db(self):

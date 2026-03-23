@@ -19,6 +19,7 @@ from redisvl.query import (
     TextQuery,
     VectorQuery,
 )
+from redisvl.query.filter import FilterExpression
 from redisvl.utils.token_escaper import TokenEscaper
 
 from agent_memory_server.filters import (
@@ -53,11 +54,12 @@ logger = logging.getLogger(__name__)
 class _PhraseAwareQueryMixin:
     _QUOTED_FRAGMENT_PATTERN = re.compile(r'"([^"]+)"|(\S+)')
 
-    def _tokenize_and_escape_query(self, user_query: str) -> str:
-        """Build a Redis text query that preserves quoted phrases."""
+    def _parse_quoted_query(self, user_query: str) -> tuple[list[str], list[str]]:
+        """Parse a query into required quoted phrases and optional terms."""
         escaper = TokenEscaper()
         normalized_query = user_query.replace("“", '"').replace("”", '"')
-        clauses: list[str] = []
+        required_phrases: list[str] = []
+        optional_terms: list[str] = []
 
         for phrase, term in self._QUOTED_FRAGMENT_PATTERN.findall(normalized_query):
             fragment = phrase or term
@@ -74,13 +76,20 @@ class _PhraseAwareQueryMixin:
                 continue
 
             if phrase:
-                clauses.append(f'"{" ".join(token_list)}"')
+                required_phrases.append(f'"{" ".join(token_list)}"')
                 continue
 
             token = token_list[0]
             if token in self._text_weights:
                 token = f"{token}=>{{$weight:{self._text_weights[token]}}}"
-            clauses.append(token)
+            optional_terms.append(token)
+
+        return required_phrases, optional_terms
+
+    def _tokenize_and_escape_query(self, user_query: str) -> str:
+        """Build a Redis text query that preserves quoted phrases."""
+        required_phrases, optional_terms = self._parse_quoted_query(user_query)
+        clauses = [*required_phrases, *optional_terms]
 
         if not clauses:
             raise ValueError("text string cannot be empty after removing stopwords")
@@ -94,6 +103,34 @@ class PhraseAwareTextQuery(_PhraseAwareQueryMixin, TextQuery):
 
 class PhraseAwareAggregateHybridQuery(_PhraseAwareQueryMixin, AggregateHybridQuery):
     """RedisVL AggregateHybridQuery variant that preserves quoted phrases."""
+
+    def _build_query_string(self) -> str:
+        """Build a hybrid query where quoted phrases are required lexical clauses."""
+        filter_expression = self._filter_expression
+        if isinstance(self._filter_expression, FilterExpression):
+            filter_expression = str(self._filter_expression)
+
+        knn_query = (
+            f"KNN {self._num_results} @{self._vector_field} ${self.VECTOR_PARAM}"
+        )
+        knn_query += f" AS {self.DISTANCE_ID}"
+
+        required_phrases, optional_terms = self._parse_quoted_query(self._text)
+        query_parts: list[str] = [
+            f"@{self._text_field}:({phrase})" for phrase in required_phrases
+        ]
+        if optional_terms:
+            query_parts.append(f"~@{self._text_field}:({' | '.join(optional_terms)})")
+
+        if not query_parts:
+            raise ValueError("text string cannot be empty after removing stopwords")
+
+        text = f"({' '.join(query_parts)}"
+
+        if filter_expression and filter_expression != "*":
+            text += f" AND {filter_expression}"
+
+        return f"{text})=>[{knn_query}]"
 
 
 class MemoryVectorDatabase(ABC):
