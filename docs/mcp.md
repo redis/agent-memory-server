@@ -140,7 +140,7 @@ Cursor's MCP config is similar to Claude's, but it also supports SSE servers, so
 {
   "mcpServers": {
     "redis-memory-server": {
-      "url": "http://localhost:9000/sse"
+      "url": "http://localhost:9050/sse"
     }
   }
 }

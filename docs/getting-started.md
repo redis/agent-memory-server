@@ -102,7 +102,7 @@ To start the API using Docker Compose, follow these steps:
    docker-compose up --build
    ```
 
-5. Once the containers are up, the REST API will be available at http://localhost:8000. You can also access the interactive API documentation at http://localhost:8000/docs. The MCP server will be available at http://localhost:9000/sse.
+5. Once the containers are up, the REST API will be available at http://localhost:8000. You can also access the interactive API documentation at http://localhost:8000/docs. The MCP server will be available at http://localhost:9050/sse.
 
 6. To stop the containers, press Ctrl+C in the terminal and then run:
    ```bash
