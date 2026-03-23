@@ -85,7 +85,7 @@ uv run agent-memory task-worker
 
 **For development**, the default `--task-backend=asyncio` on the `mcp` command runs tasks inline without needing a separate worker process. For the `api` command, use `--task-backend=asyncio` explicitly when you want single-process behavior.
 
-**NOTE:** With uv, prefix the command with `uv`, e.g.: `uv run agent-memory --mode sse`. If you installed from source, you'll probably need to add `--directory` to tell uv where to find the code: `uv run --directory <path/to/checkout> run agent-memory --mode stdio`.
+**NOTE:** With uv, prefix the command with `uv`, e.g.: `uv run agent-memory mcp --mode sse`. If you installed from source, you'll probably need to add `--directory` to tell uv where to find the code: `uv --directory <path/to/checkout> run agent-memory mcp --mode stdio`.
 
 ## Docker Compose
 
