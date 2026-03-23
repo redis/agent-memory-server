@@ -4,6 +4,7 @@ with a RedisVL-based implementation for Redis backends.
 """
 
 import logging
+import re
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from functools import reduce
@@ -18,6 +19,7 @@ from redisvl.query import (
     TextQuery,
     VectorQuery,
 )
+from redisvl.utils.token_escaper import TokenEscaper
 
 from agent_memory_server.filters import (
     CreatedAt,
@@ -46,6 +48,52 @@ from agent_memory_server.utils.tag_codec import decode_tag_values, encode_tag_va
 
 
 logger = logging.getLogger(__name__)
+
+
+class _PhraseAwareQueryMixin:
+    _QUOTED_FRAGMENT_PATTERN = re.compile(r'"([^"]+)"|(\S+)')
+
+    def _tokenize_and_escape_query(self, user_query: str) -> str:
+        """Build a Redis text query that preserves quoted phrases."""
+        escaper = TokenEscaper()
+        normalized_query = user_query.replace("“", '"').replace("”", '"')
+        clauses: list[str] = []
+
+        for phrase, term in self._QUOTED_FRAGMENT_PATTERN.findall(normalized_query):
+            fragment = phrase or term
+            tokens = [
+                escaper.escape(
+                    token.strip().strip(",").replace("“", "").replace("”", "").lower()
+                )
+                for token in fragment.split()
+            ]
+            token_list = [
+                token for token in tokens if token and token not in self._stopwords
+            ]
+            if not token_list:
+                continue
+
+            if phrase:
+                clauses.append(f'"{" ".join(token_list)}"')
+                continue
+
+            token = token_list[0]
+            if token in self._text_weights:
+                token = f"{token}=>{{$weight:{self._text_weights[token]}}}"
+            clauses.append(token)
+
+        if not clauses:
+            raise ValueError("text string cannot be empty after removing stopwords")
+
+        return " | ".join(clauses)
+
+
+class PhraseAwareTextQuery(_PhraseAwareQueryMixin, TextQuery):
+    """RedisVL TextQuery variant that preserves quoted phrases."""
+
+
+class PhraseAwareAggregateHybridQuery(_PhraseAwareQueryMixin, AggregateHybridQuery):
+    """RedisVL AggregateHybridQuery variant that preserves quoted phrases."""
 
 
 class MemoryVectorDatabase(ABC):
@@ -763,7 +811,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         memory_results: list[MemoryRecordResult] = []
 
         if search_mode == SearchModeEnum.KEYWORD:
-            text_query = TextQuery(
+            text_query = PhraseAwareTextQuery(
                 text=query,
                 text_field_name="text",
                 text_scorer=text_scorer,
@@ -793,7 +841,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                     break
         elif search_mode == SearchModeEnum.HYBRID:
             embedding_vector = await self.embeddings.aembed_query(query)
-            hybrid_query = AggregateHybridQuery(
+            hybrid_query = PhraseAwareAggregateHybridQuery(
                 text=query,
                 text_field_name="text",
                 vector=embedding_vector,

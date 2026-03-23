@@ -6,6 +6,8 @@ import pytest
 
 from agent_memory_server.memory_vector_db import (
     MemoryVectorDatabase,
+    PhraseAwareAggregateHybridQuery,
+    PhraseAwareTextQuery,
     RedisVLMemoryVectorDatabase,
 )
 from agent_memory_server.memory_vector_db_factory import (
@@ -396,6 +398,28 @@ class TestMemoryVectorDatabase:
         assert results.memories[0].score == pytest.approx(1.0)
         assert results.memories[1].id == "mem2"
         assert results.memories[1].score == pytest.approx(0.5)
+
+    def test_phrase_aware_text_query_preserves_quoted_phrases(self):
+        """Quoted strings should become Redis phrase clauses."""
+        query = PhraseAwareTextQuery(
+            text='"scarlet dolphin" orchard',
+            text_field_name="text",
+            stopwords=None,
+        )
+
+        assert '@text:("scarlet dolphin" | orchard)' in str(query)
+
+    def test_phrase_aware_hybrid_query_preserves_quoted_phrases(self):
+        """Hybrid lexical query should preserve quoted strings as phrases."""
+        query = PhraseAwareAggregateHybridQuery(
+            text='"scarlet dolphin" orchard',
+            text_field_name="text",
+            vector=[0.1] * 1536,
+            vector_field_name="vector",
+            stopwords=None,
+        )
+
+        assert '(~@text:("scarlet dolphin" | orchard)' in str(query)
 
     @pytest.mark.asyncio
     async def test_factory_creates_redisvl_db(self):
