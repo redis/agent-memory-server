@@ -32,14 +32,14 @@ Pre-built Docker images are available from:
 **Quick Start (Development Mode)**:
 ```bash
 # Start with docker-compose
-# Note: Both 'api' and 'api-for-task-worker' services use port 8000
+# Note: The 'api' service exposes port 8000.
 # Choose one depending on your needs:
 
 # Option 1: Development mode (no worker, immediate task execution)
 docker compose up api redis
 
 # Option 2: Production-like mode (with background worker)
-docker compose up api-for-task-worker task-worker redis mcp
+docker compose up api task-worker redis mcp
 
 # Or run just the API server (requires separate Redis)
 docker run -p 8000:8000 \
@@ -290,8 +290,8 @@ uv run ruff format
 uv run ruff check
 
 # Start development stack (choose one based on your needs)
-docker compose up api redis                               # Development mode
-docker compose up api-for-task-worker task-worker redis   # Production-like mode
+docker compose up api redis                    # Development mode
+docker compose up api task-worker redis mcp    # Production-like mode
 ```
 ## License
 
