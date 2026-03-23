@@ -509,6 +509,37 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
 
         return [min(max(score / max_score, 0.0), 1.0) for score in raw_scores]
 
+    def _coerce_aggregate_row(self, row: Any) -> dict[str, Any]:
+        """Normalize Redis aggregate rows into plain string-keyed dicts."""
+        raw_fields = getattr(row, "__dict__", None)
+        if isinstance(raw_fields, dict) and raw_fields:
+            source: Any = raw_fields
+        else:
+            source = row
+
+        if isinstance(source, dict):
+            items = source.items()
+        elif isinstance(source, list | tuple):
+            if len(source) % 2 != 0:
+                return {}
+            items = zip(source[::2], source[1::2], strict=False)
+        else:
+            return {}
+
+        normalized: dict[str, Any] = {}
+        for key, value in items:
+            if isinstance(key, bytes):
+                key = key.decode("utf-8")
+            elif not isinstance(key, str):
+                key = str(key)
+
+            if isinstance(value, bytes):
+                value = value.decode("utf-8")
+
+            normalized[key] = value
+
+        return normalized
+
     def _build_filter_expression(self, **filter_kwargs: Any) -> Any | None:
         """Build a combined RedisVL filter expression from filter objects.
 
@@ -779,10 +810,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
 
             parsed_rows: list[dict[str, Any]] = []
             for row in raw_results:
-                fields = getattr(row, "__dict__", None) or row
-                if not isinstance(fields, dict):
-                    fields = dict(fields) if fields else {}
-                parsed_rows.append(fields)
+                parsed_rows.append(self._coerce_aggregate_row(row))
 
             normalized_scores = self._normalize_rank_scores(
                 [

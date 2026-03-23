@@ -350,6 +350,54 @@ class TestMemoryVectorDatabase:
         mock_embeddings.aembed_query.assert_called_once_with("alpha")
 
     @pytest.mark.asyncio
+    async def test_search_memories_hybrid_mode_parses_aggregate_lists(self):
+        """Test hybrid search handles alternating key/value aggregate rows."""
+        mock_index = MagicMock()
+        mock_index.exists = AsyncMock(return_value=True)
+        mock_index.aggregate = AsyncMock(
+            return_value=MagicMock(
+                rows=[
+                    [
+                        b"id_",
+                        b"mem1",
+                        b"text",
+                        b"scarlet dolphin",
+                        b"memory_type",
+                        b"message",
+                        b"hybrid_score",
+                        b"2.0",
+                    ],
+                    [
+                        b"id_",
+                        b"mem2",
+                        b"text",
+                        b"scarlet bird",
+                        b"memory_type",
+                        b"message",
+                        b"hybrid_score",
+                        b"1.0",
+                    ],
+                ]
+            )
+        )
+        mock_embeddings = MockEmbeddings()
+        mock_embeddings.aembed_query = AsyncMock(return_value=[0.1] * 1536)
+
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        results = await db.search_memories(
+            query="scarlet dolphin",
+            search_mode=SearchModeEnum.HYBRID,
+            limit=10,
+        )
+
+        assert results.total == 2
+        assert results.memories[0].id == "mem1"
+        assert results.memories[0].score == pytest.approx(1.0)
+        assert results.memories[1].id == "mem2"
+        assert results.memories[1].score == pytest.approx(0.5)
+
+    @pytest.mark.asyncio
     async def test_factory_creates_redisvl_db(self):
         """Test that the factory creates a RedisVLMemoryVectorDatabase."""
         import agent_memory_server.memory_vector_db_factory
