@@ -511,13 +511,23 @@ async def extract_memory_structure(
     merged_topics = memory.topics + topics if memory.topics else topics
     merged_entities = memory.entities + entities if memory.entities else entities
 
-    await redis.hset(
-        Keys.memory_key(memory.id),
+    # Guard: only update if the key still exists. A race between semantic
+    # deduplication (which deletes merged keys) and this background task
+    # can recreate deleted keys as orphaned hashes with only topics/entities.
+    # Use HSETEX with FXX to atomically update only if the fields already
+    # exist on the hash — a deleted key has no fields, so nothing is written.
+    key = Keys.memory_key(memory.id)
+    result = await redis.hsetex(
+        key,
         mapping={
             "topics": encode_tag_values(merged_topics),
             "entities": encode_tag_values(merged_entities),
         },
-    )  # type: ignore
+        data_persist_option="FXX",
+        keepttl=True,
+    )
+    if result == 0:
+        logger.info(f"Skipping topic/entity update for deleted memory {memory.id}")
 
 
 async def merge_memories_with_llm(
@@ -1022,8 +1032,8 @@ async def index_long_term_memories(
                 else:
                     current_memory = deduped_memory or current_memory
 
-            # Check for semantic duplicates
-            if not was_deduplicated:
+            # Check for semantic duplicates (respects compact_semantic_duplicates setting)
+            if not was_deduplicated and settings.compact_semantic_duplicates:
                 deduped_memory, was_merged = await deduplicate_by_semantic_search(
                     memory=current_memory,
                     redis_client=redis,
