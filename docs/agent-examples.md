@@ -252,7 +252,7 @@ python ai_tutor.py --user-id student123 --session-id bio_course
 ```bash
 # Install dependencies
 cd /path/to/agent-memory-server
-uv install --all-extras
+uv sync --all-extras
 
 # Start memory server
 uv run agent-memory server
