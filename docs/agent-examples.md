@@ -255,7 +255,7 @@ cd /path/to/agent-memory-server
 uv sync --all-extras
 
 # Start memory server
-uv run agent-memory server
+uv run agent-memory api --task-backend=asyncio
 
 # Set required API keys
 export OPENAI_API_KEY="your-openai-key"
