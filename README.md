@@ -91,7 +91,7 @@ docker run -p 9000:9000 \
 ```bash
 # Install dependencies
 pip install uv
-uv install --all-extras
+uv sync --all-extras
 
 # Start Redis
 docker-compose up redis
@@ -280,7 +280,7 @@ Working Memory (Session-scoped)  →  Long-term Memory (Persistent)
 
 ```bash
 # Install dependencies
-uv install --all-extras
+uv sync --all-extras
 
 # Run tests
 uv run pytest
