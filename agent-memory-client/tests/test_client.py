@@ -372,6 +372,31 @@ class TestRecencyConfig:
             assert body["text_scorer"] == "BM25"
 
     @pytest.mark.asyncio
+    async def test_search_mode_defaults_are_omitted_when_unset(
+        self, enhanced_test_client
+    ):
+        """Test that server-owned hybrid defaults are omitted unless explicitly set."""
+        with patch.object(enhanced_test_client._client, "post") as mock_post:
+            mock_response = Mock()
+            mock_response.raise_for_status.return_value = None
+            mock_response.json.return_value = MemoryRecordResults(
+                total=0, memories=[], next_offset=None
+            ).model_dump()
+            mock_post.return_value = mock_response
+
+            await enhanced_test_client.search_long_term_memory(
+                text="alpha beta",
+                search_mode=SearchModeEnum.HYBRID,
+                limit=5,
+            )
+
+            _, kwargs = mock_post.call_args
+            body = kwargs["json"]
+            assert body["search_mode"] == "hybrid"
+            assert "hybrid_alpha" not in body
+            assert "text_scorer" not in body
+
+    @pytest.mark.asyncio
     async def test_search_memory_tool_forwards_hybrid_parameters(
         self, enhanced_test_client
     ):
@@ -427,8 +452,8 @@ class TestRecencyConfig:
             "hybrid",
         ]
         assert properties["search_mode"]["default"] == "semantic"
-        assert properties["hybrid_alpha"]["default"] == 0.7
-        assert properties["text_scorer"]["default"] == "BM25STD"
+        assert "default" not in properties["hybrid_alpha"]
+        assert "default" not in properties["text_scorer"]
         assert "search_mode" in properties["min_relevance"]["description"]
         assert "semantic" in properties["min_relevance"]["description"]
 

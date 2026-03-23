@@ -1035,8 +1035,8 @@ class MemoryAPIClient:
         self,
         text: str,
         search_mode: SearchModeEnum | str = SearchModeEnum.SEMANTIC,
-        hybrid_alpha: float = 0.7,
-        text_scorer: str = "BM25STD",
+        hybrid_alpha: float | None = None,
+        text_scorer: str | None = None,
         session_id: SessionId | dict[str, Any] | None = None,
         namespace: Namespace | dict[str, Any] | None = None,
         topics: Topics | dict[str, Any] | None = None,
@@ -1057,8 +1057,8 @@ class MemoryAPIClient:
         Args:
             text: Query text used for semantic, keyword, or hybrid search
             search_mode: Search strategy to use
-            hybrid_alpha: Weight assigned to vector similarity in hybrid search
-            text_scorer: Redis full-text scoring algorithm for keyword and hybrid search
+            hybrid_alpha: Optional weight assigned to vector similarity in hybrid search
+            text_scorer: Optional Redis full-text scoring algorithm for keyword and hybrid search
             session_id: Optional session ID filter
             namespace: Optional namespace filter
             topics: Optional topics filter
@@ -1153,8 +1153,10 @@ class MemoryAPIClient:
             if isinstance(search_mode, SearchModeEnum)
             else str(search_mode)
         )
-        payload["hybrid_alpha"] = hybrid_alpha
-        payload["text_scorer"] = text_scorer
+        if hybrid_alpha is not None:
+            payload["hybrid_alpha"] = hybrid_alpha
+        if text_scorer is not None:
+            payload["text_scorer"] = text_scorer
 
         # Add recency config if provided
         if recency is not None:
@@ -1200,8 +1202,8 @@ class MemoryAPIClient:
         self,
         query: str,
         search_mode: SearchModeEnum | str = SearchModeEnum.SEMANTIC,
-        hybrid_alpha: float = 0.7,
-        text_scorer: str = "BM25STD",
+        hybrid_alpha: float | None = None,
+        text_scorer: str | None = None,
         topics: Sequence[str] | None = None,
         entities: Sequence[str] | None = None,
         memory_type: str | None = None,
@@ -1222,8 +1224,8 @@ class MemoryAPIClient:
         Args:
             query: The query for vector search
             search_mode: Search strategy to use ("semantic", "keyword", or "hybrid")
-            hybrid_alpha: Weight assigned to vector similarity in hybrid search
-            text_scorer: Redis full-text scoring algorithm for keyword and hybrid search
+            hybrid_alpha: Optional weight assigned to vector similarity in hybrid search
+            text_scorer: Optional Redis full-text scoring algorithm for keyword and hybrid search
             topics: Optional list of topic strings to filter by
             entities: Optional list of entity strings to filter by
             memory_type: Optional memory type ("episodic", "semantic", "message")
@@ -1402,13 +1404,11 @@ class MemoryAPIClient:
                                 "type": "number",
                                 "minimum": 0.0,
                                 "maximum": 1.0,
-                                "default": 0.7,
-                                "description": "Weight assigned to vector similarity in hybrid search. Higher values favor semantic matches more strongly.",
+                                "description": "Optional weight assigned to vector similarity in hybrid search. Higher values favor semantic matches more strongly.",
                             },
                             "text_scorer": {
                                 "type": "string",
-                                "default": "BM25STD",
-                                "description": "Redis full-text scoring algorithm to use for keyword and hybrid search (for example: BM25STD, BM25, TFIDF, DISMAX, DOCSCORE).",
+                                "description": "Optional Redis full-text scoring algorithm to use for keyword and hybrid search (for example: BM25STD, BM25, TFIDF, DISMAX, DOCSCORE).",
                             },
                             "topics": {
                                 "type": "array",
