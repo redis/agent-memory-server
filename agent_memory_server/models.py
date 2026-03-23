@@ -720,7 +720,14 @@ class SearchRequest(BaseModel):
     )
     text_scorer: str = Field(
         default="BM25STD",
-        description="Redis full-text scoring algorithm used for keyword and hybrid search",
+        description=(
+            "Redis full-text scoring algorithm used for keyword and hybrid "
+            "search. Defaults to BM25STD, a normalized BM25 variant that "
+            "keeps lexical scores stable for hybrid ranking. Keyword and "
+            "hybrid search disable Redis stopword filtering, so callers "
+            "should strip obvious stopwords beforehand when they have "
+            "language-specific context."
+        ),
     )
     session_id: SessionId | None = Field(
         default=None,

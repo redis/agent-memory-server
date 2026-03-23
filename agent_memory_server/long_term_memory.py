@@ -1104,7 +1104,12 @@ async def search_long_term_memories(
         text: Query text used for semantic, keyword, or hybrid search
         search_mode: Search strategy to use
         hybrid_alpha: Weight assigned to vector similarity in hybrid search
-        text_scorer: Redis full-text scoring algorithm for keyword and hybrid search
+        text_scorer: Redis full-text scoring algorithm for keyword and hybrid
+            search. Defaults to BM25STD, a normalized BM25 variant that keeps
+            lexical scores on a stable scale for hybrid ranking. Keyword and
+            hybrid search disable Redis stopword filtering to avoid assuming a
+            single language, so callers should pre-filter obvious stopwords
+            when they have language-specific context.
         session_id: Optional session ID filter
         user_id: Optional user ID filter
         namespace: Optional namespace filter

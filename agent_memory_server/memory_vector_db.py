@@ -98,7 +98,13 @@ class MemoryVectorDatabase(ABC):
             query: Text query for semantic, keyword, or hybrid search
             search_mode: Which search strategy to use
             hybrid_alpha: Weight assigned to vector similarity in hybrid search
-            text_scorer: Redis full-text scorer to use for keyword or hybrid search
+            text_scorer: Redis full-text scorer to use for keyword or hybrid
+                search. Defaults to BM25STD, a normalized BM25 variant that
+                keeps lexical scores on a stable scale for hybrid ranking.
+                Keyword and hybrid search disable Redis stopword filtering to
+                avoid assuming a single language, so callers should strip
+                obvious stopwords from queries when they have language-specific
+                context and want tighter lexical matches.
             session_id: Optional session ID filter
             user_id: Optional user ID filter
             namespace: Optional namespace filter
@@ -679,7 +685,14 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         limit: int = 10,
         offset: int = 0,
     ) -> MemoryRecordResults:
-        """Search memories using RedisVL semantic, keyword, or hybrid search."""
+        """Search memories using RedisVL semantic, keyword, or hybrid search.
+
+        Keyword and hybrid queries use BM25STD by default so the lexical side
+        of ranking stays normalized before hybrid blending. They also disable
+        Redis stopword filtering to avoid hard-coding a single language, so
+        callers with language-specific context should strip obvious stopwords
+        before querying when lexical precision matters.
+        """
         await self._ensure_index()
 
         # Build combined filter expression
