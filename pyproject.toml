@@ -41,7 +41,7 @@ dependencies = [
     "python-ulid>=3.0.0",
     "bcrypt>=4.0.0",
     "cachetools>=6.2.2,<7.0.0",
-    "litellm>=1.80.11",
+    "litellm @ https://github.com/BerriAI/litellm/archive/57e07bddd34185934893de3ad74583ba119ed67d.zip",
 ]
 
 [project.scripts]
