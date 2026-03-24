@@ -16,7 +16,7 @@ from agent_memory_client import MemoryAPIClient
 client = MemoryAPIClient(base_url="http://localhost:8000")
 
 # Store customer profile and preferences
-await client.create_long_term_memories([
+await client.create_long_term_memory([
     {
         "text": "Customer Alice Johnson (alice@company.com) prefers email communication, has Pro subscription, works in marketing team",
         "memory_type": "semantic",
@@ -28,7 +28,7 @@ await client.create_long_term_memories([
 ])
 
 # Store previous issue resolution
-await client.create_long_term_memories([
+await client.create_long_term_memory([
     {
         "text": "Customer Alice Johnson resolved login issue on January 10, 2024 by clearing browser cache",
         "memory_type": "episodic",
@@ -180,7 +180,7 @@ class CodingAssistant:
             }
         ]
 
-        await self.client.create_long_term_memories(project_memories)
+        await self.client.create_long_term_memory(project_memories)
 
     async def store_solution_pattern(self, problem: str, solution: str, code_example: str = None):
         """Store problem-solution patterns for reuse"""
@@ -188,7 +188,7 @@ class CodingAssistant:
         if code_example:
             memory_text += f"\nCode example: {code_example}"
 
-        await self.client.create_long_term_memories([{
+        await self.client.create_long_term_memory([{
             "text": memory_text,
             "memory_type": "episodic",
             "topics": ["problem_solving", "code_patterns", "solutions"],
@@ -252,7 +252,7 @@ class ResearchAssistant:
         """Store research findings with metadata"""
         memory_text = f"Finding: {finding}\nSource: {source}\nConfidence: {confidence}"
 
-        await self.client.create_long_term_memories([{
+        await self.client.create_long_term_memory([{
             "text": memory_text,
             "memory_type": "episodic" if date_found else "semantic",
             "event_date": date_found,
@@ -294,7 +294,7 @@ class ResearchAssistant:
             "namespace": self.topic_namespace
         }
 
-        await self.client.create_long_term_memories([progress_memory])
+        await self.client.create_long_term_memory([progress_memory])
 
 # Usage example
 research = ResearchAssistant("AI Memory Systems")
@@ -344,7 +344,7 @@ class ShoppingAssistant:
     async def track_browsing_behavior(self, user_id: str, product_category: str,
                                     products_viewed: list, time_spent: int):
         """Store browsing patterns"""
-        await self.client.create_long_term_memories([{
+        await self.client.create_long_term_memory([{
             "text": f"User spent {time_spent} minutes browsing {product_category}, "
                    f"viewed {len(products_viewed)} products: {', '.join(products_viewed[:3])}",
             "memory_type": "episodic",
@@ -362,7 +362,7 @@ class ShoppingAssistant:
         if occasion:
             memory_text += f" for {occasion}"
 
-        await self.client.create_long_term_memories([{
+        await self.client.create_long_term_memory([{
             "text": memory_text,
             "memory_type": "episodic",
             "event_date": datetime.now().isoformat(),
@@ -375,7 +375,7 @@ class ShoppingAssistant:
     async def store_preferences(self, user_id: str, preferences: dict):
         """Store explicit user preferences"""
         for category, preference in preferences.items():
-            await self.client.create_long_term_memories([{
+            await self.client.create_long_term_memory([{
                 "text": f"User prefers {preference} in {category} category",
                 "memory_type": "semantic",
                 "topics": ["preferences", category],
@@ -457,7 +457,7 @@ class LearningAssistant:
     async def track_concept_understanding(self, student_id: str, concept: str,
                                         understanding_level: str, evidence: str):
         """Track student understanding of concepts"""
-        await self.client.create_long_term_memories([{
+        await self.client.create_long_term_memory([{
             "text": f"Student understanding of {concept}: {understanding_level}. "
                    f"Evidence: {evidence}",
             "memory_type": "episodic",
@@ -471,7 +471,7 @@ class LearningAssistant:
     async def store_learning_preference(self, student_id: str, preference_type: str,
                                       preference: str):
         """Store individual learning preferences"""
-        await self.client.create_long_term_memories([{
+        await self.client.create_long_term_memory([{
             "text": f"Student learns best through {preference} for {preference_type}",
             "memory_type": "semantic",
             "topics": ["learning_style", preference_type],
@@ -574,7 +574,7 @@ class HealthAssistant:
         if context:
             memory_text += f", context: {context}"
 
-        await self.client.create_long_term_memories([{
+        await self.client.create_long_term_memory([{
             "text": memory_text,
             "memory_type": "episodic",
             "event_date": datetime.now().isoformat(),
@@ -591,7 +591,7 @@ class HealthAssistant:
         if side_effects:
             memory_text += f", side effects: {', '.join(side_effects)}"
 
-        await self.client.create_long_term_memories([{
+        await self.client.create_long_term_memory([{
             "text": memory_text,
             "memory_type": "episodic",
             "event_date": datetime.now().isoformat(),

@@ -229,7 +229,7 @@ user_preferences = [
     )
 ]
 
-await client.create_long_term_memories(user_preferences)
+await client.create_long_term_memory(user_preferences)
 
 # Retrieve relevant context
 search_results = await client.search_long_term_memory(
@@ -288,7 +288,7 @@ class CodeDrivenAgent:
         # Extract key information (you could use LLM or rules for this)
         if "prefer" in user_msg.lower() or "like" in user_msg.lower():
             # Store user preference
-            await self.memory_client.create_long_term_memories([
+            await self.memory_client.create_long_term_memory([
                 MemoryRecord(
                     text=f"User expressed: {user_msg}",
                     memory_type="semantic",
@@ -327,7 +327,7 @@ for preference in user_profile.preferences:
     ))
 
 # Store all at once
-await client.create_long_term_memories(batch_memories)
+await client.create_long_term_memory(batch_memories)
 
 # Batch search with different queries
 search_queries = [

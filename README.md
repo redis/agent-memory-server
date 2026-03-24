@@ -129,7 +129,7 @@ from agent_memory_client import MemoryAPIClient
 client = MemoryAPIClient(base_url="http://localhost:8000")
 
 # Store memories
-await client.create_long_term_memories([
+await client.create_long_term_memory([
     {
         "text": "User prefers morning meetings",
         "user_id": "user123",

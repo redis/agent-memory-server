@@ -113,6 +113,7 @@ nav:
     - MCP Server: mcp.md
     - CLI Reference: cli.md
     - Client SDKs:
+      - python-sdk-index.md
       - Python SDK: python-sdk.md
       - TypeScript SDK: typescript-sdk.md
       - Java SDK: java-sdk.md

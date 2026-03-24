@@ -79,7 +79,7 @@ For real-time memory creation or when working without sessions:
 
 ```python
 # LLM can use eagerly_create_long_term_memory tool directly
-await client.create_long_term_memories([
+await client.create_long_term_memory([
     {
         "text": "User completed advanced Python certification course",
         "memory_type": "episodic",

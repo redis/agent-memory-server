@@ -156,7 +156,7 @@ Store long-term facts that persist across all sessions:
 
 ```python
 # Store user preferences that persist across sessions
-await memory_client.create_long_term_memories([
+await memory_client.create_long_term_memory([
     {
         "text": "User works as a software engineer specializing in Python and web development",
         "memory_type": "semantic",

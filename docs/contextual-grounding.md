@@ -168,7 +168,7 @@ memory_record = MemoryRecord(
 )
 
 # If conversation context exists, grounding will resolve "She" to the specific person
-await client.create_long_term_memories([memory_record])
+await client.create_long_term_memory([memory_record])
 ```
 
 ## Real-World Examples

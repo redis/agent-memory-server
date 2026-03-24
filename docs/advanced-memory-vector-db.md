@@ -226,7 +226,7 @@ class MemoryMigrator:
             memory_records = [{k: v for k, v in mem.items() if v is not None} for mem in batch]
 
             try:
-                result = await self.target.create_long_term_memories(memory_records)
+                result = await self.target.create_long_term_memory(memory_records)
                 imported_count += len(result.memories)
                 print(f"Imported batch {i//batch_size + 1}: {len(result.memories)} memories")
                 await asyncio.sleep(0.1)
