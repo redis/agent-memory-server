@@ -31,7 +31,7 @@ Pre-built Docker images are available from:
 
 **Quick Start (Development Mode)**:
 ```bash
-# Start with docker-compose
+# Start with docker compose
 # Note: The 'api' service exposes port 8000.
 # Choose one depending on your needs:
 
@@ -94,11 +94,21 @@ pip install uv
 uv sync --all-extras
 
 # Start Redis
-docker-compose up redis
+docker compose up redis
 
 # Start the server (development mode, asyncio task backend)
 uv run agent-memory api --task-backend=asyncio
 ```
+
+### Core CLI Commands
+
+| Command | Typical Use | Backend Behavior |
+|---|---|---|
+| `uv run agent-memory api --task-backend=asyncio` | Local development (single process) | Uses `asyncio` inline tasks; no separate worker |
+| `uv run agent-memory api` | Production API server | Defaults to `docket`; run `uv run agent-memory task-worker` |
+| `uv run agent-memory mcp` | Claude Desktop / local stdio MCP | Defaults to `asyncio`; no worker required |
+| `uv run agent-memory mcp --mode sse --port 9000 --task-backend docket` | Network MCP with shared workers | Uses `docket`; run `uv run agent-memory task-worker` |
+| `uv run agent-memory task-worker --concurrency 10` | Background processing | Processes queued Docket tasks |
 
 ### 2. Python SDK
 

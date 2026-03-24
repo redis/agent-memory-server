@@ -93,18 +93,20 @@ To start the API using Docker Compose, follow these steps:
 
 1. Ensure that Docker and Docker Compose are installed on your system.
 
-2. Open a terminal in the project root directory (where the docker-compose.yml file is located).
+2. Open a terminal in the project root directory (where the `docker-compose.yml` file is located).
 
-3. (Optional) Set up your environment variables (such as OPENAI_API_KEY and ANTHROPIC_API_KEY) either in a .env file or by modifying the docker-compose.yml as needed.
+3. (Optional) Set up your environment variables (such as `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`) either in a `.env` file or by modifying `docker-compose.yml` as needed.
 
 4. Build and start the containers by running:
    ```bash
-   docker-compose up --build
+   docker compose up --build
    ```
 
 5. Once the containers are up, the REST API will be available at http://localhost:8000. You can also access the interactive API documentation at http://localhost:8000/docs. The MCP server will be available at http://localhost:9050/sse.
 
+   Note: In Docker Compose, MCP is mapped as `9050:9000`, so you connect to port `9050` on the host. If you run MCP directly via CLI (without Compose), the default port is `9000`.
+
 6. To stop the containers, press Ctrl+C in the terminal and then run:
    ```bash
-   docker-compose down
+   docker compose down
    ```
