@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -436,9 +436,11 @@ class Settings(BaseSettings):
     auth0_client_secret: str | None = None
 
     # Working memory settings
-    summarization_threshold: float = (
-        0.7  # Fraction of context window that triggers summarization
+    enable_working_memory_summarization: bool = (
+        True  # If False, skip working-memory summarization entirely
     )
+
+    summarization_threshold: float = Field(default=0.7, gt=0.0, le=1.0)
 
     # Message timestamp validation settings
     # If true, reject messages without created_at timestamp.
@@ -489,6 +491,7 @@ Optimized query:"""
 
     # Compaction settings
     compaction_every_minutes: int = 10
+    compact_semantic_duplicates: bool = True
 
     # Docket task timeout for LLM-dependent tasks (in minutes)
     # This controls how long tasks like memory compaction, extraction, and summarization

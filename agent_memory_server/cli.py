@@ -134,6 +134,7 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
 
     from agent_memory_server.utils.keys import Keys
     from agent_memory_server.working_memory import (
+        cleanup_deprecated_sessions_zsets,
         set_migration_complete,
     )
 
@@ -169,14 +170,20 @@ def migrate_working_memory(batch_size: int, dry_run: bool):
         click.echo(f"Scan completed in {scan_time:.2f}s")
         click.echo(f"  String format (need migration): {len(string_keys)}")
 
+        if dry_run:
+            click.echo("\n--dry-run specified, no changes made.")
+            return
+
+        cleaned_sessions_zsets = await cleanup_deprecated_sessions_zsets(redis)
+        if cleaned_sessions_zsets > 0:
+            click.echo(
+                f"  Removed {cleaned_sessions_zsets} legacy sessions sorted set key(s)"
+            )
+
         if not string_keys:
             click.echo("\nNo keys need migration. All done!")
             # Mark migration as complete
             await set_migration_complete(redis)
-            return
-
-        if dry_run:
-            click.echo("\n--dry-run specified, no changes made.")
             return
 
         # Migrate keys in batches using pipeline
@@ -534,6 +541,24 @@ def task_worker(concurrency: int, redelivery_timeout: int | None):
 @click.option("--limit", "-l", default=10, help="Maximum number of results")
 @click.option("--offset", "-o", default=0, help="Offset for pagination")
 @click.option(
+    "--search-mode",
+    type=click.Choice(["semantic", "keyword", "hybrid"]),
+    default="semantic",
+    show_default=True,
+    help="Search strategy to use",
+)
+@click.option(
+    "--hybrid-alpha",
+    type=float,
+    default=None,
+    help="Optional weight assigned to vector similarity in hybrid search",
+)
+@click.option(
+    "--text-scorer",
+    default=None,
+    help="Optional Redis full-text scoring algorithm for keyword and hybrid search",
+)
+@click.option(
     "--distance-threshold",
     "-d",
     type=float,
@@ -557,13 +582,16 @@ def search(
     entities: str | None,
     limit: int,
     offset: int,
+    search_mode: str,
+    hybrid_alpha: float | None,
+    text_scorer: str | None,
     distance_threshold: float | None,
     output_format: str,
 ):
     """
     Search long-term memories.
 
-    QUERY is the search text for semantic similarity matching.
+    QUERY is the search text for semantic, keyword, or hybrid retrieval.
     If empty, lists all memories matching the filters.
 
     Examples:
@@ -586,8 +614,15 @@ def search(
         UserId,
     )
     from agent_memory_server.long_term_memory import search_long_term_memories
+    from agent_memory_server.models import SearchModeEnum
 
     configure_logging()
+
+    if distance_threshold is not None and search_mode != "semantic":
+        raise click.BadParameter(
+            "distance_threshold is only supported for semantic search mode",
+            param_hint="--distance-threshold",
+        )
 
     async def run_search():
         # Build filter objects
@@ -597,16 +632,25 @@ def search(
         topics_filter = Topics(any=topics.split(",")) if topics else None
         entities_filter = Entities(any=entities.split(",")) if entities else None
 
+        search_kwargs = {
+            "text": query,
+            "search_mode": SearchModeEnum(search_mode),
+            "namespace": namespace_filter,
+            "session_id": session_filter,
+            "user_id": user_filter,
+            "topics": topics_filter,
+            "entities": entities_filter,
+            "distance_threshold": distance_threshold,
+            "limit": limit,
+            "offset": offset,
+        }
+        if hybrid_alpha is not None:
+            search_kwargs["hybrid_alpha"] = hybrid_alpha
+        if text_scorer is not None:
+            search_kwargs["text_scorer"] = text_scorer
+
         results = await search_long_term_memories(
-            text=query,
-            namespace=namespace_filter,
-            session_id=session_filter,
-            user_id=user_filter,
-            topics=topics_filter,
-            entities=entities_filter,
-            distance_threshold=distance_threshold,
-            limit=limit,
-            offset=offset,
+            **search_kwargs,
         )
 
         if output_format == "json":
@@ -618,6 +662,15 @@ def search(
             click.echo("=" * 60)
             for i, memory in enumerate(results.memories, 1):
                 click.echo(f"\n[{i}] ID: {memory.id}")
+                if memory.score is not None:
+                    click.echo(
+                        f"    Score: {memory.score:.4f}"
+                        + (
+                            f" ({memory.score_type.value})"
+                            if memory.score_type is not None
+                            else ""
+                        )
+                    )
                 click.echo(f"    Distance: {memory.dist:.4f}")
                 if memory.namespace:
                     click.echo(f"    Namespace: {memory.namespace}")

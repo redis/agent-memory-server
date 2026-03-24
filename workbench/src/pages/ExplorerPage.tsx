@@ -23,6 +23,7 @@ export default function ExplorerPage() {
   const [searchText, setSearchText] = useState('')
   const [submittedSearch, setSubmittedSearch] = useState('')
   const [filters, setFilters] = useState({
+    search_mode: 'semantic' as 'semantic' | 'keyword' | 'hybrid',
     memory_type: '' as '' | 'semantic' | 'episodic' | 'message',
     limit: 25,
   })
@@ -38,6 +39,7 @@ export default function ExplorerPage() {
     queryFn: () =>
       backend.search({
         text: submittedSearch,
+        search_mode: filters.search_mode,
         memory_type: filters.memory_type
           ? { eq: filters.memory_type }
           : undefined,
@@ -196,6 +198,25 @@ export default function ExplorerPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <label className="text-xs font-medium text-redis-dusk-04 mb-1 block">
+                    Search Mode
+                  </label>
+                  <select
+                    value={filters.search_mode}
+                    onChange={(e) =>
+                      setFilters({
+                        ...filters,
+                        search_mode: e.target.value as 'semantic' | 'keyword' | 'hybrid',
+                      })
+                    }
+                    className="w-full px-3 py-2 bg-redis-dusk-08 border border-redis-dusk-07 rounded-[--radius-redis-sm] text-sm text-redis-dusk-01 focus:outline-none focus:ring-2 focus:ring-redis-blue-04"
+                  >
+                    <option value="semantic">Semantic</option>
+                    <option value="keyword">Keyword</option>
+                    <option value="hybrid">Hybrid</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-redis-dusk-04 mb-1 block">
                     Memory Type
                   </label>
                   <select
@@ -285,9 +306,13 @@ export default function ExplorerPage() {
                       {memory.pinned && (
                         <Pin className="w-3 h-3 text-redis-yellow-300" />
                       )}
-                      {searchText && memory.dist !== undefined && (
+                      {searchText && (memory.score !== undefined || memory.dist !== undefined) && (
                         <span className="text-xs text-redis-dusk-05">
-                          Score: {(1 - memory.dist).toFixed(3)}
+                          Score:{' '}
+                          {(
+                            memory.score ?? (memory.dist !== undefined ? 1 - memory.dist : 0)
+                          ).toFixed(3)}
+                          {memory.score_type ? ` (${memory.score_type})` : ''}
                         </span>
                       )}
                     </div>

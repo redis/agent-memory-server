@@ -6,10 +6,7 @@ from pydantic import ValidationError
 
 from agent_memory_server.config import Settings, settings
 from agent_memory_server.llm import ChatCompletionResponse
-from agent_memory_server.summarization import (
-    _incremental_summary,
-    summarize_session,
-)
+from agent_memory_server.summarization import _incremental_summary, summarize_session
 from agent_memory_server.utils.keys import Keys
 
 
@@ -290,3 +287,64 @@ class TestSummarizeSession:
         config = Settings(progressive_summarization_prompt=custom_prompt)
 
         assert config.progressive_summarization_prompt == custom_prompt
+
+
+class TestSummarizationThresholdValidation:
+    """Test validation of summarization_threshold setting."""
+
+    def test_valid_threshold_at_upper_bound(self):
+        """Test that threshold of 1.0 (upper bound) is valid."""
+        config = Settings(summarization_threshold=1.0)
+        assert config.summarization_threshold == 1.0
+
+    def test_valid_threshold_default(self):
+        """Test that default threshold 0.7 is valid."""
+        config = Settings()
+        assert config.summarization_threshold == 0.7
+
+    def test_valid_threshold_small(self):
+        """Test that small positive threshold is valid."""
+        config = Settings(summarization_threshold=0.1)
+        assert config.summarization_threshold == 0.1
+
+    def test_invalid_threshold_zero(self):
+        """Test that threshold of 0 is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(summarization_threshold=0.0)
+
+        assert "greater_than" in str(exc_info.value)
+
+    def test_invalid_threshold_negative(self):
+        """Test that negative threshold is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(summarization_threshold=-0.5)
+
+        assert "greater_than" in str(exc_info.value)
+
+    def test_invalid_threshold_greater_than_one(self):
+        """Test that threshold > 1 is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(summarization_threshold=1.5)
+
+        assert "less_than_equal" in str(exc_info.value)
+
+    def test_invalid_threshold_large_value(self):
+        """Test that large threshold (e.g., 100.0) is rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(summarization_threshold=100.0)
+
+        assert "less_than_equal" in str(exc_info.value)
+
+
+class TestEnableWorkingMemorySummarizationSetting:
+    """Test enable_working_memory_summarization setting."""
+
+    def test_default_is_enabled(self):
+        """Test that summarization is enabled by default."""
+        config = Settings()
+        assert config.enable_working_memory_summarization is True
+
+    def test_can_disable(self):
+        """Test that summarization can be disabled."""
+        config = Settings(enable_working_memory_summarization=False)
+        assert config.enable_working_memory_summarization is False

@@ -38,7 +38,9 @@ from agent_memory_server.models import (
     MemoryRecordResult,
     MemoryRecordResults,
     MemoryTypeEnum,
+    SearchModeEnum,
 )
+from agent_memory_server.utils.datetime import parse_iso8601_datetime
 from agent_memory_server.utils.keys import Keys
 from agent_memory_server.utils.recency import (
     _days_between,
@@ -479,12 +481,26 @@ async def extract_memories_from_session_thread(
         # Convert to MemoryRecord objects
         extracted_memories = []
         for memory_data in memories_data:
+            event_date = None
+            event_date_str = memory_data.get("event_date")
+            if event_date_str:
+                try:
+                    event_date = parse_iso8601_datetime(event_date_str)
+                except ValueError:
+                    logger.warning(
+                        "Skipping invalid extracted event_date %r for memory %r in session %s",
+                        event_date_str,
+                        memory_data.get("text"),
+                        session_id,
+                    )
+
             memory = MemoryRecord(
                 id=str(ULID()),
                 text=memory_data["text"],
                 memory_type=memory_data.get("type", "semantic"),
                 topics=sanitize_tag_values(memory_data.get("topics", [])),
                 entities=sanitize_tag_values(memory_data.get("entities", [])),
+                event_date=event_date,
                 session_id=session_id,
                 namespace=namespace,
                 user_id=user_id,
@@ -514,13 +530,23 @@ async def extract_memory_structure(
     merged_topics = sanitize_tag_values(merged_topics) or []
     merged_entities = sanitize_tag_values(merged_entities) or []
 
-    await redis.hset(
-        Keys.memory_key(memory.id),
+    # Guard: only update if the key still exists. A race between semantic
+    # deduplication (which deletes merged keys) and this background task
+    # can recreate deleted keys as orphaned hashes with only topics/entities.
+    # Use HSETEX with FXX to atomically update only if the fields already
+    # exist on the hash — a deleted key has no fields, so nothing is written.
+    key = Keys.memory_key(memory.id)
+    result = await redis.hsetex(
+        key,
         mapping={
             "topics": encode_tag_values(merged_topics),
             "entities": encode_tag_values(merged_entities),
         },
-    )  # type: ignore
+        data_persist_option="FXX",
+        keepttl=True,
+    )
+    if result == 0:
+        logger.info(f"Skipping topic/entity update for deleted memory {memory.id}")
 
 
 async def merge_memories_with_llm(
@@ -642,7 +668,7 @@ async def compact_long_term_memories(
     redis_client: Redis | None = None,
     vector_distance_threshold: float = 0.2,
     compact_hash_duplicates: bool = True,
-    compact_semantic_duplicates: bool = True,
+    compact_semantic_duplicates: bool | None = None,
     perpetual: Perpetual = Perpetual(
         every=timedelta(minutes=settings.compaction_every_minutes), automatic=True
     ),
@@ -657,6 +683,9 @@ async def compact_long_term_memories(
 
     Returns the count of remaining memories after compaction.
     """
+    if compact_semantic_duplicates is None:
+        compact_semantic_duplicates = settings.compact_semantic_duplicates
+
     if not redis_client:
         redis_client = await get_redis_conn()
 
@@ -1022,8 +1051,8 @@ async def index_long_term_memories(
                 else:
                     current_memory = deduped_memory or current_memory
 
-            # Check for semantic duplicates
-            if not was_deduplicated:
+            # Check for semantic duplicates (respects compact_semantic_duplicates setting)
+            if not was_deduplicated and settings.compact_semantic_duplicates:
                 deduped_memory, was_merged = await deduplicate_by_semantic_search(
                     memory=current_memory,
                     redis_client=redis,
@@ -1076,6 +1105,9 @@ async def index_long_term_memories(
 
 async def search_long_term_memories(
     text: str,
+    search_mode: SearchModeEnum = SearchModeEnum.SEMANTIC,
+    hybrid_alpha: float = 0.7,
+    text_scorer: str = "BM25STD",
     session_id: SessionId | None = None,
     user_id: UserId | None = None,
     namespace: Namespace | None = None,
@@ -1097,7 +1129,15 @@ async def search_long_term_memories(
     Search for long-term memories using the pluggable memory vector database.
 
     Args:
-        text: Query for vector search - will be used for semantic similarity matching
+        text: Query text used for semantic, keyword, or hybrid search
+        search_mode: Search strategy to use
+        hybrid_alpha: Weight assigned to vector similarity in hybrid search
+        text_scorer: Redis full-text scoring algorithm for keyword and hybrid
+            search. Defaults to BM25STD, a normalized BM25 variant that keeps
+            lexical scores on a stable scale for hybrid ranking. Keyword and
+            hybrid search disable Redis stopword filtering to avoid assuming a
+            single language, so callers should pre-filter obvious stopwords
+            when they have language-specific context.
         session_id: Optional session ID filter
         user_id: Optional user ID filter
         namespace: Optional namespace filter
@@ -1116,6 +1156,11 @@ async def search_long_term_memories(
     Returns:
         MemoryRecordResults containing matching memories
     """
+    if distance_threshold is not None and search_mode != SearchModeEnum.SEMANTIC:
+        raise ValueError(
+            "distance_threshold is only supported for semantic search mode"
+        )
+
     # If no query text is provided, perform a filter-only listing (no semantic search).
     # This enables patterns like: "return all memories for this user/namespace".
     if not (text or "").strip():
@@ -1135,10 +1180,11 @@ async def search_long_term_memories(
             offset=offset,
         )
 
-    # Optimize query for vector search if requested.
+    # Optimize query only for semantic search; keyword and hybrid modes should
+    # preserve the literal text for lexical matching.
     search_query = text
     optimized_applied = False
-    if optimize_query and text:
+    if optimize_query and text and search_mode == SearchModeEnum.SEMANTIC:
         search_query = await optimize_query_for_vector_search(text)
         optimized_applied = True
 
@@ -1146,6 +1192,7 @@ async def search_long_term_memories(
     optimized_display = repr(search_query) if optimized_applied else "N/A"
     logger.debug(
         f"[search_long_term_memories] INPUT - query: {text!r}, "
+        f"search_mode: {search_mode}, "
         f"optimized_query: {optimized_display}, "
         f"session_id: {session_id}, user_id: {user_id}, namespace: {namespace}, "
         f"distance_threshold: {distance_threshold}, limit: {limit}"
@@ -1157,6 +1204,9 @@ async def search_long_term_memories(
     # Delegate search to the database
     results = await db.search_memories(
         query=search_query,
+        search_mode=search_mode,
+        hybrid_alpha=hybrid_alpha,
+        text_scorer=text_scorer,
         session_id=session_id,
         user_id=user_id,
         namespace=namespace,
@@ -1185,6 +1235,9 @@ async def search_long_term_memories(
         ):
             results = await db.search_memories(
                 query=text,
+                search_mode=search_mode,
+                hybrid_alpha=hybrid_alpha,
+                text_scorer=text_scorer,
                 session_id=session_id,
                 user_id=user_id,
                 namespace=namespace,

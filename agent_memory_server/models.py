@@ -39,6 +39,22 @@ class MemoryTypeEnum(str, Enum):
     MESSAGE = "message"
 
 
+class SearchModeEnum(str, Enum):
+    """Enum for supported long-term memory search strategies."""
+
+    SEMANTIC = "semantic"
+    KEYWORD = "keyword"
+    HYBRID = "hybrid"
+
+
+class SearchScoreTypeEnum(str, Enum):
+    """Enum describing how the normalized score field was produced."""
+
+    SEMANTIC = "semantic"
+    KEYWORD = "keyword"
+    HYBRID = "hybrid"
+
+
 # These should match the keys in MODEL_CONFIGS
 ModelNameLiteral = Literal[
     # OpenAI chat and reasoning models
@@ -634,6 +650,14 @@ class MemoryRecordResult(MemoryRecord):
     """Result from a memory search"""
 
     dist: float
+    score: float | None = Field(
+        default=None,
+        description="Normalized relevance score for the selected search mode (0-1)",
+    )
+    score_type: SearchScoreTypeEnum | None = Field(
+        default=None,
+        description="Search mode used to produce the normalized score",
+    )
 
 
 class MemoryRecordResults(BaseModel):
@@ -688,7 +712,28 @@ class SearchRequest(BaseModel):
 
     text: str | None = Field(
         default=None,
-        description="Optional text to use for a semantic search",
+        description="Optional query text to use for semantic, keyword, or hybrid search",
+    )
+    search_mode: SearchModeEnum = Field(
+        default=SearchModeEnum.SEMANTIC,
+        description="Search strategy to use: semantic vector search, keyword full-text search, or lexical+vector hybrid search",
+    )
+    hybrid_alpha: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="For hybrid search, weight assigned to vector similarity relative to keyword relevance",
+    )
+    text_scorer: str = Field(
+        default="BM25STD",
+        description=(
+            "Redis full-text scoring algorithm used for keyword and hybrid "
+            "search. Defaults to BM25STD, a normalized BM25 variant that "
+            "keeps lexical scores stable for hybrid ranking. Keyword and "
+            "hybrid search disable Redis stopword filtering, so callers "
+            "should strip obvious stopwords beforehand when they have "
+            "language-specific context."
+        ),
     )
     session_id: SessionId | None = Field(
         default=None,

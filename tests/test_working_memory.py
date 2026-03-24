@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from agent_memory_server.models import MemoryRecord, MemoryTypeEnum, WorkingMemory
 from agent_memory_server.utils.keys import Keys
 from agent_memory_server.working_memory import (
+    cleanup_deprecated_sessions_zsets,
     delete_working_memory,
     get_working_memory,
     list_sessions,
@@ -735,6 +736,54 @@ class TestWorkingMemory:
 
         assert session_id in sessions, "Session should be indexed in search index"
         assert total >= 1, "Should have at least one session"
+
+    @pytest.mark.asyncio
+    async def test_set_working_memory_does_not_create_deprecated_sessions_zset(
+        self, async_redis_client
+    ):
+        """Test that set_working_memory no longer writes legacy sessions zsets."""
+        session_id = "test_session_without_legacy_zset"
+        namespace = "test_namespace_without_legacy_zset"
+
+        working_mem = WorkingMemory(
+            session_id=session_id,
+            namespace=namespace,
+            messages=[],
+            memories=[],
+        )
+
+        await set_working_memory(working_mem, redis_client=async_redis_client)
+
+        legacy_key = f"sessions:{namespace}"
+        legacy_key_type = await async_redis_client.type(legacy_key)
+        if isinstance(legacy_key_type, bytes):
+            legacy_key_type = legacy_key_type.decode("utf-8")
+
+        assert legacy_key_type == "none"
+
+    @pytest.mark.asyncio
+    async def test_cleanup_deprecated_sessions_zsets_removes_only_legacy_zsets(
+        self, async_redis_client
+    ):
+        """Test cleanup removes legacy zsets without touching non-zset keys."""
+        await async_redis_client.zadd("sessions", {"root-session": 1})
+        await async_redis_client.zadd("sessions:test-namespace", {"session-a": 1})
+        await async_redis_client.set("sessions:keep", "not-a-zset")
+
+        deleted_keys = await cleanup_deprecated_sessions_zsets(async_redis_client)
+
+        assert deleted_keys == 2
+
+        root_type = await async_redis_client.type("sessions")
+        namespaced_type = await async_redis_client.type("sessions:test-namespace")
+        if isinstance(root_type, bytes):
+            root_type = root_type.decode("utf-8")
+        if isinstance(namespaced_type, bytes):
+            namespaced_type = namespaced_type.decode("utf-8")
+
+        assert root_type == "none"
+        assert namespaced_type == "none"
+        assert await async_redis_client.get("sessions:keep") == b"not-a-zset"
 
     @pytest.mark.asyncio
     async def test_delete_working_memory_removes_session_from_search_index(

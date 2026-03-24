@@ -16,6 +16,7 @@ from agent_memory_server.cli import (
     delete_session_cmd,
     mcp,
     migrate_memories,
+    migrate_working_memory,
     rebuild_index,
     schedule_task,
     search,
@@ -104,6 +105,69 @@ class TestMigrateMemories:
         mock_migration2.assert_called_once_with(redis=mock_redis)
         mock_migration3.assert_called_once_with(redis=mock_redis)
         mock_migration4.assert_called_once_with(redis=mock_redis)
+
+
+class TestMigrateWorkingMemory:
+    """Tests for the migrate_working_memory command."""
+
+    @patch(
+        "agent_memory_server.working_memory.cleanup_deprecated_sessions_zsets",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "agent_memory_server.working_memory.set_migration_complete",
+        new_callable=AsyncMock,
+    )
+    @patch("agent_memory_server.cli.get_redis_conn", new_callable=AsyncMock)
+    def test_migrate_working_memory_cleans_legacy_sessions_zsets(
+        self,
+        mock_get_redis_conn,
+        mock_set_migration_complete,
+        mock_cleanup_sessions_zsets,
+    ):
+        """Test migrate_working_memory performs legacy sessions zset cleanup."""
+        mock_redis = Mock()
+        mock_redis.scan = AsyncMock(return_value=(0, []))
+        mock_get_redis_conn.return_value = mock_redis
+        mock_cleanup_sessions_zsets.return_value = 2
+
+        runner = CliRunner()
+        result = runner.invoke(migrate_working_memory)
+
+        assert result.exit_code == 0
+        assert "String format (need migration): 0" in result.output
+        assert "Removed 2 legacy sessions sorted set key(s)" in result.output
+        assert "No keys need migration. All done!" in result.output
+        mock_cleanup_sessions_zsets.assert_awaited_once_with(mock_redis)
+        mock_set_migration_complete.assert_awaited_once_with(mock_redis)
+
+    @patch(
+        "agent_memory_server.working_memory.cleanup_deprecated_sessions_zsets",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "agent_memory_server.working_memory.set_migration_complete",
+        new_callable=AsyncMock,
+    )
+    @patch("agent_memory_server.cli.get_redis_conn", new_callable=AsyncMock)
+    def test_migrate_working_memory_dry_run_skips_cleanup(
+        self,
+        mock_get_redis_conn,
+        mock_set_migration_complete,
+        mock_cleanup_sessions_zsets,
+    ):
+        """Test dry-run does not perform cleanup or mark migration complete."""
+        mock_redis = Mock()
+        mock_redis.scan = AsyncMock(return_value=(0, []))
+        mock_get_redis_conn.return_value = mock_redis
+
+        runner = CliRunner()
+        result = runner.invoke(migrate_working_memory, ["--dry-run"])
+
+        assert result.exit_code == 0
+        assert "--dry-run specified, no changes made." in result.output
+        mock_cleanup_sessions_zsets.assert_not_awaited()
+        mock_set_migration_complete.assert_not_awaited()
 
 
 class TestApiCommand:
@@ -806,6 +870,42 @@ class TestSearch:
         assert call_kwargs["distance_threshold"] == 0.5
 
     @patch("agent_memory_server.long_term_memory.search_long_term_memories")
+    def test_search_omits_hybrid_defaults_when_unset(self, mock_search):
+        """CLI should let the server own hybrid defaults unless explicitly set."""
+        from agent_memory_server.models import MemoryRecordResults
+
+        mock_search.return_value = MemoryRecordResults(
+            memories=[],
+            total=0,
+            next_offset=None,
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(search, ["test query", "--search-mode", "hybrid"])
+
+        assert result.exit_code == 0
+        call_kwargs = mock_search.call_args[1]
+        assert call_kwargs["search_mode"].value == "hybrid"
+        assert "hybrid_alpha" not in call_kwargs
+        assert "text_scorer" not in call_kwargs
+
+    @patch("agent_memory_server.long_term_memory.search_long_term_memories")
+    def test_search_rejects_distance_threshold_for_keyword_mode(self, mock_search):
+        """distance_threshold should fail fast outside semantic mode."""
+        runner = CliRunner()
+        result = runner.invoke(
+            search,
+            ["test query", "--search-mode", "keyword", "--distance-threshold", "0.5"],
+        )
+
+        assert result.exit_code != 0
+        assert (
+            "distance_threshold is only supported for semantic search mode"
+            in result.output
+        )
+        mock_search.assert_not_called()
+
+    @patch("agent_memory_server.long_term_memory.search_long_term_memories")
     def test_search_json_output(self, mock_search):
         """Test search with JSON output format."""
         from agent_memory_server.models import MemoryRecordResult, MemoryRecordResults
@@ -1437,6 +1537,7 @@ class TestCliGroup:
             "version",
             "rebuild-index",
             "migrate-memories",
+            "migrate-working-memory",
             "api",
             "mcp",
             "schedule-task",

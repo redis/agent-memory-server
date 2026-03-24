@@ -12,7 +12,7 @@ Context Protocol), switchable at runtime from the header toggle.
 
 ### Memory Explorer (`/`)
 
-- Full-text and semantic search across long-term memories
+- Semantic, keyword, and hybrid search across long-term memories
 - Filter by memory type (semantic, episodic, message) and result limit
 - Results with a detail panel showing all memory fields (topics, entities,
   namespace, user, session, timestamps, and more)
