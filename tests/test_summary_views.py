@@ -1507,9 +1507,7 @@ class TestPeriodicRefreshSummaryViews:
         s = Settings()
         assert s.summary_view_refresh_every_minutes == 60
 
-    def test_config_summary_view_refresh_every_minutes_override(
-        self, monkeypatch
-    ):
+    def test_config_summary_view_refresh_every_minutes_override(self, monkeypatch):
         """summary_view_refresh_every_minutes should be overridable via env var."""
         monkeypatch.setenv("SUMMARY_VIEW_REFRESH_EVERY_MINUTES", "5")
         from agent_memory_server.config import Settings
