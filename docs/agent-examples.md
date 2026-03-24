@@ -383,9 +383,9 @@ When working memory grows large, retrieving all messages is expensive. The `rece
 ### Key Features
 
 - **Efficient Retrieval**: Fetch only the messages you need instead of the full history
-- **SDK Integration**: Uses `agent_memory_client` for both storing and retrieving working memory
-- **Multiple Scenarios**: Tests various limits (3, 5, 1, 0) and compares with unlimited retrieval
-- **Direct API Verification**: Also demonstrates the raw HTTP API for comparison
+- **SDK & HTTP Integration**: Uses `agent_memory_client` to store working memory and raw HTTP requests to retrieve it
+- **Multiple Scenarios**: Tests various limits (3, 5, 20, 2) to show how `recent_messages_limit` changes the results
+- **Direct API Verification**: Uses the raw HTTP API for retrieval so you can inspect the exact responses from the server
 
 ### Usage Examples
 
