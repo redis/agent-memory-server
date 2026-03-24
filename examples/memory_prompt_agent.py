@@ -144,11 +144,8 @@ class MemoryPromptAgent:
             model_name="gpt-4o-mini",  # Controls token-based truncation
             long_term_search={
                 "limit": 30,
-                # More permissive distance threshold (relevance ~= 1 - distance)
-                # 0.7 distance ≈ 30% min relevance, suitable for generic demo queries
-                "distance_threshold": 0.7,
-                # Let the server optimize vague queries for better recall
                 "optimize_query": True,
+                "search_mode": "hybrid",  # Blend keyword + semantic for better recall
             },
             user_id=user_id,
         )
@@ -300,6 +297,7 @@ class MemoryPromptAgent:
                 text="Alice",
                 namespace=Namespace(eq=self._get_namespace(user_id)),
                 user_id=UserId(eq=user_id),
+                search_mode="keyword",  # Exact name lookup
                 limit=10,
             )
 
