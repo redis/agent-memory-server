@@ -81,7 +81,10 @@ SYSTEM_PROMPT = {
        events, or other up-to-date data when specifically needed.
 
     2. **Memory Management Tools** (always available):
-       - **search_memory**: Look up previous conversations and stored information
+       - **search_memory**: Look up previous conversations and stored information.
+         Supports three search modes: 'semantic' (default, meaning-based),
+         'keyword' (exact term matching), and 'hybrid' (combines both).
+         Use 'keyword' when looking for specific names or identifiers.
        - **get_or_create_working_memory**: Check current session context
        - **lazily_create_long_term_memory**: Store important preferences or information
        - **update_working_memory_data**: Save session-specific data
@@ -496,32 +499,142 @@ class TravelAgent:
                         show_memories,
                     )
                 # Check for LangChain-style tool_calls (array of calls)
-                if "tool_calls" in response.additional_kwargs:
-                    tool_calls = response.additional_kwargs["tool_calls"]
-                    if tool_calls and len(tool_calls) > 0:
-                        # Process ALL tool calls, then provide JSON tool messages back to the model
-                        client = await self.get_client()
+                # Modern LangChain puts tool_calls as a direct attribute;
+                # older versions put them in additional_kwargs.
+                raw_tool_calls = getattr(response, "tool_calls", None) or (
+                    response.additional_kwargs.get("tool_calls")
+                )
+                if raw_tool_calls and len(raw_tool_calls) > 0:
+                    tool_calls = raw_tool_calls
+                    # Process ALL tool calls, then provide JSON tool messages back to the model
+                    client = await self.get_client()
 
-                        # Normalize tool calls to OpenAI current-format
-                        normalized_calls: list[dict] = []
-                        for idx, tc in enumerate(tool_calls):
-                            if tc.get("type") == "function" and "function" in tc:
-                                normalized_calls.append(tc)
+                    # Normalize tool calls to OpenAI current-format
+                    normalized_calls: list[dict] = []
+                    for idx, tc in enumerate(tool_calls):
+                        if tc.get("type") == "function" and "function" in tc:
+                            normalized_calls.append(tc)
+                        else:
+                            name = tc.get("function", {}).get(
+                                "name", tc.get("name", "")
+                            )
+                            args_value = tc.get("function", {}).get(
+                                "arguments",
+                                tc.get("arguments", tc.get("args", {})),
+                            )
+                            if not isinstance(args_value, str):
+                                try:
+                                    args_value = json.dumps(args_value)
+                                except Exception:
+                                    args_value = "{}"
+                            normalized_calls.append(
+                                {
+                                    "id": tc.get("id", f"tool_call_{idx}"),
+                                    "type": "function",
+                                    "function": {
+                                        "name": name,
+                                        "arguments": args_value,
+                                    },
+                                }
+                            )
+
+                    # Resolve calls sequentially; capture results
+                    results = []
+                    for call in normalized_calls:
+                        fname = call.get("function", {}).get("name", "")
+                        try:
+                            res = await client.resolve_tool_call(
+                                tool_call={
+                                    "name": fname,
+                                    "arguments": call.get("function", {}).get(
+                                        "arguments", "{}"
+                                    ),
+                                },
+                                session_id=session_id,
+                                namespace=self._get_namespace(user_id),
+                                user_id=user_id,
+                            )
+                        except Exception as e:
+                            logger.error(f"Tool '{fname}' failed: {e}")
+                            res = {"success": False, "error": str(e)}
+                        results.append((call, res))
+
+                    # Build assistant echo plus tool results as JSON content
+                    assistant_tools_msg = {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": normalized_calls,
+                    }
+
+                    tool_messages: list[dict] = []
+                    for i, (tc, res) in enumerate(results):
+                        if not res.get("success", False):
+                            logger.error(
+                                f"Suppressing user-visible error for tool '{tc.get('function', {}).get('name', '')}': {res.get('error')}"
+                            )
+                            continue
+                        payload = res.get("result")
+                        try:
+                            content = (
+                                json.dumps(payload)
+                                if isinstance(payload, dict | list)
+                                else str(res.get("formatted_response", ""))
+                            )
+                        except Exception:
+                            content = str(res.get("formatted_response", ""))
+                        tool_messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc.get("id", f"tool_call_{i}"),
+                                "name": tc.get("function", {}).get("name", ""),
+                                "content": content,
+                            }
+                        )
+
+                    # Give the model one follow-up round to chain further
+                    messages = context_messages + [assistant_tools_msg] + tool_messages
+                    followup = self.llm.invoke(messages)
+                    # Optional: one more round if tool_calls requested
+                    rounds = 0
+                    max_rounds = 1
+                    while (
+                        rounds < max_rounds
+                        and hasattr(followup, "tool_calls")
+                        and followup.tool_calls
+                    ):
+                        rounds += 1
+                        follow_calls = followup.tool_calls
+                        # Resolve
+                        follow_results = []
+                        for _j, fcall in enumerate(follow_calls):
+                            fname = fcall.get("name", "")
+                            try:
+                                fres = await client.resolve_tool_call(
+                                    tool_call=fcall,
+                                    session_id=session_id,
+                                    namespace=self._get_namespace(user_id),
+                                    user_id=user_id,
+                                )
+                            except Exception as e:
+                                logger.error(f"Follow-up tool '{fname}' failed: {e}")
+                                fres = {"success": False, "error": str(e)}
+                            follow_results.append((fcall, fres))
+                        # Echo
+                        norm_follow = []
+                        for idx2, fc in enumerate(follow_calls):
+                            if fc.get("type") == "function" and "function" in fc:
+                                norm_follow.append(fc)
                             else:
-                                name = tc.get("function", {}).get(
-                                    "name", tc.get("name", "")
-                                )
-                                args_value = tc.get("function", {}).get(
-                                    "arguments", tc.get("arguments", {})
-                                )
+                                name = fc.get("name", "")
+                                args_value = fc.get("arguments", fc.get("args", {}))
                                 if not isinstance(args_value, str):
                                     try:
                                         args_value = json.dumps(args_value)
                                     except Exception:
                                         args_value = "{}"
-                                normalized_calls.append(
+                                norm_follow.append(
                                     {
-                                        "id": tc.get("id", f"tool_call_{idx}"),
+                                        "id": fc.get("id", f"tool_call_follow_{idx2}"),
                                         "type": "function",
                                         "function": {
                                             "name": name,
@@ -529,154 +642,43 @@ class TravelAgent:
                                         },
                                     }
                                 )
-
-                        # Resolve calls sequentially; capture results
-                        results = []
-                        for call in normalized_calls:
-                            fname = call.get("function", {}).get("name", "")
-                            try:
-                                res = await client.resolve_tool_call(
-                                    tool_call={
-                                        "name": fname,
-                                        "arguments": call.get("function", {}).get(
-                                            "arguments", "{}"
-                                        ),
-                                    },
-                                    session_id=session_id,
-                                    namespace=self._get_namespace(user_id),
-                                    user_id=user_id,
-                                )
-                            except Exception as e:
-                                logger.error(f"Tool '{fname}' failed: {e}")
-                                res = {"success": False, "error": str(e)}
-                            results.append((call, res))
-
-                        # Build assistant echo plus tool results as JSON content
-                        assistant_tools_msg = {
-                            "role": "assistant",
-                            "content": "",
-                            "tool_calls": normalized_calls,
-                        }
-
-                        tool_messages: list[dict] = []
-                        for i, (tc, res) in enumerate(results):
-                            if not res.get("success", False):
+                        messages.append(
+                            {
+                                "role": "assistant",
+                                "content": "",
+                                "tool_calls": norm_follow,
+                            }
+                        )
+                        for k, (fc, fr) in enumerate(follow_results):
+                            if not fr.get("success", False):
                                 logger.error(
-                                    f"Suppressing user-visible error for tool '{tc.get('function', {}).get('name', '')}': {res.get('error')}"
+                                    f"Suppressing user-visible error for follow-up tool '{fc.get('name', '')}': {fr.get('error')}"
                                 )
                                 continue
-                            payload = res.get("result")
+                            payload = fr.get("result")
                             try:
                                 content = (
                                     json.dumps(payload)
                                     if isinstance(payload, dict | list)
-                                    else str(res.get("formatted_response", ""))
+                                    else str(fr.get("formatted_response", ""))
                                 )
                             except Exception:
-                                content = str(res.get("formatted_response", ""))
-                            tool_messages.append(
+                                content = str(fr.get("formatted_response", ""))
+                            messages.append(
                                 {
                                     "role": "tool",
-                                    "tool_call_id": tc.get("id", f"tool_call_{i}"),
-                                    "name": tc.get("function", {}).get("name", ""),
+                                    "tool_call_id": fc.get(
+                                        "id", f"tool_call_follow_{k}"
+                                    ),
+                                    "name": fc.get("function", {}).get(
+                                        "name", fc.get("name", "")
+                                    ),
                                     "content": content,
                                 }
                             )
-
-                        # Give the model one follow-up round to chain further
-                        messages = (
-                            context_messages + [assistant_tools_msg] + tool_messages
-                        )
                         followup = self.llm.invoke(messages)
-                        # Optional: one more round if tool_calls requested
-                        rounds = 0
-                        max_rounds = 1
-                        while (
-                            rounds < max_rounds
-                            and hasattr(followup, "tool_calls")
-                            and followup.tool_calls
-                        ):
-                            rounds += 1
-                            follow_calls = followup.tool_calls
-                            # Resolve
-                            follow_results = []
-                            for _j, fcall in enumerate(follow_calls):
-                                fname = fcall.get("name", "")
-                                try:
-                                    fres = await client.resolve_tool_call(
-                                        tool_call=fcall,
-                                        session_id=session_id,
-                                        namespace=self._get_namespace(user_id),
-                                        user_id=user_id,
-                                    )
-                                except Exception as e:
-                                    logger.error(
-                                        f"Follow-up tool '{fname}' failed: {e}"
-                                    )
-                                    fres = {"success": False, "error": str(e)}
-                                follow_results.append((fcall, fres))
-                            # Echo
-                            norm_follow = []
-                            for idx2, fc in enumerate(follow_calls):
-                                if fc.get("type") == "function" and "function" in fc:
-                                    norm_follow.append(fc)
-                                else:
-                                    name = fc.get("name", "")
-                                    args_value = fc.get("arguments", fc.get("args", {}))
-                                    if not isinstance(args_value, str):
-                                        try:
-                                            args_value = json.dumps(args_value)
-                                        except Exception:
-                                            args_value = "{}"
-                                    norm_follow.append(
-                                        {
-                                            "id": fc.get(
-                                                "id", f"tool_call_follow_{idx2}"
-                                            ),
-                                            "type": "function",
-                                            "function": {
-                                                "name": name,
-                                                "arguments": args_value,
-                                            },
-                                        }
-                                    )
-                            messages.append(
-                                {
-                                    "role": "assistant",
-                                    "content": "",
-                                    "tool_calls": norm_follow,
-                                }
-                            )
-                            for k, (fc, fr) in enumerate(follow_results):
-                                if not fr.get("success", False):
-                                    logger.error(
-                                        f"Suppressing user-visible error for follow-up tool '{fc.get('name', '')}': {fr.get('error')}"
-                                    )
-                                    continue
-                                payload = fr.get("result")
-                                try:
-                                    content = (
-                                        json.dumps(payload)
-                                        if isinstance(payload, dict | list)
-                                        else str(fr.get("formatted_response", ""))
-                                    )
-                                except Exception:
-                                    content = str(fr.get("formatted_response", ""))
-                                messages.append(
-                                    {
-                                        "role": "tool",
-                                        "tool_call_id": fc.get(
-                                            "id", f"tool_call_follow_{k}"
-                                        ),
-                                        "name": fc.get("function", {}).get(
-                                            "name", fc.get("name", "")
-                                        ),
-                                        "content": content,
-                                    }
-                                )
-                            followup = self.llm.invoke(messages)
 
-                        return str(followup.content)
+                    return str(followup.content)
 
             response_content = str(response.content)
 
@@ -786,6 +788,7 @@ class TravelAgent:
                 text="Sarah",
                 namespace=Namespace(eq=self._get_namespace(user_id)),
                 user_id=UserId(eq=user_id),
+                search_mode="keyword",  # Use keyword for exact name lookup
                 limit=10,
             )
 
