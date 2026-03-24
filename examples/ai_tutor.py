@@ -31,8 +31,7 @@ from agent_memory_client import MemoryAPIClient, create_memory_client
 from agent_memory_client.filters import CreatedAt, MemoryType, Namespace, Topics
 from agent_memory_client.models import ClientMemoryRecord, MemoryTypeEnum
 from dotenv import load_dotenv
-from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.agents import create_agent
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 
@@ -112,8 +111,8 @@ QUIZ_GENERATION_SYSTEM_PROMPT = (
 )
 
 
-def _create_agent_executor(user_id: str) -> AgentExecutor | None:
-    """Create an AgentExecutor wired to our server tools, with user_id injected."""
+def _create_agent(user_id: str):
+    """Create a LangGraph react agent wired to our server tools, with user_id injected."""
     llm = _get_llm()
     if not llm:
         return None
@@ -183,13 +182,11 @@ def _create_agent_executor(user_id: str) -> AgentExecutor | None:
             data = json.loads(content)
             if not isinstance(data, dict):
                 raise ValueError("not dict")
-            # Ensure keys present
             result = {
                 "correct": bool(data.get("correct", False)),
                 "feedback": str(data.get("feedback", "")).strip(),
             }
         except Exception:
-            # Fallback: strict match check
             result = {
                 "correct": (student or "").strip().lower()
                 == (expected or "").strip().lower(),
@@ -208,15 +205,15 @@ def _create_agent_executor(user_id: str) -> AgentExecutor | None:
         "You are a tutoring agent. Use tools for storing quiz results and listing recent quiz events. "
         "When summarizing, always include dates from event_date in '<Mon DD, YYYY>' format."
     )
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", system_prompt),
-            ("human", "{input}"),
-            MessagesPlaceholder("agent_scratchpad"),
-        ]
-    )
-    agent = create_tool_calling_agent(llm, tools, prompt)
-    return AgentExecutor(agent=agent, tools=tools)
+    return create_agent(llm, tools, system_prompt=system_prompt)
+
+
+def _extract_agent_output(res: dict) -> str:
+    """Extract the final text output from a LangGraph agent response."""
+    messages = res.get("messages", [])
+    if messages:
+        return messages[-1].content if hasattr(messages[-1], "content") else ""
+    return ""
 
 
 async def _generate_quiz(
@@ -333,6 +330,8 @@ async def _tool_search_quiz_results(user_id: str, since_days: int = 7) -> list[d
         topics=Topics(any=["quiz"]),
         memory_type=MemoryType(eq="episodic"),
         created_at=CreatedAt(gte=(datetime.now(UTC) - timedelta(days=since_days))),
+        # Optional: use search_mode="keyword" for exact term matching,
+        # or search_mode="hybrid" to blend keyword + semantic results.
         limit=100,
     )
     formatted: list[dict] = []
@@ -385,18 +384,21 @@ async def record_quiz_result(
 
 
 async def get_weak_concepts(user_id: str, since_days: int = 30) -> list[str]:
-    executor = _create_agent_executor(user_id)
-    if not executor:
+    agent = _create_agent(user_id)
+    if not agent:
         raise RuntimeError("OPENAI_API_KEY required for agent operations")
-    res = await executor.ainvoke(
+    res = await agent.ainvoke(
         {
-            "input": (
-                f"Use search_quiz_results(since_days={since_days}) and return ONLY a JSON array of weak concepts (strings) "
-                "by selecting entries that were answered incorrectly."
-            )
+            "messages": [
+                (
+                    "human",
+                    f"Use search_quiz_results(since_days={since_days}) and return ONLY a JSON array of weak concepts (strings) "
+                    "by selecting entries that were answered incorrectly.",
+                )
+            ]
         }
     )
-    content = res.get("output", "") if isinstance(res, dict) else ""
+    content = _extract_agent_output(res)
     try:
         data = json.loads(content)
         if isinstance(data, list):
@@ -415,18 +417,21 @@ async def practice_next(user_id: str) -> str:
 
 
 async def recent_summary(user_id: str, since_days: int = 7) -> list[str]:
-    executor = _create_agent_executor(user_id)
-    if not executor:
+    agent = _create_agent(user_id)
+    if not agent:
         raise RuntimeError("OPENAI_API_KEY required for agent operations")
-    res = await executor.ainvoke(
+    res = await agent.ainvoke(
         {
-            "input": (
-                f"Call search_quiz_results(since_days={since_days}) and produce a summary where each line is in the format "
-                "'<Mon DD, YYYY> — <Topic Title Case> / <concept>: <correct|incorrect>' and always include the date."
-            )
+            "messages": [
+                (
+                    "human",
+                    f"Call search_quiz_results(since_days={since_days}) and produce a summary where each line is in the format "
+                    "'<Mon DD, YYYY> — <Topic Title Case> / <concept>: <correct|incorrect>' and always include the date.",
+                )
+            ]
         }
     )
-    content = res.get("output", "") if isinstance(res, dict) else ""
+    content = _extract_agent_output(res)
     return [line for line in (content or "").splitlines() if line.strip()]
 
 
@@ -435,17 +440,20 @@ async def run_quiz(
 ) -> None:
     questions: list[Question] | None = None
     llm = _llm_bind_tools(GENERATE_QUESTIONS_FN, GRADE_ANSWER_FN)
-    executor = _create_agent_executor(user_id)
-    if executor:
-        res = await executor.ainvoke(
+    agent = _create_agent(user_id)
+    if agent:
+        res = await agent.ainvoke(
             {
-                "input": (
-                    f"Generate a {num_questions}-question quiz on topic '{topic}' at {difficulty} "
-                    "difficulty using the generate_quiz tool. Return ONLY a JSON array of {prompt, answer, concept}."
-                )
+                "messages": [
+                    (
+                        "human",
+                        f"Generate a {num_questions}-question quiz on topic '{topic}' at {difficulty} "
+                        "difficulty using the generate_quiz tool. Return ONLY a JSON array of {{prompt, answer, concept}}.",
+                    )
+                ]
             }
         )
-        content = res.get("output", "") if isinstance(res, dict) else ""
+        content = _extract_agent_output(res)
         try:
             arr = json.loads(content)
         except Exception:
@@ -476,18 +484,21 @@ async def run_quiz(
         graded_feedback = None
         if llm:
             # Agent-based grading via tool
-            executor = _create_agent_executor(user_id)
-            if executor:
-                res = await executor.ainvoke(
+            agent = _create_agent(user_id)
+            if agent:
+                res = await agent.ainvoke(
                     {
-                        "input": (
-                            "Use grade_answer(prompt=..., expected=..., student=...) and return ONLY JSON {correct, feedback}. "
-                            f"prompt={json.dumps(q.prompt)}, expected={json.dumps(q.answer)}, student={json.dumps(ans)}"
-                        )
+                        "messages": [
+                            (
+                                "human",
+                                "Use grade_answer(prompt=..., expected=..., student=...) and return ONLY JSON {correct, feedback}. "
+                                f"prompt={json.dumps(q.prompt)}, expected={json.dumps(q.answer)}, student={json.dumps(ans)}",
+                            )
+                        ]
                     }
                 )
                 try:
-                    payload = res.get("output", "") if isinstance(res, dict) else ""
+                    payload = _extract_agent_output(res)
                     data = json.loads(payload)
                     if isinstance(data, dict):
                         graded_feedback = data.get("feedback")
@@ -520,19 +531,22 @@ async def run_demo(user_id: str, session_id: str) -> None:
     num_questions = 4
     difficulty = "mixed"
 
-    # Generate quiz via agent tool (executor)
-    executor = _create_agent_executor(user_id)
+    # Generate quiz via agent tool
+    agent = _create_agent(user_id)
     questions: list[Question] = []
-    if executor:
-        res = await executor.ainvoke(
+    if agent:
+        res = await agent.ainvoke(
             {
-                "input": (
-                    f"Use generate_quiz(topic='{topic}', num_questions={num_questions}, difficulty='{difficulty}') "
-                    "and return ONLY a JSON array of {prompt, answer, concept}."
-                )
+                "messages": [
+                    (
+                        "human",
+                        f"Use generate_quiz(topic='{topic}', num_questions={num_questions}, difficulty='{difficulty}') "
+                        "and return ONLY a JSON array of {{prompt, answer, concept}}.",
+                    )
+                ]
             }
         )
-        content = res.get("output", "") if isinstance(res, dict) else ""
+        content = _extract_agent_output(res)
         try:
             arr = json.loads(content)
             if isinstance(arr, list):
@@ -582,20 +596,23 @@ async def run_demo(user_id: str, session_id: str) -> None:
     correct_count = 0
     for i, q in enumerate(questions):
         student_answer = answers[i]
-        executor = _create_agent_executor(user_id)
+        agent = _create_agent(user_id)
         is_correct = _normalize(student_answer) == _normalize(q.answer)
         feedback = None
-        if executor:
-            res_g = await executor.ainvoke(
+        if agent:
+            res_g = await agent.ainvoke(
                 {
-                    "input": (
-                        "Use grade_answer(prompt=..., expected=..., student=...) and return ONLY JSON {correct, feedback}. "
-                        f"prompt={json.dumps(q.prompt)}, expected={json.dumps(q.answer)}, student={json.dumps(student_answer)}"
-                    )
+                    "messages": [
+                        (
+                            "human",
+                            "Use grade_answer(prompt=..., expected=..., student=...) and return ONLY JSON {correct, feedback}. "
+                            f"prompt={json.dumps(q.prompt)}, expected={json.dumps(q.answer)}, student={json.dumps(student_answer)}",
+                        )
+                    ]
                 }
             )
             try:
-                payload = res_g.get("output", "") if isinstance(res_g, dict) else ""
+                payload = _extract_agent_output(res_g)
                 data = json.loads(payload)
                 if isinstance(data, dict):
                     feedback = data.get("feedback")
