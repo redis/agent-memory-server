@@ -1481,6 +1481,40 @@ class TestPeriodicRefreshSummaryViews:
         # Should have been called for continuous view
         mock_refresh.assert_called_once_with("test-continuous", task_id=None)
 
+    def test_periodic_refresh_uses_configurable_interval(self):
+        """periodic_refresh_summary_views should use settings.summary_view_refresh_every_minutes."""
+        import inspect
+        from datetime import timedelta
+
+        from agent_memory_server import config
+        from agent_memory_server.summary_views import periodic_refresh_summary_views
+
+        # Verify default value is 60
+        assert config.settings.summary_view_refresh_every_minutes == 60
+
+        # The Perpetual default should reference the setting.
+        # Inspect the function signature to verify the default uses the setting value.
+        sig = inspect.signature(periodic_refresh_summary_views)
+        perpetual_default = sig.parameters["perpetual"].default
+        assert perpetual_default.every == timedelta(
+            minutes=config.settings.summary_view_refresh_every_minutes
+        )
+
+    def test_config_summary_view_refresh_every_minutes_default(self):
+        """Settings should have summary_view_refresh_every_minutes with default 60."""
+        from agent_memory_server.config import Settings
+
+        s = Settings()
+        assert s.summary_view_refresh_every_minutes == 60
+
+    def test_config_summary_view_refresh_every_minutes_override(self, monkeypatch):
+        """summary_view_refresh_every_minutes should be overridable via env var."""
+        monkeypatch.setenv("SUMMARY_VIEW_REFRESH_EVERY_MINUTES", "5")
+        from agent_memory_server.config import Settings
+
+        s = Settings()
+        assert s.summary_view_refresh_every_minutes == 5
+
 
 class TestBuildLongTermSummaryPromptEdgeCases:
     """Additional tests for _build_long_term_summary_prompt edge cases."""

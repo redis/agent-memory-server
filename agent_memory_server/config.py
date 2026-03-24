@@ -489,6 +489,9 @@ Optimized query:"""
     # Keep only top N most recent (by recency score) when budget is set
     forgetting_budget_keep_top_n: int | None = None
 
+    # Summary view refresh settings
+    summary_view_refresh_every_minutes: int = Field(default=60, gt=0)
+
     # Compaction settings
     compaction_every_minutes: int = 10
     compact_semantic_duplicates: bool = True
