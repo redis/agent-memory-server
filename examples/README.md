@@ -245,7 +245,7 @@ Demonstrates the `recent_messages_limit` parameter for controlling how many rece
 
 ### Core Features
 - **Message Limiting**: Shows how `recent_messages_limit` caps the number of messages returned
-- **LIFO Ordering**: Returns the N most recent messages (last in, first out)
+- **Recent Messages Window**: Returns up to N most recent messages in chronological order (oldest to newest)
 - **Data Preservation**: Context and structured data are always returned regardless of message limit
 - **Client SDK Usage**: Uses `agent_memory_client` for working memory and `httpx` for the limit parameter
 
