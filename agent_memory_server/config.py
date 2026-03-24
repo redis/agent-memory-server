@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -488,7 +488,7 @@ Optimized query:"""
     forgetting_budget_keep_top_n: int | None = None
 
     # Summary view refresh settings
-    summary_view_refresh_every_minutes: int = 60
+    summary_view_refresh_every_minutes: int = Field(default=60, gt=0)
 
     # Compaction settings
     compaction_every_minutes: int = 10
