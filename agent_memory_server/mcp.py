@@ -389,7 +389,7 @@ async def create_long_term_memories(
             {
                 "text": "User reported login issues during morning session",
                 "memory_type": "episodic",
-                "event_date": "2024-01-15T09:30:00Z",  # Semantic memories must have an event_date!
+                "event_date": "2024-01-15T09:30:00Z",  # Episodic memories should include an event_date
                 "user_id": "user_789",
                 "topics": ["bug_report", "authentication"],
                 "entities": ["login", "authentication_system"]
@@ -803,7 +803,9 @@ async def set_working_memory(
     long_term_memory_strategy: MemoryStrategyConfig | None = None,
 ) -> WorkingMemoryResponse:
     """
-    Set working memory for a session. This works like the PUT /sessions/{id}/memory API endpoint.
+    Set working memory for a session.
+
+    This works like the `PUT /v1/working-memory/{session_id}` REST API endpoint.
 
     Replaces existing working memory with new content. Can store structured memory records
     and messages, but agents should primarily use this for memory records and JSON data,
@@ -984,7 +986,9 @@ async def get_working_memory(
     recent_messages_limit: int | None = None,
 ) -> WorkingMemory:
     """
-    Get working memory for a session. This works like the GET /sessions/{id}/memory API endpoint.
+    Get working memory for a session.
+
+    This works like the `GET /v1/working-memory/{session_id}` REST API endpoint.
 
     Args:
         session_id: The session ID to retrieve working memory for

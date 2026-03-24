@@ -1,6 +1,6 @@
 # Authentication
 
-The Redis Agent Memory Server supports multiple authentication modes for secure API access. All API endpoints (except `/health`, `/docs`, and `/openapi.json`) require valid authentication unless disabled for development.
+The Redis Agent Memory Server supports multiple authentication modes for secure API access. All API endpoints (except `/v1/health`, `/docs`, and `/openapi.json`) require valid authentication unless disabled for development.
 
 ## Authentication Modes
 

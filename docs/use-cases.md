@@ -11,12 +11,12 @@ Redis Agent Memory Server enables powerful AI applications by providing persiste
 **Solution**: Memory server stores customer interactions, preferences, and issue history for instant retrieval.
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
-client = MemoryAPIClient(base_url="http://localhost:8000")
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
 
 # Store customer profile and preferences
-await client.create_long_term_memories([
+await client.create_long_term_memory([
     {
         "text": "Customer Alice Johnson (alice@company.com) prefers email communication, has Pro subscription, works in marketing team",
         "memory_type": "semantic",
@@ -28,7 +28,7 @@ await client.create_long_term_memories([
 ])
 
 # Store previous issue resolution
-await client.create_long_term_memories([
+await client.create_long_term_memory([
     {
         "text": "Customer Alice Johnson resolved login issue on January 10, 2024 by clearing browser cache",
         "memory_type": "episodic",
@@ -77,9 +77,13 @@ async def handle_support_request(customer_email: str, current_issue: str):
 **Solution**: Dual-layer memory system that maintains conversation state and learns long-term preferences.
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class PersonalAssistant:
     def __init__(self):
-        self.client = MemoryAPIClient(base_url="http://localhost:8000")
+        self.client = MemoryAPIClient(
+            MemoryClientConfig(base_url="http://localhost:8000")
+        )
         self.user_id = "user_john_doe"
 
     async def process_conversation_turn(self, session_id: str, user_message: str, assistant_response: str):
@@ -94,17 +98,15 @@ class PersonalAssistant:
         )
 
         # System automatically extracts important information to long-term memory
-        await self.client.set_working_memory(session_id, working_memory)
+        await self.client.put_working_memory(session_id, working_memory)
 
     async def get_contextual_response(self, session_id: str, user_query: str):
         # Get enriched prompt with personal context
         prompt_data = await self.client.memory_prompt(
             query=user_query,
-            session={
-                "session_id": session_id,
-                "user_id": self.user_id,
-                "model_name": "gpt-4o"
-            },
+            session_id=session_id,
+            user_id=self.user_id,
+            model_name="gpt-4o",
             long_term_search={
                 "text": user_query,
                 "filters": {"user_id": {"eq": self.user_id}},
@@ -149,9 +151,13 @@ response_data = await assistant.get_contextual_response(
 **Solution**: Memory system stores project context, coding patterns, and problem-solution pairs for contextual assistance.
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class CodingAssistant:
     def __init__(self, project_name: str):
-        self.client = MemoryAPIClient(base_url="http://localhost:8000")
+        self.client = MemoryAPIClient(
+            MemoryClientConfig(base_url="http://localhost:8000")
+        )
         self.project_namespace = f"project_{project_name}"
 
     async def learn_project_context(self):
@@ -180,7 +186,7 @@ class CodingAssistant:
             }
         ]
 
-        await self.client.create_long_term_memories(project_memories)
+        await self.client.create_long_term_memory(project_memories)
 
     async def store_solution_pattern(self, problem: str, solution: str, code_example: str = None):
         """Store problem-solution patterns for reuse"""
@@ -188,7 +194,7 @@ class CodingAssistant:
         if code_example:
             memory_text += f"\nCode example: {code_example}"
 
-        await self.client.create_long_term_memories([{
+        await self.client.create_long_term_memory([{
             "text": memory_text,
             "memory_type": "episodic",
             "topics": ["problem_solving", "code_patterns", "solutions"],
@@ -242,9 +248,13 @@ help_data = await assistant.get_contextual_help(
 **Solution**: Structured memory system that organizes research findings, tracks sources, and maintains topic relationships.
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class ResearchAssistant:
     def __init__(self, research_topic: str):
-        self.client = MemoryAPIClient(base_url="http://localhost:8000")
+        self.client = MemoryAPIClient(
+            MemoryClientConfig(base_url="http://localhost:8000")
+        )
         self.topic_namespace = f"research_{research_topic.lower().replace(' ', '_')}"
 
     async def store_research_finding(self, finding: str, source: str, topics: list,
@@ -252,7 +262,7 @@ class ResearchAssistant:
         """Store research findings with metadata"""
         memory_text = f"Finding: {finding}\nSource: {source}\nConfidence: {confidence}"
 
-        await self.client.create_long_term_memories([{
+        await self.client.create_long_term_memory([{
             "text": memory_text,
             "memory_type": "episodic" if date_found else "semantic",
             "event_date": date_found,
@@ -294,7 +304,7 @@ class ResearchAssistant:
             "namespace": self.topic_namespace
         }
 
-        await self.client.create_long_term_memories([progress_memory])
+        await self.client.create_long_term_memory([progress_memory])
 
 # Usage example
 research = ResearchAssistant("AI Memory Systems")
@@ -337,14 +347,18 @@ synthesis = await research.synthesize_knowledge(
 **Solution**: Memory system tracks user preferences, purchase history, and contextual shopping behavior.
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class ShoppingAssistant:
     def __init__(self):
-        self.client = MemoryAPIClient(base_url="http://localhost:8000")
+        self.client = MemoryAPIClient(
+            MemoryClientConfig(base_url="http://localhost:8000")
+        )
 
     async def track_browsing_behavior(self, user_id: str, product_category: str,
                                     products_viewed: list, time_spent: int):
         """Store browsing patterns"""
-        await self.client.create_long_term_memories([{
+        await self.client.create_long_term_memory([{
             "text": f"User spent {time_spent} minutes browsing {product_category}, "
                    f"viewed {len(products_viewed)} products: {', '.join(products_viewed[:3])}",
             "memory_type": "episodic",
@@ -362,7 +376,7 @@ class ShoppingAssistant:
         if occasion:
             memory_text += f" for {occasion}"
 
-        await self.client.create_long_term_memories([{
+        await self.client.create_long_term_memory([{
             "text": memory_text,
             "memory_type": "episodic",
             "event_date": datetime.now().isoformat(),
@@ -375,7 +389,7 @@ class ShoppingAssistant:
     async def store_preferences(self, user_id: str, preferences: dict):
         """Store explicit user preferences"""
         for category, preference in preferences.items():
-            await self.client.create_long_term_memories([{
+            await self.client.create_long_term_memory([{
                 "text": f"User prefers {preference} in {category} category",
                 "memory_type": "semantic",
                 "topics": ["preferences", category],
@@ -449,15 +463,19 @@ recommendations = await shopping.get_personalized_recommendations(
 **Solution**: Memory system tracks learning progress, concept understanding, and adapts instruction based on individual needs.
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class LearningAssistant:
     def __init__(self, course_id: str):
-        self.client = MemoryAPIClient(base_url="http://localhost:8000")
+        self.client = MemoryAPIClient(
+            MemoryClientConfig(base_url="http://localhost:8000")
+        )
         self.course_namespace = f"course_{course_id}"
 
     async def track_concept_understanding(self, student_id: str, concept: str,
                                         understanding_level: str, evidence: str):
         """Track student understanding of concepts"""
-        await self.client.create_long_term_memories([{
+        await self.client.create_long_term_memory([{
             "text": f"Student understanding of {concept}: {understanding_level}. "
                    f"Evidence: {evidence}",
             "memory_type": "episodic",
@@ -471,7 +489,7 @@ class LearningAssistant:
     async def store_learning_preference(self, student_id: str, preference_type: str,
                                       preference: str):
         """Store individual learning preferences"""
-        await self.client.create_long_term_memories([{
+        await self.client.create_long_term_memory([{
             "text": f"Student learns best through {preference} for {preference_type}",
             "memory_type": "semantic",
             "topics": ["learning_style", preference_type],
@@ -560,9 +578,13 @@ instruction = await learning.generate_personalized_instruction(
 **Solution**: Secure memory system tracks health patterns, medication effectiveness, and lifestyle correlations.
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class HealthAssistant:
     def __init__(self):
-        self.client = MemoryAPIClient(base_url="http://localhost:8000")
+        self.client = MemoryAPIClient(
+            MemoryClientConfig(base_url="http://localhost:8000")
+        )
         self.namespace = "health_private"
 
     async def track_symptom(self, user_id: str, symptom: str, severity: int,
@@ -574,7 +596,7 @@ class HealthAssistant:
         if context:
             memory_text += f", context: {context}"
 
-        await self.client.create_long_term_memories([{
+        await self.client.create_long_term_memory([{
             "text": memory_text,
             "memory_type": "episodic",
             "event_date": datetime.now().isoformat(),
@@ -591,7 +613,7 @@ class HealthAssistant:
         if side_effects:
             memory_text += f", side effects: {', '.join(side_effects)}"
 
-        await self.client.create_long_term_memories([{
+        await self.client.create_long_term_memory([{
             "text": memory_text,
             "memory_type": "episodic",
             "event_date": datetime.now().isoformat(),

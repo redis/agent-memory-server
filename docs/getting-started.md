@@ -51,6 +51,16 @@ uv run agent-memory mcp --mode streamable-http --port 9000
 uv run agent-memory mcp --mode sse --task-backend docket
 ```
 
+### Core CLI Commands
+
+| Command | Typical Use | Backend Behavior |
+|---|---|---|
+| `uv run agent-memory api --task-backend=asyncio` | Local development (single process) | Uses `asyncio` inline tasks; no separate worker |
+| `uv run agent-memory api` | Production API server | Defaults to `docket`; run `uv run agent-memory task-worker` |
+| `uv run agent-memory mcp` | Claude Desktop / local stdio MCP | Defaults to `asyncio`; no worker required |
+| `uv run agent-memory mcp --mode sse --port 9000 --task-backend docket` | Network MCP with shared workers | Uses `docket`; run `uv run agent-memory task-worker` |
+| `uv run agent-memory task-worker --concurrency 10` | Background processing | Processes queued Docket tasks |
+
 ### Using uvx in MCP clients
 
 When configuring MCP-enabled apps (e.g., Claude Desktop), prefer `uvx` so the app can run the server without a local checkout:
@@ -85,7 +95,7 @@ uv run agent-memory task-worker
 
 **For development**, the default `--task-backend=asyncio` on the `mcp` command runs tasks inline without needing a separate worker process. For the `api` command, use `--task-backend=asyncio` explicitly when you want single-process behavior.
 
-**NOTE:** With uv, prefix the command with `uv`, e.g.: `uv run agent-memory --mode sse`. If you installed from source, you'll probably need to add `--directory` to tell uv where to find the code: `uv run --directory <path/to/checkout> run agent-memory --mode stdio`.
+**NOTE:** With uv, prefix the command with `uv`, e.g.: `uv run agent-memory mcp --mode sse`. If you installed from source, you'll probably need to add `--directory` to tell uv where to find the code: `uv --directory <path/to/checkout> run agent-memory mcp --mode stdio`.
 
 ## Docker Compose
 
@@ -93,18 +103,20 @@ To start the API using Docker Compose, follow these steps:
 
 1. Ensure that Docker and Docker Compose are installed on your system.
 
-2. Open a terminal in the project root directory (where the docker-compose.yml file is located).
+2. Open a terminal in the project root directory (where the `docker-compose.yml` file is located).
 
-3. (Optional) Set up your environment variables (such as OPENAI_API_KEY and ANTHROPIC_API_KEY) either in a .env file or by modifying the docker-compose.yml as needed.
+3. (Optional) Set up your environment variables (such as `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`) either in a `.env` file or by modifying `docker-compose.yml` as needed.
 
 4. Build and start the containers by running:
    ```bash
-   docker-compose up --build
+   docker compose up --build
    ```
 
-5. Once the containers are up, the REST API will be available at http://localhost:8000. You can also access the interactive API documentation at http://localhost:8000/docs. The MCP server will be available at http://localhost:9000/sse.
+5. Once the containers are up, the REST API will be available at http://localhost:8000. You can also access the interactive API documentation at http://localhost:8000/docs. The MCP server will be available at http://localhost:9050/sse.
+
+   Note: In Docker Compose, MCP is mapped as `9050:9000`, so you connect to port `9050` on the host. If you run MCP directly via CLI (without Compose), the default port is `9000`.
 
 6. To stop the containers, press Ctrl+C in the terminal and then run:
    ```bash
-   docker-compose down
+   docker compose down
    ```

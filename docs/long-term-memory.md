@@ -217,7 +217,7 @@ For immediate storage of important facts, you can create long-term memories dire
 
 ```python
 # Create memories directly via Python client
-await client.create_long_term_memories([
+await client.create_long_term_memory([
     {
         "text": "User prefers dark mode interfaces",
         "memory_type": "semantic",

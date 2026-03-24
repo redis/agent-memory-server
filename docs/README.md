@@ -14,7 +14,7 @@ Comprehensive documentation for building AI agents with persistent, intelligent 
 
 Understand the fundamentals:
 
-- **[Memory Types](memory-types.md)** - Working vs Long-term memory explained with examples
+- **[Memory Types](long-term-memory.md#memory-types)** - Working vs Long-term memory explained with examples
 - **[Authentication](authentication.md)** - OAuth2/JWT, token-based, and development setup
 - **[Configuration](configuration.md)** - Environment variables, settings, and deployment options
 

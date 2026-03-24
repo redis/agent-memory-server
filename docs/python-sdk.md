@@ -236,7 +236,7 @@ The SDK provides these tools for LLM integration:
 
 1. **`eagerly_create_long_term_memory`** - Create long-term memories directly for immediate storage and retrieval
 2. **`lazily_create_long_term_memory`** - Store memories that will be automatically promoted to long-term storage
-3. **`search_memory`** - Search with semantic similarity across long-term memories
+3. **`search_memory`** - Search long-term memories (supports `semantic`, `keyword`, and `hybrid` search modes)
 4. **`edit_long_term_memory`** - Update existing long-term memories
 5. **`delete_long_term_memories`** - Remove long-term memories
 6. **`get_or_create_working_memory`** - Retrieve or create a working memory session
@@ -417,9 +417,23 @@ from agent_memory_client.filters import (
 )
 from datetime import datetime, timedelta, timezone
 
-# Basic semantic search
+# Basic semantic search (default mode)
 results = await client.search_long_term_memory(
     text="user programming experience",
+    limit=10
+)
+
+# Keyword search - exact term matching
+results = await client.search_long_term_memory(
+    text="TechCorp engineer",
+    search_mode="keyword",
+    limit=10
+)
+
+# Hybrid search - blends keyword and semantic scores
+results = await client.search_long_term_memory(
+    text="user programming experience",
+    search_mode="hybrid",
     limit=10
 )
 
@@ -673,11 +687,9 @@ async def get_contextualized_response(user_message: str, session_id: str, user_i
     # Get memory-enriched context
     context = await client.memory_prompt(
         query=user_message,
-        session={
-            "session_id": session_id,
-            "user_id": user_id,
-            "model_name": "gpt-4o"
-        },
+        session_id=session_id,
+        user_id=user_id,
+        model_name="gpt-4o",
         long_term_search={
             "text": user_message,
             "limit": 5,
@@ -688,7 +700,7 @@ async def get_contextualized_response(user_message: str, session_id: str, user_i
     # Send to LLM
     response = await openai_client.chat.completions.create(
         model="gpt-4o",
-        messages=context.messages
+        messages=context["messages"]
     )
 
     return response.choices[0].message.content
@@ -697,28 +709,32 @@ async def get_contextualized_response(user_message: str, session_id: str, user_i
 ### Automatic Memory Storage
 
 ```python
+from agent_memory_client.models import WorkingMemory
+
 async def chat_with_auto_memory(message: str, session_id: str):
     # Get contextualized prompt
     context = await client.memory_prompt(
         query=message,
-        session={"session_id": session_id, "model_name": "gpt-4o"}
+        session_id=session_id,
+        model_name="gpt-4o"
     )
 
     # Generate response
     response = await openai_client.chat.completions.create(
         model="gpt-4o",
-        messages=context.messages + [{"role": "user", "content": message}]
+        messages=context["messages"] + [{"role": "user", "content": message}]
     )
 
     # Store the conversation
-    conversation = {
-        "messages": [
+    conversation = WorkingMemory(
+        session_id=session_id,
+        messages=[
             {"role": "user", "content": message},
             {"role": "assistant", "content": response.choices[0].message.content}
         ]
-    }
+    )
 
-    await client.set_working_memory(session_id, conversation)
+    await client.put_working_memory(session_id, conversation)
 
     return response.choices[0].message.content
 ```

@@ -150,9 +150,9 @@ await client.call_tool("search_long_term_memory", {
 ### Python Client
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
-client = MemoryAPIClient(base_url="http://localhost:8000")
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
 
 # Search with default recency boost
 results = await client.search_long_term_memory(

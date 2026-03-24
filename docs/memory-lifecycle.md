@@ -65,7 +65,7 @@ working_memory = WorkingMemory(
 )
 
 # Single API call stores both conversation and memories
-await client.set_working_memory("user_session", working_memory)
+await client.put_working_memory("user_session", working_memory)
 ```
 
 **Benefits**:
@@ -79,7 +79,7 @@ For real-time memory creation or when working without sessions:
 
 ```python
 # LLM can use eagerly_create_long_term_memory tool directly
-await client.create_long_term_memories([
+await client.create_long_term_memory([
     {
         "text": "User completed advanced Python certification course",
         "memory_type": "episodic",
@@ -148,9 +148,9 @@ Clients can perform direct memory management operations:
 
 #### Delete Specific Memories
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
-client = MemoryAPIClient(base_url="http://localhost:8000")
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
 
 # Delete specific long-term memories by ID
 memory_ids = ["memory-id-1", "memory-id-2"]
@@ -666,9 +666,9 @@ async def edit_long_term_memory(
 #### Client Usage Examples
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
-client = MemoryAPIClient(base_url="http://localhost:8000")
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
 
 # Simple text correction
 updated_memory = await client.edit_long_term_memory(

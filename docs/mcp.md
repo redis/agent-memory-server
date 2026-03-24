@@ -2,7 +2,7 @@
 
 Agent Memory Server offers an MCP (Model Context Protocol) server interface powered by FastMCP, providing tool-based memory management for LLMs and agents:
 
-- **set_working_memory**: Set working memory for a session (like PUT /sessions/{id}/memory API). Stores structured memory records and JSON data in working memory with automatic promotion to long-term storage.
+- **set_working_memory**: Set working memory for a session (like `PUT /v1/working-memory/{session_id}` in the REST API). Stores structured memory records and JSON data in working memory with automatic promotion to long-term storage.
 - **create_long_term_memories**: Create long-term memories directly, bypassing working memory. Useful for bulk memory creation.
 - **search_long_term_memory**: Perform semantic search across long-term memories with advanced filtering options.
 - **edit_long_term_memory**: Update existing long-term memories with new or corrected information. Allows partial updates to specific fields while preserving other data.
@@ -140,7 +140,7 @@ Cursor's MCP config is similar to Claude's, but it also supports SSE servers, so
 {
   "mcpServers": {
     "redis-memory-server": {
-      "url": "http://localhost:9000/sse"
+      "url": "http://localhost:9050/sse"
     }
   }
 }

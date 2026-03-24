@@ -134,9 +134,9 @@ See [LLM Providers](llm-providers.md) for complete model configuration options.
 Contextual grounding works automatically when memories are extracted from conversations:
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
-client = MemoryAPIClient(base_url="http://localhost:8000")
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
 
 # Add conversation messages to working memory
 working_memory = WorkingMemory(
@@ -149,7 +149,7 @@ working_memory = WorkingMemory(
 )
 
 # Save working memory - system automatically extracts and grounds memories
-await client.set_working_memory("conversation_123", working_memory)
+await client.put_working_memory("conversation_123", working_memory)
 
 # Extracted memory will be: "Dr. Smith said the user needs to exercise more"
 # Instead of: "He said I need to exercise more"
@@ -168,7 +168,7 @@ memory_record = MemoryRecord(
 )
 
 # If conversation context exists, grounding will resolve "She" to the specific person
-await client.create_long_term_memories([memory_record])
+await client.create_long_term_memory([memory_record])
 ```
 
 ## Real-World Examples

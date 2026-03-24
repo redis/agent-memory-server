@@ -279,19 +279,22 @@ POST /v1/working-memory/
 }
 
 # Via Python SDK
-from agent_memory_client import MemoryAPIClient
-from agent_memory_server.models import MemoryStrategyConfig
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+from agent_memory_client.models import MemoryStrategyConfig, WorkingMemory
 
-client = MemoryAPIClient()
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
 
 strategy = MemoryStrategyConfig(
     strategy="custom",
     config={"custom_prompt": validated_prompt}
 )
 
-working_memory = await client.set_working_memory(
+working_memory = await client.put_working_memory(
     session_id="session-123",
-    long_term_memory_strategy=strategy
+    memory=WorkingMemory(
+        session_id="session-123",
+        long_term_memory_strategy=strategy
+    )
 )
 ```
 

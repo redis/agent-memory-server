@@ -23,11 +23,13 @@ These integration patterns are **not mutually exclusive** and can be combined ba
 ### Basic Setup
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 import openai
 
 # Initialize clients
-memory_client = MemoryAPIClient(base_url="http://localhost:8000")
+memory_client = MemoryAPIClient(
+    MemoryClientConfig(base_url="http://localhost:8000")
+)
 openai_client = openai.AsyncOpenAI()
 
 # Get memory tools for the LLM
@@ -48,7 +50,7 @@ if response.choices[0].message.tool_calls:
     for tool_call in response.choices[0].message.tool_calls:
         result = await memory_client.resolve_function_call(
             function_name=tool_call.function.name,
-            args=json.loads(tool_call.function.arguments),
+            function_arguments=json.loads(tool_call.function.arguments),
             session_id="chat_alice",
             user_id="alice"
         )
@@ -58,9 +60,11 @@ if response.choices[0].message.tool_calls:
 ### Complete Conversation Loop
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class LLMMemoryAgent:
     def __init__(self, memory_url: str, session_id: str, user_id: str, model_name: str = "gpt-4o"):
-        self.memory_client = MemoryAPIClient(base_url=memory_url)
+        self.memory_client = MemoryAPIClient(MemoryClientConfig(base_url=memory_url))
         self.openai_client = openai.AsyncOpenAI()
         self.session_id = session_id
         self.user_id = user_id
@@ -91,7 +95,7 @@ class LLMMemoryAgent:
         # Generate response with memory tools and context
         response = await self.openai_client.chat.completions.create(
             model=self.model_name,
-            messages=context.messages + [
+            messages=context["messages"] + [
                 {"role": "user", "content": user_message}
             ],
             tools=tools
@@ -102,7 +106,7 @@ class LLMMemoryAgent:
             for tool_call in response.choices[0].message.tool_calls:
                 await self.memory_client.resolve_function_call(
                     function_name=tool_call.function.name,
-                    args=json.loads(tool_call.function.arguments),
+                    function_arguments=json.loads(tool_call.function.arguments),
                     session_id=self.session_id,
                     user_id=self.user_id
                 )
@@ -112,9 +116,9 @@ class LLMMemoryAgent:
         # Store the conversation turn in working memory
         from agent_memory_client.models import WorkingMemory, MemoryMessage
 
-        await self.memory_client.set_working_memory(
+        await self.memory_client.put_working_memory(
             session_id=self.session_id,
-            working_memory=WorkingMemory(
+            memory=WorkingMemory(
                 session_id=self.session_id,
                 messages=[
                     MemoryMessage(role="user", content=user_message),
@@ -180,7 +184,7 @@ Always be transparent about what you're remembering or have remembered.
 try:
     result = await memory_client.resolve_function_call(
         function_name=tool_call.function.name,
-        args=json.loads(tool_call.function.arguments),
+        function_arguments=json.loads(tool_call.function.arguments),
         session_id=session_id,
         user_id=user_id
     )
@@ -205,11 +209,11 @@ essential_tools = [
 ### Basic Memory Operations
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 from agent_memory_client.models import MemoryRecord
 
 # Initialize client
-client = MemoryAPIClient(base_url="http://localhost:8000")
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
 
 # Store memories programmatically
 user_preferences = [
@@ -229,7 +233,7 @@ user_preferences = [
     )
 ]
 
-await client.create_long_term_memories(user_preferences)
+await client.create_long_term_memory(user_preferences)
 
 # Retrieve relevant context
 search_results = await client.search_long_term_memory(
@@ -246,9 +250,11 @@ for memory in search_results.memories:
 ### Memory-Enriched Conversations
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class CodeDrivenAgent:
     def __init__(self, memory_url: str):
-        self.memory_client = MemoryAPIClient(base_url=memory_url)
+        self.memory_client = MemoryAPIClient(MemoryClientConfig(base_url=memory_url))
         self.openai_client = openai.AsyncOpenAI()
 
     async def get_contextual_response(
@@ -275,7 +281,7 @@ class CodeDrivenAgent:
         # 3. Generate response with enriched context
         response = await self.openai_client.chat.completions.create(
             model="gpt-4o",
-            messages=context_search.messages  # Pre-loaded with relevant memories
+            messages=context_search["messages"]  # Pre-loaded with relevant memories
         )
 
         # 4. Optionally store the interaction
@@ -288,7 +294,7 @@ class CodeDrivenAgent:
         # Extract key information (you could use LLM or rules for this)
         if "prefer" in user_msg.lower() or "like" in user_msg.lower():
             # Store user preference
-            await self.memory_client.create_long_term_memories([
+            await self.memory_client.create_long_term_memory([
                 MemoryRecord(
                     text=f"User expressed: {user_msg}",
                     memory_type="semantic",
@@ -327,7 +333,7 @@ for preference in user_profile.preferences:
     ))
 
 # Store all at once
-await client.create_long_term_memories(batch_memories)
+await client.create_long_term_memory(batch_memories)
 
 # Batch search with different queries
 search_queries = [
@@ -411,10 +417,10 @@ async def safe_memory_search(query: str, **kwargs):
 ### Basic Automatic Extraction
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 from agent_memory_client.models import WorkingMemory, MemoryMessage
 
-client = MemoryAPIClient(base_url="http://localhost:8000")
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
 
 async def store_conversation_with_auto_extraction(
     session_id: str,
@@ -435,7 +441,7 @@ async def store_conversation_with_auto_extraction(
     )
 
     # Store in working memory - background extraction will happen automatically
-    await client.set_working_memory(session_id, working_memory)
+    await client.put_working_memory(session_id, working_memory)
 
     # The system will:
     # 1. Analyze the conversation for important information
@@ -494,7 +500,7 @@ Conversation: {message}"""
     )
 )
 
-await client.set_working_memory("car_shopping_session", working_memory)
+await client.put_working_memory("car_shopping_session", working_memory)
 
 # With custom extraction, the system extracts granular memories like:
 # - "User is interested in Tesla Model 3 in midnight blue color"
@@ -507,9 +513,11 @@ For complete details on extraction strategies (discrete, summary, preferences, c
 ### Continuous Learning Agent
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class AutoLearningAgent:
     def __init__(self, memory_url: str):
-        self.memory_client = MemoryAPIClient(base_url=memory_url)
+        self.memory_client = MemoryAPIClient(MemoryClientConfig(base_url=memory_url))
         self.openai_client = openai.AsyncOpenAI()
 
     async def process_conversation(
@@ -537,7 +545,7 @@ class AutoLearningAgent:
         # 3. Generate response with context
         response = await self.openai_client.chat.completions.create(
             model="gpt-4o",
-            messages=context.messages + [
+            messages=context["messages"] + [
                 {"role": "user", "content": user_message}
             ]
         )
@@ -545,7 +553,7 @@ class AutoLearningAgent:
         assistant_message = response.choices[0].message.content
 
         # 4. Store conversation for automatic extraction
-        await self.memory_client.set_working_memory(
+        await self.memory_client.put_working_memory(
             session_id,
             WorkingMemory(
                 session_id=session_id,
@@ -660,11 +668,13 @@ Most production systems benefit from combining multiple patterns:
 ### Pattern Combination: Code + Background
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class HybridMemoryAgent:
     """Combines code-driven retrieval with background extraction"""
 
     def __init__(self, memory_url: str):
-        self.memory_client = MemoryAPIClient(base_url=memory_url)
+        self.memory_client = MemoryAPIClient(MemoryClientConfig(base_url=memory_url))
         self.openai_client = openai.AsyncOpenAI()
 
     async def chat(self, user_message: str, user_id: str, session_id: str) -> str:
@@ -685,7 +695,7 @@ class HybridMemoryAgent:
         # 3. Generate response
         response = await self.openai_client.chat.completions.create(
             model="gpt-4o",
-            messages=context.messages + [
+            messages=context["messages"] + [
                 {"role": "user", "content": user_message}
             ]
         )
@@ -693,7 +703,7 @@ class HybridMemoryAgent:
         assistant_message = response.choices[0].message.content
 
         # 4. Background: Store for automatic extraction
-        await self.memory_client.set_working_memory(
+        await self.memory_client.put_working_memory(
             session_id,
             WorkingMemory(
                 messages=[
@@ -732,13 +742,13 @@ class SmartChatAgent:
             for tool_call in response.choices[0].message.tool_calls:
                 await self.memory_client.resolve_function_call(
                     function_name=tool_call.function.name,
-                    args=json.loads(tool_call.function.arguments),
+                    function_arguments=json.loads(tool_call.function.arguments),
                     session_id=session_id,
                     user_id=user_id
                 )
 
         # Background: Also store conversation for automatic extraction
-        await self.memory_client.set_working_memory(
+        await self.memory_client.put_working_memory(
             session_id,
             WorkingMemory(
                 messages=[

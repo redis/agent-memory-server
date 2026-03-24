@@ -31,15 +31,15 @@ Pre-built Docker images are available from:
 
 **Quick Start (Development Mode)**:
 ```bash
-# Start with docker-compose
-# Note: Both 'api' and 'api-for-task-worker' services use port 8000
+# Start with docker compose
+# Note: The 'api' service exposes port 8000.
 # Choose one depending on your needs:
 
 # Option 1: Development mode (no worker, immediate task execution)
 docker compose up api redis
 
 # Option 2: Production-like mode (with background worker)
-docker compose up api-for-task-worker task-worker redis mcp
+docker compose up api task-worker redis mcp
 
 # Or run just the API server (requires separate Redis)
 docker run -p 8000:8000 \
@@ -91,14 +91,24 @@ docker run -p 9000:9000 \
 ```bash
 # Install dependencies
 pip install uv
-uv install --all-extras
+uv sync --all-extras
 
 # Start Redis
-docker-compose up redis
+docker compose up redis
 
 # Start the server (development mode, asyncio task backend)
 uv run agent-memory api --task-backend=asyncio
 ```
+
+### Core CLI Commands
+
+| Command | Typical Use | Backend Behavior |
+|---|---|---|
+| `uv run agent-memory api --task-backend=asyncio` | Local development (single process) | Uses `asyncio` inline tasks; no separate worker |
+| `uv run agent-memory api` | Production API server | Defaults to `docket`; run `uv run agent-memory task-worker` |
+| `uv run agent-memory mcp` | Claude Desktop / local stdio MCP | Defaults to `asyncio`; no worker required |
+| `uv run agent-memory mcp --mode sse --port 9000 --task-backend docket` | Network MCP with shared workers | Uses `docket`; run `uv run agent-memory task-worker` |
+| `uv run agent-memory task-worker --concurrency 10` | Background processing | Processes queued Docket tasks |
 
 ### 2. Python SDK
 
@@ -113,13 +123,13 @@ pip install agent-memory-client langchain-core
 ```
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
 # Connect to server
-client = MemoryAPIClient(base_url="http://localhost:8000")
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
 
 # Store memories
-await client.create_long_term_memories([
+await client.create_long_term_memory([
     {
         "text": "User prefers morning meetings",
         "user_id": "user123",
@@ -144,8 +154,7 @@ For LangChain users, the SDK provides automatic conversion of memory client tool
 ```python
 from agent_memory_client import create_memory_client
 from agent_memory_client.integrations.langchain import get_memory_tools
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 
 # Get LangChain-compatible tools automatically
@@ -156,19 +165,16 @@ tools = get_memory_tools(
     user_id="alice"
 )
 
-# Create prompt and agent
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant with memory."),
-    ("human", "{input}"),
-    MessagesPlaceholder("agent_scratchpad"),
-])
-
+# Create a LangGraph-based agent with memory tools
 llm = ChatOpenAI(model="gpt-4o")
-agent = create_tool_calling_agent(llm, tools, prompt)
-executor = AgentExecutor(agent=agent, tools=tools)
+agent = create_agent(
+    llm, tools,
+    system_prompt="You are a helpful assistant with memory."
+)
 
 # Use the agent
-result = await executor.ainvoke({"input": "Remember that I love pizza"})
+result = await agent.ainvoke({"messages": [("human", "Remember that I love pizza")]})
+print(result["messages"][-1].content)
 ```
 
 ### 3. MCP Integration
@@ -280,7 +286,7 @@ Working Memory (Session-scoped)  →  Long-term Memory (Persistent)
 
 ```bash
 # Install dependencies
-uv install --all-extras
+uv sync --all-extras
 
 # Run tests
 uv run pytest
@@ -290,8 +296,8 @@ uv run ruff format
 uv run ruff check
 
 # Start development stack (choose one based on your needs)
-docker compose up api redis                               # Development mode
-docker compose up api-for-task-worker task-worker redis   # Production-like mode
+docker compose up api redis                    # Development mode
+docker compose up api task-worker redis mcp    # Production-like mode
 ```
 ## License
 

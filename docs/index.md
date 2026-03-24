@@ -62,12 +62,12 @@ Redis Agent Memory Server is a production-ready memory system for AI agents and 
 ## Quick Example
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
-client = MemoryAPIClient(base_url="http://localhost:8000")
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
 
 # Store a user preference
-await client.create_long_term_memories([{
+await client.create_long_term_memory([{
     "text": "User prefers morning meetings and hates scheduling calls after 4 PM",
     "memory_type": "semantic",
     "topics": ["scheduling", "preferences"],
