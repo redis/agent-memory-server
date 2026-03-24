@@ -196,7 +196,7 @@ context = await client.memory_prompt(
 # Enhanced prompt with memory context
 response = await openai_client.chat.completions.create(
     model="gpt-4o",
-    messages=context.messages
+    messages=context["messages"]
 )
 ```
 

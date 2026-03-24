@@ -687,11 +687,9 @@ async def get_contextualized_response(user_message: str, session_id: str, user_i
     # Get memory-enriched context
     context = await client.memory_prompt(
         query=user_message,
-        session={
-            "session_id": session_id,
-            "user_id": user_id,
-            "model_name": "gpt-4o"
-        },
+        session_id=session_id,
+        user_id=user_id,
+        model_name="gpt-4o",
         long_term_search={
             "text": user_message,
             "limit": 5,
@@ -702,7 +700,7 @@ async def get_contextualized_response(user_message: str, session_id: str, user_i
     # Send to LLM
     response = await openai_client.chat.completions.create(
         model="gpt-4o",
-        messages=context.messages
+        messages=context["messages"]
     )
 
     return response.choices[0].message.content
@@ -711,28 +709,32 @@ async def get_contextualized_response(user_message: str, session_id: str, user_i
 ### Automatic Memory Storage
 
 ```python
+from agent_memory_client.models import WorkingMemory
+
 async def chat_with_auto_memory(message: str, session_id: str):
     # Get contextualized prompt
     context = await client.memory_prompt(
         query=message,
-        session={"session_id": session_id, "model_name": "gpt-4o"}
+        session_id=session_id,
+        model_name="gpt-4o"
     )
 
     # Generate response
     response = await openai_client.chat.completions.create(
         model="gpt-4o",
-        messages=context.messages + [{"role": "user", "content": message}]
+        messages=context["messages"] + [{"role": "user", "content": message}]
     )
 
     # Store the conversation
-    conversation = {
-        "messages": [
+    conversation = WorkingMemory(
+        session_id=session_id,
+        messages=[
             {"role": "user", "content": message},
             {"role": "assistant", "content": response.choices[0].message.content}
         ]
-    }
+    )
 
-    await client.set_working_memory(session_id, conversation)
+    await client.put_working_memory(session_id, conversation)
 
     return response.choices[0].message.content
 ```

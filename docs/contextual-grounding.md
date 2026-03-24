@@ -149,7 +149,7 @@ working_memory = WorkingMemory(
 )
 
 # Save working memory - system automatically extracts and grounds memories
-await client.set_working_memory("conversation_123", working_memory)
+await client.put_working_memory("conversation_123", working_memory)
 
 # Extracted memory will be: "Dr. Smith said the user needs to exercise more"
 # Instead of: "He said I need to exercise more"

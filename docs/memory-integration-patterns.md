@@ -50,7 +50,7 @@ if response.choices[0].message.tool_calls:
     for tool_call in response.choices[0].message.tool_calls:
         result = await memory_client.resolve_function_call(
             function_name=tool_call.function.name,
-            args=json.loads(tool_call.function.arguments),
+            function_arguments=json.loads(tool_call.function.arguments),
             session_id="chat_alice",
             user_id="alice"
         )
@@ -95,7 +95,7 @@ class LLMMemoryAgent:
         # Generate response with memory tools and context
         response = await self.openai_client.chat.completions.create(
             model=self.model_name,
-            messages=context.messages + [
+            messages=context["messages"] + [
                 {"role": "user", "content": user_message}
             ],
             tools=tools
@@ -106,7 +106,7 @@ class LLMMemoryAgent:
             for tool_call in response.choices[0].message.tool_calls:
                 await self.memory_client.resolve_function_call(
                     function_name=tool_call.function.name,
-                    args=json.loads(tool_call.function.arguments),
+                    function_arguments=json.loads(tool_call.function.arguments),
                     session_id=self.session_id,
                     user_id=self.user_id
                 )
@@ -116,9 +116,9 @@ class LLMMemoryAgent:
         # Store the conversation turn in working memory
         from agent_memory_client.models import WorkingMemory, MemoryMessage
 
-        await self.memory_client.set_working_memory(
+        await self.memory_client.put_working_memory(
             session_id=self.session_id,
-            working_memory=WorkingMemory(
+            memory=WorkingMemory(
                 session_id=self.session_id,
                 messages=[
                     MemoryMessage(role="user", content=user_message),
@@ -184,7 +184,7 @@ Always be transparent about what you're remembering or have remembered.
 try:
     result = await memory_client.resolve_function_call(
         function_name=tool_call.function.name,
-        args=json.loads(tool_call.function.arguments),
+        function_arguments=json.loads(tool_call.function.arguments),
         session_id=session_id,
         user_id=user_id
     )
@@ -281,7 +281,7 @@ class CodeDrivenAgent:
         # 3. Generate response with enriched context
         response = await self.openai_client.chat.completions.create(
             model="gpt-4o",
-            messages=context_search.messages  # Pre-loaded with relevant memories
+            messages=context_search["messages"]  # Pre-loaded with relevant memories
         )
 
         # 4. Optionally store the interaction
@@ -441,7 +441,7 @@ async def store_conversation_with_auto_extraction(
     )
 
     # Store in working memory - background extraction will happen automatically
-    await client.set_working_memory(session_id, working_memory)
+    await client.put_working_memory(session_id, working_memory)
 
     # The system will:
     # 1. Analyze the conversation for important information
@@ -500,7 +500,7 @@ Conversation: {message}"""
     )
 )
 
-await client.set_working_memory("car_shopping_session", working_memory)
+await client.put_working_memory("car_shopping_session", working_memory)
 
 # With custom extraction, the system extracts granular memories like:
 # - "User is interested in Tesla Model 3 in midnight blue color"
@@ -545,7 +545,7 @@ class AutoLearningAgent:
         # 3. Generate response with context
         response = await self.openai_client.chat.completions.create(
             model="gpt-4o",
-            messages=context.messages + [
+            messages=context["messages"] + [
                 {"role": "user", "content": user_message}
             ]
         )
@@ -553,7 +553,7 @@ class AutoLearningAgent:
         assistant_message = response.choices[0].message.content
 
         # 4. Store conversation for automatic extraction
-        await self.memory_client.set_working_memory(
+        await self.memory_client.put_working_memory(
             session_id,
             WorkingMemory(
                 session_id=session_id,
@@ -695,7 +695,7 @@ class HybridMemoryAgent:
         # 3. Generate response
         response = await self.openai_client.chat.completions.create(
             model="gpt-4o",
-            messages=context.messages + [
+            messages=context["messages"] + [
                 {"role": "user", "content": user_message}
             ]
         )
@@ -703,7 +703,7 @@ class HybridMemoryAgent:
         assistant_message = response.choices[0].message.content
 
         # 4. Background: Store for automatic extraction
-        await self.memory_client.set_working_memory(
+        await self.memory_client.put_working_memory(
             session_id,
             WorkingMemory(
                 messages=[
@@ -742,13 +742,13 @@ class SmartChatAgent:
             for tool_call in response.choices[0].message.tool_calls:
                 await self.memory_client.resolve_function_call(
                     function_name=tool_call.function.name,
-                    args=json.loads(tool_call.function.arguments),
+                    function_arguments=json.loads(tool_call.function.arguments),
                     session_id=session_id,
                     user_id=user_id
                 )
 
         # Background: Also store conversation for automatic extraction
-        await self.memory_client.set_working_memory(
+        await self.memory_client.put_working_memory(
             session_id,
             WorkingMemory(
                 messages=[

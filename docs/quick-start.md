@@ -93,6 +93,7 @@ Now let's build a memory-enhanced chat application using the Python SDK:
 import asyncio
 import openai
 from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+from agent_memory_client.models import WorkingMemory
 
 # Setup clients
 memory_client = MemoryAPIClient(
@@ -104,10 +105,8 @@ async def chat_with_memory(message: str, session_id: str):
     # Get memory-enriched context
     context = await memory_client.memory_prompt(
         query=message,
-        session={
-            "session_id": session_id,
-            "model_name": "gpt-4o"
-        },
+        session_id=session_id,
+        model_name="gpt-4o",
         long_term_search={
             "text": message,
             "limit": 5
@@ -117,17 +116,18 @@ async def chat_with_memory(message: str, session_id: str):
     # Send to OpenAI with context
     response = await openai_client.chat.completions.create(
         model="gpt-4o",
-        messages=context.messages + [{"role": "user", "content": message}]
+        messages=context["messages"] + [{"role": "user", "content": message}]
     )
 
     # Store the conversation
-    conversation = {
-        "messages": [
+    conversation = WorkingMemory(
+        session_id=session_id,
+        messages=[
             {"role": "user", "content": message},
             {"role": "assistant", "content": response.choices[0].message.content}
         ]
-    }
-    await memory_client.set_working_memory(session_id, conversation)
+    )
+    await memory_client.put_working_memory(session_id, conversation)
 
     return response.choices[0].message.content
 
@@ -551,6 +551,7 @@ Here's a complete memory-enhanced chatbot that learns about users over time:
 import asyncio
 import openai
 from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+from agent_memory_client.models import WorkingMemory
 
 class MemoryEnhancedChatbot:
     def __init__(self, memory_url: str, openai_api_key: str):
@@ -561,11 +562,9 @@ class MemoryEnhancedChatbot:
         # Get relevant context from memory
         context = await self.memory.memory_prompt(
             query=message,
-            session={
-                "session_id": session_id,
-                "user_id": user_id,
-                "model_name": "gpt-4o"
-            },
+            session_id=session_id,
+            user_id=user_id,
+            model_name="gpt-4o",
             long_term_search={
                 "text": message,
                 "user_id": user_id,
@@ -576,19 +575,21 @@ class MemoryEnhancedChatbot:
         # Generate AI response with memory context
         response = await self.openai.chat.completions.create(
             model="gpt-4o",
-            messages=context.messages + [{"role": "user", "content": message}]
+            messages=context["messages"] + [{"role": "user", "content": message}]
         )
 
         ai_response = response.choices[0].message.content
 
         # Store the conversation for future reference
-        conversation = {
-            "messages": [
+        conversation = WorkingMemory(
+            session_id=session_id,
+            user_id=user_id,
+            messages=[
                 {"role": "user", "content": message},
                 {"role": "assistant", "content": ai_response}
             ]
-        }
-        await self.memory.set_working_memory(session_id, conversation)
+        )
+        await self.memory.put_working_memory(session_id, conversation)
 
         return ai_response
 

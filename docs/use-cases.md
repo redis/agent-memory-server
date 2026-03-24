@@ -98,17 +98,15 @@ class PersonalAssistant:
         )
 
         # System automatically extracts important information to long-term memory
-        await self.client.set_working_memory(session_id, working_memory)
+        await self.client.put_working_memory(session_id, working_memory)
 
     async def get_contextual_response(self, session_id: str, user_query: str):
         # Get enriched prompt with personal context
         prompt_data = await self.client.memory_prompt(
             query=user_query,
-            session={
-                "session_id": session_id,
-                "user_id": self.user_id,
-                "model_name": "gpt-4o"
-            },
+            session_id=session_id,
+            user_id=self.user_id,
+            model_name="gpt-4o",
             long_term_search={
                 "text": user_query,
                 "filters": {"user_id": {"eq": self.user_id}},

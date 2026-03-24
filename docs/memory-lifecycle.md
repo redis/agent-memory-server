@@ -65,7 +65,7 @@ working_memory = WorkingMemory(
 )
 
 # Single API call stores both conversation and memories
-await client.set_working_memory("user_session", working_memory)
+await client.put_working_memory("user_session", working_memory)
 ```
 
 **Benefits**:
