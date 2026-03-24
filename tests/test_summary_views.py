@@ -1481,8 +1481,7 @@ class TestPeriodicRefreshSummaryViews:
         # Should have been called for continuous view
         mock_refresh.assert_called_once_with("test-continuous", task_id=None)
 
-    @pytest.mark.asyncio
-    async def test_periodic_refresh_uses_configurable_interval(self):
+    def test_periodic_refresh_uses_configurable_interval(self):
         """periodic_refresh_summary_views should use settings.summary_view_refresh_every_minutes."""
         import inspect
         from datetime import timedelta
@@ -1501,16 +1500,14 @@ class TestPeriodicRefreshSummaryViews:
             minutes=config.settings.summary_view_refresh_every_minutes
         )
 
-    @pytest.mark.asyncio
-    async def test_config_summary_view_refresh_every_minutes_default(self):
+    def test_config_summary_view_refresh_every_minutes_default(self):
         """Settings should have summary_view_refresh_every_minutes with default 60."""
         from agent_memory_server.config import Settings
 
         s = Settings()
         assert s.summary_view_refresh_every_minutes == 60
 
-    @pytest.mark.asyncio
-    async def test_config_summary_view_refresh_every_minutes_override(
+    def test_config_summary_view_refresh_every_minutes_override(
         self, monkeypatch
     ):
         """summary_view_refresh_every_minutes should be overridable via env var."""
