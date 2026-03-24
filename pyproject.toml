@@ -48,10 +48,10 @@ dependencies = [
 agent-memory = "agent_memory_server.cli:cli"
 
 [project.urls]
-Homepage = "https://github.com/redis-developer/agent-memory-server"
-Repository = "https://github.com/redis-developer/agent-memory-server"
-Documentation = "https://github.com/redis-developer/agent-memory-server/tree/main/docs"
-Issues = "https://github.com/redis-developer/agent-memory-server/issues"
+Homepage = "https://github.com/redis/agent-memory-server"
+Repository = "https://github.com/redis/agent-memory-server"
+Documentation = "https://github.com/redis/agent-memory-server/tree/main/docs"
+Issues = "https://github.com/redis/agent-memory-server/issues"
 
 [tool.hatch.version]
 path = "agent_memory_server/__init__.py"
