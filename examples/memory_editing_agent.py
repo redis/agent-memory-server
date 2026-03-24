@@ -71,7 +71,7 @@ SYSTEM_PROMPT = {
       still setting event_date only when certain.
 
     Available capabilities (for your use, not to be listed to the user):
-    - search previous information, review current session context, add important facts, and edit/delete existing items by id.
+    - search previous information (supports semantic, keyword, and hybrid search modes), review current session context, add important facts, and edit/delete existing items by id.
     - When you receive paginated search results ('has_more' is true with a 'next_offset'), iterate with the same query and offset to retrieve more results if needed to answer the user.
     """,
 }
@@ -108,17 +108,15 @@ class MemoryEditingAgent:
         # Get all available memory tool schemas
         memory_tool_schemas = MemoryAPIClient.get_all_memory_tool_schemas()
 
-        # Extract function schemas for OpenAI
-        available_functions = [tool["function"] for tool in memory_tool_schemas]
+        # Convert ToolSchemaCollection to list of dicts for LangChain compatibility
+        tool_dicts = memory_tool_schemas.to_list()
 
-        logger.info(
-            f"Available memory tools: {[func['name'] for func in available_functions]}"
-        )
+        logger.info(f"Available memory tools: {memory_tool_schemas.names()}")
 
-        # Set up LLM with function calling - force tool usage more aggressively
+        # Set up LLM with function calling
         self.llm = ChatOpenAI(model="gpt-4o", temperature=0.3).bind_tools(
-            memory_tool_schemas,  # Use full tool schemas, not just functions
-            tool_choice="auto",  # Let the model choose when to use tools
+            tool_dicts,
+            tool_choice="auto",
         )
 
     async def cleanup(self):
