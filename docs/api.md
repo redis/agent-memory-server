@@ -226,7 +226,7 @@ Returns:
 
 **Search Long Term Memory**
 
-Run a semantic search on long-term memory with filtering options.
+Run a search on long-term memory with filtering options. Supports semantic (vector), keyword (full-text), and hybrid (combined) search modes.
 
 Args:
     payload: Search payload with filter objects for precise queries
@@ -630,7 +630,9 @@ Payload for long-term memory search
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `text` | string \| null | No | Optional text to use for a semantic search |
+| `text` | string \| null | No | Optional text to use for semantic, keyword, or hybrid search |
+| `search_mode` | string | No | Search strategy: `semantic` (default), `keyword`, or `hybrid` |
+| `hybrid_alpha` | number | No | For hybrid search, weight for vector vs keyword relevance (0.0-1.0, default 0.7) |
 | `session_id` | SessionId \| null | No | Optional session ID to filter by |
 | `namespace` | Namespace \| null | No | Optional namespace to filter by |
 | `topics` | Topics \| null | No | Optional topics to filter by |

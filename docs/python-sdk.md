@@ -236,7 +236,7 @@ The SDK provides these tools for LLM integration:
 
 1. **`eagerly_create_long_term_memory`** - Create long-term memories directly for immediate storage and retrieval
 2. **`lazily_create_long_term_memory`** - Store memories that will be automatically promoted to long-term storage
-3. **`search_memory`** - Search with semantic similarity across long-term memories
+3. **`search_memory`** - Search long-term memories (supports `semantic`, `keyword`, and `hybrid` search modes)
 4. **`edit_long_term_memory`** - Update existing long-term memories
 5. **`delete_long_term_memories`** - Remove long-term memories
 6. **`get_or_create_working_memory`** - Retrieve or create a working memory session
@@ -417,9 +417,23 @@ from agent_memory_client.filters import (
 )
 from datetime import datetime, timedelta, timezone
 
-# Basic semantic search
+# Basic semantic search (default mode)
 results = await client.search_long_term_memory(
     text="user programming experience",
+    limit=10
+)
+
+# Keyword search - exact term matching
+results = await client.search_long_term_memory(
+    text="TechCorp engineer",
+    search_mode="keyword",
+    limit=10
+)
+
+# Hybrid search - blends keyword and semantic scores
+results = await client.search_long_term_memory(
+    text="user programming experience",
+    search_mode="hybrid",
     limit=10
 )
 
