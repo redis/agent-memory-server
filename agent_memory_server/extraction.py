@@ -14,6 +14,7 @@ from agent_memory_server.filters import DiscreteMemoryExtracted, MemoryType
 from agent_memory_server.llm import LLMClient
 from agent_memory_server.logging import get_logger
 from agent_memory_server.models import MemoryRecord
+from agent_memory_server.utils.datetime import parse_iso8601_datetime
 
 
 if TYPE_CHECKING:
@@ -380,19 +381,33 @@ async def extract_memories_with_strategy(
 
     # Index new extracted memories
     if all_new_memories:
-        long_term_memories = [
-            MemoryRecord(
-                id=str(ulid.ULID()),
-                text=new_memory["text"],
-                memory_type=new_memory.get("type", "episodic"),
-                topics=new_memory.get("topics", []),
-                entities=new_memory.get("entities", []),
-                discrete_memory_extracted="t",
-                extraction_strategy="discrete",  # These are already extracted
-                extraction_strategy_config={},
+        long_term_memories = []
+        for new_memory in all_new_memories:
+            event_date = None
+            event_date_str = new_memory.get("event_date")
+            if event_date_str:
+                try:
+                    event_date = parse_iso8601_datetime(event_date_str)
+                except ValueError:
+                    logger.warning(
+                        "Skipping invalid extracted event_date %r for memory %r",
+                        event_date_str,
+                        new_memory.get("text"),
+                    )
+
+            long_term_memories.append(
+                MemoryRecord(
+                    id=str(ulid.ULID()),
+                    text=new_memory["text"],
+                    memory_type=new_memory.get("type", "episodic"),
+                    topics=new_memory.get("topics", []),
+                    entities=new_memory.get("entities", []),
+                    event_date=event_date,
+                    discrete_memory_extracted="t",
+                    extraction_strategy="discrete",  # These are already extracted
+                    extraction_strategy_config={},
+                )
             )
-            for new_memory in all_new_memories
-        ]
 
         await index_long_term_memories(
             long_term_memories,
