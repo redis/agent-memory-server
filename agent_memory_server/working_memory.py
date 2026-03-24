@@ -391,13 +391,11 @@ async def _resolve_working_memory_key_via_index(
     try:
         index = await get_working_memory_index(redis_client)
 
-        filters = [Tag("session_id") == session_id]
+        filter_expression = Tag("session_id") == session_id
         if namespace:
-            filters.append(Tag("namespace") == namespace)
+            filter_expression &= (Tag("namespace") == namespace)
         if user_id:
-            filters.append(Tag("user_id") == user_id)
-
-        filter_expression = reduce(lambda x, y: x & y, filters)
+            filter_expression &= (Tag("user_id") == user_id)
 
         # Request up to 2 results so we can detect ambiguity.
         filter_query = FilterQuery(
