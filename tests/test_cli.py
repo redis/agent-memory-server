@@ -822,8 +822,8 @@ class TestSearch:
         assert result.exit_code == 0
         call_kwargs = mock_search.call_args[1]
         assert call_kwargs["search_mode"].value == "hybrid"
-        assert call_kwargs["hybrid_alpha"] is None
-        assert call_kwargs["text_scorer"] is None
+        assert "hybrid_alpha" not in call_kwargs
+        assert "text_scorer" not in call_kwargs
 
     @patch("agent_memory_server.long_term_memory.search_long_term_memories")
     def test_search_rejects_distance_threshold_for_keyword_mode(self, mock_search):

@@ -625,19 +625,25 @@ def search(
         topics_filter = Topics(any=topics.split(",")) if topics else None
         entities_filter = Entities(any=entities.split(",")) if entities else None
 
+        search_kwargs = {
+            "text": query,
+            "search_mode": SearchModeEnum(search_mode),
+            "namespace": namespace_filter,
+            "session_id": session_filter,
+            "user_id": user_filter,
+            "topics": topics_filter,
+            "entities": entities_filter,
+            "distance_threshold": distance_threshold,
+            "limit": limit,
+            "offset": offset,
+        }
+        if hybrid_alpha is not None:
+            search_kwargs["hybrid_alpha"] = hybrid_alpha
+        if text_scorer is not None:
+            search_kwargs["text_scorer"] = text_scorer
+
         results = await search_long_term_memories(
-            text=query,
-            search_mode=SearchModeEnum(search_mode),
-            hybrid_alpha=hybrid_alpha,
-            text_scorer=text_scorer,
-            namespace=namespace_filter,
-            session_id=session_filter,
-            user_id=user_filter,
-            topics=topics_filter,
-            entities=entities_filter,
-            distance_threshold=distance_threshold,
-            limit=limit,
-            offset=offset,
+            **search_kwargs,
         )
 
         if output_format == "json":
