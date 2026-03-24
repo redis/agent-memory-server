@@ -3,7 +3,7 @@
 This documentation is auto-generated from the OpenAPI specification.
 For interactive docs, run the server and visit `/docs`.
 
-**API Version:** 0.12.7
+**API Version:** 0.14.0
 
 ## Table of Contents
 
