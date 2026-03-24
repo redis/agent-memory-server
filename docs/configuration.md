@@ -112,6 +112,13 @@ REDISVL_INDEX_PREFIX=memory_idx          # Index prefix (default: memory_idx)
 REDISVL_INDEXING_ALGORITHM=HNSW          # Indexing algorithm (default: HNSW)
 ```
 
+### Tag Value Restrictions
+
+The tag fields `topics`, `entities`, and `extracted_from` are stored as comma-delimited TAG strings in Redis. Because commas serve as the delimiter, **individual tag values must not contain commas**. For example, `"Austin TX"` is valid but `"Austin, TX"` will be rejected with a validation error.
+
+- **User-facing write paths** (API create/edit, MCP tools, working memory promotion) reject commas with a validation error.
+- **Internal LLM extraction paths** silently replace commas with spaces so that background tasks never crash.
+
 ### Working Memory
 ```bash
 SUMMARIZATION_THRESHOLD=0.7  # Fraction of context window that triggers summarization (default: 0.7)

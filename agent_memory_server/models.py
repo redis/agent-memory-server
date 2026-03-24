@@ -9,7 +9,7 @@ from typing import Any, ClassVar, Literal
 from agent_memory_client.models import ClientMemoryRecord
 from mcp.server.fastmcp.prompts import base
 from mcp.types import TextContent
-from pydantic import BaseModel, Field, PrivateAttr, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, field_validator, model_validator
 from ulid import ULID
 
 from agent_memory_server.filters import (
@@ -23,6 +23,7 @@ from agent_memory_server.filters import (
     Topics,
     UserId,
 )
+from agent_memory_server.utils.tag_codec import validate_no_commas_in_tags
 
 
 logger = logging.getLogger(__name__)
@@ -329,6 +330,11 @@ class MemoryRecord(BaseModel):
         default_factory=dict,
         description="Configuration for the extraction strategy used",
     )
+
+    @field_validator("topics", "entities", "extracted_from", mode="after")
+    @classmethod
+    def reject_commas_in_tags(cls, v: list[str] | None, info) -> list[str] | None:
+        return validate_no_commas_in_tags(v, info.field_name)
 
 
 class ExtractedMemoryRecord(MemoryRecord):
@@ -928,6 +934,11 @@ class EditMemoryRecordRequest(BaseModel):
         default=None,
         description="Whether this memory is pinned and should not be auto-deleted",
     )
+
+    @field_validator("topics", "entities", mode="after")
+    @classmethod
+    def reject_commas_in_tags(cls, v: list[str] | None, info) -> list[str] | None:
+        return validate_no_commas_in_tags(v, info.field_name)
 
 
 class TaskStatusEnum(str, Enum):

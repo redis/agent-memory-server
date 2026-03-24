@@ -49,7 +49,7 @@ from agent_memory_server.utils.recency import (
     update_memory_hash_if_text_changed,
 )
 from agent_memory_server.utils.redis import get_redis_conn, redis_url_for_docket
-from agent_memory_server.utils.tag_codec import encode_tag_values
+from agent_memory_server.utils.tag_codec import encode_tag_values, sanitize_tag_values
 
 
 # Track pending extraction tasks to prevent garbage collection
@@ -498,8 +498,8 @@ async def extract_memories_from_session_thread(
                 id=str(ULID()),
                 text=memory_data["text"],
                 memory_type=memory_data.get("type", "semantic"),
-                topics=memory_data.get("topics", []),
-                entities=memory_data.get("entities", []),
+                topics=sanitize_tag_values(memory_data.get("topics", [])),
+                entities=sanitize_tag_values(memory_data.get("entities", [])),
                 event_date=event_date,
                 session_id=session_id,
                 namespace=namespace,
@@ -526,6 +526,9 @@ async def extract_memory_structure(
 
     merged_topics = memory.topics + topics if memory.topics else topics
     merged_entities = memory.entities + entities if memory.entities else entities
+
+    merged_topics = sanitize_tag_values(merged_topics) or []
+    merged_entities = sanitize_tag_values(merged_entities) or []
 
     # Guard: only update if the key still exists. A race between semantic
     # deduplication (which deletes merged keys) and this background task
@@ -645,8 +648,8 @@ async def merge_memories_with_llm(
         created_at=datetime.fromtimestamp(created_at, UTC),
         last_accessed=datetime.fromtimestamp(last_accessed, UTC),
         updated_at=datetime.now(UTC),
-        topics=list(all_topics) if all_topics else None,
-        entities=list(all_entities) if all_entities else None,
+        topics=sanitize_tag_values(list(all_topics)) if all_topics else None,
+        entities=sanitize_tag_values(list(all_entities)) if all_entities else None,
         memory_type=MemoryTypeEnum(memory_type),
         discrete_memory_extracted="t",
     )

@@ -11,8 +11,10 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from ulid import ULID
+
+from agent_memory_client.utils.tag_codec import validate_no_commas_in_tags
 
 logger = logging.getLogger(__name__)
 
@@ -242,6 +244,11 @@ class MemoryRecord(BaseModel):
         default=None,
         description="Date/time when the event described in this memory occurred (primarily for episodic memories)",
     )
+
+    @field_validator("topics", "entities", "extracted_from", mode="after")
+    @classmethod
+    def reject_commas_in_tags(cls, v: list[str] | None, info) -> list[str] | None:
+        return validate_no_commas_in_tags(v, info.field_name)
 
 
 class ExtractedMemoryRecord(MemoryRecord):
