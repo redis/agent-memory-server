@@ -154,8 +154,7 @@ For LangChain users, the SDK provides automatic conversion of memory client tool
 ```python
 from agent_memory_client import create_memory_client
 from agent_memory_client.integrations.langchain import get_memory_tools
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 
 # Get LangChain-compatible tools automatically
@@ -166,19 +165,16 @@ tools = get_memory_tools(
     user_id="alice"
 )
 
-# Create prompt and agent
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant with memory."),
-    ("human", "{input}"),
-    MessagesPlaceholder("agent_scratchpad"),
-])
-
+# Create a LangGraph-based agent with memory tools
 llm = ChatOpenAI(model="gpt-4o")
-agent = create_tool_calling_agent(llm, tools, prompt)
-executor = AgentExecutor(agent=agent, tools=tools)
+agent = create_agent(
+    llm, tools,
+    system_prompt="You are a helpful assistant with memory."
+)
 
 # Use the agent
-result = await executor.ainvoke({"input": "Remember that I love pizza"})
+result = await agent.ainvoke({"messages": [("human", "Remember that I love pizza")]})
+print(result["messages"][-1].content)
 ```
 
 ### 3. MCP Integration
