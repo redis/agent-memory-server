@@ -12,8 +12,6 @@ source .venv/bin/activate
 uv sync --all-extras
 ```
 
-## Running the servers locally
-
 Use Docker Compose from the repository root:
 
 ```bash

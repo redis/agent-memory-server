@@ -18,7 +18,7 @@ from agent_memory_client import create_memory_client
 from agent_memory_client.models import MemoryMessage, WorkingMemory
 
 
-BASE_URL = os.getenv("AGENT_MEMORY_URL", "http://localhost:8000")
+BASE_URL = os.getenv("MEMORY_SERVER_URL", "http://localhost:8000")
 
 
 async def demo_recent_messages_limit():
