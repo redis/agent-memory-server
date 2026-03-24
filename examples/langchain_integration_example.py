@@ -32,9 +32,10 @@ from agent_memory_client.integrations.langchain import get_memory_tools
 from dotenv import load_dotenv
 
 # Import LangChain components
-from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.agents import create_agent
+from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
+from langgraph.checkpoint.memory import MemorySaver
 
 
 load_dotenv()
@@ -73,59 +74,49 @@ async def main():
     for tool in tools:
         print(f"      - {tool.name}")
 
-    # 3. Create LangChain agent with memory tools
-    print("\n3️⃣  Creating LangChain agent...")
+    # 3. Create agent with memory tools
+    print("\n3. Creating agent...")
     llm = ChatOpenAI(model="gpt-4o", temperature=0)
 
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                "You are a helpful assistant with persistent memory. "
-                "Use the memory tools to remember important information and recall past conversations. "
-                "When users share preferences or important facts, store them using lazily_create_long_term_memory. "
-                "When you need to recall information, use search_memory.",
-            ),
-            ("human", "{input}"),
-            MessagesPlaceholder("agent_scratchpad"),
-        ]
+    system_prompt = (
+        "You are a helpful assistant with persistent memory. "
+        "ALWAYS use the memory tools proactively:\n"
+        "- When users share preferences, facts, or personal details, IMMEDIATELY store them "
+        "using lazily_create_long_term_memory before responding.\n"
+        "- When users ask about past information, ALWAYS use search_memory first "
+        "(supports semantic, keyword, and hybrid search modes).\n"
+        "- Never rely on conversation context alone -- always store and retrieve via tools."
     )
 
-    agent = create_tool_calling_agent(llm, tools, prompt)
-    executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
-    print("   ✅ Agent created with memory capabilities")
+    # Use a checkpointer so the agent remembers conversation across turns
+    checkpointer = MemorySaver()
+    agent = create_agent(
+        llm, tools, system_prompt=system_prompt, checkpointer=checkpointer
+    )
+    print("   Agent created with memory capabilities")
+
+    # Config with a thread_id so the checkpointer tracks this conversation
+    config = {"configurable": {"thread_id": "langchain_demo_thread"}}
+
+    # Helper to invoke the agent and extract the final assistant message
+    async def ask(user_input: str) -> str:
+        print(f"\nUser: {user_input}")
+        result = await agent.ainvoke(
+            {"messages": [HumanMessage(content=user_input)]}, config=config
+        )
+        # The last message in the result is the assistant's final response
+        reply = result["messages"][-1].content
+        print(f"Assistant: {reply}")
+        return reply
 
     # 4. Run example conversations
-    print("\n4️⃣  Running example conversations...")
+    print("\n4. Running example conversations...")
     print("-" * 60)
 
-    # Conversation 1: Store preferences
-    print(
-        "\n💬 User: Hi! I'm Alice and I love Italian food, especially pasta carbonara."
-    )
-    result1 = await executor.ainvoke(
-        {"input": "Hi! I'm Alice and I love Italian food, especially pasta carbonara."}
-    )
-    print(f"🤖 Assistant: {result1['output']}")
-
-    # Conversation 2: Store more information
-    print("\n💬 User: I also work as a software engineer at TechCorp.")
-    result2 = await executor.ainvoke(
-        {"input": "I also work as a software engineer at TechCorp."}
-    )
-    print(f"🤖 Assistant: {result2['output']}")
-
-    # Conversation 3: Recall information
-    print("\n💬 User: What do you know about my food preferences?")
-    result3 = await executor.ainvoke(
-        {"input": "What do you know about my food preferences?"}
-    )
-    print(f"🤖 Assistant: {result3['output']}")
-
-    # Conversation 4: Recall work information
-    print("\n💬 User: Where do I work?")
-    result4 = await executor.ainvoke({"input": "Where do I work?"})
-    print(f"🤖 Assistant: {result4['output']}")
+    await ask("Hi! I'm Alice and I love Italian food, especially pasta carbonara.")
+    await ask("I also work as a software engineer at TechCorp.")
+    await ask("What do you know about my food preferences?")
+    await ask("Where do I work?")
 
     print("\n" + "=" * 60)
     print("✅ Example completed successfully!")
@@ -228,30 +219,15 @@ async def custom_agent_example():
 
     # Use with your agent...
     llm = ChatOpenAI(model="gpt-4o", temperature=0)
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                "You are a helpful assistant with memory and calculation abilities.",
-            ),
-            ("human", "{input}"),
-            MessagesPlaceholder("agent_scratchpad"),
-        ]
-    )
+    system_prompt = "You are a helpful assistant with memory and calculation abilities."
 
-    agent = create_tool_calling_agent(llm, all_tools, prompt)
-    executor = AgentExecutor(agent=agent, tools=all_tools, verbose=False)
+    agent = create_agent(llm, all_tools, system_prompt=system_prompt)
 
     # Test it
-    result = await executor.ainvoke(
-        {
-            "input": "Calculate 42 * 137 and remember that this is my favorite calculation."
-        }
-    )
-    print(
-        "\n💬 User: Calculate 42 * 137 and remember that this is my favorite calculation."
-    )
-    print(f"🤖 Assistant: {result['output']}")
+    user_msg = "Calculate 42 * 137 and remember that this is my favorite calculation."
+    print(f"\nUser: {user_msg}")
+    result = await agent.ainvoke({"messages": [HumanMessage(content=user_msg)]})
+    print(f"Assistant: {result['messages'][-1].content}")
 
     await memory_client.close()
 
