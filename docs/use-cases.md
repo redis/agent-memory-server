@@ -11,9 +11,9 @@ Redis Agent Memory Server enables powerful AI applications by providing persiste
 **Solution**: Memory server stores customer interactions, preferences, and issue history for instant retrieval.
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
-client = MemoryAPIClient(base_url="http://localhost:8000")
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
 
 # Store customer profile and preferences
 await client.create_long_term_memory([
@@ -77,9 +77,13 @@ async def handle_support_request(customer_email: str, current_issue: str):
 **Solution**: Dual-layer memory system that maintains conversation state and learns long-term preferences.
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class PersonalAssistant:
     def __init__(self):
-        self.client = MemoryAPIClient(base_url="http://localhost:8000")
+        self.client = MemoryAPIClient(
+            MemoryClientConfig(base_url="http://localhost:8000")
+        )
         self.user_id = "user_john_doe"
 
     async def process_conversation_turn(self, session_id: str, user_message: str, assistant_response: str):
@@ -149,9 +153,13 @@ response_data = await assistant.get_contextual_response(
 **Solution**: Memory system stores project context, coding patterns, and problem-solution pairs for contextual assistance.
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class CodingAssistant:
     def __init__(self, project_name: str):
-        self.client = MemoryAPIClient(base_url="http://localhost:8000")
+        self.client = MemoryAPIClient(
+            MemoryClientConfig(base_url="http://localhost:8000")
+        )
         self.project_namespace = f"project_{project_name}"
 
     async def learn_project_context(self):
@@ -242,9 +250,13 @@ help_data = await assistant.get_contextual_help(
 **Solution**: Structured memory system that organizes research findings, tracks sources, and maintains topic relationships.
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class ResearchAssistant:
     def __init__(self, research_topic: str):
-        self.client = MemoryAPIClient(base_url="http://localhost:8000")
+        self.client = MemoryAPIClient(
+            MemoryClientConfig(base_url="http://localhost:8000")
+        )
         self.topic_namespace = f"research_{research_topic.lower().replace(' ', '_')}"
 
     async def store_research_finding(self, finding: str, source: str, topics: list,
@@ -337,9 +349,13 @@ synthesis = await research.synthesize_knowledge(
 **Solution**: Memory system tracks user preferences, purchase history, and contextual shopping behavior.
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class ShoppingAssistant:
     def __init__(self):
-        self.client = MemoryAPIClient(base_url="http://localhost:8000")
+        self.client = MemoryAPIClient(
+            MemoryClientConfig(base_url="http://localhost:8000")
+        )
 
     async def track_browsing_behavior(self, user_id: str, product_category: str,
                                     products_viewed: list, time_spent: int):
@@ -449,9 +465,13 @@ recommendations = await shopping.get_personalized_recommendations(
 **Solution**: Memory system tracks learning progress, concept understanding, and adapts instruction based on individual needs.
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class LearningAssistant:
     def __init__(self, course_id: str):
-        self.client = MemoryAPIClient(base_url="http://localhost:8000")
+        self.client = MemoryAPIClient(
+            MemoryClientConfig(base_url="http://localhost:8000")
+        )
         self.course_namespace = f"course_{course_id}"
 
     async def track_concept_understanding(self, student_id: str, concept: str,
@@ -560,9 +580,13 @@ instruction = await learning.generate_personalized_instruction(
 **Solution**: Secure memory system tracks health patterns, medication effectiveness, and lifestyle correlations.
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class HealthAssistant:
     def __init__(self):
-        self.client = MemoryAPIClient(base_url="http://localhost:8000")
+        self.client = MemoryAPIClient(
+            MemoryClientConfig(base_url="http://localhost:8000")
+        )
         self.namespace = "health_private"
 
     async def track_symptom(self, user_id: str, symptom: str, severity: int,

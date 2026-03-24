@@ -23,11 +23,13 @@ These integration patterns are **not mutually exclusive** and can be combined ba
 ### Basic Setup
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 import openai
 
 # Initialize clients
-memory_client = MemoryAPIClient(base_url="http://localhost:8000")
+memory_client = MemoryAPIClient(
+    MemoryClientConfig(base_url="http://localhost:8000")
+)
 openai_client = openai.AsyncOpenAI()
 
 # Get memory tools for the LLM
@@ -58,9 +60,11 @@ if response.choices[0].message.tool_calls:
 ### Complete Conversation Loop
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class LLMMemoryAgent:
     def __init__(self, memory_url: str, session_id: str, user_id: str, model_name: str = "gpt-4o"):
-        self.memory_client = MemoryAPIClient(base_url=memory_url)
+        self.memory_client = MemoryAPIClient(MemoryClientConfig(base_url=memory_url))
         self.openai_client = openai.AsyncOpenAI()
         self.session_id = session_id
         self.user_id = user_id
@@ -205,11 +209,11 @@ essential_tools = [
 ### Basic Memory Operations
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 from agent_memory_client.models import MemoryRecord
 
 # Initialize client
-client = MemoryAPIClient(base_url="http://localhost:8000")
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
 
 # Store memories programmatically
 user_preferences = [
@@ -246,9 +250,11 @@ for memory in search_results.memories:
 ### Memory-Enriched Conversations
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class CodeDrivenAgent:
     def __init__(self, memory_url: str):
-        self.memory_client = MemoryAPIClient(base_url=memory_url)
+        self.memory_client = MemoryAPIClient(MemoryClientConfig(base_url=memory_url))
         self.openai_client = openai.AsyncOpenAI()
 
     async def get_contextual_response(
@@ -411,10 +417,10 @@ async def safe_memory_search(query: str, **kwargs):
 ### Basic Automatic Extraction
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 from agent_memory_client.models import WorkingMemory, MemoryMessage
 
-client = MemoryAPIClient(base_url="http://localhost:8000")
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
 
 async def store_conversation_with_auto_extraction(
     session_id: str,
@@ -507,9 +513,11 @@ For complete details on extraction strategies (discrete, summary, preferences, c
 ### Continuous Learning Agent
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class AutoLearningAgent:
     def __init__(self, memory_url: str):
-        self.memory_client = MemoryAPIClient(base_url=memory_url)
+        self.memory_client = MemoryAPIClient(MemoryClientConfig(base_url=memory_url))
         self.openai_client = openai.AsyncOpenAI()
 
     async def process_conversation(
@@ -660,11 +668,13 @@ Most production systems benefit from combining multiple patterns:
 ### Pattern Combination: Code + Background
 
 ```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
 class HybridMemoryAgent:
     """Combines code-driven retrieval with background extraction"""
 
     def __init__(self, memory_url: str):
-        self.memory_client = MemoryAPIClient(base_url=memory_url)
+        self.memory_client = MemoryAPIClient(MemoryClientConfig(base_url=memory_url))
         self.openai_client = openai.AsyncOpenAI()
 
     async def chat(self, user_message: str, user_id: str, session_id: str) -> str:

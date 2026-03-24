@@ -39,9 +39,9 @@ pip install agent-memory-client
 ## Quick Example
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
-client = MemoryAPIClient(base_url="http://localhost:8000")
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
 
 # Get memory-enriched context for your LLM
 context = await client.memory_prompt(

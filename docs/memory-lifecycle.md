@@ -148,9 +148,9 @@ Clients can perform direct memory management operations:
 
 #### Delete Specific Memories
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
-client = MemoryAPIClient(base_url="http://localhost:8000")
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
 
 # Delete specific long-term memories by ID
 memory_ids = ["memory-id-1", "memory-id-2"]
@@ -666,9 +666,9 @@ async def edit_long_term_memory(
 #### Client Usage Examples
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
-client = MemoryAPIClient(base_url="http://localhost:8000")
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
 
 # Simple text correction
 updated_memory = await client.edit_long_term_memory(

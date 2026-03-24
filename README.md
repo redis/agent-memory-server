@@ -123,10 +123,10 @@ pip install agent-memory-client langchain-core
 ```
 
 ```python
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
 # Connect to server
-client = MemoryAPIClient(base_url="http://localhost:8000")
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
 
 # Store memories
 await client.create_long_term_memory([

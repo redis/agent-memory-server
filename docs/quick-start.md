@@ -92,10 +92,12 @@ Now let's build a memory-enhanced chat application using the Python SDK:
 ```python
 import asyncio
 import openai
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
 # Setup clients
-memory_client = MemoryAPIClient(base_url="http://localhost:8000")
+memory_client = MemoryAPIClient(
+    MemoryClientConfig(base_url="http://localhost:8000")
+)
 openai_client = openai.AsyncClient(api_key="your-openai-key")
 
 async def chat_with_memory(message: str, session_id: str):
@@ -548,11 +550,11 @@ Here's a complete memory-enhanced chatbot that learns about users over time:
 ```python
 import asyncio
 import openai
-from agent_memory_client import MemoryAPIClient
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
 
 class MemoryEnhancedChatbot:
     def __init__(self, memory_url: str, openai_api_key: str):
-        self.memory = MemoryAPIClient(base_url=memory_url)
+        self.memory = MemoryAPIClient(MemoryClientConfig(base_url=memory_url))
         self.openai = openai.AsyncClient(api_key=openai_api_key)
 
     async def chat(self, message: str, user_id: str, session_id: str):
