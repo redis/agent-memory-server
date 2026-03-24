@@ -1,6 +1,8 @@
 # Examples
 
-This directory contains example implementations showing how to use the Agent Memory Server.
+This directory contains example implementations showing how to use the Agent Memory Server
+with the `agent_memory_client` SDK. Examples use LangChain's modern `create_agent` API
+(LangGraph-based) for agent orchestration.
 
 ## Prerequisites
 
@@ -15,7 +17,7 @@ uv sync --group examples
 Or if you're using pip:
 
 ```bash
-pip install openai langchain langchain-core langchain-openai langchain-community python-dotenv tavily-python redis
+pip install openai langchain langchain-core langchain-openai langchain-community langgraph python-dotenv tavily-python redis
 ```
 
 ### Environment Variables
@@ -27,10 +29,10 @@ Some examples use additional environment variables documented in their sections 
 
 ### Running the Memory Server
 
-Examples expect the Agent Memory Server to be running. Start it with:
+Examples expect the Agent Memory Server to be running locally with auth disabled:
 
 ```bash
-uv run agent-memory api
+DISABLE_AUTH=true uv run agent-memory api
 ```
 
 Or using Docker:
@@ -55,7 +57,7 @@ A comprehensive travel assistant that demonstrates:
 ### Available Tools
 The travel agent automatically discovers and uses all memory tools available from the client:
 
-1. **search_memory** - Search through previous conversations and stored information
+1. **search_memory** - Search memories using `semantic`, `keyword`, or `hybrid` search modes
 2. **get_or_create_working_memory** - Check current working memory session
 3. **lazily_create_long_term_memory** - Store memories that will be promoted to long-term storage later
 4. **update_working_memory_data** - Store/update session-specific data like trip plans
@@ -145,7 +147,7 @@ A conversational assistant that demonstrates comprehensive memory editing capabi
 ### Available Tools
 The memory editing agent uses all memory tools to demonstrate comprehensive memory management:
 
-1. **search_memory** - Find existing memories using natural language queries
+1. **search_memory** - Find existing memories using `semantic`, `keyword`, or `hybrid` search modes
 2. **get_long_term_memory** - Retrieve specific memories by ID for detailed review
 3. **lazily_create_long_term_memory** - Store memories that will be promoted to long-term storage later
 4. **eagerly_create_long_term_memory** - Create long-term memories directly for immediate storage
@@ -203,7 +205,7 @@ This example provides a complete reference for implementing memory editing in co
 
 ## AI Tutor (`ai_tutor.py`)
 
-A functional tutor: runs quizzes, stores results as episodic memories, tracks weak concepts as semantic memories, suggests next practice, and summarizes recent activity.
+A functional tutor: runs quizzes, stores results as episodic memories, tracks weak concepts as semantic memories, suggests next practice, and summarizes recent activity. Uses `create_agent` (LangGraph) for tool-calling agent orchestration.
 
 ### Usage
 
@@ -216,3 +218,48 @@ python ai_tutor.py --user-id student --session-id s1
 - **Episodic**: Per-question results with `event_date` and `topics=["quiz", topic, concept]`
 - **Semantic**: Weak concepts tracked with `topics=["weak_concept", topic, concept]`
 - **Guidance**: `practice-next` and `summary` commands
+
+## LangChain Integration (`langchain_integration_example.py`)
+
+Shows how to integrate `agent_memory_client` tools with LangChain's `create_agent` API (LangGraph-based).
+
+### Core Features
+- **Tool Schema Discovery**: Uses `get_all_memory_tool_schemas()` to auto-discover memory tools
+- **LangGraph Agent**: Creates agents with `create_agent` and `MemorySaver` checkpointer
+- **Hybrid Search**: Demonstrates `semantic`, `keyword`, and `hybrid` search modes
+- **State Persistence**: Uses `MemorySaver` for multi-turn conversation state
+
+### Usage
+
+```bash
+python langchain_integration_example.py
+```
+
+### Environment Variables
+- `OPENAI_API_KEY` - Required for OpenAI ChatGPT
+- `MEMORY_SERVER_URL` - Memory server URL (default: http://localhost:8000)
+
+## Recent Messages Limit Demo (`recent_messages_limit_demo.py`)
+
+Demonstrates the `recent_messages_limit` parameter for controlling how many recent messages are returned when retrieving working memory.
+
+### Core Features
+- **Message Limiting**: Shows how `recent_messages_limit` caps the number of messages returned
+- **LIFO Ordering**: Returns the N most recent messages (last in, first out)
+- **Data Preservation**: Context and structured data are always returned regardless of message limit
+- **Client SDK Usage**: Uses `agent_memory_client` for working memory and `httpx` for the limit parameter
+
+### Usage
+
+```bash
+python recent_messages_limit_demo.py
+```
+
+### Test Scenarios
+1. Retrieve all messages (no limit)
+2. Retrieve last N messages (limit < total)
+3. Retrieve with limit > total (returns all)
+4. Verify context/data preserved with message limiting
+
+### Environment Variables
+- `MEMORY_SERVER_URL` - Memory server URL (default: http://localhost:8000)
