@@ -28,6 +28,8 @@ export interface MemoryRecord {
 
 export interface MemoryRecordResult extends MemoryRecord {
   dist?: number
+  score?: number | null
+  score_type?: 'semantic' | 'keyword' | 'hybrid' | null
 }
 
 export interface Filter {
@@ -47,6 +49,9 @@ export interface DateTimeFilter {
 
 export interface SearchRequest {
   text?: string
+  search_mode?: 'semantic' | 'keyword' | 'hybrid'
+  hybrid_alpha?: number
+  text_scorer?: string
   limit?: number
   offset?: number
   session_id?: Filter

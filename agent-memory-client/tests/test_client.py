@@ -21,6 +21,7 @@ from agent_memory_client.models import (
     MemoryRecordResults,
     MemoryTypeEnum,
     RecencyConfig,
+    SearchModeEnum,
     WorkingMemoryResponse,
 )
 
@@ -344,6 +345,117 @@ class TestRecencyConfig:
             assert body["recency_half_life_last_access_days"] == 7
             assert body["recency_half_life_created_days"] == 30
             assert body["server_side_recency"] is True
+
+    @pytest.mark.asyncio
+    async def test_search_mode_parameters_are_sent_to_api(self, enhanced_test_client):
+        """Test that keyword/hybrid search parameters are sent to the API."""
+        with patch.object(enhanced_test_client._client, "post") as mock_post:
+            mock_response = Mock()
+            mock_response.raise_for_status.return_value = None
+            mock_response.json.return_value = MemoryRecordResults(
+                total=0, memories=[], next_offset=None
+            ).model_dump()
+            mock_post.return_value = mock_response
+
+            await enhanced_test_client.search_long_term_memory(
+                text="alpha beta",
+                search_mode=SearchModeEnum.HYBRID,
+                hybrid_alpha=0.55,
+                text_scorer="BM25",
+                limit=5,
+            )
+
+            _, kwargs = mock_post.call_args
+            body = kwargs["json"]
+            assert body["search_mode"] == "hybrid"
+            assert body["hybrid_alpha"] == 0.55
+            assert body["text_scorer"] == "BM25"
+
+    @pytest.mark.asyncio
+    async def test_search_mode_defaults_are_omitted_when_unset(
+        self, enhanced_test_client
+    ):
+        """Test that server-owned hybrid defaults are omitted unless explicitly set."""
+        with patch.object(enhanced_test_client._client, "post") as mock_post:
+            mock_response = Mock()
+            mock_response.raise_for_status.return_value = None
+            mock_response.json.return_value = MemoryRecordResults(
+                total=0, memories=[], next_offset=None
+            ).model_dump()
+            mock_post.return_value = mock_response
+
+            await enhanced_test_client.search_long_term_memory(
+                text="alpha beta",
+                search_mode=SearchModeEnum.HYBRID,
+                limit=5,
+            )
+
+            _, kwargs = mock_post.call_args
+            body = kwargs["json"]
+            assert body["search_mode"] == "hybrid"
+            assert "hybrid_alpha" not in body
+            assert "text_scorer" not in body
+
+    @pytest.mark.asyncio
+    async def test_search_memory_tool_forwards_hybrid_parameters(
+        self, enhanced_test_client
+    ):
+        """Test that the LLM helper forwards hybrid tuning parameters."""
+        response = MemoryRecordResults(
+            total=0,
+            memories=[],
+            next_offset=None,
+        )
+
+        with patch.object(
+            enhanced_test_client, "search_long_term_memory"
+        ) as mock_search:
+            mock_search.return_value = response
+
+            await enhanced_test_client.search_memory_tool(
+                query="alpha beta",
+                search_mode=SearchModeEnum.HYBRID,
+                hybrid_alpha=0.35,
+                text_scorer="TFIDF",
+            )
+
+            mock_search.assert_awaited_once()
+            _, kwargs = mock_search.call_args
+            assert kwargs["text"] == "alpha beta"
+            assert kwargs["search_mode"] == SearchModeEnum.HYBRID
+            assert kwargs["hybrid_alpha"] == 0.35
+            assert kwargs["text_scorer"] == "TFIDF"
+
+    @pytest.mark.asyncio
+    async def test_search_memory_tool_rejects_min_relevance_for_keyword_mode(
+        self, enhanced_test_client
+    ):
+        """Test that non-semantic tool searches fail early on min_relevance."""
+        with pytest.raises(
+            ValueError,
+            match="min_relevance is only supported when search_mode='semantic'",
+        ):
+            await enhanced_test_client.search_memory_tool(
+                query="alpha beta",
+                search_mode=SearchModeEnum.KEYWORD,
+                min_relevance=0.5,
+            )
+
+    def test_memory_search_tool_schema_exposes_search_controls(self):
+        """Test that the LLM tool schema advertises keyword/hybrid controls."""
+        schema = MemoryAPIClient.get_memory_search_tool_schema().to_dict()
+        properties = schema["function"]["parameters"]["properties"]
+
+        assert properties["search_mode"]["enum"] == [
+            "semantic",
+            "keyword",
+            "hybrid",
+        ]
+        assert properties["search_mode"]["default"] == "semantic"
+        assert "default" not in properties["hybrid_alpha"]
+        assert "default" not in properties["text_scorer"]
+        assert "search_mode" in properties["min_relevance"]["description"]
+        assert "semantic" in properties["min_relevance"]["description"]
 
 
 class TestClientSideValidation:

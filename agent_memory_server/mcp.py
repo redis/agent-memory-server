@@ -37,12 +37,12 @@ from agent_memory_server.models import (
     LenientMemoryRecord,
     MemoryMessage,
     MemoryPromptRequest,
-    MemoryPromptResponse,
     MemoryRecord,
     MemoryRecordResults,
     MemoryStrategyConfig,
     MemoryTypeEnum,
     ModelNameLiteral,
+    SearchModeEnum,
     SearchRequest,
     WorkingMemory,
     WorkingMemoryRequest,
@@ -458,6 +458,9 @@ async def create_long_term_memories(
 @mcp_app.tool()
 async def search_long_term_memory(
     text: str | None,
+    search_mode: SearchModeEnum = SearchModeEnum.SEMANTIC,
+    hybrid_alpha: float = 0.7,
+    text_scorer: str = "BM25STD",
     session_id: SessionId | None = None,
     namespace: Namespace | None = None,
     topics: Topics | None = None,
@@ -472,12 +475,16 @@ async def search_long_term_memory(
     optimize_query: bool = False,
 ) -> MemoryRecordResults:
     """
-    Search for memories related to a query for vector search.
+    Search for memories using semantic, keyword, or hybrid retrieval.
 
-    Finds memories based on a combination of semantic similarity and input filters.
+    Finds memories based on the selected search mode and input filters.
 
-    This tool performs a semantic search on stored memories using the query for vector search and filters
-    in the payload. Results are ranked by relevance.
+    This tool can perform:
+    - semantic vector search
+    - keyword full-text search
+    - lexical+vector hybrid search
+
+    Results are ranked by relevance for the selected mode.
 
     DATETIME INPUT FORMAT:
     - All datetime filters accept ISO 8601 formatted strings (e.g., "2023-01-01T00:00:00Z")
@@ -553,7 +560,10 @@ async def search_long_term_memory(
     ```
 
     Args:
-        text: The query for vector search (required). Use empty string "" to get all memories for a user.
+        text: The query text. Use empty string "" to get all memories for a user.
+        search_mode: Search strategy to use
+        hybrid_alpha: Weight assigned to vector similarity in hybrid search
+        text_scorer: Redis full-text scoring algorithm for keyword and hybrid search
         session_id: Filter by session ID
         namespace: Filter by namespace
         topics: Filter by topics
@@ -575,9 +585,17 @@ async def search_long_term_memory(
     if namespace is None and settings.default_mcp_namespace:
         namespace = Namespace(eq=settings.default_mcp_namespace)
 
+    if distance_threshold is not None and search_mode != SearchModeEnum.SEMANTIC:
+        raise ValueError(
+            "distance_threshold is only supported for semantic search mode"
+        )
+
     try:
         payload = SearchRequest(
             text=text,
+            search_mode=search_mode,
+            hybrid_alpha=hybrid_alpha,
+            text_scorer=text_scorer,
             session_id=session_id,
             namespace=namespace,
             topics=topics,
@@ -628,7 +646,7 @@ async def memory_prompt(
     limit: int = 10,
     offset: int = 0,
     optimize_query: bool = False,
-) -> MemoryPromptResponse:
+) -> dict[str, Any]:
     """
     Hydrate a query for vector search with relevant session history and long-term memories.
 
@@ -718,7 +736,7 @@ async def memory_prompt(
         - optimize_query: Whether to optimize the query for vector search (default: False - LLMs typically provide already optimized queries)
 
     Returns:
-        A list of messages, including memory context and the user's query
+        JSON-serializable memory prompt payload including memory context and the user's query
     """
     _session_id = session_id.eq if session_id and session_id.eq else None
     session = None
@@ -764,11 +782,12 @@ async def memory_prompt(
 
     background_tasks = HybridBackgroundTasks()
 
-    return await core_memory_prompt(
+    result = await core_memory_prompt(
         params=MemoryPromptRequest(query=query, **_params),
         background_tasks=background_tasks,
         optimize_query=optimize_query,
     )
+    return result.model_dump(mode="json")
 
 
 @mcp_app.tool()

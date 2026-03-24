@@ -577,6 +577,34 @@ describe("MemoryAPIClient", () => {
       expect(callBody.distance_threshold).toBe(0.5);
     });
 
+    it("should include search mode parameters in request body", async () => {
+      mockFetch = createMockFetch({ memories: [], total: 0 });
+      client["fetchFn"] = mockFetch;
+      await client.searchLongTermMemory({
+        text: "test",
+        searchMode: "hybrid",
+        hybridAlpha: 0.55,
+        textScorer: "BM25",
+      });
+      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(callBody.search_mode).toBe("hybrid");
+      expect(callBody.hybrid_alpha).toBe(0.55);
+      expect(callBody.text_scorer).toBe("BM25");
+    });
+
+    it("should omit hybrid defaults unless explicitly provided", async () => {
+      mockFetch = createMockFetch({ memories: [], total: 0 });
+      client["fetchFn"] = mockFetch;
+      await client.searchLongTermMemory({
+        text: "test",
+        searchMode: "hybrid",
+      });
+      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(callBody.search_mode).toBe("hybrid");
+      expect(callBody.hybrid_alpha).toBeUndefined();
+      expect(callBody.text_scorer).toBeUndefined();
+    });
+
     it("should handle SessionId filter class", async () => {
       const { SessionId } = await import("./filters");
       mockFetch = createMockFetch({ memories: [], total: 0 });

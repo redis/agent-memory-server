@@ -6,6 +6,8 @@ import pytest
 
 from agent_memory_server.memory_vector_db import (
     MemoryVectorDatabase,
+    PhraseAwareAggregateHybridQuery,
+    PhraseAwareTextQuery,
     RedisVLMemoryVectorDatabase,
 )
 from agent_memory_server.memory_vector_db_factory import (
@@ -13,7 +15,12 @@ from agent_memory_server.memory_vector_db_factory import (
     create_embeddings,
     create_memory_vector_db,
 )
-from agent_memory_server.models import MemoryRecord, MemoryRecordResults, MemoryTypeEnum
+from agent_memory_server.models import (
+    MemoryRecord,
+    MemoryRecordResults,
+    MemoryTypeEnum,
+    SearchModeEnum,
+)
 
 
 class MockEmbeddings:
@@ -261,6 +268,216 @@ class TestMemoryVectorDatabase:
         assert deleted == 2
 
     @pytest.mark.asyncio
+    async def test_search_memories_keyword_mode_uses_text_query(self):
+        """Test keyword search uses TextQuery and normalizes scores."""
+        mock_index = MagicMock()
+        mock_index.exists = AsyncMock(return_value=True)
+        mock_index.query = AsyncMock(
+            return_value=[
+                {
+                    "id_": "mem1",
+                    "text": "alpha beta",
+                    "memory_type": "semantic",
+                    "score": "4.0",
+                },
+                {
+                    "id_": "mem2",
+                    "text": "alpha",
+                    "memory_type": "semantic",
+                    "score": "2.0",
+                },
+            ]
+        )
+        mock_embeddings = MockEmbeddings()
+        mock_embeddings.aembed_query = AsyncMock(return_value=[0.1] * 1536)
+
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        results = await db.search_memories(
+            query="alpha",
+            search_mode=SearchModeEnum.KEYWORD,
+            limit=10,
+        )
+
+        assert results.total == 2
+        assert results.memories[0].score == pytest.approx(1.0)
+        assert results.memories[0].dist == pytest.approx(0.0)
+        assert results.memories[0].score_type == "keyword"
+        assert results.memories[1].score == pytest.approx(0.5)
+        assert results.memories[1].dist == pytest.approx(0.5)
+        mock_index.query.assert_called_once()
+        mock_embeddings.aembed_query.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_search_memories_hybrid_mode_uses_aggregate_hybrid_query(self):
+        """Test hybrid search uses aggregate queries and normalizes scores."""
+        mock_index = MagicMock()
+        mock_index.exists = AsyncMock(return_value=True)
+        mock_index.aggregate = AsyncMock(
+            return_value=MagicMock(
+                rows=[
+                    {
+                        "id_": "mem1",
+                        "text": "alpha beta",
+                        "memory_type": "semantic",
+                        "hybrid_score": "3.0",
+                    },
+                    {
+                        "id_": "mem2",
+                        "text": "alpha",
+                        "memory_type": "semantic",
+                        "hybrid_score": "1.5",
+                    },
+                ]
+            )
+        )
+        mock_embeddings = MockEmbeddings()
+        mock_embeddings.aembed_query = AsyncMock(return_value=[0.1] * 1536)
+
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        results = await db.search_memories(
+            query="alpha",
+            search_mode=SearchModeEnum.HYBRID,
+            hybrid_alpha=0.6,
+            text_scorer="BM25",
+            limit=10,
+        )
+
+        assert results.total == 2
+        assert results.memories[0].score == pytest.approx(1.0)
+        assert results.memories[0].score_type == "hybrid"
+        assert results.memories[1].score == pytest.approx(0.5)
+        mock_index.aggregate.assert_called_once()
+        mock_embeddings.aembed_query.assert_called_once_with("alpha")
+
+    @pytest.mark.asyncio
+    async def test_search_memories_hybrid_mode_parses_aggregate_lists(self):
+        """Test hybrid search handles alternating key/value aggregate rows."""
+        mock_index = MagicMock()
+        mock_index.exists = AsyncMock(return_value=True)
+        mock_index.aggregate = AsyncMock(
+            return_value=MagicMock(
+                rows=[
+                    [
+                        b"id_",
+                        b"mem1",
+                        b"text",
+                        b"scarlet dolphin",
+                        b"memory_type",
+                        b"message",
+                        b"hybrid_score",
+                        b"2.0",
+                    ],
+                    [
+                        b"id_",
+                        b"mem2",
+                        b"text",
+                        b"scarlet bird",
+                        b"memory_type",
+                        b"message",
+                        b"hybrid_score",
+                        b"1.0",
+                    ],
+                ]
+            )
+        )
+        mock_embeddings = MockEmbeddings()
+        mock_embeddings.aembed_query = AsyncMock(return_value=[0.1] * 1536)
+
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        results = await db.search_memories(
+            query="scarlet dolphin",
+            search_mode=SearchModeEnum.HYBRID,
+            limit=10,
+        )
+
+        assert results.total == 2
+        assert results.memories[0].id == "mem1"
+        assert results.memories[0].score == pytest.approx(1.0)
+        assert results.memories[1].id == "mem2"
+        assert results.memories[1].score == pytest.approx(0.5)
+
+    def test_phrase_aware_text_query_preserves_quoted_phrases(self):
+        """Quoted strings should become Redis phrase clauses."""
+        query = PhraseAwareTextQuery(
+            text='"scarlet dolphin" orchard',
+            text_field_name="text",
+            stopwords=None,
+        )
+
+        assert '@text:("scarlet dolphin" | orchard)' in str(query)
+
+    def test_phrase_aware_hybrid_query_preserves_quoted_phrases(self):
+        """Hybrid query should require quoted phrases and keep terms optional."""
+        query = PhraseAwareAggregateHybridQuery(
+            text='"scarlet dolphin" orchard',
+            text_field_name="text",
+            vector=[0.1] * 1536,
+            vector_field_name="vector",
+            stopwords=None,
+        )
+
+        assert '(@text:("scarlet dolphin") ~@text:(orchard))' in str(query)
+
+    @pytest.mark.asyncio
+    async def test_search_memories_hybrid_mode_uses_strict_phrases(self):
+        """Quoted phrases in hybrid mode should become required lexical clauses."""
+        mock_index = MagicMock()
+        mock_index.exists = AsyncMock(return_value=True)
+        mock_index.aggregate = AsyncMock(return_value=MagicMock(rows=[]))
+        mock_embeddings = MockEmbeddings()
+        mock_embeddings.aembed_query = AsyncMock(return_value=[0.1] * 1536)
+
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        await db.search_memories(
+            query='"scarlet dolphin" orchard',
+            search_mode=SearchModeEnum.HYBRID,
+            limit=10,
+        )
+
+        aggregate_query = mock_index.aggregate.call_args.args[0]
+        assert '(@text:("scarlet dolphin") ~@text:(orchard))' in str(aggregate_query)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("search_mode", "mode_name"),
+        [
+            (SearchModeEnum.KEYWORD, "keyword"),
+            (SearchModeEnum.HYBRID, "hybrid"),
+        ],
+    )
+    async def test_search_memories_warns_when_server_side_recency_is_nonsemantic(
+        self, caplog, search_mode, mode_name
+    ):
+        """Non-semantic searches should log when server-side recency degrades."""
+        mock_index = MagicMock()
+        mock_index.exists = AsyncMock(return_value=True)
+        mock_index.query = AsyncMock(return_value=[])
+        mock_index.aggregate = AsyncMock(return_value=MagicMock(rows=[]))
+        mock_embeddings = MockEmbeddings()
+
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        await db.search_memories(
+            query="scarlet dolphin",
+            search_mode=search_mode,
+            server_side_recency=True,
+            limit=10,
+        )
+
+        assert (
+            "server_side_recency is only supported for semantic search; "
+            f"falling back to client-side reranking for {mode_name} search"
+        ) in caplog.text
+        if search_mode == SearchModeEnum.KEYWORD:
+            mock_index.aggregate.assert_not_called()
+        else:
+            mock_index.query.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_factory_creates_redisvl_db(self):
         """Test that the factory creates a RedisVLMemoryVectorDatabase."""
         import agent_memory_server.memory_vector_db_factory
@@ -398,6 +615,42 @@ class TestMemoryVectorDatabase:
 
         assert result.topics == ["cooking", "italian"]
         assert result.entities == ["pasta", "rome"]
+
+    def test_normalize_rank_scores_zero_scores_remain_zero(self):
+        """Zero-score batches should not be normalized into perfect matches."""
+        mock_index = MagicMock()
+        mock_embeddings = MockEmbeddings()
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        assert db._normalize_rank_scores([0.0, 0.0]) == [0.0, 0.0]
+
+    @pytest.mark.asyncio
+    async def test_list_memories_does_not_overwrite_dist_with_score(self):
+        """Filter-only listings should keep neutral distance semantics."""
+        mock_index = MagicMock()
+        mock_index.exists = AsyncMock(return_value=True)
+        mock_index.query = AsyncMock(
+            return_value=[
+                {
+                    "id_": "memory_003",
+                    "text": "User prefers tea",
+                    "memory_type": "semantic",
+                    "created_at": "1704067200",
+                    "last_accessed": "1704067200",
+                    "updated_at": "1704067200",
+                    "discrete_memory_extracted": "t",
+                }
+            ]
+        )
+        mock_embeddings = MockEmbeddings()
+
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        results = await db.list_memories(limit=10)
+
+        assert results.total == 1
+        assert results.memories[0].dist == 0.0
+        assert results.memories[0].score is None
 
     def test_build_redis_schema_explicit_tag_separators(self):
         """Regression test: list-backed TAG fields must explicitly use comma separators."""

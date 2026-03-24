@@ -48,6 +48,7 @@ from .models import (
     MemoryTypeEnum,
     ModelNameLiteral,
     RecencyConfig,
+    SearchModeEnum,
     SessionListResponse,
     SummaryView,
     SummaryViewPartitionResult,
@@ -1033,6 +1034,9 @@ class MemoryAPIClient:
     async def search_long_term_memory(
         self,
         text: str,
+        search_mode: SearchModeEnum | str = SearchModeEnum.SEMANTIC,
+        hybrid_alpha: float | None = None,
+        text_scorer: str | None = None,
         session_id: SessionId | dict[str, Any] | None = None,
         namespace: Namespace | dict[str, Any] | None = None,
         topics: Topics | dict[str, Any] | None = None,
@@ -1048,10 +1052,13 @@ class MemoryAPIClient:
         optimize_query: bool = False,
     ) -> MemoryRecordResults:
         """
-        Search long-term memories using semantic search and filters.
+        Search long-term memories using semantic, keyword, or hybrid search.
 
         Args:
-            text: Query for vector search - will be used for semantic similarity matching
+            text: Query text used for semantic, keyword, or hybrid search
+            search_mode: Search strategy to use
+            hybrid_alpha: Optional weight assigned to vector similarity in hybrid search
+            text_scorer: Optional Redis full-text scoring algorithm for keyword and hybrid search
             session_id: Optional session ID filter
             namespace: Optional namespace filter
             topics: Optional topics filter
@@ -1141,6 +1148,15 @@ class MemoryAPIClient:
             payload["memory_type"] = memory_type.model_dump(exclude_none=True)
         if distance_threshold is not None:
             payload["distance_threshold"] = distance_threshold
+        payload["search_mode"] = (
+            search_mode.value
+            if isinstance(search_mode, SearchModeEnum)
+            else str(search_mode)
+        )
+        if hybrid_alpha is not None:
+            payload["hybrid_alpha"] = hybrid_alpha
+        if text_scorer is not None:
+            payload["text_scorer"] = text_scorer
 
         # Add recency config if provided
         if recency is not None:
@@ -1185,6 +1201,9 @@ class MemoryAPIClient:
     async def search_memory_tool(
         self,
         query: str,
+        search_mode: SearchModeEnum | str = SearchModeEnum.SEMANTIC,
+        hybrid_alpha: float | None = None,
+        text_scorer: str | None = None,
         topics: Sequence[str] | None = None,
         entities: Sequence[str] | None = None,
         memory_type: str | None = None,
@@ -1204,6 +1223,9 @@ class MemoryAPIClient:
 
         Args:
             query: The query for vector search
+            search_mode: Search strategy to use ("semantic", "keyword", or "hybrid")
+            hybrid_alpha: Optional weight assigned to vector similarity in hybrid search
+            text_scorer: Optional Redis full-text scoring algorithm for keyword and hybrid search
             topics: Optional list of topic strings to filter by
             entities: Optional list of entity strings to filter by
             memory_type: Optional memory type ("episodic", "semantic", "message")
@@ -1245,11 +1267,22 @@ class MemoryAPIClient:
         """
         from .filters import Entities, MemoryType, Topics
 
+        normalized_search_mode = (
+            search_mode.value
+            if isinstance(search_mode, SearchModeEnum)
+            else search_mode
+        ).lower()
+
         # Convert simple parameters to filter objects
         topics_filter = Topics(any=list(topics)) if topics else None
         entities_filter = Entities(any=list(entities)) if entities else None
         memory_type_filter = MemoryType(eq=memory_type) if memory_type else None
         user_id_filter = UserId(eq=user_id) if user_id else None
+
+        if min_relevance is not None and normalized_search_mode != "semantic":
+            raise ValueError(
+                "min_relevance is only supported when search_mode='semantic'"
+            )
 
         # Convert min_relevance to distance_threshold (assuming 0-1 relevance maps to 1-0 distance)
         distance_threshold = (
@@ -1258,6 +1291,9 @@ class MemoryAPIClient:
 
         results = await self.search_long_term_memory(
             text=query,
+            search_mode=search_mode,
+            hybrid_alpha=hybrid_alpha,
+            text_scorer=text_scorer,
             topics=topics_filter,
             entities=entities_filter,
             memory_type=memory_type_filter,
@@ -1281,9 +1317,13 @@ class MemoryAPIClient:
                     "created_at": memory.created_at.isoformat()
                     if memory.created_at
                     else None,
-                    "relevance_score": 1.0 - memory.dist
-                    if hasattr(memory, "dist") and memory.dist is not None
-                    else None,
+                    "relevance_score": memory.score
+                    if hasattr(memory, "score") and memory.score is not None
+                    else (
+                        1.0 - memory.dist
+                        if hasattr(memory, "dist") and memory.dist is not None
+                        else None
+                    ),
                 }
             )
 
@@ -1354,6 +1394,22 @@ class MemoryAPIClient:
                                 "type": "string",
                                 "description": "The query for vector search describing what information you're looking for",
                             },
+                            "search_mode": {
+                                "type": "string",
+                                "enum": ["semantic", "keyword", "hybrid"],
+                                "default": "semantic",
+                                "description": "Search strategy to use. Choose 'keyword' for lexical search, 'semantic' for vector similarity, or 'hybrid' to blend both.",
+                            },
+                            "hybrid_alpha": {
+                                "type": "number",
+                                "minimum": 0.0,
+                                "maximum": 1.0,
+                                "description": "Optional weight assigned to vector similarity in hybrid search. Higher values favor semantic matches more strongly.",
+                            },
+                            "text_scorer": {
+                                "type": "string",
+                                "description": "Optional Redis full-text scoring algorithm to use for keyword and hybrid search (for example: BM25STD, BM25, TFIDF, DISMAX, DOCSCORE).",
+                            },
                             "topics": {
                                 "type": "array",
                                 "items": {"type": "string"},
@@ -1386,7 +1442,7 @@ class MemoryAPIClient:
                                 "type": "number",
                                 "minimum": 0.0,
                                 "maximum": 1.0,
-                                "description": "Optional minimum relevance score (0.0-1.0, higher = more relevant)",
+                                "description": "Optional minimum relevance score (0.0-1.0, higher = more relevant). Supported only when `search_mode` is `semantic`.",
                             },
                             "user_id": {
                                 "type": "string",

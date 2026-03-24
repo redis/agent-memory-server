@@ -27,6 +27,7 @@ from agent_memory_server.models import (
     ModelNameLiteral,
     RunSummaryViewPartitionRequest,
     RunSummaryViewRequest,
+    SearchModeEnum,
     SearchRequest,
     SessionListResponse,
     SummaryView,
@@ -649,7 +650,7 @@ async def search_long_term_memory(
     current_user: UserInfo = Depends(get_current_user),
 ):
     """
-    Run a semantic search on long-term memory with filtering options.
+    Run a long-term memory search with semantic, keyword, or hybrid options.
 
     Args:
         payload: Search payload with filter objects for precise queries
@@ -661,12 +662,24 @@ async def search_long_term_memory(
     if not settings.long_term_memory:
         raise HTTPException(status_code=400, detail="Long-term memory is disabled")
 
+    if (
+        payload.distance_threshold is not None
+        and payload.search_mode != SearchModeEnum.SEMANTIC
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="distance_threshold is only supported for semantic search mode",
+        )
+
     # Extract filter objects from the payload
     filters = payload.get_filters()
 
     logger.debug(f"Long-term search filters: {filters}")
 
     kwargs = {
+        "search_mode": payload.search_mode,
+        "hybrid_alpha": payload.hybrid_alpha,
+        "text_scorer": payload.text_scorer,
         "distance_threshold": payload.distance_threshold,
         "limit": payload.limit,
         "offset": payload.offset,
@@ -698,7 +711,12 @@ async def search_long_term_memory(
             key in kwargs and kwargs[key] is not None
             for key in ("topics", "entities", "namespace", "memory_type", "event_date")
         )
-        if raw_results.total == 0 and had_any_strict_filters:
+        if (
+            raw_results.total == 0
+            and had_any_strict_filters
+            and kwargs.get("search_mode", SearchModeEnum.SEMANTIC)
+            == SearchModeEnum.SEMANTIC
+        ):
             fallback_kwargs = dict(kwargs)
             for key in ("topics", "entities", "namespace", "memory_type", "event_date"):
                 fallback_kwargs.pop(key, None)

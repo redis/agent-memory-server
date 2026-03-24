@@ -4,6 +4,7 @@ with a RedisVL-based implementation for Redis backends.
 """
 
 import logging
+import re
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from functools import reduce
@@ -11,7 +12,15 @@ from typing import Any
 
 import numpy as np
 from redisvl.index import AsyncSearchIndex
-from redisvl.query import FilterQuery, RangeQuery, VectorQuery
+from redisvl.query import (
+    AggregateHybridQuery,
+    FilterQuery,
+    RangeQuery,
+    TextQuery,
+    VectorQuery,
+)
+from redisvl.query.filter import FilterExpression
+from redisvl.utils.token_escaper import TokenEscaper
 
 from agent_memory_server.filters import (
     CreatedAt,
@@ -31,6 +40,8 @@ from agent_memory_server.models import (
     MemoryRecord,
     MemoryRecordResult,
     MemoryRecordResults,
+    SearchModeEnum,
+    SearchScoreTypeEnum,
 )
 from agent_memory_server.utils.recency import generate_memory_hash, rerank_with_recency
 from agent_memory_server.utils.redis_query import RecencyAggregationQuery
@@ -38,6 +49,88 @@ from agent_memory_server.utils.tag_codec import decode_tag_values, encode_tag_va
 
 
 logger = logging.getLogger(__name__)
+
+
+class _PhraseAwareQueryMixin:
+    _QUOTED_FRAGMENT_PATTERN = re.compile(r'"([^"]+)"|(\S+)')
+
+    def _parse_quoted_query(self, user_query: str) -> tuple[list[str], list[str]]:
+        """Parse a query into required quoted phrases and optional terms."""
+        escaper = TokenEscaper()
+        normalized_query = user_query.replace("“", '"').replace("”", '"')
+        required_phrases: list[str] = []
+        optional_terms: list[str] = []
+
+        for phrase, term in self._QUOTED_FRAGMENT_PATTERN.findall(normalized_query):
+            fragment = phrase or term
+            tokens = [
+                escaper.escape(
+                    token.strip().strip(",").replace("“", "").replace("”", "").lower()
+                )
+                for token in fragment.split()
+            ]
+            token_list = [
+                token for token in tokens if token and token not in self._stopwords
+            ]
+            if not token_list:
+                continue
+
+            if phrase:
+                required_phrases.append(f'"{" ".join(token_list)}"')
+                continue
+
+            token = token_list[0]
+            if token in self._text_weights:
+                token = f"{token}=>{{$weight:{self._text_weights[token]}}}"
+            optional_terms.append(token)
+
+        return required_phrases, optional_terms
+
+    def _tokenize_and_escape_query(self, user_query: str) -> str:
+        """Build a Redis text query that preserves quoted phrases."""
+        required_phrases, optional_terms = self._parse_quoted_query(user_query)
+        clauses = [*required_phrases, *optional_terms]
+
+        if not clauses:
+            raise ValueError("text string cannot be empty after removing stopwords")
+
+        return " | ".join(clauses)
+
+
+class PhraseAwareTextQuery(_PhraseAwareQueryMixin, TextQuery):
+    """RedisVL TextQuery variant that preserves quoted phrases."""
+
+
+class PhraseAwareAggregateHybridQuery(_PhraseAwareQueryMixin, AggregateHybridQuery):
+    """RedisVL AggregateHybridQuery variant that preserves quoted phrases."""
+
+    def _build_query_string(self) -> str:
+        """Build a hybrid query where quoted phrases are required lexical clauses."""
+        filter_expression = self._filter_expression
+        if isinstance(self._filter_expression, FilterExpression):
+            filter_expression = str(self._filter_expression)
+
+        knn_query = (
+            f"KNN {self._num_results} @{self._vector_field} ${self.VECTOR_PARAM}"
+        )
+        knn_query += f" AS {self.DISTANCE_ID}"
+
+        required_phrases, optional_terms = self._parse_quoted_query(self._text)
+        query_parts: list[str] = [
+            f"@{self._text_field}:({phrase})" for phrase in required_phrases
+        ]
+        if optional_terms:
+            query_parts.append(f"~@{self._text_field}:({' | '.join(optional_terms)})")
+
+        if not query_parts:
+            raise ValueError("text string cannot be empty after removing stopwords")
+
+        text = f"({' '.join(query_parts)}"
+
+        if filter_expression and filter_expression != "*":
+            text += f" AND {filter_expression}"
+
+        return f"{text})=>[{knn_query}]"
 
 
 class MemoryVectorDatabase(ABC):
@@ -63,6 +156,9 @@ class MemoryVectorDatabase(ABC):
     async def search_memories(
         self,
         query: str,
+        search_mode: SearchModeEnum = SearchModeEnum.SEMANTIC,
+        hybrid_alpha: float = 0.7,
+        text_scorer: str = "BM25STD",
         session_id: SessionId | None = None,
         user_id: UserId | None = None,
         namespace: Namespace | None = None,
@@ -84,7 +180,16 @@ class MemoryVectorDatabase(ABC):
         """Search memories in the database.
 
         Args:
-            query: Text query for semantic search
+            query: Text query for semantic, keyword, or hybrid search
+            search_mode: Which search strategy to use
+            hybrid_alpha: Weight assigned to vector similarity in hybrid search
+            text_scorer: Redis full-text scorer to use for keyword or hybrid
+                search. Defaults to BM25STD, a normalized BM25 variant that
+                keeps lexical scores on a stable scale for hybrid ranking.
+                Keyword and hybrid search disable Redis stopword filtering to
+                avoid assuming a single language, so callers should strip
+                obvious stopwords from queries when they have language-specific
+                context and want tighter lexical matches.
             session_id: Optional session ID filter
             user_id: Optional user ID filter
             namespace: Optional namespace filter
@@ -384,7 +489,12 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         return data
 
     def _data_to_memory_result(
-        self, fields: dict[str, Any], score: float = 0.0
+        self,
+        fields: dict[str, Any],
+        *,
+        dist: float = 0.0,
+        score: float | None = None,
+        score_type: SearchScoreTypeEnum | None = None,
     ) -> MemoryRecordResult:
         """Convert a search result dict to a MemoryRecordResult.
 
@@ -393,11 +503,15 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
 
         Args:
             fields: Dictionary of field values from search results
-            score: Distance score (0 = perfect match for cosine)
+            dist: Legacy distance-like value (0 = best match)
+            score: Normalized relevance score for the selected search mode
+            score_type: How the normalized score was produced
 
         Returns:
             MemoryRecordResult with converted data
         """
+        if score is not None and dist == 0.0 and score_type is None:
+            dist = score
 
         def parse_timestamp(val: Any) -> datetime | None:
             if val is None:
@@ -464,8 +578,52 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
             persisted_at=persisted_at,
             extracted_from=self._parse_list_field(fields.get("extracted_from")),
             event_date=event_date,
-            dist=score,
+            dist=dist,
+            score=score,
+            score_type=score_type,
         )
+
+    def _normalize_rank_scores(self, raw_scores: list[float]) -> list[float]:
+        """Normalize arbitrary descending rank scores into the 0-1 range."""
+        if not raw_scores:
+            return []
+
+        max_score = max(raw_scores)
+        if max_score <= 0:
+            return [0.0 for _ in raw_scores]
+
+        return [min(max(score / max_score, 0.0), 1.0) for score in raw_scores]
+
+    def _coerce_aggregate_row(self, row: Any) -> dict[str, Any]:
+        """Normalize Redis aggregate rows into plain string-keyed dicts."""
+        raw_fields = getattr(row, "__dict__", None)
+        if isinstance(raw_fields, dict) and raw_fields:
+            source: Any = raw_fields
+        else:
+            source = row
+
+        if isinstance(source, dict):
+            items = source.items()
+        elif isinstance(source, list | tuple):
+            if len(source) % 2 != 0:
+                return {}
+            items = zip(source[::2], source[1::2], strict=False)
+        else:
+            return {}
+
+        normalized: dict[str, Any] = {}
+        for key, value in items:
+            if isinstance(key, bytes):
+                key = key.decode("utf-8")
+            elif not isinstance(key, str):
+                key = str(key)
+
+            if isinstance(value, bytes):
+                value = value.decode("utf-8")
+
+            normalized[key] = value
+
+        return normalized
 
     def _build_filter_expression(self, **filter_kwargs: Any) -> Any | None:
         """Build a combined RedisVL filter expression from filter objects.
@@ -559,10 +717,15 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
             else:
                 fields = dict(fields) if fields else {}
 
-            score = float(fields.get("__vector_score", 1.0) or 1.0)
-            memory_result = self._data_to_memory_result(fields, score)
-            if memory_result is not None:
-                memory_results.append(memory_result)
+            dist = float(fields.get("__vector_score", 1.0) or 1.0)
+            memory_results.append(
+                self._data_to_memory_result(
+                    fields,
+                    dist=dist,
+                    score=max(0.0, 1.0 - dist),
+                    score_type=SearchScoreTypeEnum.SEMANTIC,
+                )
+            )
 
         next_offset = offset + limit if len(memory_results) == limit else None
         return MemoryRecordResults(
@@ -617,6 +780,9 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
     async def search_memories(
         self,
         query: str,
+        search_mode: SearchModeEnum = SearchModeEnum.SEMANTIC,
+        hybrid_alpha: float = 0.7,
+        text_scorer: str = "BM25STD",
         session_id: SessionId | None = None,
         user_id: UserId | None = None,
         namespace: Namespace | None = None,
@@ -635,7 +801,14 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         limit: int = 10,
         offset: int = 0,
     ) -> MemoryRecordResults:
-        """Search memories using RedisVL vector search."""
+        """Search memories using RedisVL semantic, keyword, or hybrid search.
+
+        Keyword and hybrid queries use BM25STD by default so the lexical side
+        of ranking stays normalized before hybrid blending. They also disable
+        Redis stopword filtering to avoid hard-coding a single language, so
+        callers with language-specific context should strip obvious stopwords
+        before querying when lexical precision matters.
+        """
         await self._ensure_index()
 
         # Build combined filter expression
@@ -654,8 +827,9 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
             discrete_memory_extracted=discrete_memory_extracted,
         )
 
-        # If server-side recency is requested, attempt aggregation path first
-        if server_side_recency:
+        # If server-side recency is requested, attempt aggregation path first.
+        # This path currently supports semantic vector search only.
+        if server_side_recency and search_mode == SearchModeEnum.SEMANTIC:
             try:
                 return await self._search_with_recency_aggregation(
                     query=query,
@@ -669,49 +843,126 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                 logger.warning(
                     f"RedisVL DB-level recency search failed; falling back to standard path: {e}"
                 )
-
-        # Embed the query
-        embedding_vector = await self.embeddings.aembed_query(query)
-
-        # Build vector query
-        if distance_threshold is not None:
-            vq = RangeQuery(
-                vector=embedding_vector,
-                vector_field_name="vector",
-                filter_expression=redis_filter,
-                distance_threshold=float(distance_threshold),
-                num_results=limit + offset,
-                return_fields=self.RETURN_FIELDS,
-            )
-        else:
-            vq = VectorQuery(
-                vector=embedding_vector,
-                vector_field_name="vector",
-                filter_expression=redis_filter,
-                num_results=limit + offset,
-                return_fields=self.RETURN_FIELDS,
+        elif server_side_recency:
+            logger.warning(
+                "server_side_recency is only supported for semantic search; "
+                "falling back to client-side reranking for %s search",
+                search_mode.value,
             )
 
-        # Execute search using index.query() which properly passes vector params
-        results = await self._index.query(vq)
-
-        # Parse results (query() returns List[Dict[str, Any]])
+        raw_results: list[dict[str, Any]]
         memory_results: list[MemoryRecordResult] = []
-        for i, fields in enumerate(results):
-            # Apply offset - RedisVL doesn't support native offset for KNN
-            if i < offset:
-                continue
 
-            # Get vector distance score
-            score = float(
-                fields.get("vector_distance", fields.get("__vector_score", 0.0)) or 0.0
+        if search_mode == SearchModeEnum.KEYWORD:
+            text_query = PhraseAwareTextQuery(
+                text=query,
+                text_field_name="text",
+                text_scorer=text_scorer,
+                filter_expression=redis_filter,
+                return_fields=self.RETURN_FIELDS,
+                num_results=limit + offset,
+                stopwords=None,
             )
+            raw_results = await self._index.query(text_query)
+            normalized_scores = self._normalize_rank_scores(
+                [float(fields.get("score", 0.0) or 0.0) for fields in raw_results]
+            )
+            for i, fields in enumerate(raw_results):
+                if i < offset:
+                    continue
 
-            memory_result = self._data_to_memory_result(fields, score)
-            memory_results.append(memory_result)
+                score = normalized_scores[i]
+                memory_results.append(
+                    self._data_to_memory_result(
+                        fields,
+                        dist=max(0.0, 1.0 - score),
+                        score=score,
+                        score_type=SearchScoreTypeEnum.KEYWORD,
+                    )
+                )
+                if len(memory_results) >= limit:
+                    break
+        elif search_mode == SearchModeEnum.HYBRID:
+            embedding_vector = await self.embeddings.aembed_query(query)
+            hybrid_query = PhraseAwareAggregateHybridQuery(
+                text=query,
+                text_field_name="text",
+                vector=embedding_vector,
+                vector_field_name="vector",
+                text_scorer=text_scorer,
+                filter_expression=redis_filter,
+                alpha=hybrid_alpha,
+                num_results=limit + offset,
+                return_fields=self.RETURN_FIELDS,
+                stopwords=None,
+            )
+            raw = await self._index.aggregate(hybrid_query, hybrid_query.params)
+            raw_results = getattr(raw, "rows", raw) or []
 
-            if len(memory_results) >= limit:
-                break
+            parsed_rows: list[dict[str, Any]] = []
+            for row in raw_results:
+                parsed_rows.append(self._coerce_aggregate_row(row))
+
+            normalized_scores = self._normalize_rank_scores(
+                [
+                    float(fields.get("hybrid_score", 0.0) or 0.0)
+                    for fields in parsed_rows
+                ]
+            )
+            for i, fields in enumerate(parsed_rows):
+                if i < offset:
+                    continue
+
+                score = normalized_scores[i]
+                memory_results.append(
+                    self._data_to_memory_result(
+                        fields,
+                        dist=max(0.0, 1.0 - score),
+                        score=score,
+                        score_type=SearchScoreTypeEnum.HYBRID,
+                    )
+                )
+                if len(memory_results) >= limit:
+                    break
+        else:
+            embedding_vector = await self.embeddings.aembed_query(query)
+            if distance_threshold is not None:
+                vector_query = RangeQuery(
+                    vector=embedding_vector,
+                    vector_field_name="vector",
+                    filter_expression=redis_filter,
+                    distance_threshold=float(distance_threshold),
+                    num_results=limit + offset,
+                    return_fields=self.RETURN_FIELDS,
+                )
+            else:
+                vector_query = VectorQuery(
+                    vector=embedding_vector,
+                    vector_field_name="vector",
+                    filter_expression=redis_filter,
+                    num_results=limit + offset,
+                    return_fields=self.RETURN_FIELDS,
+                )
+
+            raw_results = await self._index.query(vector_query)
+            for i, fields in enumerate(raw_results):
+                if i < offset:
+                    continue
+
+                dist = float(
+                    fields.get("vector_distance", fields.get("__vector_score", 0.0))
+                    or 0.0
+                )
+                memory_results.append(
+                    self._data_to_memory_result(
+                        fields,
+                        dist=dist,
+                        score=max(0.0, 1.0 - dist),
+                        score_type=SearchScoreTypeEnum.SEMANTIC,
+                    )
+                )
+                if len(memory_results) >= limit:
+                    break
 
         # Client-side recency fallback if server-side was requested
         if server_side_recency:
@@ -719,11 +970,11 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                 memory_results, recency_params
             )
 
-        next_offset = offset + limit if len(results) > offset + limit else None
+        next_offset = offset + limit if len(raw_results) > offset + limit else None
 
         return MemoryRecordResults(
             memories=memory_results[:limit],
-            total=len(results),
+            total=len(raw_results),
             next_offset=next_offset,
         )
 
@@ -821,7 +1072,12 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
             # Parse results (query() returns List[Dict[str, Any]])
             memory_results: list[MemoryRecordResult] = []
             for fields in results[offset:]:
-                memory_result = self._data_to_memory_result(fields, score=0.0)
+                memory_result = self._data_to_memory_result(
+                    fields,
+                    dist=0.0,
+                    score=None,
+                    score_type=None,
+                )
                 memory_results.append(memory_result)
 
                 if len(memory_results) >= limit:

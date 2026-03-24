@@ -202,6 +202,10 @@ export interface SessionListResponse {
 export interface MemoryRecordResult extends MemoryRecord {
   /** Distance/similarity score */
   dist: number;
+  /** Normalized relevance score for the selected search mode */
+  score?: number | null;
+  /** Search mode used to produce the normalized score */
+  score_type?: "semantic" | "keyword" | "hybrid" | null;
 }
 
 /**
@@ -267,6 +271,9 @@ export interface MemoryPromptRequest {
  */
 export interface SearchRequestParams {
   text?: string;
+  search_mode?: "semantic" | "keyword" | "hybrid";
+  hybrid_alpha?: number;
+  text_scorer?: string;
   session_id?: SessionIdFilter | null;
   namespace?: NamespaceFilter | null;
   topics?: TopicsFilter | null;

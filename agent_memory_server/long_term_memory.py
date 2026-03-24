@@ -38,6 +38,7 @@ from agent_memory_server.models import (
     MemoryRecordResult,
     MemoryRecordResults,
     MemoryTypeEnum,
+    SearchModeEnum,
 )
 from agent_memory_server.utils.keys import Keys
 from agent_memory_server.utils.recency import (
@@ -1086,6 +1087,9 @@ async def index_long_term_memories(
 
 async def search_long_term_memories(
     text: str,
+    search_mode: SearchModeEnum = SearchModeEnum.SEMANTIC,
+    hybrid_alpha: float = 0.7,
+    text_scorer: str = "BM25STD",
     session_id: SessionId | None = None,
     user_id: UserId | None = None,
     namespace: Namespace | None = None,
@@ -1107,7 +1111,15 @@ async def search_long_term_memories(
     Search for long-term memories using the pluggable memory vector database.
 
     Args:
-        text: Query for vector search - will be used for semantic similarity matching
+        text: Query text used for semantic, keyword, or hybrid search
+        search_mode: Search strategy to use
+        hybrid_alpha: Weight assigned to vector similarity in hybrid search
+        text_scorer: Redis full-text scoring algorithm for keyword and hybrid
+            search. Defaults to BM25STD, a normalized BM25 variant that keeps
+            lexical scores on a stable scale for hybrid ranking. Keyword and
+            hybrid search disable Redis stopword filtering to avoid assuming a
+            single language, so callers should pre-filter obvious stopwords
+            when they have language-specific context.
         session_id: Optional session ID filter
         user_id: Optional user ID filter
         namespace: Optional namespace filter
@@ -1126,6 +1138,11 @@ async def search_long_term_memories(
     Returns:
         MemoryRecordResults containing matching memories
     """
+    if distance_threshold is not None and search_mode != SearchModeEnum.SEMANTIC:
+        raise ValueError(
+            "distance_threshold is only supported for semantic search mode"
+        )
+
     # If no query text is provided, perform a filter-only listing (no semantic search).
     # This enables patterns like: "return all memories for this user/namespace".
     if not (text or "").strip():
@@ -1145,10 +1162,11 @@ async def search_long_term_memories(
             offset=offset,
         )
 
-    # Optimize query for vector search if requested.
+    # Optimize query only for semantic search; keyword and hybrid modes should
+    # preserve the literal text for lexical matching.
     search_query = text
     optimized_applied = False
-    if optimize_query and text:
+    if optimize_query and text and search_mode == SearchModeEnum.SEMANTIC:
         search_query = await optimize_query_for_vector_search(text)
         optimized_applied = True
 
@@ -1156,6 +1174,7 @@ async def search_long_term_memories(
     optimized_display = repr(search_query) if optimized_applied else "N/A"
     logger.debug(
         f"[search_long_term_memories] INPUT - query: {text!r}, "
+        f"search_mode: {search_mode}, "
         f"optimized_query: {optimized_display}, "
         f"session_id: {session_id}, user_id: {user_id}, namespace: {namespace}, "
         f"distance_threshold: {distance_threshold}, limit: {limit}"
@@ -1167,6 +1186,9 @@ async def search_long_term_memories(
     # Delegate search to the database
     results = await db.search_memories(
         query=search_query,
+        search_mode=search_mode,
+        hybrid_alpha=hybrid_alpha,
+        text_scorer=text_scorer,
         session_id=session_id,
         user_id=user_id,
         namespace=namespace,
@@ -1195,6 +1217,9 @@ async def search_long_term_memories(
         ):
             results = await db.search_memories(
                 query=text,
+                search_mode=search_mode,
+                hybrid_alpha=hybrid_alpha,
+                text_scorer=text_scorer,
                 session_id=session_id,
                 user_id=user_id,
                 namespace=namespace,

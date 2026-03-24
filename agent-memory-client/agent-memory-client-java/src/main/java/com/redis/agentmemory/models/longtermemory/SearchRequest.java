@@ -16,6 +16,18 @@ public class SearchRequest {
     private String text;
 
     @Nullable
+    @JsonProperty("search_mode")
+    private String searchMode;
+
+    @Nullable
+    @JsonProperty("hybrid_alpha")
+    private Double hybridAlpha;
+
+    @Nullable
+    @JsonProperty("text_scorer")
+    private String textScorer;
+
+    @Nullable
     @JsonProperty("session_id")
     private String sessionId;
 
@@ -83,6 +95,33 @@ public class SearchRequest {
 
     public void setText(@Nullable String text) {
         this.text = text;
+    }
+
+    @Nullable
+    public String getSearchMode() {
+        return searchMode;
+    }
+
+    public void setSearchMode(@Nullable String searchMode) {
+        this.searchMode = searchMode;
+    }
+
+    @Nullable
+    public Double getHybridAlpha() {
+        return hybridAlpha;
+    }
+
+    public void setHybridAlpha(@Nullable Double hybridAlpha) {
+        this.hybridAlpha = hybridAlpha;
+    }
+
+    @Nullable
+    public String getTextScorer() {
+        return textScorer;
+    }
+
+    public void setTextScorer(@Nullable String textScorer) {
+        this.textScorer = textScorer;
     }
 
     @Nullable
@@ -231,6 +270,9 @@ public class SearchRequest {
     public String toString() {
         return "SearchRequest{" +
                 "text='" + text + '\'' +
+                ", searchMode='" + searchMode + '\'' +
+                ", hybridAlpha=" + hybridAlpha +
+                ", textScorer='" + textScorer + '\'' +
                 ", sessionId='" + sessionId + '\'' +
                 ", namespace='" + namespace + '\'' +
                 ", topics=" + topics +
@@ -266,6 +308,21 @@ public class SearchRequest {
 
         public Builder text(@Nullable String text) {
             request.text = text;
+            return this;
+        }
+
+        public Builder searchMode(@Nullable String searchMode) {
+            request.searchMode = searchMode;
+            return this;
+        }
+
+        public Builder hybridAlpha(@Nullable Double hybridAlpha) {
+            request.hybridAlpha = hybridAlpha;
+            return this;
+        }
+
+        public Builder textScorer(@Nullable String textScorer) {
+            request.textScorer = textScorer;
             return this;
         }
 

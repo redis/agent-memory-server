@@ -954,6 +954,54 @@ class TestSearchEndpoint:
         assert data["memories"][0]["id"] == "1"
         assert data["memories"][0]["text"] == "Optimized result"
 
+    @patch("agent_memory_server.api.long_term_memory.search_long_term_memories")
+    @pytest.mark.asyncio
+    async def test_search_rejects_distance_threshold_for_keyword_mode(
+        self, mock_search, client
+    ):
+        """distance_threshold only applies to semantic search."""
+        payload = {
+            "text": "preference",
+            "search_mode": "keyword",
+            "distance_threshold": 0.5,
+        }
+
+        response = await client.post("/v1/long-term-memory/search", json=payload)
+
+        assert response.status_code == 400
+        assert (
+            response.json()["detail"]
+            == "distance_threshold is only supported for semantic search mode"
+        )
+        mock_search.assert_not_called()
+
+    @patch("agent_memory_server.api.long_term_memory.search_long_term_memories")
+    @pytest.mark.parametrize("search_mode", ["keyword", "hybrid"])
+    @pytest.mark.asyncio
+    async def test_search_skips_soft_filter_fallback_for_nonsemantic_modes(
+        self, mock_search, client, search_mode
+    ):
+        """Non-semantic search should not reuse semantic soft-filter fallback text hints."""
+        from agent_memory_server.models import MemoryRecordResults
+
+        mock_search.return_value = MemoryRecordResults(
+            memories=[],
+            total=0,
+            next_offset=None,
+        )
+
+        payload = {
+            "text": "scarlet dolphin",
+            "search_mode": search_mode,
+            "topics": {"eq": "marine biology"},
+        }
+
+        response = await client.post("/v1/long-term-memory/search", json=payload)
+
+        assert response.status_code == 200
+        mock_search.assert_called_once()
+        assert mock_search.call_args.kwargs["text"] == "scarlet dolphin"
+
 
 @pytest.mark.requires_api_keys
 class TestMemoryPromptEndpoint:
