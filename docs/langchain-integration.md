@@ -63,14 +63,13 @@ pip install agent-memory-client langchain langchain-openai langgraph
 
 ## Using with LangChain
 
-Here's a complete example of creating a memory-enabled LangChain agent:
+Here's a complete example of creating a memory-enabled LangChain agent using the modern `create_agent` API (LangGraph-based):
 
 ```python
 import asyncio
 from agent_memory_client import create_memory_client
 from agent_memory_client.integrations.langchain import get_memory_tools
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.agents import create_agent
 from langchain_core.tools import StructuredTool
 from langchain_openai import ChatOpenAI
 
@@ -88,26 +87,22 @@ async def main():
 
     # Create LangChain agent
     llm = ChatOpenAI(model="gpt-4o")
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful assistant with persistent memory."),
-        ("human", "{input}"),
-        MessagesPlaceholder("agent_scratchpad"),
-    ])
-
-    agent = create_tool_calling_agent(llm, tools, prompt)
-    executor = AgentExecutor(agent=agent, tools=tools)
+    agent = create_agent(
+        llm, tools,
+        system_prompt="You are a helpful assistant with persistent memory."
+    )
 
     # Use the agent
-    result = await executor.ainvoke({
-        "input": "Remember that I love pizza and work at TechCorp"
+    result = await agent.ainvoke({
+        "messages": [("human", "Remember that I love pizza and work at TechCorp")]
     })
-    print(result["output"])
+    print(result["messages"][-1].content)
 
     # Later conversation - agent can recall the information
-    result = await executor.ainvoke({
-        "input": "What do you know about my food preferences?"
+    result = await agent.ainvoke({
+        "messages": [("human", "What do you know about my food preferences?")]
     })
-    print(result["output"])
+    print(result["messages"][-1].content)
 
 
 asyncio.run(main())
@@ -115,15 +110,17 @@ asyncio.run(main())
 
 ## Using with LangGraph
 
-You can use memory tools in LangGraph workflows:
+The `create_agent` function from `langchain.agents` is built on LangGraph. You can also use
+LangGraph features like `MemorySaver` for multi-turn state persistence:
 
 ```python
 import asyncio
 from agent_memory_client import create_memory_client
 from agent_memory_client.integrations.langchain import get_memory_tools
+from langchain.agents import create_agent
 from langchain_core.tools import StructuredTool
 from langchain_openai import ChatOpenAI
-from langgraph.prebuilt import create_react_agent
+from langgraph.checkpoint.memory import MemorySaver
 
 
 async def main():
@@ -137,20 +134,26 @@ async def main():
         user_id="alice"
     )
 
-    # Create a LangGraph agent with memory tools
+    # Create an agent with memory tools and state persistence
     llm = ChatOpenAI(model="gpt-4o")
-    graph = create_react_agent(llm, tools)
+    checkpointer = MemorySaver()
+    agent = create_agent(
+        llm, tools,
+        system_prompt="You are a helpful assistant with persistent memory.",
+        checkpointer=checkpointer
+    )
 
-    # Use the agent
-    result = await graph.ainvoke({
-        "messages": [("user", "Remember that I'm learning Python and prefer visual examples")]
-    })
+    # Use the agent with a thread_id for state persistence
+    config = {"configurable": {"thread_id": "session_1"}}
+    result = await agent.ainvoke({
+        "messages": [("human", "Remember that I'm learning Python and prefer visual examples")]
+    }, config=config)
     print(result["messages"][-1].content)
 
-    # Continue the conversation
-    result = await graph.ainvoke({
-        "messages": [("user", "What programming language am I learning?")]
-    })
+    # Continue the conversation - state is preserved via checkpointer
+    result = await agent.ainvoke({
+        "messages": [("human", "What programming language am I learning?")]
+    }, config=config)
     print(result["messages"][-1].content)
 
 
@@ -193,9 +196,8 @@ Combine memory tools with your own custom tools:
 import asyncio
 from agent_memory_client import create_memory_client
 from agent_memory_client.integrations.langchain import get_memory_tools
+from langchain.agents import create_agent
 from langchain_core.tools import tool
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import ChatOpenAI
 
 
@@ -204,7 +206,6 @@ from langchain_openai import ChatOpenAI
 async def calculate(expression: str) -> str:
     """Evaluate a simple mathematical expression safely."""
     import ast
-    # Use ast.literal_eval for safe evaluation of simple expressions
     try:
         result = ast.literal_eval(expression)
         return str(result)
@@ -215,7 +216,6 @@ async def calculate(expression: str) -> str:
 @tool
 async def get_weather(city: str) -> str:
     """Get weather for a city."""
-    # Your weather API logic here
     return f"Weather in {city}: Sunny, 72°F"
 
 
@@ -235,20 +235,16 @@ async def main():
 
     # Create agent with combined tools
     llm = ChatOpenAI(model="gpt-4o")
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful assistant with memory and additional capabilities."),
-        ("human", "{input}"),
-        MessagesPlaceholder("agent_scratchpad"),
-    ])
-
-    agent = create_tool_calling_agent(llm, all_tools, prompt)
-    executor = AgentExecutor(agent=agent, tools=all_tools)
+    agent = create_agent(
+        llm, all_tools,
+        system_prompt="You are a helpful assistant with memory and additional capabilities."
+    )
 
     # Use the agent
-    result = await executor.ainvoke({
-        "input": "What's 2+2? Also remember that I like math."
+    result = await agent.ainvoke({
+        "messages": [("human", "What's 2+2? Also remember that I like math.")]
     })
-    print(result["output"])
+    print(result["messages"][-1].content)
 
 
 asyncio.run(main())
@@ -262,17 +258,16 @@ Handle multiple users with different sessions:
 import asyncio
 from agent_memory_client import create_memory_client
 from agent_memory_client.integrations.langchain import get_memory_tools
+from langchain.agents import create_agent
 from langchain_core.tools import StructuredTool
-from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 
 async def main():
     # Initialize shared memory client
     shared_memory_client = await create_memory_client("http://localhost:8000")
 
-    async def create_user_agent(user_id: str, session_id: str):
+    async def make_user_agent(user_id: str, session_id: str):
         """Create a memory-enabled agent for a specific user."""
         tools: list[StructuredTool] = get_memory_tools(
             memory_client=shared_memory_client,
@@ -282,22 +277,22 @@ async def main():
         )
 
         llm = ChatOpenAI(model="gpt-4o")
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", f"You are assisting user {user_id}."),
-            ("human", "{input}"),
-            MessagesPlaceholder("agent_scratchpad"),
-        ])
-
-        agent = create_tool_calling_agent(llm, tools, prompt)
-        return AgentExecutor(agent=agent, tools=tools)
+        return create_agent(
+            llm, tools,
+            system_prompt=f"You are assisting user {user_id}."
+        )
 
     # Create agents for different users
-    alice_agent = await create_user_agent("alice", "alice_session_1")
-    bob_agent = await create_user_agent("bob", "bob_session_1")
+    alice_agent = await make_user_agent("alice", "alice_session_1")
+    bob_agent = await make_user_agent("bob", "bob_session_1")
 
     # Each agent has isolated memory
-    await alice_agent.ainvoke({"input": "I love pizza"})
-    await bob_agent.ainvoke({"input": "I love sushi"})
+    await alice_agent.ainvoke({
+        "messages": [("human", "I love pizza")]
+    })
+    await bob_agent.ainvoke({
+        "messages": [("human", "I love sushi")]
+    })
 
 
 asyncio.run(main())
