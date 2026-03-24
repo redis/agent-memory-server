@@ -51,6 +51,16 @@ uv run agent-memory mcp --mode streamable-http --port 9000
 uv run agent-memory mcp --mode sse --task-backend docket
 ```
 
+### Core CLI Commands
+
+| Command | Typical Use | Backend Behavior |
+|---|---|---|
+| `uv run agent-memory api --task-backend=asyncio` | Local development (single process) | Uses `asyncio` inline tasks; no separate worker |
+| `uv run agent-memory api` | Production API server | Defaults to `docket`; run `uv run agent-memory task-worker` |
+| `uv run agent-memory mcp` | Claude Desktop / local stdio MCP | Defaults to `asyncio`; no worker required |
+| `uv run agent-memory mcp --mode sse --port 9000 --task-backend docket` | Network MCP with shared workers | Uses `docket`; run `uv run agent-memory task-worker` |
+| `uv run agent-memory task-worker --concurrency 10` | Background processing | Processes queued Docket tasks |
+
 ### Using uvx in MCP clients
 
 When configuring MCP-enabled apps (e.g., Claude Desktop), prefer `uvx` so the app can run the server without a local checkout:
