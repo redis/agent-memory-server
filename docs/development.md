@@ -2,7 +2,7 @@
 
 ## Running the servers locally
 
-The easiest way to run the API server(s) is with Docker Compose:
+Start by creating a virtual environment and installing dependencies with uv:
 ```bash
 # Create and activate a virtual environment
 uv venv
