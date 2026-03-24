@@ -384,7 +384,6 @@ async def _resolve_working_memory_key_via_index(
     Returns:
         The Redis key string if exactly one match is found, None otherwise
     """
-    from functools import reduce
 
     from agent_memory_server.working_memory_index import get_working_memory_index
 
@@ -393,9 +392,9 @@ async def _resolve_working_memory_key_via_index(
 
         filter_expression = Tag("session_id") == session_id
         if namespace:
-            filter_expression &= (Tag("namespace") == namespace)
+            filter_expression &= Tag("namespace") == namespace
         if user_id:
-            filter_expression &= (Tag("user_id") == user_id)
+            filter_expression &= Tag("user_id") == user_id
 
         # Request up to 2 results so we can detect ambiguity.
         filter_query = FilterQuery(
