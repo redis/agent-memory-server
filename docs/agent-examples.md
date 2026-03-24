@@ -20,7 +20,7 @@ A comprehensive travel assistant that demonstrates the most complete integration
 
 The travel agent automatically discovers and uses all memory tools:
 
-1. **search_memory** - Search through previous conversations and stored information
+1. **search_memory** - Search through previous conversations and stored information (supports `semantic`, `keyword`, and `hybrid` search modes)
 2. **get_or_create_working_memory** - Check current working memory session
 3. **lazily_create_long_term_memory** - Store important information as structured memories (promoted to long-term storage later)
 4. **update_working_memory_data** - Store/update session-specific data like trip plans
@@ -135,7 +135,7 @@ Demonstrates comprehensive memory editing capabilities through natural conversat
 
 ### Memory Operations Demonstrated
 
-1. **search_memory** - Find existing memories using natural language
+1. **search_memory** - Find existing memories using natural language (supports `semantic`, `keyword`, and `hybrid` search modes)
 2. **get_long_term_memory** - Retrieve specific memories by ID
 3. **lazily_create_long_term_memory** - Store new information (promoted to long-term storage later)
 4. **eagerly_create_long_term_memory** - Create long-term memories directly for immediate storage
@@ -245,6 +245,92 @@ python ai_tutor.py --user-id student123 --session-id bio_course
 - **Summary**: Get learning progress summary
 - **Practice-next**: Get personalized practice recommendations based on weak areas
 
+## 🔗 LangChain Integration Example
+
+**File**: [`examples/langchain_integration_example.py`](https://github.com/redis/agent-memory-server/blob/main/examples/langchain_integration_example.py)
+
+Demonstrates how to use the `agent_memory_client` LangChain integration to create memory-enabled agents **without manual tool wrapping**.
+
+### Core Concept
+
+Uses `get_memory_tools()` from `agent_memory_client.integrations.langchain` to automatically generate LangChain-compatible tools, then creates an agent with `create_agent` (LangGraph-based).
+
+### Key Features
+
+- **Automatic Tool Generation**: No manual `@tool` wrappers needed — `get_memory_tools()` handles it
+- **Modern LangGraph Agent**: Uses `create_agent` from `langchain.agents` (not the deprecated `AgentExecutor`)
+- **State Persistence**: Demonstrates `MemorySaver` checkpointer for multi-turn conversations
+- **Search Modes**: Supports `semantic`, `keyword`, and `hybrid` search via `search_memory`
+
+### Usage Examples
+
+```bash
+cd examples
+python langchain_integration_example.py
+```
+
+### Key Implementation Pattern
+
+```python
+from agent_memory_client import create_memory_client
+from agent_memory_client.integrations.langchain import get_memory_tools
+from langchain.agents import create_agent
+
+memory_client = await create_memory_client("http://localhost:8000")
+tools = get_memory_tools(memory_client=memory_client, session_id="session", user_id="user")
+
+agent = create_agent(
+    ChatOpenAI(model="gpt-4o"), tools,
+    system_prompt="You are a helpful assistant with persistent memory."
+)
+
+result = await agent.ainvoke({"messages": [("human", "Remember I love pizza")]})
+print(result["messages"][-1].content)
+```
+
+---
+
+## 📊 Recent Messages Limit Demo
+
+**File**: [`examples/recent_messages_limit_demo.py`](https://github.com/redis/agent-memory-server/blob/main/examples/recent_messages_limit_demo.py)
+
+Demonstrates the `recent_messages_limit` parameter for efficiently retrieving only the most recent N messages from working memory.
+
+### Core Concept
+
+When working memory grows large, retrieving all messages is expensive. The `recent_messages_limit` parameter lets you fetch only the N most recent messages, useful for context windows and UI displays.
+
+### Key Features
+
+- **Efficient Retrieval**: Fetch only the messages you need instead of the full history
+- **SDK Integration**: Uses `agent_memory_client` for both storing and retrieving working memory
+- **Multiple Scenarios**: Tests various limits (3, 5, 1, 0) and compares with unlimited retrieval
+- **Direct API Verification**: Also demonstrates the raw HTTP API for comparison
+
+### Usage Examples
+
+```bash
+cd examples
+python recent_messages_limit_demo.py
+```
+
+### Key Implementation Pattern
+
+```python
+from agent_memory_client import create_memory_client
+
+client = await create_memory_client(base_url="http://localhost:8000")
+
+# Get only the 3 most recent messages
+memory = await client.get_working_memory(
+    session_id="my-session",
+    namespace="demo",
+    recent_messages_limit=3
+)
+```
+
+---
+
 ## Getting Started with Examples
 
 ### 1. Prerequisites
@@ -254,8 +340,8 @@ python ai_tutor.py --user-id student123 --session-id bio_course
 cd /path/to/agent-memory-server
 uv sync --all-extras
 
-# Start memory server
-uv run agent-memory api --task-backend=asyncio
+# Start memory server (disable auth for local development)
+DISABLE_AUTH=true uv run agent-memory api --task-backend=asyncio
 
 # Set required API keys
 export OPENAI_API_KEY="your-openai-key"
@@ -277,6 +363,12 @@ python memory_prompt_agent.py
 
 # Experience learning tracking
 python ai_tutor.py --demo
+
+# LangChain integration (requires langchain, langchain_openai)
+python langchain_integration_example.py
+
+# Recent messages limit feature demo
+python recent_messages_limit_demo.py
 ```
 
 ### 3. Customize and Extend
