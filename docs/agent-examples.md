@@ -405,7 +405,7 @@ client = await create_memory_client(base_url="http://localhost:8000")
 memory = await client.get_working_memory(
     session_id="my-session",
     namespace="demo",
-    recent_messages_limit=3
+    context_window_max=3
 )
 ```
 
