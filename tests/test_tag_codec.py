@@ -63,21 +63,22 @@ def test_validate_no_commas_rejects_second_element():
 def test_validate_no_commas_imports_without_client_helper(monkeypatch):
     module_name = "agent_memory_server.utils.tag_codec"
     original_module = sys.modules.get(module_name)
-    sys.modules.pop(module_name, None)
-
-    real_import = builtins.__import__
-
-    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name == "agent_memory_client.utils.tag_codec":
-            raise ModuleNotFoundError(
-                "No module named 'agent_memory_client.utils'",
-                name="agent_memory_client.utils",
-            )
-        return real_import(name, globals, locals, fromlist, level)
-
-    monkeypatch.setattr(builtins, "__import__", fake_import)
 
     try:
+        sys.modules.pop(module_name, None)
+
+        real_import = builtins.__import__
+
+        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "agent_memory_client.utils.tag_codec":
+                raise ModuleNotFoundError(
+                    "No module named 'agent_memory_client.utils'",
+                    name="agent_memory_client.utils",
+                )
+            return real_import(name, globals, locals, fromlist, level)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+
         module = importlib.import_module(module_name)
         assert module.__file__ is not None
         assert module.validate_no_commas_in_tags(["a", "b"], "topics") == ["a", "b"]
