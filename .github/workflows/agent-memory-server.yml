@@ -66,6 +66,7 @@ jobs:
         with:
           repository-url: https://test.pypi.org/legacy/
           packages-dir: dist/
+          verbose: true
 
   publish-pypi:
     name: Publish to PyPI
@@ -87,6 +88,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+          verbose: true
 
   publish-docker:
     name: Publish Docker Images
