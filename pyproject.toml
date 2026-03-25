@@ -41,7 +41,7 @@ dependencies = [
     "python-ulid>=3.0.0",
     "bcrypt>=4.0.0",
     "cachetools>=6.2.2,<7.0.0",
-    "litellm @ https://github.com/BerriAI/litellm/archive/57e07bddd34185934893de3ad74583ba119ed67d.zip",
+    "litellm>=1.75.5, <=1.82.6",  # For LiteLLM tests. Upper bound pinned: versions 1.82.7+ compromised in supply chain attack.
 ]
 
 [project.scripts]

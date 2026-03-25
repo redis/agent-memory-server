@@ -127,7 +127,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=3.4.8" },
     { name = "fastapi", specifier = ">=0.115.11" },
     { name = "httpx", specifier = ">=0.25.0" },
-    { name = "litellm", url = "https://github.com/BerriAI/litellm/archive/57e07bddd34185934893de3ad74583ba119ed67d.zip" },
+    { name = "litellm", specifier = ">=1.75.5,<=1.82.6" },
     { name = "mcp", specifier = ">=1.6.0" },
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "openai", specifier = ">=1.3.7" },
@@ -1373,7 +1373,7 @@ wheels = [
 [[package]]
 name = "litellm"
 version = "1.80.11"
-source = { url = "https://github.com/BerriAI/litellm/archive/57e07bddd34185934893de3ad74583ba119ed67d.zip" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "click" },
@@ -1389,60 +1389,10 @@ dependencies = [
     { name = "tiktoken" },
     { name = "tokenizers" },
 ]
-sdist = { hash = "sha256:527917cef8a89429b171f6a8de4fcaed40ebec2cff37fe7caaa82c095e38b245" }
-
-[package.metadata]
-requires-dist = [
-    { name = "aiohttp", specifier = ">=3.10" },
-    { name = "apscheduler", marker = "extra == 'proxy'", specifier = ">=3.10.4,<4.0.0" },
-    { name = "azure-identity", marker = "(python_full_version >= '3.9' and extra == 'extra-proxy') or (python_full_version >= '3.9' and extra == 'proxy')", specifier = ">=1.15.0,<2.0.0" },
-    { name = "azure-keyvault-secrets", marker = "extra == 'extra-proxy'", specifier = ">=4.8.0,<5.0.0" },
-    { name = "azure-storage-blob", marker = "extra == 'proxy'", specifier = ">=12.25.1,<13.0.0" },
-    { name = "backoff", marker = "extra == 'proxy'" },
-    { name = "boto3", marker = "extra == 'proxy'", specifier = "==1.36.0" },
-    { name = "click" },
-    { name = "cryptography", marker = "extra == 'proxy'" },
-    { name = "diskcache", marker = "extra == 'caching'", specifier = ">=5.6.1,<6.0.0" },
-    { name = "fastapi", marker = "extra == 'proxy'", specifier = ">=0.120.1" },
-    { name = "fastapi-sso", marker = "extra == 'proxy'", specifier = ">=0.16.0,<0.17.0" },
-    { name = "fastuuid", specifier = ">=0.13.0" },
-    { name = "google-cloud-iam", marker = "extra == 'extra-proxy'", specifier = ">=2.19.1,<3.0.0" },
-    { name = "google-cloud-kms", marker = "extra == 'extra-proxy'", specifier = ">=2.21.3,<3.0.0" },
-    { name = "grpcio", marker = "python_full_version < '3.14'", specifier = ">=1.62.3,<1.68.0" },
-    { name = "grpcio", marker = "python_full_version >= '3.14'", specifier = ">=1.75.0" },
-    { name = "gunicorn", marker = "extra == 'proxy'", specifier = ">=23.0.0,<24.0.0" },
-    { name = "httpx", specifier = ">=0.23.0" },
-    { name = "importlib-metadata", specifier = ">=6.8.0" },
-    { name = "jinja2", specifier = ">=3.1.2,<4.0.0" },
-    { name = "jsonschema", specifier = ">=4.23.0,<5.0.0" },
-    { name = "litellm-enterprise", marker = "extra == 'proxy'", specifier = "==0.1.27" },
-    { name = "litellm-proxy-extras", marker = "extra == 'proxy'", specifier = "==0.4.16" },
-    { name = "mcp", marker = "python_full_version >= '3.10' and extra == 'proxy'", specifier = ">=1.21.2,<2.0.0" },
-    { name = "mlflow", marker = "python_full_version >= '3.10' and extra == 'mlflow'", specifier = ">3.1.4" },
-    { name = "numpydoc", marker = "extra == 'utils'" },
-    { name = "openai", specifier = ">=2.8.0" },
-    { name = "orjson", marker = "extra == 'proxy'", specifier = ">=3.9.7,<4.0.0" },
-    { name = "polars", marker = "python_full_version >= '3.10' and extra == 'proxy'", specifier = ">=1.31.0,<2.0.0" },
-    { name = "prisma", marker = "extra == 'extra-proxy'", specifier = "==0.11.0" },
-    { name = "pydantic", specifier = ">=2.5.0,<3.0.0" },
-    { name = "pyjwt", marker = "python_full_version >= '3.9' and extra == 'proxy'", specifier = ">=2.10.1,<3.0.0" },
-    { name = "pynacl", marker = "extra == 'proxy'", specifier = ">=1.5.0,<2.0.0" },
-    { name = "python-dotenv", specifier = ">=0.2.0" },
-    { name = "python-multipart", marker = "extra == 'proxy'", specifier = ">=0.0.18,<0.0.19" },
-    { name = "pyyaml", marker = "extra == 'proxy'", specifier = ">=6.0.1,<7.0.0" },
-    { name = "redisvl", marker = "python_full_version >= '3.9' and python_full_version < '3.14' and extra == 'extra-proxy'", specifier = ">=0.4.1,<0.5.0" },
-    { name = "resend", marker = "extra == 'extra-proxy'", specifier = ">=0.8.0" },
-    { name = "rich", marker = "extra == 'proxy'", specifier = "==13.7.1" },
-    { name = "rq", marker = "extra == 'proxy'" },
-    { name = "semantic-router", marker = "python_full_version >= '3.9' and python_full_version < '3.14' and extra == 'semantic-router'", specifier = ">=0.1.12" },
-    { name = "soundfile", marker = "extra == 'proxy'", specifier = ">=0.12.1,<0.13.0" },
-    { name = "tiktoken", specifier = ">=0.7.0" },
-    { name = "tokenizers" },
-    { name = "uvicorn", marker = "extra == 'proxy'", specifier = ">=0.31.1,<0.32.0" },
-    { name = "uvloop", marker = "sys_platform != 'win32' and extra == 'proxy'", specifier = ">=0.21.0,<0.22.0" },
-    { name = "websockets", marker = "extra == 'proxy'", specifier = ">=15.0.1,<16.0.0" },
+sdist = { url = "https://files.pythonhosted.org/packages/55/47/be6cd7b356418ca8bef3b843507940ce77b76ef2dfe515f2b4ba9b461ff0/litellm-1.80.11.tar.gz", hash = "sha256:c9fc63e7acb6360363238fe291bcff1488c59ff66020416d8376c0ee56414a19", size = 13189510, upload-time = "2025-12-22T12:47:29.181Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/97/0b/9e637344f24f3fe0e8039cd2337389fe05e0d31f518bc3e0a5cdbe45784a/litellm-1.80.11-py3-none-any.whl", hash = "sha256:406283d66ead77dc7ff0e0b2559c80e9e497d8e7c2257efb1cb9210a20d09d54", size = 11456346, upload-time = "2025-12-22T12:47:26.469Z" },
 ]
-provides-extras = ["caching", "extra-proxy", "mlflow", "proxy", "semantic-router", "utils"]
 
 [[package]]
 name = "lupa"
