@@ -1,3 +1,7 @@
+import builtins
+import importlib
+import sys
+
 import pytest
 
 from agent_memory_server.utils.tag_codec import (
@@ -54,6 +58,37 @@ def test_validate_no_commas_rejects_commas():
 def test_validate_no_commas_rejects_second_element():
     with pytest.raises(ValueError, match=r"entities\[1\] contains a comma"):
         validate_no_commas_in_tags(["ok", "bad, value"], "entities")
+
+
+def test_validate_no_commas_imports_without_client_helper(monkeypatch):
+    module_name = "agent_memory_server.utils.tag_codec"
+    original_module = sys.modules.get(module_name)
+    sys.modules.pop(module_name, None)
+
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "agent_memory_client.utils.tag_codec":
+            raise ModuleNotFoundError(
+                "No module named 'agent_memory_client.utils'",
+                name="agent_memory_client.utils",
+            )
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    try:
+        module = importlib.import_module(module_name)
+        assert module.__file__ is not None
+        assert module.validate_no_commas_in_tags(["a", "b"], "topics") == ["a", "b"]
+        with pytest.raises(
+            ValueError, match=r"topics\[0\] contains a comma.*Austin, TX"
+        ):
+            module.validate_no_commas_in_tags(["Austin, TX"], "topics")
+    finally:
+        sys.modules.pop(module_name, None)
+        if original_module is not None:
+            sys.modules[module_name] = original_module
 
 
 # --- sanitize_tag_values ---

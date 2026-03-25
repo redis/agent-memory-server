@@ -17,7 +17,7 @@ requires-python = ">=3.12,<3.13"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Andrew Brookins", email = "andrew.brookins@redis.com" }]
 dependencies = [
-    "agent-memory-client",
+    "agent-memory-client>=0.14.1",
     "anthropic>=0.15.0",
     "fastapi>=0.115.11",
     "mcp>=1.6.0",
@@ -130,7 +130,7 @@ indent-style = "space"
 
 [project.optional-dependencies]
 dev = [
-    "agent-memory-client",
+    "agent-memory-client>=0.14.1",
 ]
 aws = [
     "boto3>=1.42.1,<2.0.0",
