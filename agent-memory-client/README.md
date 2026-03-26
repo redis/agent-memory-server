@@ -201,6 +201,21 @@ results = await client.search_long_term_memory(
     user_id=UserId(eq="user-123"),
     limit=20
 )
+
+# Keyword search - exact term matching
+results = await client.search_long_term_memory(
+    text="science fiction",
+    search_mode="keyword",
+    limit=20
+)
+
+# Hybrid search - combines semantic and keyword matching
+results = await client.search_long_term_memory(
+    text="science fiction",
+    search_mode="hybrid",
+    hybrid_alpha=0.7,  # 0.0=keyword, 1.0=semantic
+    limit=20
+)
 ```
 
 ## Enhanced Features

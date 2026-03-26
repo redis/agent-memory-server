@@ -1386,7 +1386,7 @@ class MemoryAPIClient:
                 "type": "function",
                 "function": {
                     "name": "search_memory",
-                    "description": "Search long-term memory for relevant information using semantic vector search. Use this when you need to find previously stored information about the user, such as their preferences, past conversations, or important facts. Examples: 'Find information about user food preferences', 'What did they say about their job?', 'Look for travel preferences'. This searches only long-term memory, not current working memory - use get_working_memory for current session info. IMPORTANT: The result includes 'memories' with an 'id' field; use these IDs when calling edit_long_term_memory or delete_long_term_memories.",
+                    "description": "Search long-term memory for relevant information using semantic, keyword, or hybrid search. Use this when you need to find previously stored information about the user, such as their preferences, past conversations, or important facts. Examples: 'Find information about user food preferences', 'What did they say about their job?', 'Look for travel preferences'. This searches only long-term memory, not current working memory - use get_working_memory for current session info. IMPORTANT: The result includes 'memories' with an 'id' field; use these IDs when calling edit_long_term_memory or delete_long_term_memories.",
                     "parameters": {
                         "type": "object",
                         "properties": {

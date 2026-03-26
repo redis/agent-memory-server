@@ -90,11 +90,26 @@ await client.createLongTermMemory([
   },
 ]);
 
-// Search with filters
+// Search with filters (default: semantic search)
 const results = await client.searchLongTermMemory({
   text: "science fiction",
   topics: new Topics({ any: ["books", "entertainment"] }),
   userId: new UserId({ eq: "user-123" }),
+  limit: 20,
+});
+
+// Keyword search - exact term matching
+const keywordResults = await client.searchLongTermMemory({
+  text: "science fiction",
+  searchMode: "keyword",
+  limit: 20,
+});
+
+// Hybrid search - combines semantic and keyword matching
+const hybridResults = await client.searchLongTermMemory({
+  text: "science fiction",
+  searchMode: "hybrid",
+  hybridAlpha: 0.7, // 0.0=keyword, 1.0=semantic
   limit: 20,
 });
 

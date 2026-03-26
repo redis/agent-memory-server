@@ -106,9 +106,24 @@ import {
   MemoryType,
 } from "agent-memory-client";
 
-// Basic search
+// Basic semantic search (default)
 const results = await client.searchLongTermMemory({
   text: "user preferences",
+  limit: 10,
+});
+
+// Keyword search - exact term matching
+const keywordResults = await client.searchLongTermMemory({
+  text: "TechCorp engineer",
+  searchMode: "keyword",
+  limit: 10,
+});
+
+// Hybrid search - combines semantic and keyword matching
+const hybridResults = await client.searchLongTermMemory({
+  text: "user preferences",
+  searchMode: "hybrid",
+  hybridAlpha: 0.7, // 0.0=keyword, 1.0=semantic
   limit: 10,
 });
 

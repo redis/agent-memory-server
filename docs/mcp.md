@@ -4,7 +4,7 @@ Agent Memory Server offers an MCP (Model Context Protocol) server interface powe
 
 - **set_working_memory**: Set working memory for a session (like `PUT /v1/working-memory/{session_id}` in the REST API). Stores structured memory records and JSON data in working memory with automatic promotion to long-term storage.
 - **create_long_term_memories**: Create long-term memories directly, bypassing working memory. Useful for bulk memory creation.
-- **search_long_term_memory**: Perform semantic search across long-term memories with advanced filtering options.
+- **search_long_term_memory**: Search across long-term memories using semantic, keyword, or hybrid search modes with advanced filtering options.
 - **edit_long_term_memory**: Update existing long-term memories with new or corrected information. Allows partial updates to specific fields while preserving other data.
 - **delete_long_term_memories**: Remove specific long-term memories by ID. Useful for cleaning up outdated or incorrect information.
 - **get_long_term_memory**: Retrieve specific memories by ID for detailed inspection or verification before editing.
@@ -17,7 +17,7 @@ The MCP server provides the following tools that AI agents can use to manage mem
 ### Memory Search and Retrieval
 
 **search_long_term_memory**
-- Search for memories using semantic similarity
+- Search for memories using semantic (vector), keyword (full-text), or hybrid (combined) search
 - Supports advanced filtering by user, session, namespace, topics, entities, and timestamps
 - Configurable query optimization and recency boost
 - Returns ranked results with relevance scores

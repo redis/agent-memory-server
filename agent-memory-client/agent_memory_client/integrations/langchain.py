@@ -127,7 +127,7 @@ def get_memory_tools(
     tool_configs = {
         "search_memory": {
             "name": "search_memory",
-            "description": "Search long-term memory for relevant information using semantic search. Use this to recall past conversations, user preferences, or stored facts. Returns memories ranked by relevance with scores.",
+            "description": "Search long-term memory for relevant information using semantic, keyword, or hybrid search. Use this to recall past conversations, user preferences, or stored facts. Returns memories ranked by relevance with scores.",
             "func": _create_search_memory_func(memory_client),
         },
         "get_or_create_working_memory": {
