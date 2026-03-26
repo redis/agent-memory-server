@@ -165,7 +165,7 @@ working_memory = WorkingMemory(
 response = await client.put_working_memory("user-session-123", working_memory)
 
 # Retrieve working memory
-memory = await client.get_working_memory("user-session-123")
+memory, created = await client.get_or_create_working_memory("user-session-123")
 
 # Convenience method for data storage
 await client.set_working_memory_data(
@@ -348,7 +348,7 @@ from agent_memory_client.exceptions import (
 )
 
 try:
-    memory = await client.get_working_memory("nonexistent-session")
+    memory, created = await client.get_or_create_working_memory("nonexistent-session")
 except MemoryNotFoundError:
     print("Session not found")
 except MemoryServerError as e:

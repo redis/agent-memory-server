@@ -224,6 +224,9 @@ def _create_search_memory_func(client: MemoryAPIClient) -> Any:
 
     async def search_memory(
         query: str,
+        search_mode: str = "semantic",
+        hybrid_alpha: float | None = None,
+        text_scorer: str | None = None,
         topics: list[str] | None = None,
         entities: list[str] | None = None,
         memory_type: str | None = None,
@@ -234,6 +237,9 @@ def _create_search_memory_func(client: MemoryAPIClient) -> Any:
         """Search long-term memory for relevant information."""
         result = await client.search_memory_tool(
             query=query,
+            search_mode=search_mode,
+            hybrid_alpha=hybrid_alpha,
+            text_scorer=text_scorer,
             topics=topics,
             entities=entities,
             memory_type=memory_type,

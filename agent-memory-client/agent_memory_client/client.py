@@ -1386,7 +1386,7 @@ class MemoryAPIClient:
                 "type": "function",
                 "function": {
                     "name": "search_memory",
-                    "description": "Search long-term memory for relevant information using semantic, keyword, or hybrid search. Use this when you need to find previously stored information about the user, such as their preferences, past conversations, or important facts. Examples: 'Find information about user food preferences', 'What did they say about their job?', 'Look for travel preferences'. This searches only long-term memory, not current working memory - use get_working_memory for current session info. IMPORTANT: The result includes 'memories' with an 'id' field; use these IDs when calling edit_long_term_memory or delete_long_term_memories.",
+                    "description": "Search long-term memory for relevant information using semantic, keyword, or hybrid search. Use this when you need to find previously stored information about the user, such as their preferences, past conversations, or important facts. Examples: 'Find information about user food preferences', 'What did they say about their job?', 'Look for travel preferences'. This searches only long-term memory, not current working memory - use get_or_create_working_memory for current session info. IMPORTANT: The result includes 'memories' with an 'id' field; use these IDs when calling edit_long_term_memory or delete_long_term_memories.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1875,7 +1875,7 @@ class MemoryAPIClient:
                 "type": "function",
                 "function": {
                     "name": "update_working_memory_data",
-                    "description": "Store or update structured session data (JSON objects) in working memory. Use this for complex session-specific information that needs to be accessed and modified during the conversation. Examples: Travel itinerary {'destination': 'Paris', 'dates': ['2024-03-15', '2024-03-20']}, project details {'name': 'Website Redesign', 'deadline': '2024-04-01', 'status': 'in_progress'}. Different from add_memory_to_working_memory which stores simple text facts.",
+                    "description": "Store or update structured session data (JSON objects) in working memory. Use this for complex session-specific information that needs to be accessed and modified during the conversation. Examples: Travel itinerary {'destination': 'Paris', 'dates': ['2024-03-15', '2024-03-20']}, project details {'name': 'Website Redesign', 'deadline': '2024-04-01', 'status': 'in_progress'}. Different from lazily_create_long_term_memory which stores simple text facts for later promotion to long-term storage.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -2706,7 +2706,7 @@ class MemoryAPIClient:
     async def _resolve_get_working_memory(
         self, session_id: str, namespace: str | None, user_id: str | None = None
     ) -> dict[str, Any]:
-        """Resolve get_working_memory function call."""
+        """Resolve get_working_memory (deprecated) function call."""
         return await self.get_working_memory_tool(
             session_id=session_id,
             namespace=namespace,
@@ -2731,7 +2731,7 @@ class MemoryAPIClient:
         namespace: str | None,
         user_id: str | None = None,
     ) -> dict[str, Any]:
-        """Resolve add_memory_to_working_memory function call."""
+        """Resolve lazily_create_long_term_memory (formerly add_memory_to_working_memory) function call."""
         text = args.get("text", "")
         if not text:
             raise ValueError("Text parameter is required for adding memory")
@@ -2790,11 +2790,11 @@ class MemoryAPIClient:
     async def _resolve_create_long_term_memory(
         self, args: dict[str, Any], namespace: str | None, user_id: str | None = None
     ) -> dict[str, Any]:
-        """Resolve create_long_term_memory function call."""
+        """Resolve eagerly_create_long_term_memory (and deprecated create_long_term_memory alias) function call."""
         memories_data = args.get("memories")
         if not memories_data:
             raise ValueError(
-                "memories parameter is required for create_long_term_memory"
+                "memories parameter is required for eagerly_create_long_term_memory"
             )
 
         # Convert dict memories to ClientMemoryRecord objects
@@ -2907,7 +2907,7 @@ class MemoryAPIClient:
             # Handle multiple function calls
             calls = [
                 {"name": "search_memory", "arguments": {"query": "user preferences"}},
-                {"name": "get_working_memory", "arguments": {}},
+                {"name": "get_or_create_working_memory", "arguments": {}},
             ]
 
             results = await client.resolve_function_calls(calls, "session123")
