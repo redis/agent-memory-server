@@ -91,9 +91,9 @@ class TestIssue235KeyResolution:
             redis_client=async_redis_client,
         )
 
-        assert result is not None, (
-            "Should find session with partial params via fallback"
-        )
+        assert (
+            result is not None
+        ), "Should find session with partial params via fallback"
         assert result.user_id == user_id
         assert result.namespace == namespace
 
@@ -361,9 +361,9 @@ class TestIssue235MultiTenantIsolation:
             session_id=session_id,
             redis_client=async_redis_client,
         )
-        assert result is None, (
-            "Ambiguous session_id without scoping params should return None"
-        )
+        assert (
+            result is None
+        ), "Ambiguous session_id without scoping params should return None"
 
         # But each tenant can still be reached with correct scoping
         for i in range(2):

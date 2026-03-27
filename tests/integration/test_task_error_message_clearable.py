@@ -43,9 +43,9 @@ class TestErrorMessageClearable:
             error_message="",
         )
         t2 = await get_task(task.id)
-        assert t2.error_message is None, (
-            "Empty string should clear error_message to None"
-        )
+        assert (
+            t2.error_message is None
+        ), "Empty string should clear error_message to None"
 
     @pytest.mark.asyncio
     async def test_none_does_not_change_error_message(self, async_redis_client):
