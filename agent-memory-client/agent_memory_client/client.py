@@ -2695,6 +2695,8 @@ class MemoryAPIClient:
         search_mode = args.get("search_mode", "semantic")
         hybrid_alpha = args.get("hybrid_alpha")
         text_scorer = args.get("text_scorer")
+        offset = args.get("offset", 0)
+        optimize_query = args.get("optimize_query", False)
 
         return await self.search_memory_tool(
             query=query,
@@ -2705,8 +2707,10 @@ class MemoryAPIClient:
             entities=entities,
             memory_type=memory_type,
             max_results=max_results,
+            offset=offset,
             min_relevance=min_relevance,
             user_id=user_id,
+            optimize_query=optimize_query,
         )
 
     async def _resolve_get_working_memory(
