@@ -2689,7 +2689,7 @@ class MemoryAPIClient:
         topics = args.get("topics")
         entities = args.get("entities")
         memory_type = args.get("memory_type")
-        max_results = args.get("max_results", 5)
+        max_results = args.get("max_results", 10)
         min_relevance = args.get("min_relevance")
         user_id = args.get("user_id")
         search_mode = args.get("search_mode", "semantic")
