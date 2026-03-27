@@ -3398,6 +3398,9 @@ class MemoryAPIClient:
         user_id: dict[str, Any] | None = None,
         distance_threshold: float | None = None,
         memory_type: dict[str, Any] | None = None,
+        search_mode: SearchModeEnum | str = SearchModeEnum.SEMANTIC,
+        hybrid_alpha: float | None = None,
+        text_scorer: str | None = None,
         limit: int = 10,
         offset: int = 0,
         optimize_query: bool = False,
@@ -3409,7 +3412,7 @@ class MemoryAPIClient:
         long-term memory search with the specified filters.
 
         Args:
-            query: The query for vector search to find relevant context for
+            query: The search query to find relevant context for
             session_id: Optional session ID filter (as dict)
             namespace: Optional namespace filter (as dict)
             topics: Optional topics filter (as dict)
@@ -3419,6 +3422,9 @@ class MemoryAPIClient:
             user_id: Optional user ID filter (as dict)
             distance_threshold: Optional distance threshold
             memory_type: Optional memory type filter (as dict)
+            search_mode: Search strategy to use ("semantic", "keyword", or "hybrid")
+            hybrid_alpha: Optional weight for vector similarity in hybrid search (0.0-1.0)
+            text_scorer: Optional Redis full-text scoring algorithm for keyword and hybrid search
             limit: Maximum number of long-term memories to include
             offset: Offset for pagination (default: 0)
             optimize_query: Whether to optimize the query for vector search using a fast model (default: True)
@@ -3449,6 +3455,16 @@ class MemoryAPIClient:
             long_term_search["distance_threshold"] = distance_threshold
         if memory_type is not None:
             long_term_search["memory_type"] = memory_type
+        normalized_search_mode = (
+            search_mode.value
+            if isinstance(search_mode, SearchModeEnum)
+            else str(search_mode)
+        )
+        long_term_search["search_mode"] = normalized_search_mode
+        if hybrid_alpha is not None:
+            long_term_search["hybrid_alpha"] = hybrid_alpha
+        if text_scorer is not None:
+            long_term_search["text_scorer"] = text_scorer
 
         return await self.memory_prompt(
             query=query,
