@@ -98,7 +98,7 @@ const results = await client.searchLongTermMemory({
   limit: 20,
 });
 
-// Keyword search - exact term matching
+// Keyword search - full-text matching
 const keywordResults = await client.searchLongTermMemory({
   text: "science fiction",
   searchMode: "keyword",

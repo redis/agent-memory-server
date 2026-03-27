@@ -145,7 +145,7 @@ MemoryRecordResults results = client.longTermMemory().searchLongTermMemories(req
 MemoryRecordResults simpleResults = client.longTermMemory()
     .searchLongTermMemories("user preferences");
 
-// Keyword search - exact term matching
+// Keyword search - full-text matching
 SearchRequest keywordRequest = SearchRequest.builder()
     .text("TechCorp engineer")
     .searchMode("keyword")

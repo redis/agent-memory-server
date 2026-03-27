@@ -224,7 +224,7 @@ def _create_search_memory_func(client: MemoryAPIClient) -> Any:
 
     async def search_memory(
         query: str,
-        search_mode: str = "semantic",
+        search_mode: Literal["semantic", "keyword", "hybrid"] = "semantic",
         hybrid_alpha: float | None = None,
         text_scorer: str | None = None,
         topics: list[str] | None = None,

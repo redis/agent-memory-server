@@ -1392,7 +1392,7 @@ class MemoryAPIClient:
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": "The query for vector search describing what information you're looking for",
+                                "description": "The search query describing what information you're looking for",
                             },
                             "search_mode": {
                                 "type": "string",
@@ -2692,9 +2692,15 @@ class MemoryAPIClient:
         max_results = args.get("max_results", 5)
         min_relevance = args.get("min_relevance")
         user_id = args.get("user_id")
+        search_mode = args.get("search_mode", "semantic")
+        hybrid_alpha = args.get("hybrid_alpha")
+        text_scorer = args.get("text_scorer")
 
         return await self.search_memory_tool(
             query=query,
+            search_mode=search_mode,
+            hybrid_alpha=hybrid_alpha,
+            text_scorer=text_scorer,
             topics=topics,
             entities=entities,
             memory_type=memory_type,

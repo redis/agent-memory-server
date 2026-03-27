@@ -202,7 +202,7 @@ results = await client.search_long_term_memory(
     limit=20
 )
 
-# Keyword search - exact term matching
+# Keyword search - full-text matching
 results = await client.search_long_term_memory(
     text="science fiction",
     search_mode="keyword",

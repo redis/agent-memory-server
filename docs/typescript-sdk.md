@@ -112,7 +112,7 @@ const results = await client.searchLongTermMemory({
   limit: 10,
 });
 
-// Keyword search - exact term matching
+// Keyword search - full-text matching
 const keywordResults = await client.searchLongTermMemory({
   text: "TechCorp engineer",
   searchMode: "keyword",
