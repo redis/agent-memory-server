@@ -1070,7 +1070,7 @@ class MemoryAPIClient:
             memory_type: Optional memory type filter
             limit: Maximum number of results to return (default: 10)
             offset: Offset for pagination (default: 0)
-            optimize_query: Whether to optimize the query for vector search using a fast model (default: True)
+            optimize_query: Whether to optimize the query for semantic (vector) search using a fast model; ignored for keyword and hybrid modes (default: False)
 
         Returns:
             MemoryRecordResults with matching memories and metadata
@@ -1233,7 +1233,7 @@ class MemoryAPIClient:
             offset: Offset for pagination (default: 0)
             min_relevance: Optional minimum relevance score (0.0-1.0)
             user_id: Optional user ID to filter memories by
-            optimize_query: Whether to optimize the query for vector search (default: False - LLMs typically provide already optimized queries)
+            optimize_query: Whether to optimize the query for semantic (vector) search; ignored for keyword and hybrid modes (default: False)
 
         Returns:
             Dict with 'memories' list and 'summary' for LLM consumption
@@ -1451,7 +1451,7 @@ class MemoryAPIClient:
                             "optimize_query": {
                                 "type": "boolean",
                                 "default": False,
-                                "description": "Whether to optimize the query for vector search (default: False - LLMs typically provide already optimized queries)",
+                                "description": "Whether to optimize the query for semantic (vector) search; ignored for keyword and hybrid modes (default: False)",
                             },
                         },
                         "required": ["query"],
@@ -3312,7 +3312,7 @@ class MemoryAPIClient:
             context_window_max: Optional direct specification of context window tokens
             long_term_search: Optional search parameters for long-term memory
             user_id: Optional user ID for the session
-            optimize_query: Whether to optimize the query for vector search using a fast model (default: True)
+            optimize_query: Whether to optimize the query for semantic (vector) search using a fast model; ignored for keyword and hybrid modes (default: False)
 
         Returns:
             Dict with messages hydrated with relevant memory context
@@ -3427,7 +3427,7 @@ class MemoryAPIClient:
             text_scorer: Optional Redis full-text scoring algorithm for keyword and hybrid search
             limit: Maximum number of long-term memories to include
             offset: Offset for pagination (default: 0)
-            optimize_query: Whether to optimize the query for vector search using a fast model (default: True)
+            optimize_query: Whether to optimize the query for semantic (vector) search using a fast model; ignored for keyword and hybrid modes (default: False)
 
         Returns:
             Dict with messages hydrated with relevant long-term memories

@@ -575,7 +575,7 @@ async def search_long_term_memory(
         distance_threshold: Distance threshold for semantic search
         limit: Maximum number of results
         offset: Offset for pagination
-        optimize_query: Whether to optimize the query for vector search (default: False - LLMs typically provide already optimized queries)
+        optimize_query: Whether to optimize the query for semantic (vector) search only; ignored for keyword and hybrid modes (default: False - LLMs typically provide already optimized queries)
 
     Returns:
         MemoryRecordResults containing matched memories sorted by relevance
@@ -739,11 +739,16 @@ async def memory_prompt(
         - text_scorer: Redis full-text scoring algorithm for keyword and hybrid search
         - limit: Maximum number of long-term memory results
         - offset: Offset for pagination of long-term memory results
-        - optimize_query: Whether to optimize the query for vector search (default: False - LLMs typically provide already optimized queries)
+        - optimize_query: Whether to optimize the query for semantic (vector) search only; ignored for keyword and hybrid modes (default: False - LLMs typically provide already optimized queries)
 
     Returns:
         JSON-serializable memory prompt payload including memory context and the user's query
     """
+    if distance_threshold is not None and search_mode != SearchModeEnum.SEMANTIC:
+        raise ValueError(
+            "distance_threshold is only supported for semantic search mode"
+        )
+
     _session_id = session_id.eq if session_id and session_id.eq else None
     session = None
 
