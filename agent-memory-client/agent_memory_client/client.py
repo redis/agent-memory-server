@@ -2803,9 +2803,7 @@ class MemoryAPIClient:
         """Resolve eagerly_create_long_term_memory (and deprecated create_long_term_memory alias) function call."""
         memories_data = args.get("memories")
         if not memories_data:
-            raise ValueError(
-                "memories parameter is required for eagerly_create_long_term_memory"
-            )
+            raise ValueError("memories parameter is required")
 
         # Convert dict memories to ClientMemoryRecord objects
         from .models import ClientMemoryRecord, MemoryTypeEnum

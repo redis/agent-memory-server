@@ -10,11 +10,11 @@ Long-term memory provides persistent storage that survives server restarts and s
 |---------|---------|
 | **Scope** | Cross-session, persistent |
 | **Lifespan** | Permanent until manually deleted |
-| **Storage** | Redis with vector indexing |
+| **Storage** | Redis with vector and full-text indexing |
 | **Search** | Semantic, keyword, and hybrid search |
 | **Capacity** | Unlimited (with compaction) |
 | **Use Case** | Knowledge base, user preferences |
-| **Indexing** | Vector embeddings + metadata |
+| **Indexing** | Vector embeddings + full-text index + metadata |
 | **Deduplication** | Hash-based and semantic |
 
 ## Characteristics
