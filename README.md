@@ -285,20 +285,23 @@ Working Memory (Session-scoped)  →  Long-term Memory (Persistent)
 ## Development
 
 ```bash
-# Install dependencies
-uv sync --all-extras
+# Initial setup
+make setup
 
-# Run tests
-uv run pytest
+# Full local verification (matches CI lint + service tests)
+make verify
 
-# Format code
-uv run ruff format
-uv run ruff check
+# Or run individual layers
+make pre-commit
+make test
+make test-api
 
 # Start development stack (choose one based on your needs)
 docker compose up api redis                    # Development mode
 docker compose up api task-worker redis mcp    # Production-like mode
 ```
+
+`make verify` requires `OPENAI_API_KEY` because it runs `make test-api`.
 ## License
 
 Apache License 2.0 - see [LICENSE](LICENSE) file for details.
