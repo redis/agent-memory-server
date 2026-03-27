@@ -95,7 +95,7 @@ print(f"Found: {results.memories[0].text}")
 
 !!! success "Long-Term Memory (Persistent)"
     - User preferences, facts, and important information
-    - Semantic, keyword, and hybrid search with vector embeddings
+    - Flexible search: semantic (vector embeddings), keyword (full-text), and hybrid (combined)
     - Advanced filtering by time, topics, entities, users
 
 ### 🔍 Intelligent Search
