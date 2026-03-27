@@ -4,12 +4,8 @@
 
 Start by creating a virtual environment and installing dependencies with uv:
 ```bash
-# Create and activate a virtual environment
-uv venv
+make setup
 source .venv/bin/activate
-
-# Install dependencies (including optional groups used in development)
-uv sync --all-extras
 ```
 
 Use Docker Compose from the repository root:
@@ -25,21 +21,28 @@ docker compose up api task-worker redis mcp
 ## Running Tests
 
 ```bash
-uv run pytest
+make test
 ```
 
 Run API-key-dependent tests as well:
 
 ```bash
-uv run pytest --run-api-tests
+make test-api
 ```
 
 ## Linting and formatting
 
 ```bash
-uv run ruff check
-uv run ruff format
+make pre-commit
 ```
+
+For the full local check used in CI, run:
+
+```bash
+make verify
+```
+
+`make verify` requires `OPENAI_API_KEY` because it runs the API-key-dependent test suite.
 
 ## Contributing
 
