@@ -833,8 +833,8 @@ class MemoryAPIClient:
             params["session_id"] = session_id
         if limit is not None:
             params["limit"] = limit
-        if dry_run:
-            params["dry_run"] = dry_run
+        # Always pass dry_run explicitly because the server default is True.
+        params["dry_run"] = dry_run
 
         body = {"policy": policy.model_dump(exclude_none=True)}
         if pinned_ids:
