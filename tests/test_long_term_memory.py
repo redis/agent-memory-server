@@ -3,6 +3,7 @@ from unittest import mock
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
+from redis.commands.core import HashDataPersistOptions
 
 from agent_memory_server.filters import Entities, Namespace, SessionId, Topics
 from agent_memory_server.long_term_memory import (
@@ -343,7 +344,7 @@ class TestLongTermMemory:
             mapping = call_kwargs[1]["mapping"]
             assert mapping["topics"] == "topic1,topic2"
             assert mapping["entities"] == "entity1,entity2"
-            assert call_kwargs[1]["data_persist_option"] == "FXX"
+            assert call_kwargs[1]["data_persist_option"] == HashDataPersistOptions.FXX
             assert call_kwargs[1]["keepttl"] is True
 
     @pytest.mark.asyncio
