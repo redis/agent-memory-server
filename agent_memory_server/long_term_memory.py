@@ -10,6 +10,7 @@ from typing import Any
 from docket import Timeout
 from docket.dependencies import Perpetual
 from redis.asyncio import Redis
+from redis.commands.core import HashDataPersistOptions
 from ulid import ULID
 
 from agent_memory_server.config import settings
@@ -542,7 +543,7 @@ async def extract_memory_structure(
             "topics": encode_tag_values(merged_topics),
             "entities": encode_tag_values(merged_entities),
         },
-        data_persist_option="FXX",
+        data_persist_option=HashDataPersistOptions.FXX,
         keepttl=True,
     )
     if result == 0:
