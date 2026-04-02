@@ -192,6 +192,39 @@ class TestToolCallResolution:
             assert "Found 1 relevant memories" in result["formatted_response"]
 
     @pytest.mark.asyncio
+    async def test_resolve_function_call_search_memory_with_search_mode(
+        self, tool_call_test_client
+    ):
+        """Test that search_mode is forwarded through resolve_function_call."""
+        mock_result = {
+            "memories": [{"text": "test memory", "memory_type": "semantic"}],
+            "total_found": 1,
+            "query": "test",
+            "summary": "Found 1 relevant memories for: test",
+        }
+
+        with patch.object(
+            tool_call_test_client, "search_memory_tool", return_value=mock_result
+        ) as mock_search:
+            result = await tool_call_test_client.resolve_function_call(
+                function_name="search_memory",
+                function_arguments={
+                    "query": "test",
+                    "search_mode": "hybrid",
+                    "max_results": 5,
+                },
+                session_id="test_session",
+            )
+
+            assert result["success"] is True
+            mock_search.assert_called_once()
+            call_kwargs = mock_search.call_args[1]
+            assert call_kwargs["search_mode"] == "hybrid"
+            # hybrid_alpha and text_scorer should NOT be forwarded
+            assert "hybrid_alpha" not in call_kwargs
+            assert "text_scorer" not in call_kwargs
+
+    @pytest.mark.asyncio
     async def test_resolve_function_call_get_working_memory(
         self, tool_call_test_client
     ):
