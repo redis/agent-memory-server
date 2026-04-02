@@ -459,8 +459,6 @@ async def create_long_term_memories(
 async def search_long_term_memory(
     text: str | None,
     search_mode: SearchModeEnum = SearchModeEnum.SEMANTIC,
-    hybrid_alpha: float = 0.7,
-    text_scorer: str = "BM25STD",
     session_id: SessionId | None = None,
     namespace: Namespace | None = None,
     topics: Topics | None = None,
@@ -561,9 +559,7 @@ async def search_long_term_memory(
 
     Args:
         text: The query text. Use empty string "" to get all memories for a user.
-        search_mode: Search strategy to use
-        hybrid_alpha: Weight assigned to vector similarity in hybrid search
-        text_scorer: Redis full-text scoring algorithm for keyword and hybrid search
+        search_mode: Search strategy to use (semantic, keyword, or hybrid)
         session_id: Filter by session ID
         namespace: Filter by namespace
         topics: Filter by topics
@@ -575,7 +571,7 @@ async def search_long_term_memory(
         distance_threshold: Distance threshold for semantic search
         limit: Maximum number of results
         offset: Offset for pagination
-        optimize_query: Whether to optimize the query for vector search (default: False - LLMs typically provide already optimized queries)
+        optimize_query: Whether to optimize the query for semantic (vector) search only; ignored for keyword and hybrid modes (default: False - LLMs typically provide already optimized queries)
 
     Returns:
         MemoryRecordResults containing matched memories sorted by relevance
@@ -594,8 +590,6 @@ async def search_long_term_memory(
         payload = SearchRequest(
             text=text,
             search_mode=search_mode,
-            hybrid_alpha=hybrid_alpha,
-            text_scorer=text_scorer,
             session_id=session_id,
             namespace=namespace,
             topics=topics,
@@ -643,12 +637,13 @@ async def memory_prompt(
     user_id: UserId | None = None,
     memory_type: MemoryType | None = None,
     distance_threshold: float | None = None,
+    search_mode: SearchModeEnum = SearchModeEnum.SEMANTIC,
     limit: int = 10,
     offset: int = 0,
     optimize_query: bool = False,
 ) -> dict[str, Any]:
     """
-    Hydrate a query for vector search with relevant session history and long-term memories.
+    Hydrate a query with relevant session history and long-term memories.
 
     This tool enriches the query by retrieving:
     1. Context from the current conversation session
@@ -657,7 +652,7 @@ async def memory_prompt(
     The tool returns both the relevant memories AND the user's query in a format ready for
     generating comprehensive responses.
 
-    The function uses the query field as the query for vector search,
+    The function uses the query field for searching (semantic, keyword, or hybrid),
     and any filters to retrieve relevant memories.
 
     DATETIME INPUT FORMAT:
@@ -722,7 +717,7 @@ async def memory_prompt(
     ```
 
     Args:
-        - query: The query for vector search
+        - query: The search query text
         - session_id: Add conversation history from a working memory session
         - namespace: Filter session and long-term memory namespace
         - topics: Search for long-term memories matching topics
@@ -731,13 +726,19 @@ async def memory_prompt(
         - last_accessed: Search for long-term memories matching last access date
         - user_id: Search for long-term memories matching user ID
         - distance_threshold: Distance threshold for semantic search
+        - search_mode: Search strategy to use (semantic, keyword, or hybrid)
         - limit: Maximum number of long-term memory results
         - offset: Offset for pagination of long-term memory results
-        - optimize_query: Whether to optimize the query for vector search (default: False - LLMs typically provide already optimized queries)
+        - optimize_query: Whether to optimize the query for semantic (vector) search only; ignored for keyword and hybrid modes (default: False - LLMs typically provide already optimized queries)
 
     Returns:
         JSON-serializable memory prompt payload including memory context and the user's query
     """
+    if distance_threshold is not None and search_mode != SearchModeEnum.SEMANTIC:
+        raise ValueError(
+            "distance_threshold is only supported for semantic search mode"
+        )
+
     _session_id = session_id.eq if session_id and session_id.eq else None
     session = None
 
@@ -768,6 +769,7 @@ async def memory_prompt(
         user_id=user_id,
         distance_threshold=distance_threshold,
         memory_type=memory_type,
+        search_mode=search_mode,
         limit=limit,
         offset=offset,
     )

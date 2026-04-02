@@ -654,7 +654,7 @@ async def search_long_term_memory(
 
     Args:
         payload: Search payload with filter objects for precise queries
-        optimize_query: Whether to optimize the query for vector search using a fast model (default: False)
+        optimize_query: Whether to optimize the query for semantic (vector) search using a fast model; ignored for keyword and hybrid modes (default: False)
 
     Returns:
         List of search results
@@ -926,7 +926,7 @@ async def memory_prompt(
 
     Args:
         params: MemoryPromptRequest
-        optimize_query: Whether to optimize the query for vector search using a fast model (default: False)
+        optimize_query: Whether to optimize the query for semantic (vector) search using a fast model; ignored for keyword and hybrid modes (default: False)
 
     Returns:
         List of messages to send to an LLM, hydrated with relevant memory context

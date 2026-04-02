@@ -127,7 +127,7 @@ def get_memory_tools(
     tool_configs = {
         "search_memory": {
             "name": "search_memory",
-            "description": "Search long-term memory for relevant information using semantic search. Use this to recall past conversations, user preferences, or stored facts. Returns memories ranked by relevance with scores.",
+            "description": "Search long-term memory for relevant information using semantic, keyword, or hybrid search. Use this to recall past conversations, user preferences, or stored facts. Returns memories ranked by relevance with scores.",
             "func": _create_search_memory_func(memory_client),
         },
         "get_or_create_working_memory": {
@@ -224,6 +224,7 @@ def _create_search_memory_func(client: MemoryAPIClient) -> Any:
 
     async def search_memory(
         query: str,
+        search_mode: Literal["semantic", "keyword", "hybrid"] = "semantic",
         topics: list[str] | None = None,
         entities: list[str] | None = None,
         memory_type: str | None = None,
@@ -234,6 +235,7 @@ def _create_search_memory_func(client: MemoryAPIClient) -> Any:
         """Search long-term memory for relevant information."""
         result = await client.search_memory_tool(
             query=query,
+            search_mode=search_mode,
             topics=topics,
             entities=entities,
             memory_type=memory_type,
