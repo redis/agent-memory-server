@@ -4,17 +4,17 @@ Long-term memory is **persistent**, **cross-session** storage designed for knowl
 
 ## Overview
 
-Long-term memory provides persistent storage that survives server restarts and session expiration. It's optimized for semantic search, deduplication, and rich metadata to enable intelligent retrieval of relevant information.
+Long-term memory provides persistent storage that survives server restarts and session expiration. It's optimized for semantic, keyword, and hybrid search, deduplication, and rich metadata to enable intelligent retrieval of relevant information.
 
 | Feature | Details |
 |---------|---------|
 | **Scope** | Cross-session, persistent |
 | **Lifespan** | Permanent until manually deleted |
-| **Storage** | Redis with vector indexing |
-| **Search** | Semantic vector search |
+| **Storage** | Redis with vector and full-text indexing |
+| **Search** | Semantic, keyword, and hybrid search |
 | **Capacity** | Unlimited (with compaction) |
 | **Use Case** | Knowledge base, user preferences |
-| **Indexing** | Vector embeddings + metadata |
+| **Indexing** | Vector embeddings + full-text index + metadata |
 | **Deduplication** | Hash-based and semantic |
 
 ## Characteristics
@@ -126,14 +126,35 @@ POST /v1/long-term-memory/search
 
 ## Search Capabilities
 
-Long-term memory provides powerful search features:
+Long-term memory supports three search modes: **semantic** (vector similarity), **keyword** (full-text matching), and **hybrid** (combined).
 
-### Semantic Vector Search
+### Semantic Search (Default)
 ```json
 {
   "text": "python programming help",
+  "search_mode": "semantic",
   "limit": 10,
   "distance_threshold": 0.8
+}
+```
+
+### Keyword Search
+```json
+{
+  "text": "TechCorp engineer",
+  "search_mode": "keyword",
+  "limit": 10
+}
+```
+
+### Hybrid Search
+Combines vector similarity with full-text keyword matching. Use `hybrid_alpha` to control the balance (0.0 = pure keyword, 1.0 = pure semantic, default 0.7).
+```json
+{
+  "text": "python programming help",
+  "search_mode": "hybrid",
+  "hybrid_alpha": 0.7,
+  "limit": 10
 }
 ```
 

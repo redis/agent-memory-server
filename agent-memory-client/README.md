@@ -165,7 +165,7 @@ working_memory = WorkingMemory(
 response = await client.put_working_memory("user-session-123", working_memory)
 
 # Retrieve working memory
-memory = await client.get_working_memory("user-session-123")
+created, memory = await client.get_or_create_working_memory("user-session-123")
 
 # Convenience method for data storage
 await client.set_working_memory_data(
@@ -199,6 +199,21 @@ results = await client.search_long_term_memory(
     text="science fiction",
     topics=Topics(any=["books", "entertainment"]),
     user_id=UserId(eq="user-123"),
+    limit=20
+)
+
+# Keyword search - full-text matching
+results = await client.search_long_term_memory(
+    text="science fiction",
+    search_mode="keyword",
+    limit=20
+)
+
+# Hybrid search - combines semantic and keyword matching
+results = await client.search_long_term_memory(
+    text="science fiction",
+    search_mode="hybrid",
+    hybrid_alpha=0.7,  # 0.0=keyword, 1.0=semantic
     limit=20
 )
 ```
@@ -333,9 +348,9 @@ from agent_memory_client.exceptions import (
 )
 
 try:
-    memory = await client.get_working_memory("nonexistent-session")
-except MemoryNotFoundError:
-    print("Session not found")
+    created, memory = await client.get_or_create_working_memory("nonexistent-session")
+    if created:
+        print("New session created")
 except MemoryServerError as e:
     print(f"Server error {e.status_code}: {e}")
 except MemoryClientError as e:

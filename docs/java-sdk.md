@@ -144,6 +144,21 @@ MemoryRecordResults results = client.longTermMemory().searchLongTermMemories(req
 // Simple text search
 MemoryRecordResults simpleResults = client.longTermMemory()
     .searchLongTermMemories("user preferences");
+
+// Keyword search - full-text matching
+SearchRequest keywordRequest = SearchRequest.builder()
+    .text("TechCorp engineer")
+    .searchMode("keyword")
+    .limit(10)
+    .build();
+
+// Hybrid search - combines semantic and keyword matching
+SearchRequest hybridRequest = SearchRequest.builder()
+    .text("user preferences")
+    .searchMode("hybrid")
+    .hybridAlpha(0.7)  // 0.0=keyword, 1.0=semantic
+    .limit(10)
+    .build();
 ```
 
 ### Get, Edit, and Delete

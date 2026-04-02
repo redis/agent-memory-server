@@ -38,7 +38,7 @@ Transform your AI agents from goldfish 🐠 into elephants 🐘 with Redis-power
 Redis Agent Memory Server is a production-ready memory system for AI agents and applications that:
 
 - **🧠 Remembers everything**: Stores conversation history, user preferences, and important facts across sessions
-- **🔍 Finds relevant context**: Uses semantic search to surface the right information at the right time
+- **🔍 Finds relevant context**: Uses semantic, keyword, and hybrid search to surface the right information at the right time
 - **📈 Gets smarter over time**: Automatically extracts, organizes, and deduplicates memories from interactions
 - **🔌 Works with any AI model**: REST API and MCP interfaces compatible with OpenAI, Anthropic, and others
 - **🌐 Multi-provider support**: Use [100+ LLM providers](llm-providers.md) via LiteLLM (OpenAI, Anthropic, AWS Bedrock, Ollama, Azure, Gemini, and more)
@@ -95,11 +95,11 @@ print(f"Found: {results.memories[0].text}")
 
 !!! success "Long-Term Memory (Persistent)"
     - User preferences, facts, and important information
-    - Semantic search with vector embeddings
+    - Flexible search: semantic (vector embeddings), keyword (full-text), and hybrid (combined)
     - Advanced filtering by time, topics, entities, users
 
 ### 🔍 Intelligent Search
-- **Semantic similarity**: Find memories by meaning, not just keywords
+- **Multiple search modes**: Semantic (vector similarity), keyword (full-text), and hybrid (combined) search
 - **Advanced filters**: Search by user, session, time, topics, entities
 - **Query optimization**: AI-powered query refinement for better results
 - **Recency boost**: Time-aware ranking that surfaces relevant recent information

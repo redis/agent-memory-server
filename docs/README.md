@@ -75,7 +75,7 @@ For contributors and advanced users:
 
 | Feature | REST API | MCP Server | CLI | Documentation |
 |---------|----------|------------|-----|---------------|
-| **Memory Search** | ✅ `/v1/long-term-memory/search` | ✅ `search_long_term_memory` | ❌ | [REST API](api.md), [MCP](mcp.md) |
+| **Memory Search** (semantic, keyword, hybrid) | ✅ `/v1/long-term-memory/search` | ✅ `search_long_term_memory` | ❌ | [REST API](api.md), [MCP](mcp.md) |
 | **Memory Editing** | ✅ `PATCH /v1/long-term-memory/{id}` | ✅ `edit_long_term_memory` | ❌ | [Memory Editing](memory-lifecycle.md#memory-editing) |
 | **Query Optimization** | ✅ `optimize_query` param | ✅ `optimize_query` param | ❌ | [Query Optimization](query-optimization.md) |
 | **Recency Boost** | ✅ Default enabled | ✅ Available | ❌ | [Recency Boost](recency-boost.md) |
