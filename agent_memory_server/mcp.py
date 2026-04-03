@@ -776,11 +776,6 @@ async def memory_prompt(
     Returns:
         JSON-serializable memory prompt payload including memory context and the user's query
     """
-    if distance_threshold is not None and search_mode != SearchModeEnum.SEMANTIC:
-        raise ValueError(
-            "distance_threshold is only supported for semantic search mode"
-        )
-
     _session_id = session_id.eq if session_id and session_id.eq else None
     session = None
 
@@ -806,6 +801,11 @@ async def memory_prompt(
         _params["session"] = session
 
     if include_long_term_search:
+        if distance_threshold is not None and search_mode != SearchModeEnum.SEMANTIC:
+            raise ValueError(
+                "distance_threshold is only supported for semantic search mode"
+            )
+
         # Do NOT pass session_id to the long-term search -- it scopes working
         # memory retrieval, not the long-term memory search.  The REST API keeps
         # these separate (session vs long_term_search); the MCP flat parameter
