@@ -3386,12 +3386,12 @@ class MemoryAPIClient:
         user_id: dict[str, Any] | None = None,
         distance_threshold: float | None = None,
         memory_type: dict[str, Any] | None = None,
-        search_mode: SearchModeEnum | str = SearchModeEnum.SEMANTIC,
-        hybrid_alpha: float | None = None,
-        text_scorer: str | None = None,
         limit: int = 10,
         offset: int = 0,
         optimize_query: bool = False,
+        search_mode: SearchModeEnum | str = SearchModeEnum.SEMANTIC,
+        hybrid_alpha: float | None = None,
+        text_scorer: str | None = None,
     ) -> dict[str, Any]:
         """
         Hydrate a user query with long-term memory context using filters.
