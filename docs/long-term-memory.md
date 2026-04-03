@@ -21,7 +21,7 @@ Long-term memory provides persistent storage that survives server restarts and s
 
 - **Cross-Session**: Accessible from any session
 - **Persistent**: Survives server restarts and session expiration
-- **Vector Indexed**: Semantic search with configurable embeddings (OpenAI, Bedrock, Ollama, and more via [LiteLLM](llm-providers.md))
+- **Multi-Modal Search**: Semantic (vector), keyword (BM25 full-text), and hybrid search — configurable embeddings (OpenAI, Bedrock, Ollama, and more via [LiteLLM](llm-providers.md))
 - **Deduplication**: Automatic hash-based and semantic deduplication
 - **Rich Metadata**: Topics, entities, timestamps, memory types
 - **Compaction**: Automatic cleanup and merging of duplicates
