@@ -147,26 +147,6 @@ def _estimate_message_token_count(message: MemoryMessage) -> int:
     return _count_text_tokens(f"{message.role}: {message.content}")
 
 
-def _truncate_text_to_token_budget(text: str, max_tokens: int) -> str:
-    """Trim text so its token count fits within the requested budget."""
-    if max_tokens <= 0:
-        return ""
-
-    if _count_text_tokens(text) <= max_tokens:
-        return text
-
-    low = 0
-    high = len(text)
-    while low < high:
-        mid = (low + high + 1) // 2
-        if _count_text_tokens(text[:mid]) <= max_tokens:
-            low = mid
-        else:
-            high = mid - 1
-
-    return text[:low]
-
-
 def _calculate_context_usage_percentages(
     messages: list[MemoryMessage],
     model_name: ModelNameLiteral | None,
@@ -338,7 +318,7 @@ async def _summarize_working_memory(
 
         # Handle oversized messages
         if msg_tokens > max_message_tokens:
-            msg_str = _truncate_text_to_token_budget(msg_str, max_message_tokens)
+            msg_str = msg_str[: max_message_tokens // 2]
             msg_tokens = _count_text_tokens(msg_str)
 
         if total_tokens + msg_tokens <= max_message_tokens:
