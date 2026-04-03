@@ -678,13 +678,14 @@ async def memory_prompt(
     recency_half_life_last_access_days: float | None = None,
     recency_half_life_created_days: float | None = None,
     server_side_recency: bool | None = None,
+    include_long_term_search: bool = True,
 ) -> dict[str, Any]:
     """
     Hydrate a query with relevant session history and long-term memories.
 
     This tool enriches the query by retrieving:
-    1. Context from the current conversation session
-    2. Relevant long-term memories related to the query
+    1. Context from the current conversation session (when session_id is provided)
+    2. Relevant long-term memories related to the query (when include_long_term_search is True)
 
     The tool returns both the relevant memories AND the user's query in a format ready for
     generating comprehensive responses.
@@ -703,41 +704,37 @@ async def memory_prompt(
     - NEVER invent or guess a session ID - if you don't know it, omit this filter
     - Session IDs from examples will NOT work with real data
 
+    MODES:
+    - Session + long-term search (default): Provide session_id and leave include_long_term_search=True
+    - Session-only: Provide session_id and set include_long_term_search=False
+    - Long-term search only: Omit session_id, leave include_long_term_search=True
+
+    At least one of session_id or include_long_term_search=True must be active.
+
     COMMON USAGE PATTERNS:
     ```python
     1. Hydrate a user prompt with long-term memory search:
     memory_prompt(query="What was my favorite color?")
-    ```
 
-    2. Answer "what do you remember about me?" type questions:
+    2. Session-only (no long-term search):
+    memory_prompt(
+        query="Continue our conversation",
+        session_id={"eq": "session_12345"},
+        include_long_term_search=False
+    )
+
+    3. Answer "what do you remember about me?" type questions:
     memory_prompt(
         query="What do you remember about me?",
         user_id={"eq": "user_123"},
         limit=50
     )
-    ```
 
-    3. Hydrate a user prompt with long-term memory search and session filter:
+    4. Hydrate with session context and filtered long-term search:
     memory_prompt(
         query="What is my favorite color?",
-        session_id={
-            "eq": "session_12345"
-        },
-        namespace={
-            "eq": "user_preferences"
-        }
-    )
-
-    4. Hydrate a user prompt with long-term memory search and complex filters:
-    memory_prompt(
-        query="What was my favorite color?",
-        topics={
-            "any": ["preferences", "settings"]
-        },
-        created_at={
-            "gt": "2023-01-01T00:00:00Z"
-        },
-        limit=5
+        session_id={"eq": "session_12345"},
+        namespace={"eq": "user_preferences"}
     )
 
     5. Search with datetime range filters:
@@ -746,9 +743,6 @@ async def memory_prompt(
         created_at={
             "gte": "2024-01-01T00:00:00Z",
             "lt": "2024-02-01T00:00:00Z"
-        },
-        last_accessed={
-            "gt": "2024-01-15T12:00:00Z"
         }
     )
     ```
@@ -777,6 +771,7 @@ async def memory_prompt(
         - recency_half_life_last_access_days: Half-life (days) for last_accessed decay
         - recency_half_life_created_days: Half-life (days) for created_at decay
         - server_side_recency: If true, attempt server-side recency-aware re-ranking
+        - include_long_term_search: Whether to include long-term memory search (default: True). Set to False for session-only prompts.
 
     Returns:
         JSON-serializable memory prompt payload including memory context and the user's query
@@ -801,38 +796,44 @@ async def memory_prompt(
             context_window_max=context_window_max,
         )
 
-    # Do NOT pass session_id to the long-term search — it scopes working
-    # memory retrieval, not the long-term memory search.  The REST API keeps
-    # these separate (session vs long_term_search); the MCP flat parameter
-    # space must not conflate them or long-term memories from other sessions
-    # will be excluded.
-    search_payload = SearchRequest(
-        text=query,
-        namespace=namespace,
-        topics=topics,
-        entities=entities,
-        created_at=created_at,
-        last_accessed=last_accessed,
-        user_id=user_id,
-        distance_threshold=distance_threshold,
-        memory_type=memory_type,
-        event_date=event_date,
-        search_mode=search_mode,
-        limit=limit,
-        offset=offset,
-        recency_boost=recency_boost,
-        recency_semantic_weight=recency_semantic_weight,
-        recency_recency_weight=recency_recency_weight,
-        recency_freshness_weight=recency_freshness_weight,
-        recency_novelty_weight=recency_novelty_weight,
-        recency_half_life_last_access_days=recency_half_life_last_access_days,
-        recency_half_life_created_days=recency_half_life_created_days,
-        server_side_recency=server_side_recency,
-    )
-    _params = {}
+    if not session and not include_long_term_search:
+        raise ValueError(
+            "Either session_id or include_long_term_search=True must be provided"
+        )
+
+    _params: dict[str, Any] = {}
     if session is not None:
         _params["session"] = session
-    if search_payload is not None:
+
+    if include_long_term_search:
+        # Do NOT pass session_id to the long-term search -- it scopes working
+        # memory retrieval, not the long-term memory search.  The REST API keeps
+        # these separate (session vs long_term_search); the MCP flat parameter
+        # space must not conflate them or long-term memories from other sessions
+        # will be excluded.
+        search_payload = SearchRequest(
+            text=query,
+            namespace=namespace,
+            topics=topics,
+            entities=entities,
+            created_at=created_at,
+            last_accessed=last_accessed,
+            user_id=user_id,
+            distance_threshold=distance_threshold,
+            memory_type=memory_type,
+            event_date=event_date,
+            search_mode=search_mode,
+            limit=limit,
+            offset=offset,
+            recency_boost=recency_boost,
+            recency_semantic_weight=recency_semantic_weight,
+            recency_recency_weight=recency_recency_weight,
+            recency_freshness_weight=recency_freshness_weight,
+            recency_novelty_weight=recency_novelty_weight,
+            recency_half_life_last_access_days=recency_half_life_last_access_days,
+            recency_half_life_created_days=recency_half_life_created_days,
+            server_side_recency=server_side_recency,
+        )
         _params["long_term_search"] = search_payload
 
     # Create a background tasks instance for the MCP call
