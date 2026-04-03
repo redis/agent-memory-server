@@ -55,6 +55,7 @@ from agent_memory_server.utils.redis import get_redis_conn
 
 logger = get_logger(__name__)
 _tiktoken_encoding: Any | None = None
+_tiktoken_encoding_load_attempted = False
 
 router = APIRouter()
 
@@ -108,11 +109,14 @@ def _calculate_messages_token_count(messages: list[MemoryMessage]) -> int:
 
 def _get_tiktoken_encoding() -> Any | None:
     """Load the tokenizer encoding once and fall back safely if unavailable."""
-    global _tiktoken_encoding
+    global _tiktoken_encoding, _tiktoken_encoding_load_attempted
 
     if _tiktoken_encoding is not None:
         return _tiktoken_encoding
+    if _tiktoken_encoding_load_attempted:
+        return None
 
+    _tiktoken_encoding_load_attempted = True
     try:
         _tiktoken_encoding = tiktoken.get_encoding("cl100k_base")
     except Exception as exc:

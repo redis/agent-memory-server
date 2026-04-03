@@ -17,6 +17,7 @@ class TestIssue237TiktokenFallback:
 
         with (
             patch("agent_memory_server.api._tiktoken_encoding", None),
+            patch("agent_memory_server.api._tiktoken_encoding_load_attempted", False),
             patch(
                 "agent_memory_server.api.tiktoken.get_encoding",
                 side_effect=Exception("Could not download encoding data"),
@@ -45,6 +46,7 @@ class TestIssue237TiktokenFallback:
 
         with (
             patch("agent_memory_server.api._tiktoken_encoding", None),
+            patch("agent_memory_server.api._tiktoken_encoding_load_attempted", False),
             patch(
                 "agent_memory_server.api.tiktoken.get_encoding",
                 side_effect=Exception("Could not download encoding data"),
