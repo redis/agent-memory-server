@@ -1,10 +1,13 @@
 """Tests for GitHub issue #237: safe token counting when tiktoken is unavailable."""
 
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
-from agent_memory_server.api import _calculate_messages_token_count
+from agent_memory_server.api import (
+    _calculate_messages_token_count,
+    _get_tiktoken_encoding,
+)
 from agent_memory_server.models import MemoryMessage
 
 
@@ -17,7 +20,7 @@ class TestIssue237TiktokenFallback:
 
         with (
             patch("agent_memory_server.api._tiktoken_encoding", None),
-            patch("agent_memory_server.api._tiktoken_encoding_load_attempted", False),
+            patch("agent_memory_server.api._tiktoken_encoding_last_failed_at", None),
             patch(
                 "agent_memory_server.api.tiktoken.get_encoding",
                 side_effect=Exception("Could not download encoding data"),
@@ -46,7 +49,7 @@ class TestIssue237TiktokenFallback:
 
         with (
             patch("agent_memory_server.api._tiktoken_encoding", None),
-            patch("agent_memory_server.api._tiktoken_encoding_load_attempted", False),
+            patch("agent_memory_server.api._tiktoken_encoding_last_failed_at", None),
             patch(
                 "agent_memory_server.api.tiktoken.get_encoding",
                 side_effect=Exception("Could not download encoding data"),
@@ -60,3 +63,40 @@ class TestIssue237TiktokenFallback:
         data = get_response.json()
         assert data["session_id"] == session_id
         assert len(data["messages"]) == 1
+
+    def test_get_tiktoken_encoding_skips_retries_within_backoff_window(self):
+        """Repeated calls should not re-attempt loading within the retry interval."""
+        mock_get_encoding = Mock(side_effect=Exception("Could not download encoding"))
+
+        with (
+            patch("agent_memory_server.api._tiktoken_encoding", None),
+            patch("agent_memory_server.api._tiktoken_encoding_last_failed_at", None),
+            patch("agent_memory_server.api.time.monotonic", side_effect=[100.0, 101.0]),
+            patch("agent_memory_server.api.tiktoken.get_encoding", mock_get_encoding),
+        ):
+            assert _get_tiktoken_encoding() is None
+            assert _get_tiktoken_encoding() is None
+
+        assert mock_get_encoding.call_count == 1
+
+    def test_get_tiktoken_encoding_retries_after_backoff_window(self):
+        """A later call should retry loading once the backoff window has passed."""
+
+        class FakeEncoding:
+            def encode(self, text: str) -> list[int]:
+                return [1] * len(text)
+
+        mock_get_encoding = Mock(
+            side_effect=[Exception("temporary failure"), FakeEncoding()]
+        )
+
+        with (
+            patch("agent_memory_server.api._tiktoken_encoding", None),
+            patch("agent_memory_server.api._tiktoken_encoding_last_failed_at", None),
+            patch("agent_memory_server.api.time.monotonic", side_effect=[100.0, 401.0]),
+            patch("agent_memory_server.api.tiktoken.get_encoding", mock_get_encoding),
+        ):
+            assert _get_tiktoken_encoding() is None
+            assert _get_tiktoken_encoding() is not None
+
+        assert mock_get_encoding.call_count == 2

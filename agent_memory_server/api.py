@@ -1,3 +1,4 @@
+import time
 from typing import Any
 
 import tiktoken
@@ -55,7 +56,8 @@ from agent_memory_server.utils.redis import get_redis_conn
 
 logger = get_logger(__name__)
 _tiktoken_encoding: Any | None = None
-_tiktoken_encoding_load_attempted = False
+_tiktoken_encoding_last_failed_at: float | None = None
+_TIKTOKEN_ENCODING_RETRY_INTERVAL_SECONDS = 300
 
 router = APIRouter()
 
@@ -109,17 +111,24 @@ def _calculate_messages_token_count(messages: list[MemoryMessage]) -> int:
 
 def _get_tiktoken_encoding() -> Any | None:
     """Load the tokenizer encoding once and fall back safely if unavailable."""
-    global _tiktoken_encoding, _tiktoken_encoding_load_attempted
+    global _tiktoken_encoding, _tiktoken_encoding_last_failed_at
 
     if _tiktoken_encoding is not None:
         return _tiktoken_encoding
-    if _tiktoken_encoding_load_attempted:
+
+    now = time.monotonic()
+    if (
+        _tiktoken_encoding_last_failed_at is not None
+        and now - _tiktoken_encoding_last_failed_at
+        < _TIKTOKEN_ENCODING_RETRY_INTERVAL_SECONDS
+    ):
         return None
 
-    _tiktoken_encoding_load_attempted = True
     try:
         _tiktoken_encoding = tiktoken.get_encoding("cl100k_base")
+        _tiktoken_encoding_last_failed_at = None
     except Exception as exc:
+        _tiktoken_encoding_last_failed_at = now
         logger.warning(
             "tiktoken encoding unavailable, using character-based token estimate",
             error=str(exc),
