@@ -3419,9 +3419,6 @@ class MemoryAPIClient:
             user_id: Optional user ID filter (as dict)
             distance_threshold: Optional distance threshold
             memory_type: Optional memory type filter (as dict)
-            search_mode: Search strategy to use ("semantic", "keyword", or "hybrid")
-            hybrid_alpha: Optional weight for vector similarity in hybrid search (0.0-1.0)
-            text_scorer: Optional Redis full-text scoring algorithm for keyword and hybrid search
             limit: Maximum number of long-term memories to include
             offset: Offset for pagination (default: 0)
             optimize_query: Whether to optimize the query for semantic (vector) search using a fast model; ignored for keyword and hybrid modes (default: False)
