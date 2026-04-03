@@ -32,9 +32,6 @@ class TestIssue237TiktokenFallback:
         self, client
     ):
         """GET should return session data instead of a 500 when tokenization fails."""
-        if client is None:
-            pytest.skip("Client not available")
-
         session_id = "issue-237-api"
 
         put_response = await client.put(

@@ -104,7 +104,7 @@ def _get_effective_token_limit(
 
 def _calculate_messages_token_count(messages: list[MemoryMessage]) -> int:
     """Calculate total token count for a list of messages."""
-    return sum(_estimate_message_token_count(msg) for msg in messages)
+    return sum(_count_message_tokens(msg) for msg in messages)
 
 
 def _get_tiktoken_encoding() -> Any | None:
@@ -142,7 +142,7 @@ def _count_text_tokens(text: str) -> int:
     return len(encoding.encode(text))
 
 
-def _estimate_message_token_count(message: MemoryMessage) -> int:
+def _count_message_tokens(message: MemoryMessage) -> int:
     """Count tokens for a single working-memory message."""
     return _count_text_tokens(f"{message.role}: {message.content}")
 
