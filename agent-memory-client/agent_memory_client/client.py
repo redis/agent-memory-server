@@ -3392,6 +3392,15 @@ class MemoryAPIClient:
         search_mode: SearchModeEnum | str = SearchModeEnum.SEMANTIC,
         hybrid_alpha: float | None = None,
         text_scorer: str | None = None,
+        event_date: dict[str, Any] | None = None,
+        recency_boost: bool | None = None,
+        recency_semantic_weight: float | None = None,
+        recency_recency_weight: float | None = None,
+        recency_freshness_weight: float | None = None,
+        recency_novelty_weight: float | None = None,
+        recency_half_life_last_access_days: float | None = None,
+        recency_half_life_created_days: float | None = None,
+        server_side_recency: bool | None = None,
     ) -> dict[str, Any]:
         """
         Hydrate a user query with long-term memory context using filters.
@@ -3410,12 +3419,21 @@ class MemoryAPIClient:
             user_id: Optional user ID filter (as dict)
             distance_threshold: Optional distance threshold
             memory_type: Optional memory type filter (as dict)
-            search_mode: Search strategy to use ("semantic", "keyword", or "hybrid")
-            hybrid_alpha: Optional weight for vector similarity in hybrid search (0.0-1.0)
-            text_scorer: Optional Redis full-text scoring algorithm for keyword and hybrid search
             limit: Maximum number of long-term memories to include
             offset: Offset for pagination (default: 0)
             optimize_query: Whether to optimize the query for semantic (vector) search using a fast model; ignored for keyword and hybrid modes (default: False)
+            search_mode: Search strategy to use ("semantic", "keyword", or "hybrid")
+            hybrid_alpha: Optional weight for vector similarity in hybrid search (0.0-1.0)
+            text_scorer: Optional Redis full-text scoring algorithm for keyword and hybrid search
+            event_date: Optional event date filter for episodic memories (as dict)
+            recency_boost: Enable recency-aware re-ranking (defaults to enabled if None)
+            recency_semantic_weight: Weight for semantic similarity in recency re-ranking
+            recency_recency_weight: Weight for recency score in recency re-ranking
+            recency_freshness_weight: Weight for freshness component in recency re-ranking
+            recency_novelty_weight: Weight for novelty (age) component in recency re-ranking
+            recency_half_life_last_access_days: Half-life (days) for last_accessed decay
+            recency_half_life_created_days: Half-life (days) for created_at decay
+            server_side_recency: If true, attempt server-side recency-aware re-ranking
 
         Returns:
             Dict with messages hydrated with relevant long-term memories
@@ -3443,6 +3461,8 @@ class MemoryAPIClient:
             long_term_search["distance_threshold"] = distance_threshold
         if memory_type is not None:
             long_term_search["memory_type"] = memory_type
+        if event_date is not None:
+            long_term_search["event_date"] = event_date
         normalized_search_mode = (
             search_mode.value
             if isinstance(search_mode, SearchModeEnum)
@@ -3453,6 +3473,26 @@ class MemoryAPIClient:
             long_term_search["hybrid_alpha"] = hybrid_alpha
         if text_scorer is not None:
             long_term_search["text_scorer"] = text_scorer
+        if recency_boost is not None:
+            long_term_search["recency_boost"] = recency_boost
+        if recency_semantic_weight is not None:
+            long_term_search["recency_semantic_weight"] = recency_semantic_weight
+        if recency_recency_weight is not None:
+            long_term_search["recency_recency_weight"] = recency_recency_weight
+        if recency_freshness_weight is not None:
+            long_term_search["recency_freshness_weight"] = recency_freshness_weight
+        if recency_novelty_weight is not None:
+            long_term_search["recency_novelty_weight"] = recency_novelty_weight
+        if recency_half_life_last_access_days is not None:
+            long_term_search["recency_half_life_last_access_days"] = (
+                recency_half_life_last_access_days
+            )
+        if recency_half_life_created_days is not None:
+            long_term_search["recency_half_life_created_days"] = (
+                recency_half_life_created_days
+            )
+        if server_side_recency is not None:
+            long_term_search["server_side_recency"] = server_side_recency
 
         return await self.memory_prompt(
             query=query,
