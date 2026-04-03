@@ -268,10 +268,10 @@ See **[LLM Providers](https://redis.github.io/agent-memory-server/llm-providers/
 ```
 Working Memory (Session-scoped)  →  Long-term Memory (Persistent)
     ↓                                      ↓
-- Messages                         - Semantic, keyword & hybrid search
-- Structured memories              - Topic modeling
-- Summary of past messages         - Entity recognition
-- Metadata                         - Deduplication
+|- Messages                        - Semantic, keyword & hybrid search
+|- Structured memories             - Topic modeling
+|- Summary of past messages        - Entity recognition
+|- Metadata                        - Deduplication
 ```
 
 ## Use Cases
