@@ -402,7 +402,7 @@ from agent_memory_client import create_memory_client
 client = await create_memory_client(base_url="http://localhost:8000")
 
 # Get only the 3 most recent messages
-created, memory = await client.get_or_create_working_memory(
+_created, memory = await client.get_or_create_working_memory(
     session_id="my-session",
     namespace="demo",
     context_window_max=3

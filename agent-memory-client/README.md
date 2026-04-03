@@ -343,14 +343,15 @@ results = await client.search_long_term_memory(
 from agent_memory_client.exceptions import (
     MemoryClientError,
     MemoryValidationError,
-    MemoryNotFoundError,
     MemoryServerError
 )
 
 try:
-    created, memory = await client.get_or_create_working_memory("nonexistent-session")
+    created, memory = await client.get_or_create_working_memory("my-session")
     if created:
         print("New session created")
+except MemoryValidationError as e:
+    print(f"Validation error: {e}")
 except MemoryServerError as e:
     print(f"Server error {e.status_code}: {e}")
 except MemoryClientError as e:
