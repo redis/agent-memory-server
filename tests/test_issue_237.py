@@ -4,7 +4,10 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_memory_server.api import _calculate_messages_token_count
+from agent_memory_server.api import (
+    _calculate_messages_token_count,
+    _truncate_text_to_token_budget,
+)
 from agent_memory_server.models import MemoryMessage
 
 
@@ -63,3 +66,21 @@ class TestIssue237TiktokenFallback:
         data = get_response.json()
         assert data["session_id"] == session_id
         assert len(data["messages"]) == 1
+
+    def test_truncate_text_to_token_budget_respects_actual_token_limit(self):
+        """Oversized messages should be trimmed until they fit the target budget."""
+
+        class FakeEncoding:
+            def encode(self, text: str) -> list[int]:
+                # Treat every character as a token so naive char*4 truncation would fail.
+                return [0] * len(text)
+
+        long_text = "user: " + ("x" * 100)
+
+        with (
+            patch("agent_memory_server.api._TIKTOKEN_ENCODING_CACHE", FakeEncoding()),
+            patch("agent_memory_server.api._TIKTOKEN_ENCODING_LOAD_ATTEMPTED", True),
+        ):
+            truncated = _truncate_text_to_token_budget(long_text, 10)
+
+        assert len(truncated) == 10
