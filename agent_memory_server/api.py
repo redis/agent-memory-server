@@ -54,6 +54,8 @@ from agent_memory_server.utils.redis import get_redis_conn
 
 
 logger = get_logger(__name__)
+_TIKTOKEN_ENCODING_CACHE: Any | None = None
+_TIKTOKEN_ENCODING_LOAD_ATTEMPTED = False
 
 router = APIRouter()
 
@@ -102,15 +104,47 @@ def _get_effective_token_limit(
 
 def _calculate_messages_token_count(messages: list[MemoryMessage]) -> int:
     """Calculate total token count for a list of messages."""
-    encoding = tiktoken.get_encoding("cl100k_base")
-    total_tokens = 0
+    return sum(_estimate_message_token_count(msg) for msg in messages)
 
-    for msg in messages:
-        msg_str = f"{msg.role}: {msg.content}"
-        msg_tokens = len(encoding.encode(msg_str))
-        total_tokens += msg_tokens
 
-    return total_tokens
+def _get_tiktoken_encoding() -> Any | None:
+    """Load the tokenizer encoding once and fall back safely if unavailable."""
+    global _TIKTOKEN_ENCODING_CACHE, _TIKTOKEN_ENCODING_LOAD_ATTEMPTED
+
+    if _TIKTOKEN_ENCODING_CACHE is not None:
+        return _TIKTOKEN_ENCODING_CACHE
+    if _TIKTOKEN_ENCODING_LOAD_ATTEMPTED:
+        return None
+
+    _TIKTOKEN_ENCODING_LOAD_ATTEMPTED = True
+    try:
+        _TIKTOKEN_ENCODING_CACHE = tiktoken.get_encoding("cl100k_base")
+    except Exception as exc:
+        logger.warning(
+            "tiktoken encoding unavailable, using character-based token estimate",
+            error=str(exc),
+        )
+        return None
+
+    return _TIKTOKEN_ENCODING_CACHE
+
+
+def _estimate_text_token_count(text: str) -> int:
+    """Estimate token count when tiktoken is unavailable."""
+    return max(1, (len(text) + 3) // 4)
+
+
+def _count_text_tokens(text: str) -> int:
+    """Count tokens accurately when possible, otherwise fall back to estimation."""
+    encoding = _get_tiktoken_encoding()
+    if encoding is None:
+        return _estimate_text_token_count(text)
+    return len(encoding.encode(text))
+
+
+def _estimate_message_token_count(message: MemoryMessage) -> int:
+    """Count tokens for a single working-memory message."""
+    return _count_text_tokens(f"{message.role}: {message.content}")
 
 
 def _calculate_context_usage_percentages(
@@ -250,7 +284,6 @@ async def _summarize_working_memory(
     buffer_tokens = min(max(230, summarization_max_tokens // 100), 1000)
     max_message_tokens = summarization_max_tokens - summary_max_tokens - buffer_tokens
 
-    encoding = tiktoken.get_encoding("cl100k_base")
     total_tokens = 0
     messages_to_summarize = []
 
@@ -266,7 +299,7 @@ async def _summarize_working_memory(
     for i in range(len(memory.messages) - 1, -1, -1):
         msg = memory.messages[i]
         msg_str = f"{msg.role}: {msg.content}"
-        msg_tokens = len(encoding.encode(msg_str))
+        msg_tokens = _count_text_tokens(msg_str)
 
         if recent_messages_tokens + msg_tokens <= target_remaining_tokens:
             recent_messages_tokens += msg_tokens
@@ -281,12 +314,12 @@ async def _summarize_working_memory(
 
     for msg in messages_to_check:
         msg_str = f"{msg.role}: {msg.content}"
-        msg_tokens = len(encoding.encode(msg_str))
+        msg_tokens = _count_text_tokens(msg_str)
 
         # Handle oversized messages
         if msg_tokens > max_message_tokens:
-            msg_str = msg_str[: max_message_tokens // 2]
-            msg_tokens = len(encoding.encode(msg_str))
+            msg_str = msg_str[: max(max_message_tokens * 4, 1)]
+            msg_tokens = _count_text_tokens(msg_str)
 
         if total_tokens + msg_tokens <= max_message_tokens:
             total_tokens += msg_tokens
