@@ -30,10 +30,12 @@ from agent_memory_server.filters import (
 )
 from agent_memory_server.long_term_memory import (
     compact_long_term_memories as core_compact_long_term_memories,
+    forget_long_term_memories as core_forget_long_term_memories,
 )
 from agent_memory_server.models import (
     AckResponse,
     CreateMemoryRecordRequest,
+    CreateSummaryViewRequest,
     EditMemoryRecordRequest,
     LenientMemoryRecord,
     MemoryMessage,
@@ -45,6 +47,12 @@ from agent_memory_server.models import (
     ModelNameLiteral,
     SearchModeEnum,
     SearchRequest,
+    SessionListResponse,
+    SummaryView,
+    SummaryViewPartitionResult,
+    Task,
+    TaskStatusEnum,
+    TaskTypeEnum,
     WorkingMemory,
     WorkingMemoryRequest,
     WorkingMemoryResponse,
@@ -142,8 +150,19 @@ class FastMCP(_FastMCPBase):
             # Silently continue if we can't get namespace from request
             pass
 
-        # Inject namespace only for tools that accept it
-        if name in ("search_long_term_memory", "memory_prompt"):
+        # Inject namespace only for tools that accept it.
+        # Tools using filter-style Namespace (search/prompt tools):
+        _filter_ns_tools = ("search_long_term_memory", "memory_prompt")
+        # Tools using plain string namespace:
+        _plain_ns_tools = (
+            "set_working_memory",
+            "get_working_memory",
+            "delete_working_memory",
+            "list_sessions",
+            "forget_memories",
+            "compact_long_term_memories",
+        )
+        if name in _filter_ns_tools:
             if namespace and "namespace" not in arguments:
                 arguments["namespace"] = Namespace(eq=namespace)
             elif (
@@ -152,7 +171,7 @@ class FastMCP(_FastMCPBase):
                 and "namespace" not in arguments
             ):
                 arguments["namespace"] = Namespace(eq=self.default_namespace)
-        elif name in ("set_working_memory",):
+        elif name in _plain_ns_tools:
             if namespace and "namespace" not in arguments:
                 arguments["namespace"] = namespace
             elif (
@@ -678,13 +697,14 @@ async def memory_prompt(
     recency_half_life_last_access_days: float | None = None,
     recency_half_life_created_days: float | None = None,
     server_side_recency: bool | None = None,
+    include_long_term_search: bool = True,
 ) -> dict[str, Any]:
     """
     Hydrate a query with relevant session history and long-term memories.
 
     This tool enriches the query by retrieving:
-    1. Context from the current conversation session
-    2. Relevant long-term memories related to the query
+    1. Context from the current conversation session (when session_id is provided)
+    2. Relevant long-term memories related to the query (when include_long_term_search is True)
 
     The tool returns both the relevant memories AND the user's query in a format ready for
     generating comprehensive responses.
@@ -703,41 +723,37 @@ async def memory_prompt(
     - NEVER invent or guess a session ID - if you don't know it, omit this filter
     - Session IDs from examples will NOT work with real data
 
+    MODES:
+    - Session + long-term search (default): Provide session_id and leave include_long_term_search=True
+    - Session-only: Provide session_id and set include_long_term_search=False
+    - Long-term search only: Omit session_id, leave include_long_term_search=True
+
+    At least one of session_id or include_long_term_search=True must be active.
+
     COMMON USAGE PATTERNS:
     ```python
     1. Hydrate a user prompt with long-term memory search:
     memory_prompt(query="What was my favorite color?")
-    ```
 
-    2. Answer "what do you remember about me?" type questions:
+    2. Session-only (no long-term search):
+    memory_prompt(
+        query="Continue our conversation",
+        session_id={"eq": "session_12345"},
+        include_long_term_search=False
+    )
+
+    3. Answer "what do you remember about me?" type questions:
     memory_prompt(
         query="What do you remember about me?",
         user_id={"eq": "user_123"},
         limit=50
     )
-    ```
 
-    3. Hydrate a user prompt with long-term memory search and session filter:
+    4. Hydrate with session context and filtered long-term search:
     memory_prompt(
         query="What is my favorite color?",
-        session_id={
-            "eq": "session_12345"
-        },
-        namespace={
-            "eq": "user_preferences"
-        }
-    )
-
-    4. Hydrate a user prompt with long-term memory search and complex filters:
-    memory_prompt(
-        query="What was my favorite color?",
-        topics={
-            "any": ["preferences", "settings"]
-        },
-        created_at={
-            "gt": "2023-01-01T00:00:00Z"
-        },
-        limit=5
+        session_id={"eq": "session_12345"},
+        namespace={"eq": "user_preferences"}
     )
 
     5. Search with datetime range filters:
@@ -746,9 +762,6 @@ async def memory_prompt(
         created_at={
             "gte": "2024-01-01T00:00:00Z",
             "lt": "2024-02-01T00:00:00Z"
-        },
-        last_accessed={
-            "gt": "2024-01-15T12:00:00Z"
         }
     )
     ```
@@ -777,6 +790,7 @@ async def memory_prompt(
         - recency_half_life_last_access_days: Half-life (days) for last_accessed decay
         - recency_half_life_created_days: Half-life (days) for created_at decay
         - server_side_recency: If true, attempt server-side recency-aware re-ranking
+        - include_long_term_search: Whether to include long-term memory search (default: True). Set to False for session-only prompts.
 
     Returns:
         JSON-serializable memory prompt payload including memory context and the user's query
@@ -801,38 +815,44 @@ async def memory_prompt(
             context_window_max=context_window_max,
         )
 
-    # Do NOT pass session_id to the long-term search — it scopes working
-    # memory retrieval, not the long-term memory search.  The REST API keeps
-    # these separate (session vs long_term_search); the MCP flat parameter
-    # space must not conflate them or long-term memories from other sessions
-    # will be excluded.
-    search_payload = SearchRequest(
-        text=query,
-        namespace=namespace,
-        topics=topics,
-        entities=entities,
-        created_at=created_at,
-        last_accessed=last_accessed,
-        user_id=user_id,
-        distance_threshold=distance_threshold,
-        memory_type=memory_type,
-        event_date=event_date,
-        search_mode=search_mode,
-        limit=limit,
-        offset=offset,
-        recency_boost=recency_boost,
-        recency_semantic_weight=recency_semantic_weight,
-        recency_recency_weight=recency_recency_weight,
-        recency_freshness_weight=recency_freshness_weight,
-        recency_novelty_weight=recency_novelty_weight,
-        recency_half_life_last_access_days=recency_half_life_last_access_days,
-        recency_half_life_created_days=recency_half_life_created_days,
-        server_side_recency=server_side_recency,
-    )
-    _params = {}
+    if not session and not include_long_term_search:
+        raise ValueError(
+            "Either session_id or include_long_term_search=True must be provided"
+        )
+
+    _params: dict[str, Any] = {}
     if session is not None:
         _params["session"] = session
-    if search_payload is not None:
+
+    if include_long_term_search:
+        # Do NOT pass session_id to the long-term search -- it scopes working
+        # memory retrieval, not the long-term memory search.  The REST API keeps
+        # these separate (session vs long_term_search); the MCP flat parameter
+        # space must not conflate them or long-term memories from other sessions
+        # will be excluded.
+        search_payload = SearchRequest(
+            text=query,
+            namespace=namespace,
+            topics=topics,
+            entities=entities,
+            created_at=created_at,
+            last_accessed=last_accessed,
+            user_id=user_id,
+            distance_threshold=distance_threshold,
+            memory_type=memory_type,
+            event_date=event_date,
+            search_mode=search_mode,
+            limit=limit,
+            offset=offset,
+            recency_boost=recency_boost,
+            recency_semantic_weight=recency_semantic_weight,
+            recency_recency_weight=recency_recency_weight,
+            recency_freshness_weight=recency_freshness_weight,
+            recency_novelty_weight=recency_novelty_weight,
+            recency_half_life_last_access_days=recency_half_life_last_access_days,
+            recency_half_life_created_days=recency_half_life_created_days,
+            server_side_recency=server_side_recency,
+        )
         _params["long_term_search"] = search_payload
 
     # Create a background tasks instance for the MCP call
@@ -1041,6 +1061,8 @@ async def get_working_memory(
     session_id: str,
     user_id: str | None = None,
     namespace: str | None = None,
+    model_name: ModelNameLiteral | None = None,
+    context_window_max: int | None = None,
     recent_messages_limit: int | None = None,
 ) -> WorkingMemory:
     """
@@ -1052,6 +1074,8 @@ async def get_working_memory(
         session_id: The session ID to retrieve working memory for
         user_id: Optional user ID to scope the session lookup
         namespace: Optional namespace to scope the session lookup
+        model_name: Optional model name to determine token limits for message truncation
+        context_window_max: Optional explicit token limit for message truncation (overrides model_name)
         recent_messages_limit: Optional limit on number of recent messages to return (most recent first)
 
     Returns:
@@ -1065,6 +1089,26 @@ async def get_working_memory(
     )
     if result is None:
         return WorkingMemory(session_id=session_id, messages=[], memories=[])
+
+    # Apply token-based message truncation if model info is provided
+    if model_name is not None or context_window_max is not None:
+        from agent_memory_server.api import (
+            _calculate_messages_token_count,
+            _get_effective_token_limit,
+        )
+
+        effective_token_limit = _get_effective_token_limit(
+            model_name=model_name,
+            context_window_max=context_window_max,
+        )
+        if _calculate_messages_token_count(result.messages) > effective_token_limit:
+            messages = result.messages[:]
+            while len(messages) > 1:
+                messages = messages[1:]
+                if _calculate_messages_token_count(messages) <= effective_token_limit:
+                    break
+            result.messages = messages
+
     return result
 
 
@@ -1301,3 +1345,429 @@ async def compact_long_term_memories(
         session_id=session_id,
     )
     return AckResponse(status=f"ok, {remaining} memories remaining after compaction")
+
+
+@mcp_app.tool()
+async def forget_memories(
+    policy: dict,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    limit: int = 1000,
+    dry_run: bool = True,
+    pinned_ids: list[str] | None = None,
+) -> dict:
+    """
+    Run a forgetting pass on long-term memories using a policy.
+
+    This tool selects memories matching the policy criteria and deletes them
+    (or previews what would be deleted in dry_run mode).
+
+    This works like the `POST /v1/long-term-memory/forget` REST API endpoint.
+
+    Args:
+        policy: Forgetting policy dict with keys like max_age_days, max_inactive_days,
+            budget (number of top memories to keep), memory_type_allowlist
+        namespace: Optional namespace filter
+        user_id: Optional user ID filter
+        session_id: Optional session ID filter
+        limit: Maximum number of candidate memories to scan (default: 1000)
+        dry_run: If True, preview what would be deleted without actually deleting (default: True)
+        pinned_ids: Optional list of memory IDs to protect from deletion
+
+    Returns:
+        Dict with scanned count, deleted count, deleted_ids, and dry_run flag
+    """
+    if not settings.long_term_memory:
+        raise ValueError("Long-term memory is disabled")
+
+    return await core_forget_long_term_memories(
+        policy,
+        namespace=namespace,
+        user_id=user_id,
+        session_id=session_id,
+        limit=limit,
+        dry_run=dry_run,
+        pinned_ids=pinned_ids,
+    )
+
+
+@mcp_app.tool()
+async def list_sessions(
+    limit: int = 20,
+    offset: int = 0,
+    namespace: str | None = None,
+    user_id: str | None = None,
+) -> SessionListResponse:
+    """
+    List working memory sessions with optional pagination and filtering.
+
+    This works like the `GET /v1/working-memory/` REST API endpoint.
+
+    Args:
+        limit: Maximum number of sessions to return (1-100, default: 20)
+        offset: Offset for pagination (default: 0)
+        namespace: Optional namespace filter
+        user_id: Optional user ID filter
+
+    Returns:
+        List of session IDs and total count
+    """
+    from agent_memory_server.utils.redis import get_redis_conn
+
+    redis = await get_redis_conn()
+    total, session_ids = await working_memory_core.list_sessions(
+        redis=redis,
+        limit=limit,
+        offset=offset,
+        namespace=namespace,
+        user_id=user_id,
+    )
+    return SessionListResponse(sessions=session_ids, total=total)
+
+
+@mcp_app.tool()
+async def delete_working_memory(
+    session_id: str,
+    user_id: str | None = None,
+    namespace: str | None = None,
+) -> AckResponse:
+    """
+    Delete working memory for a session.
+
+    This deletes all stored memory (messages, context, structured memories)
+    for the specified session.
+
+    This works like the `DELETE /v1/working-memory/{session_id}` REST API endpoint.
+
+    Args:
+        session_id: The session ID to delete
+        user_id: Optional user ID for the session
+        namespace: Optional namespace for the session
+
+    Returns:
+        Acknowledgement response
+    """
+    from agent_memory_server.utils.redis import get_redis_conn
+
+    redis = await get_redis_conn()
+    await working_memory_core.delete_working_memory(
+        session_id=session_id,
+        user_id=user_id,
+        namespace=namespace,
+        redis_client=redis,
+    )
+    return AckResponse(status="ok")
+
+
+@mcp_app.tool()
+async def create_summary_view(
+    source: str,
+    name: str | None = None,
+    group_by: list[str] | None = None,
+    filters: dict[str, str] | None = None,
+    time_window_days: int | None = None,
+    continuous: bool = False,
+    prompt: str | None = None,
+    model_name: str | None = None,
+) -> SummaryView:
+    """
+    Create a new SummaryView configuration.
+
+    A SummaryView defines how to summarize a pool of memories, partitioned by
+    group_by fields. Once created, it can be run on-demand or by background workers.
+
+    This works like the `POST /v1/summary-views` REST API endpoint.
+
+    Args:
+        source: Memory source to summarize ("long_term" or "working_memory"; only "long_term" currently supported)
+        name: Optional human-readable name for the view
+        group_by: Fields to partition by (e.g. ["user_id", "namespace"]). Allowed: user_id, namespace, session_id, memory_type
+        filters: Static filters applied before grouping (e.g. {"namespace": "work"})
+        time_window_days: Only include memories from the last N days
+        continuous: If True, auto-refresh in background when a worker is active
+        prompt: Optional custom prompt for summarization
+        model_name: Optional model override for summarization
+
+    Returns:
+        The created SummaryView with server-assigned ID
+    """
+    from ulid import ULID
+
+    from agent_memory_server.summary_views import save_summary_view
+
+    payload = CreateSummaryViewRequest(
+        name=name,
+        source=source,
+        group_by=group_by or [],
+        filters=filters or {},
+        time_window_days=time_window_days,
+        continuous=continuous,
+        prompt=prompt,
+        model_name=model_name,
+    )
+
+    # Validate keys (same logic as REST)
+    if payload.source != "long_term":
+        raise ValueError(
+            "SummaryView.source must be 'long_term' for now; "
+            "'working_memory' is not yet supported."
+        )
+
+    allowed_group_by = {"user_id", "namespace", "session_id", "memory_type"}
+    allowed_filters = {"user_id", "namespace", "session_id", "memory_type"}
+
+    invalid_group = [k for k in payload.group_by if k not in allowed_group_by]
+    if invalid_group:
+        raise ValueError(
+            "Unsupported group_by fields: " + ", ".join(sorted(invalid_group))
+        )
+
+    invalid_filters = [k for k in payload.filters if k not in allowed_filters]
+    if invalid_filters:
+        raise ValueError(
+            "Unsupported filter fields: " + ", ".join(sorted(invalid_filters))
+        )
+
+    view = SummaryView(
+        id=str(ULID()),
+        name=payload.name,
+        source=payload.source,
+        group_by=payload.group_by,
+        filters=payload.filters,
+        time_window_days=payload.time_window_days,
+        continuous=payload.continuous,
+        prompt=payload.prompt,
+        model_name=payload.model_name,
+    )
+
+    await save_summary_view(view)
+    return view
+
+
+@mcp_app.tool()
+async def list_summary_views() -> list[SummaryView]:
+    """
+    List all registered SummaryView configurations.
+
+    This works like the `GET /v1/summary-views` REST API endpoint.
+
+    Returns:
+        List of all SummaryView configurations
+    """
+    from agent_memory_server.summary_views import (
+        list_summary_views as core_list_summary_views,
+    )
+
+    return await core_list_summary_views()
+
+
+@mcp_app.tool()
+async def get_summary_view(
+    view_id: str,
+) -> SummaryView:
+    """
+    Get a SummaryView configuration by ID.
+
+    This works like the `GET /v1/summary-views/{view_id}` REST API endpoint.
+
+    Args:
+        view_id: The ID of the SummaryView to retrieve
+
+    Returns:
+        The SummaryView configuration
+    """
+    from agent_memory_server.summary_views import (
+        get_summary_view as core_get_summary_view,
+    )
+
+    view = await core_get_summary_view(view_id)
+    if view is None:
+        raise ValueError(f"SummaryView {view_id} not found")
+    return view
+
+
+@mcp_app.tool()
+async def delete_summary_view(
+    view_id: str,
+) -> AckResponse:
+    """
+    Delete a SummaryView configuration.
+
+    Stored partition summaries are left as-is.
+
+    This works like the `DELETE /v1/summary-views/{view_id}` REST API endpoint.
+
+    Args:
+        view_id: The ID of the SummaryView to delete
+
+    Returns:
+        Acknowledgement response
+    """
+    from agent_memory_server.summary_views import (
+        delete_summary_view as core_delete_summary_view,
+    )
+
+    await core_delete_summary_view(view_id)
+    return AckResponse(status="ok")
+
+
+@mcp_app.tool()
+async def run_summary_view_partition(
+    view_id: str,
+    group: dict[str, str],
+) -> SummaryViewPartitionResult:
+    """
+    Synchronously compute a summary for a single partition of a SummaryView.
+
+    For long-term memory views this queries the underlying memories and runs
+    a real summarization.
+
+    This works like the `POST /v1/summary-views/{view_id}/partitions/run` REST API endpoint.
+
+    Args:
+        view_id: The ID of the SummaryView
+        group: Concrete values for the view's group_by fields (e.g. {"user_id": "alice"})
+
+    Returns:
+        The partition summary result
+    """
+    from agent_memory_server.summary_views import (
+        get_summary_view as core_get_summary_view,
+        save_partition_result,
+        summarize_partition_for_view,
+    )
+
+    view = await core_get_summary_view(view_id)
+    if view is None:
+        raise ValueError(f"SummaryView {view_id} not found")
+
+    group_keys = set(group.keys())
+    expected_keys = set(view.group_by)
+    if group_keys != expected_keys:
+        raise ValueError(
+            f"group keys {sorted(group_keys)} must exactly match "
+            f"view.group_by {sorted(expected_keys)}"
+        )
+
+    result = await summarize_partition_for_view(view, group)
+    await save_partition_result(result)
+    return result
+
+
+@mcp_app.tool()
+async def list_summary_view_partitions(
+    view_id: str,
+    user_id: str | None = None,
+    namespace: str | None = None,
+    session_id: str | None = None,
+    memory_type: str | None = None,
+) -> list[SummaryViewPartitionResult]:
+    """
+    List materialized partition summaries for a SummaryView.
+
+    This does not trigger recomputation; it reads stored results from Redis.
+
+    This works like the `GET /v1/summary-views/{view_id}/partitions` REST API endpoint.
+
+    Args:
+        view_id: The ID of the SummaryView
+        user_id: Optional filter by user_id group field
+        namespace: Optional filter by namespace group field
+        session_id: Optional filter by session_id group field
+        memory_type: Optional filter by memory_type group field
+
+    Returns:
+        List of partition summary results
+    """
+    from agent_memory_server.summary_views import (
+        get_summary_view as core_get_summary_view,
+        list_partition_results,
+    )
+
+    view = await core_get_summary_view(view_id)
+    if view is None:
+        raise ValueError(f"SummaryView {view_id} not found")
+
+    group_filter: dict[str, str] = {}
+    if user_id is not None:
+        group_filter["user_id"] = user_id
+    if namespace is not None:
+        group_filter["namespace"] = namespace
+    if session_id is not None:
+        group_filter["session_id"] = session_id
+    if memory_type is not None:
+        group_filter["memory_type"] = memory_type
+
+    return await list_partition_results(view_id, group_filter or None)
+
+
+@mcp_app.tool()
+async def run_summary_view(
+    view_id: str,
+    task_id: str | None = None,
+) -> Task:
+    """
+    Trigger an asynchronous full recompute of all partitions for a SummaryView.
+
+    Returns a Task that can be polled for status using get_task_status.
+
+    This works like the `POST /v1/summary-views/{view_id}/run` REST API endpoint.
+
+    Args:
+        view_id: The ID of the SummaryView to run
+        task_id: Optional client-provided task ID. If omitted, the server generates one.
+
+    Returns:
+        A Task object with an ID that can be polled for status
+    """
+    from ulid import ULID
+
+    from agent_memory_server.summary_views import (
+        get_summary_view as core_get_summary_view,
+        refresh_summary_view,
+    )
+    from agent_memory_server.tasks import create_task
+
+    view = await core_get_summary_view(view_id)
+    if view is None:
+        raise ValueError(f"SummaryView {view_id} not found")
+
+    _task_id = task_id or str(ULID())
+    task = Task(
+        id=_task_id,
+        type=TaskTypeEnum.SUMMARY_VIEW_FULL_RUN,
+        status=TaskStatusEnum.PENDING,
+        view_id=view_id,
+    )
+    await create_task(task)
+
+    background_tasks = get_background_tasks()
+    background_tasks.add_task(refresh_summary_view, view_id=view_id, task_id=_task_id)
+    return task
+
+
+@mcp_app.tool()
+async def get_task_status(
+    task_id: str,
+) -> Task:
+    """
+    Get the status of a background task by ID.
+
+    Use this to poll the status of asynchronous operations like full
+    SummaryView runs.
+
+    This works like the `GET /v1/tasks/{task_id}` REST API endpoint.
+
+    Args:
+        task_id: The ID of the task to check
+
+    Returns:
+        The Task object with current status
+    """
+    from agent_memory_server.tasks import get_task
+
+    task = await get_task(task_id)
+    if task is None:
+        raise ValueError(f"Task {task_id} not found")
+    return task
