@@ -16,8 +16,8 @@ class TestIssue237TiktokenFallback:
         messages = [MemoryMessage(role="user", content="Hello world")]
 
         with (
-            patch("agent_memory_server.api._TIKTOKEN_ENCODING_CACHE", None),
-            patch("agent_memory_server.api._TIKTOKEN_ENCODING_LOAD_ATTEMPTED", False),
+            patch("agent_memory_server.api._tiktoken_encoding", None),
+            patch("agent_memory_server.api._tiktoken_encoding_load_attempted", False),
             patch(
                 "agent_memory_server.api.tiktoken.get_encoding",
                 side_effect=Exception("Could not download encoding data"),
@@ -48,8 +48,8 @@ class TestIssue237TiktokenFallback:
         assert put_response.status_code == 200
 
         with (
-            patch("agent_memory_server.api._TIKTOKEN_ENCODING_CACHE", None),
-            patch("agent_memory_server.api._TIKTOKEN_ENCODING_LOAD_ATTEMPTED", False),
+            patch("agent_memory_server.api._tiktoken_encoding", None),
+            patch("agent_memory_server.api._tiktoken_encoding_load_attempted", False),
             patch(
                 "agent_memory_server.api.tiktoken.get_encoding",
                 side_effect=Exception("Could not download encoding data"),
