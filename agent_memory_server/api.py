@@ -113,15 +113,18 @@ def _get_tiktoken_encoding() -> Any | None:
     """Load the tokenizer encoding once and fall back safely if unavailable."""
     global _tiktoken_encoding, _tiktoken_encoding_last_failed_at
 
+    now = time.monotonic()
+    last_failed_at = _tiktoken_encoding_last_failed_at
+
     if _tiktoken_encoding is not None:
         return _tiktoken_encoding
 
-    now = time.monotonic()
-    if (
-        _tiktoken_encoding_last_failed_at is not None
-        and now - _tiktoken_encoding_last_failed_at
-        < _TIKTOKEN_ENCODING_RETRY_INTERVAL_SECONDS
-    ):
+    retry_after = (
+        None
+        if last_failed_at is None
+        else last_failed_at + _TIKTOKEN_ENCODING_RETRY_INTERVAL_SECONDS
+    )
+    if retry_after is not None and now < retry_after:
         return None
 
     try:
