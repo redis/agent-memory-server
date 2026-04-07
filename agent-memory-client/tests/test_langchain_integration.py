@@ -167,6 +167,37 @@ class TestLangChainIntegration:
 
     @pytest.mark.skipif(not _langchain_available(), reason="LangChain not installed")
     @pytest.mark.asyncio
+    async def test_search_memory_tool_forwards_search_mode(self):
+        """Test that search_memory tool forwards search_mode and omits hyperparams."""
+        from agent_memory_client.integrations.langchain import get_memory_tools
+
+        client = _create_mock_client()
+        client.search_memory_tool = AsyncMock(
+            return_value={
+                "summary": "Found 1 memories",
+                "memories": [{"text": "result", "relevance_score": 0.9}],
+            }
+        )
+
+        tools = get_memory_tools(
+            memory_client=client,
+            session_id="test_session",
+            user_id="test_user",
+            tools=["search_memory"],
+        )
+
+        search_tool = tools[0]
+        await search_tool.ainvoke({"query": "test query", "search_mode": "keyword"})
+
+        client.search_memory_tool.assert_called_once()
+        call_kwargs = client.search_memory_tool.call_args.kwargs
+        assert call_kwargs["search_mode"] == "keyword"
+        # hybrid_alpha and text_scorer should not be passed
+        assert "hybrid_alpha" not in call_kwargs
+        assert "text_scorer" not in call_kwargs
+
+    @pytest.mark.skipif(not _langchain_available(), reason="LangChain not installed")
+    @pytest.mark.asyncio
     async def test_add_memory_tool_execution(self):
         """Test that lazily_create_long_term_memory tool executes correctly."""
         from agent_memory_client.integrations.langchain import get_memory_tools

@@ -1070,7 +1070,7 @@ class MemoryAPIClient:
             memory_type: Optional memory type filter
             limit: Maximum number of results to return (default: 10)
             offset: Offset for pagination (default: 0)
-            optimize_query: Whether to optimize the query for vector search using a fast model (default: True)
+            optimize_query: Whether to optimize the query for semantic (vector) search using a fast model; ignored for keyword and hybrid modes (default: False)
 
         Returns:
             MemoryRecordResults with matching memories and metadata
@@ -1233,7 +1233,7 @@ class MemoryAPIClient:
             offset: Offset for pagination (default: 0)
             min_relevance: Optional minimum relevance score (0.0-1.0)
             user_id: Optional user ID to filter memories by
-            optimize_query: Whether to optimize the query for vector search (default: False - LLMs typically provide already optimized queries)
+            optimize_query: Whether to optimize the query for semantic (vector) search; ignored for keyword and hybrid modes (default: False)
 
         Returns:
             Dict with 'memories' list and 'summary' for LLM consumption
@@ -1386,29 +1386,19 @@ class MemoryAPIClient:
                 "type": "function",
                 "function": {
                     "name": "search_memory",
-                    "description": "Search long-term memory for relevant information using semantic vector search. Use this when you need to find previously stored information about the user, such as their preferences, past conversations, or important facts. Examples: 'Find information about user food preferences', 'What did they say about their job?', 'Look for travel preferences'. This searches only long-term memory, not current working memory - use get_working_memory for current session info. IMPORTANT: The result includes 'memories' with an 'id' field; use these IDs when calling edit_long_term_memory or delete_long_term_memories.",
+                    "description": "Search long-term memory for relevant information using semantic, keyword, or hybrid search. Use this when you need to find previously stored information about the user, such as their preferences, past conversations, or important facts. Examples: 'Find information about user food preferences', 'What did they say about their job?', 'Look for travel preferences'. This searches only long-term memory, not current working memory - use get_or_create_working_memory for current session info. IMPORTANT: The result includes 'memories' with an 'id' field; use these IDs when calling edit_long_term_memory or delete_long_term_memories.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": "The query for vector search describing what information you're looking for",
+                                "description": "The search query describing what information you're looking for",
                             },
                             "search_mode": {
                                 "type": "string",
                                 "enum": ["semantic", "keyword", "hybrid"],
                                 "default": "semantic",
                                 "description": "Search strategy to use. Choose 'keyword' for lexical search, 'semantic' for vector similarity, or 'hybrid' to blend both.",
-                            },
-                            "hybrid_alpha": {
-                                "type": "number",
-                                "minimum": 0.0,
-                                "maximum": 1.0,
-                                "description": "Optional weight assigned to vector similarity in hybrid search. Higher values favor semantic matches more strongly.",
-                            },
-                            "text_scorer": {
-                                "type": "string",
-                                "description": "Optional Redis full-text scoring algorithm to use for keyword and hybrid search (for example: BM25STD, BM25, TFIDF, DISMAX, DOCSCORE).",
                             },
                             "topics": {
                                 "type": "array",
@@ -1451,7 +1441,7 @@ class MemoryAPIClient:
                             "optimize_query": {
                                 "type": "boolean",
                                 "default": False,
-                                "description": "Whether to optimize the query for vector search (default: False - LLMs typically provide already optimized queries)",
+                                "description": "Whether to optimize the query for semantic (vector) search; ignored for keyword and hybrid modes (default: False)",
                             },
                         },
                         "required": ["query"],
@@ -1875,7 +1865,7 @@ class MemoryAPIClient:
                 "type": "function",
                 "function": {
                     "name": "update_working_memory_data",
-                    "description": "Store or update structured session data (JSON objects) in working memory. Use this for complex session-specific information that needs to be accessed and modified during the conversation. Examples: Travel itinerary {'destination': 'Paris', 'dates': ['2024-03-15', '2024-03-20']}, project details {'name': 'Website Redesign', 'deadline': '2024-04-01', 'status': 'in_progress'}. Different from add_memory_to_working_memory which stores simple text facts.",
+                    "description": "Store or update structured session data (JSON objects) in working memory. Use this for complex session-specific information that needs to be accessed and modified during the conversation. Examples: Travel itinerary {'destination': 'Paris', 'dates': ['2024-03-15', '2024-03-20']}, project details {'name': 'Website Redesign', 'deadline': '2024-04-01', 'status': 'in_progress'}. Different from lazily_create_long_term_memory which stores simple text facts for later promotion to long-term storage.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -2689,24 +2679,30 @@ class MemoryAPIClient:
         topics = args.get("topics")
         entities = args.get("entities")
         memory_type = args.get("memory_type")
-        max_results = args.get("max_results", 5)
+        max_results = args.get("max_results", 10)
         min_relevance = args.get("min_relevance")
         user_id = args.get("user_id")
+        search_mode = args.get("search_mode", "semantic")
+        offset = args.get("offset", 0)
+        optimize_query = args.get("optimize_query", False)
 
         return await self.search_memory_tool(
             query=query,
+            search_mode=search_mode,
             topics=topics,
             entities=entities,
             memory_type=memory_type,
             max_results=max_results,
+            offset=offset,
             min_relevance=min_relevance,
             user_id=user_id,
+            optimize_query=optimize_query,
         )
 
     async def _resolve_get_working_memory(
         self, session_id: str, namespace: str | None, user_id: str | None = None
     ) -> dict[str, Any]:
-        """Resolve get_working_memory function call."""
+        """Resolve get_working_memory (deprecated) function call."""
         return await self.get_working_memory_tool(
             session_id=session_id,
             namespace=namespace,
@@ -2731,7 +2727,7 @@ class MemoryAPIClient:
         namespace: str | None,
         user_id: str | None = None,
     ) -> dict[str, Any]:
-        """Resolve add_memory_to_working_memory function call."""
+        """Resolve lazily_create_long_term_memory (formerly add_memory_to_working_memory) function call."""
         text = args.get("text", "")
         if not text:
             raise ValueError("Text parameter is required for adding memory")
@@ -2790,12 +2786,10 @@ class MemoryAPIClient:
     async def _resolve_create_long_term_memory(
         self, args: dict[str, Any], namespace: str | None, user_id: str | None = None
     ) -> dict[str, Any]:
-        """Resolve create_long_term_memory function call."""
+        """Resolve eagerly_create_long_term_memory (and deprecated create_long_term_memory alias) function call."""
         memories_data = args.get("memories")
         if not memories_data:
-            raise ValueError(
-                "memories parameter is required for create_long_term_memory"
-            )
+            raise ValueError("memories parameter is required")
 
         # Convert dict memories to ClientMemoryRecord objects
         from .models import ClientMemoryRecord, MemoryTypeEnum
@@ -2907,7 +2901,7 @@ class MemoryAPIClient:
             # Handle multiple function calls
             calls = [
                 {"name": "search_memory", "arguments": {"query": "user preferences"}},
-                {"name": "get_working_memory", "arguments": {}},
+                {"name": "get_or_create_working_memory", "arguments": {}},
             ]
 
             results = await client.resolve_function_calls(calls, "session123")
@@ -3306,7 +3300,7 @@ class MemoryAPIClient:
             context_window_max: Optional direct specification of context window tokens
             long_term_search: Optional search parameters for long-term memory
             user_id: Optional user ID for the session
-            optimize_query: Whether to optimize the query for vector search using a fast model (default: True)
+            optimize_query: Whether to optimize the query for semantic (vector) search using a fast model; ignored for keyword and hybrid modes (default: False)
 
         Returns:
             Dict with messages hydrated with relevant memory context
@@ -3395,6 +3389,18 @@ class MemoryAPIClient:
         limit: int = 10,
         offset: int = 0,
         optimize_query: bool = False,
+        search_mode: SearchModeEnum | str = SearchModeEnum.SEMANTIC,
+        hybrid_alpha: float | None = None,
+        text_scorer: str | None = None,
+        event_date: dict[str, Any] | None = None,
+        recency_boost: bool | None = None,
+        recency_semantic_weight: float | None = None,
+        recency_recency_weight: float | None = None,
+        recency_freshness_weight: float | None = None,
+        recency_novelty_weight: float | None = None,
+        recency_half_life_last_access_days: float | None = None,
+        recency_half_life_created_days: float | None = None,
+        server_side_recency: bool | None = None,
     ) -> dict[str, Any]:
         """
         Hydrate a user query with long-term memory context using filters.
@@ -3403,7 +3409,7 @@ class MemoryAPIClient:
         long-term memory search with the specified filters.
 
         Args:
-            query: The query for vector search to find relevant context for
+            query: The search query to find relevant context for
             session_id: Optional session ID filter (as dict)
             namespace: Optional namespace filter (as dict)
             topics: Optional topics filter (as dict)
@@ -3415,7 +3421,19 @@ class MemoryAPIClient:
             memory_type: Optional memory type filter (as dict)
             limit: Maximum number of long-term memories to include
             offset: Offset for pagination (default: 0)
-            optimize_query: Whether to optimize the query for vector search using a fast model (default: True)
+            optimize_query: Whether to optimize the query for semantic (vector) search using a fast model; ignored for keyword and hybrid modes (default: False)
+            search_mode: Search strategy to use ("semantic", "keyword", or "hybrid")
+            hybrid_alpha: Optional weight for vector similarity in hybrid search (0.0-1.0)
+            text_scorer: Optional Redis full-text scoring algorithm for keyword and hybrid search
+            event_date: Optional event date filter for episodic memories (as dict)
+            recency_boost: Enable recency-aware re-ranking (defaults to enabled if None)
+            recency_semantic_weight: Weight for semantic similarity in recency re-ranking
+            recency_recency_weight: Weight for recency score in recency re-ranking
+            recency_freshness_weight: Weight for freshness component in recency re-ranking
+            recency_novelty_weight: Weight for novelty (age) component in recency re-ranking
+            recency_half_life_last_access_days: Half-life (days) for last_accessed decay
+            recency_half_life_created_days: Half-life (days) for created_at decay
+            server_side_recency: If true, attempt server-side recency-aware re-ranking
 
         Returns:
             Dict with messages hydrated with relevant long-term memories
@@ -3443,6 +3461,38 @@ class MemoryAPIClient:
             long_term_search["distance_threshold"] = distance_threshold
         if memory_type is not None:
             long_term_search["memory_type"] = memory_type
+        if event_date is not None:
+            long_term_search["event_date"] = event_date
+        normalized_search_mode = (
+            search_mode.value
+            if isinstance(search_mode, SearchModeEnum)
+            else str(search_mode)
+        )
+        long_term_search["search_mode"] = normalized_search_mode
+        if hybrid_alpha is not None:
+            long_term_search["hybrid_alpha"] = hybrid_alpha
+        if text_scorer is not None:
+            long_term_search["text_scorer"] = text_scorer
+        if recency_boost is not None:
+            long_term_search["recency_boost"] = recency_boost
+        if recency_semantic_weight is not None:
+            long_term_search["recency_semantic_weight"] = recency_semantic_weight
+        if recency_recency_weight is not None:
+            long_term_search["recency_recency_weight"] = recency_recency_weight
+        if recency_freshness_weight is not None:
+            long_term_search["recency_freshness_weight"] = recency_freshness_weight
+        if recency_novelty_weight is not None:
+            long_term_search["recency_novelty_weight"] = recency_novelty_weight
+        if recency_half_life_last_access_days is not None:
+            long_term_search["recency_half_life_last_access_days"] = (
+                recency_half_life_last_access_days
+            )
+        if recency_half_life_created_days is not None:
+            long_term_search["recency_half_life_created_days"] = (
+                recency_half_life_created_days
+            )
+        if server_side_recency is not None:
+            long_term_search["server_side_recency"] = server_side_recency
 
         return await self.memory_prompt(
             query=query,

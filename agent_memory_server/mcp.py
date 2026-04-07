@@ -20,6 +20,7 @@ from agent_memory_server.dependencies import get_background_tasks
 from agent_memory_server.filters import (
     CreatedAt,
     Entities,
+    EventDate,
     LastAccessed,
     MemoryType,
     Namespace,
@@ -142,7 +143,7 @@ class FastMCP(_FastMCPBase):
             pass
 
         # Inject namespace only for tools that accept it
-        if name in ("search_long_term_memory", "hydrate_memory_prompt"):
+        if name in ("search_long_term_memory", "memory_prompt"):
             if namespace and "namespace" not in arguments:
                 arguments["namespace"] = Namespace(eq=namespace)
             elif (
@@ -459,8 +460,6 @@ async def create_long_term_memories(
 async def search_long_term_memory(
     text: str | None,
     search_mode: SearchModeEnum = SearchModeEnum.SEMANTIC,
-    hybrid_alpha: float = 0.7,
-    text_scorer: str = "BM25STD",
     session_id: SessionId | None = None,
     namespace: Namespace | None = None,
     topics: Topics | None = None,
@@ -469,10 +468,19 @@ async def search_long_term_memory(
     last_accessed: LastAccessed | None = None,
     user_id: UserId | None = None,
     memory_type: MemoryType | None = None,
+    event_date: EventDate | None = None,
     distance_threshold: float | None = None,
     limit: int = 10,
     offset: int = 0,
     optimize_query: bool = False,
+    recency_boost: bool | None = None,
+    recency_semantic_weight: float | None = None,
+    recency_recency_weight: float | None = None,
+    recency_freshness_weight: float | None = None,
+    recency_novelty_weight: float | None = None,
+    recency_half_life_last_access_days: float | None = None,
+    recency_half_life_created_days: float | None = None,
+    server_side_recency: bool | None = None,
 ) -> MemoryRecordResults:
     """
     Search for memories using semantic, keyword, or hybrid retrieval.
@@ -561,9 +569,7 @@ async def search_long_term_memory(
 
     Args:
         text: The query text. Use empty string "" to get all memories for a user.
-        search_mode: Search strategy to use
-        hybrid_alpha: Weight assigned to vector similarity in hybrid search
-        text_scorer: Redis full-text scoring algorithm for keyword and hybrid search
+        search_mode: Search strategy to use (semantic, keyword, or hybrid)
         session_id: Filter by session ID
         namespace: Filter by namespace
         topics: Filter by topics
@@ -572,10 +578,19 @@ async def search_long_term_memory(
         last_accessed: Filter by last access date
         user_id: Filter by user ID
         memory_type: Filter by memory type
+        event_date: Filter by event date (for episodic memories)
         distance_threshold: Distance threshold for semantic search
         limit: Maximum number of results
         offset: Offset for pagination
-        optimize_query: Whether to optimize the query for vector search (default: False - LLMs typically provide already optimized queries)
+        optimize_query: Whether to optimize the query for semantic (vector) search only; ignored for keyword and hybrid modes (default: False - LLMs typically provide already optimized queries)
+        recency_boost: Enable recency-aware re-ranking (defaults to enabled if None)
+        recency_semantic_weight: Weight for semantic similarity in recency re-ranking
+        recency_recency_weight: Weight for recency score in recency re-ranking
+        recency_freshness_weight: Weight for freshness component in recency re-ranking
+        recency_novelty_weight: Weight for novelty (age) component in recency re-ranking
+        recency_half_life_last_access_days: Half-life (days) for last_accessed decay
+        recency_half_life_created_days: Half-life (days) for created_at decay
+        server_side_recency: If true, attempt server-side recency-aware re-ranking
 
     Returns:
         MemoryRecordResults containing matched memories sorted by relevance
@@ -594,8 +609,6 @@ async def search_long_term_memory(
         payload = SearchRequest(
             text=text,
             search_mode=search_mode,
-            hybrid_alpha=hybrid_alpha,
-            text_scorer=text_scorer,
             session_id=session_id,
             namespace=namespace,
             topics=topics,
@@ -604,9 +617,18 @@ async def search_long_term_memory(
             last_accessed=last_accessed,
             user_id=user_id,
             memory_type=memory_type,
+            event_date=event_date,
             distance_threshold=distance_threshold,
             limit=limit,
             offset=offset,
+            recency_boost=recency_boost,
+            recency_semantic_weight=recency_semantic_weight,
+            recency_recency_weight=recency_recency_weight,
+            recency_freshness_weight=recency_freshness_weight,
+            recency_novelty_weight=recency_novelty_weight,
+            recency_half_life_last_access_days=recency_half_life_last_access_days,
+            recency_half_life_created_days=recency_half_life_created_days,
+            server_side_recency=server_side_recency,
         )
         # Create a background tasks instance for the MCP call
         from agent_memory_server.dependencies import HybridBackgroundTasks
@@ -642,13 +664,23 @@ async def memory_prompt(
     last_accessed: LastAccessed | None = None,
     user_id: UserId | None = None,
     memory_type: MemoryType | None = None,
+    event_date: EventDate | None = None,
     distance_threshold: float | None = None,
+    search_mode: SearchModeEnum = SearchModeEnum.SEMANTIC,
     limit: int = 10,
     offset: int = 0,
     optimize_query: bool = False,
+    recency_boost: bool | None = None,
+    recency_semantic_weight: float | None = None,
+    recency_recency_weight: float | None = None,
+    recency_freshness_weight: float | None = None,
+    recency_novelty_weight: float | None = None,
+    recency_half_life_last_access_days: float | None = None,
+    recency_half_life_created_days: float | None = None,
+    server_side_recency: bool | None = None,
 ) -> dict[str, Any]:
     """
-    Hydrate a query for vector search with relevant session history and long-term memories.
+    Hydrate a query with relevant session history and long-term memories.
 
     This tool enriches the query by retrieving:
     1. Context from the current conversation session
@@ -657,7 +689,7 @@ async def memory_prompt(
     The tool returns both the relevant memories AND the user's query in a format ready for
     generating comprehensive responses.
 
-    The function uses the query field as the query for vector search,
+    The function uses the query field for searching (semantic, keyword, or hybrid),
     and any filters to retrieve relevant memories.
 
     DATETIME INPUT FORMAT:
@@ -722,7 +754,7 @@ async def memory_prompt(
     ```
 
     Args:
-        - query: The query for vector search
+        - query: The search query text
         - session_id: Add conversation history from a working memory session
         - namespace: Filter session and long-term memory namespace
         - topics: Search for long-term memories matching topics
@@ -730,14 +762,30 @@ async def memory_prompt(
         - created_at: Search for long-term memories matching creation date
         - last_accessed: Search for long-term memories matching last access date
         - user_id: Search for long-term memories matching user ID
+        - memory_type: Filter by memory type
+        - event_date: Filter by event date (for episodic memories)
         - distance_threshold: Distance threshold for semantic search
+        - search_mode: Search strategy to use (semantic, keyword, or hybrid)
         - limit: Maximum number of long-term memory results
         - offset: Offset for pagination of long-term memory results
-        - optimize_query: Whether to optimize the query for vector search (default: False - LLMs typically provide already optimized queries)
+        - optimize_query: Whether to optimize the query for semantic (vector) search only; ignored for keyword and hybrid modes (default: False - LLMs typically provide already optimized queries)
+        - recency_boost: Enable recency-aware re-ranking (defaults to enabled if None)
+        - recency_semantic_weight: Weight for semantic similarity in recency re-ranking
+        - recency_recency_weight: Weight for recency score in recency re-ranking
+        - recency_freshness_weight: Weight for freshness component in recency re-ranking
+        - recency_novelty_weight: Weight for novelty (age) component in recency re-ranking
+        - recency_half_life_last_access_days: Half-life (days) for last_accessed decay
+        - recency_half_life_created_days: Half-life (days) for created_at decay
+        - server_side_recency: If true, attempt server-side recency-aware re-ranking
 
     Returns:
         JSON-serializable memory prompt payload including memory context and the user's query
     """
+    if distance_threshold is not None and search_mode != SearchModeEnum.SEMANTIC:
+        raise ValueError(
+            "distance_threshold is only supported for semantic search mode"
+        )
+
     _session_id = session_id.eq if session_id and session_id.eq else None
     session = None
 
@@ -768,8 +816,18 @@ async def memory_prompt(
         user_id=user_id,
         distance_threshold=distance_threshold,
         memory_type=memory_type,
+        event_date=event_date,
+        search_mode=search_mode,
         limit=limit,
         offset=offset,
+        recency_boost=recency_boost,
+        recency_semantic_weight=recency_semantic_weight,
+        recency_recency_weight=recency_recency_weight,
+        recency_freshness_weight=recency_freshness_weight,
+        recency_novelty_weight=recency_novelty_weight,
+        recency_half_life_last_access_days=recency_half_life_last_access_days,
+        recency_half_life_created_days=recency_half_life_created_days,
+        server_side_recency=server_side_recency,
     )
     _params = {}
     if session is not None:

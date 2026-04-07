@@ -15,6 +15,7 @@ from agent_memory_server.models import (
     MemoryRecord,
     MemoryRecordResult,
     MemoryRecordResults,
+    SearchModeEnum,
     SystemMessage,
     WorkingMemoryResponse,
 )
@@ -263,6 +264,7 @@ class TestMCP:
                     "namespace": {"eq": "test-namespace"},
                     "topics": {"any": ["test-topic"]},
                     "entities": {"any": ["test-entity"]},
+                    "search_mode": "hybrid",
                     "limit": 5,
                 },
             )
@@ -284,6 +286,12 @@ class TestMCP:
             assert captured_params["long_term_search"].limit == 5
             assert captured_params["long_term_search"].topics is not None
             assert captured_params["long_term_search"].entities is not None
+
+            # Verify search_mode was forwarded (hybrid_alpha and text_scorer
+            # are server-level config, not exposed to LLMs)
+            assert (
+                captured_params["long_term_search"].search_mode == SearchModeEnum.HYBRID
+            )
 
     @pytest.mark.asyncio
     async def test_set_working_memory_tool(self, mcp_test_setup):
