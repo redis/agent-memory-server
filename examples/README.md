@@ -51,7 +51,7 @@ A comprehensive travel assistant that demonstrates:
 - **Automatic Tool Discovery**: Uses `MemoryAPIClient.get_all_memory_tool_schemas()` to automatically discover and integrate all available memory tools
 - **Unified Tool Resolution**: Leverages `client.resolve_tool_call()` to handle all memory tool calls uniformly across different LLM providers
 - **Working Memory Management**: Session-based conversation state and structured memory storage
-- **Long-term Memory**: Persistent memory storage and semantic search capabilities
+- **Long-term Memory**: Persistent memory storage with semantic, keyword, and hybrid search capabilities
 - **Optional Web Search**: Cached web search using Tavily API with Redis caching
 
 ### Available Tools

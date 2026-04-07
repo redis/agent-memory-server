@@ -13,7 +13,7 @@ A memory layer for AI agents.
 - **Dual Interface**: REST API and Model Context Protocol (MCP) server
 - **Two-Tier Memory**: Working memory (session-scoped) and long-term memory (persistent)
 - **Configurable Memory Strategies**: Customize how memories are extracted (discrete, summary, preferences, custom)
-- **Semantic Search**: Vector-based similarity search with metadata filtering
+- **Semantic, Keyword & Hybrid Search**: Vector-based similarity, full-text keyword, and combined hybrid search with metadata filtering
 - **Flexible Backends**: Pluggable memory vector database factory system
 - **Multi-Provider LLM Support**: OpenAI, Anthropic, AWS Bedrock, Ollama, Azure, Gemini via [LiteLLM](https://docs.litellm.ai/)
 - **AI Integration**: Automatic topic extraction, entity recognition, and conversation summarization
@@ -268,10 +268,10 @@ See **[LLM Providers](https://redis.github.io/agent-memory-server/llm-providers/
 ```
 Working Memory (Session-scoped)  →  Long-term Memory (Persistent)
     ↓                                      ↓
-- Messages                         - Semantic search
-- Structured memories              - Topic modeling
-- Summary of past messages         - Entity recognition
-- Metadata                         - Deduplication
+|- Messages                        - Semantic, keyword & hybrid search
+|- Structured memories             - Topic modeling
+|- Summary of past messages        - Entity recognition
+|- Metadata                        - Deduplication
 ```
 
 ## Use Cases
