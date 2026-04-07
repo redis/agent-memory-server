@@ -452,8 +452,10 @@ class TestRecencyConfig:
             "hybrid",
         ]
         assert properties["search_mode"]["default"] == "semantic"
-        assert "default" not in properties["hybrid_alpha"]
-        assert "default" not in properties["text_scorer"]
+        # hybrid_alpha and text_scorer are intentionally excluded from the
+        # LLM-facing tool schema (they are hyperparameters, not user-facing).
+        assert "hybrid_alpha" not in properties
+        assert "text_scorer" not in properties
         assert "search_mode" in properties["min_relevance"]["description"]
         assert "semantic" in properties["min_relevance"]["description"]
 
