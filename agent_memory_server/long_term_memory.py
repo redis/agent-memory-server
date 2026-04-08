@@ -1690,12 +1690,12 @@ async def deduplicate_by_semantic_search(
                         closest.id,
                     )
                     return merged_memory, True
-                else:
-                    logger.info(
-                        "Pairwise merge also non-cohesive for %s with %s; skipping",
-                        memory.id,
-                        closest.id,
-                    )
+
+                logger.info(
+                    "Pairwise merge also non-cohesive for %s with %s; skipping",
+                    memory.id,
+                    closest.id,
+                )
             return memory, False
 
         # Found semantically similar memories
