@@ -593,27 +593,33 @@ async def merge_memories_with_llm(
     if len(all_entities) > MAX_MERGED_ENTITIES:
         all_entities = set(sorted(all_entities, key=len)[:MAX_MERGED_ENTITIES])
 
-    # Get the memory texts for LLM prompt
-    memory_texts = [m.text for m in memories]
+    # Build memory list with timestamps so the LLM can resolve conflicts
+    # by preferring the most recent information.
+    memory_entries = []
+    for i, m in enumerate(memories, 1):
+        ts = ""
+        if m.created_at:
+            ts = f" (created: {m.created_at.isoformat()[:19]})"
+        memory_entries.append(f"{i}{ts}: {m.text}")
+    memory_list = "\n".join(memory_entries)
 
     # Construct the LLM prompt
-    instruction = """
-    You are a memory merging assistant. Your job is to merge similar or
-    duplicate memories.
+    instruction = """You are a memory merging assistant. You merge similar or duplicate memories into one.
 
-    You will be given a list of memories. You will need to merge them into a
-    single, coherent memory.
-    """
-    memory_list = "\n".join([f"{i}: {text}" for i, text in enumerate(memory_texts, 1)])
+Rules:
+- If memories conflict (different approaches, different values, contradictory facts), the NEWER memory wins. Drop the outdated information entirely rather than blending contradictions.
+- If memories are complementary (different details about the same topic), combine them.
+- If one memory supersedes another (e.g., "switched from X to Y"), keep only the current state and note what changed.
+- Preserve concrete details: commit hashes, file paths, commands, version numbers.
+- Output plain text only (no markdown, no bold, no bullets). Preserve [prefix] tags like [pattern], [gotcha], [decision].
+- Output ONLY the merged text, nothing else."""
 
-    prompt = f"""
-    {instruction}
+    prompt = f"""{instruction}
 
-    The memories:
-    {memory_list}
+The memories (with creation timestamps — newer = more authoritative):
+{memory_list}
 
-    The merged memory:
-    """
+The merged memory:"""
 
     model_name = settings.fast_model
 
