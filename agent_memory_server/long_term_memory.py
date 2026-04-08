@@ -571,9 +571,12 @@ async def merge_memories_with_llm(
     if len(user_ids) > 1:
         raise ValueError("Cannot merge memories with different user IDs")
 
-        # Create a unified set of topics and entities
-    all_topics = set()
-    all_entities = set()
+        # Create a unified set of topics and entities, capped to prevent
+    # unbounded growth across successive merge rounds.
+    MAX_MERGED_TOPICS = 15
+    MAX_MERGED_ENTITIES = 20
+    all_topics: set[str] = set()
+    all_entities: set[str] = set()
 
     for memory in memories:
         if memory.topics:
@@ -581,6 +584,14 @@ async def merge_memories_with_llm(
 
         if memory.entities:
             all_entities.update(memory.entities)
+
+    # Keep shorter/more-specific items when capping (shorter strings tend
+    # to be more precise identifiers; longer ones are often LLM-generated
+    # verbose synonyms).
+    if len(all_topics) > MAX_MERGED_TOPICS:
+        all_topics = set(sorted(all_topics, key=len)[:MAX_MERGED_TOPICS])
+    if len(all_entities) > MAX_MERGED_ENTITIES:
+        all_entities = set(sorted(all_entities, key=len)[:MAX_MERGED_ENTITIES])
 
     # Get the memory texts for LLM prompt
     memory_texts = [m.text for m in memories]
@@ -1635,6 +1646,45 @@ async def deduplicate_by_semantic_search(
             session_id_filter=session_id_filter,
             vector_distance_threshold=vector_distance_threshold,
         ):
+            # Full group is not cohesive (dense cluster).  Fall back to
+            # pairwise merge with just the single closest neighbor -- this
+            # avoids the "ambiguous group" deadlock where N related memories
+            # all block each other from ever merging.
+            closest = vector_search_result[0]  # already sorted by distance
+            if closest.dist is not None and closest.dist <= vector_distance_threshold:
+                logger.info(
+                    "Full group non-cohesive; attempting pairwise merge "
+                    "for %s with closest neighbor %s (dist=%.4f)",
+                    memory.id,
+                    closest.id,
+                    closest.dist,
+                )
+                pair_candidate = [closest]
+                pair_cohesive = await _semantic_merge_group_is_cohesive(
+                    db=db,
+                    memory=memory,
+                    candidate_memories=pair_candidate,
+                    namespace_filter=namespace_filter,
+                    user_id_filter=user_id_filter,
+                    session_id_filter=session_id_filter,
+                    vector_distance_threshold=vector_distance_threshold,
+                )
+                if pair_cohesive:
+                    merge_group = [memory, closest]
+                    merged_memory = await merge_memories_with_llm(merge_group)
+                    await db.delete_memories([closest.id])
+                    logger.info(
+                        "Pairwise merged memory %s with %s",
+                        memory.id,
+                        closest.id,
+                    )
+                    return merged_memory, True
+                else:
+                    logger.info(
+                        "Pairwise merge also non-cohesive for %s with %s; skipping",
+                        memory.id,
+                        closest.id,
+                    )
             return memory, False
 
         # Found semantically similar memories
