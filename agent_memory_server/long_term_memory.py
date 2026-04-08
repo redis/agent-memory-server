@@ -58,6 +58,8 @@ from agent_memory_server.utils.tag_codec import encode_tag_values, sanitize_tag_
 _pending_extraction_tasks: set = set()
 SEMANTIC_DEDUP_SEARCH_LIMIT = 10
 SEMANTIC_DEDUP_QUERY_LIMIT = SEMANTIC_DEDUP_SEARCH_LIMIT + 1
+MAX_MERGED_TOPICS = 15
+MAX_MERGED_ENTITIES = 20
 
 
 def _parse_extraction_response_with_fallback(content: str, logger) -> dict:
@@ -571,10 +573,8 @@ async def merge_memories_with_llm(
     if len(user_ids) > 1:
         raise ValueError("Cannot merge memories with different user IDs")
 
-        # Create a unified set of topics and entities, capped to prevent
+    # Create a unified set of topics and entities, capped to prevent
     # unbounded growth across successive merge rounds.
-    MAX_MERGED_TOPICS = 15
-    MAX_MERGED_ENTITIES = 20
     all_topics: set[str] = set()
     all_entities: set[str] = set()
 
@@ -599,7 +599,12 @@ async def merge_memories_with_llm(
     for i, m in enumerate(memories, 1):
         ts = ""
         if m.created_at:
-            ts = f" (created: {m.created_at.isoformat()[:19]})"
+            created_at = m.created_at
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=UTC)
+            else:
+                created_at = created_at.astimezone(UTC)
+            ts = f" (created: {created_at.isoformat().replace('+00:00', 'Z')})"
         memory_entries.append(f"{i}{ts}: {m.text}")
     memory_list = "\n".join(memory_entries)
 
