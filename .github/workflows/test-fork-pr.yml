@@ -66,13 +66,20 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const detailsUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const check = await github.rest.checks.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               name: 'External PR - Service Tests',
               head_sha: '${{ needs.setup.outputs.head_sha }}',
               status: 'in_progress',
-              started_at: new Date().toISOString()
+              started_at: new Date().toISOString(),
+              details_url: detailsUrl,
+              output: {
+                title: 'Service Tests Running',
+                summary: `Service tests are currently running for PR #${{ needs.setup.outputs.pr_number }}.`,
+                text: `**Workflow Run:** [View Active Run](${detailsUrl})\n\n**PR:** #${{ needs.setup.outputs.pr_number }}\n**Commit:** ${{ needs.setup.outputs.head_sha }}`
+              }
             });
             core.setOutput('check_id', check.data.id);
 
