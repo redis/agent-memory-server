@@ -41,7 +41,7 @@ dependencies = [
     "python-ulid>=3.0.0",
     "bcrypt>=4.0.0",
     "cachetools>=6.2.2,<7.0.0",
-    "litellm>=1.75.5,<=1.83.0",  # For LiteLLM tests. Upper bound pinned: versions 1.82.7+ compromised in supply chain attack.
+    "litellm>=1.75.5,<=1.83.0,!=1.82.7,!=1.82.8",  # For LiteLLM tests. Upper bound pinned: versions 1.82.7+ compromised in supply chain attack.
 ]
 
 [project.scripts]

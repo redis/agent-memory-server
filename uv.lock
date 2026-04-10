@@ -127,7 +127,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=3.4.8" },
     { name = "fastapi", specifier = ">=0.115.11" },
     { name = "httpx", specifier = ">=0.25.0" },
-    { name = "litellm", specifier = ">=1.75.5,<=1.83.0" },
+    { name = "litellm", specifier = ">=1.75.5,!=1.82.7,!=1.82.8,<=1.83.0" },
     { name = "mcp", specifier = ">=1.6.0" },
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "openai", specifier = ">=1.3.7" },
