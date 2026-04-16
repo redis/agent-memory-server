@@ -81,9 +81,9 @@ All LLM operations in the server go through [LiteLLM](https://docs.litellm.ai/),
 | Model type | Prefix required? | Example |
 |------------|------------------|---------|
 | **Embedding** | **Yes** — must include `bedrock/` | `bedrock/amazon.titan-embed-text-v2:0` |
-| **Generation (chat)** | **No** — Bedrock model IDs are recognized automatically | `anthropic.claude-sonnet-4-5-20250929-v1:0` |
+| **Generation (chat)** | **Optional** — not required, but allowed | `anthropic.claude-sonnet-4-5-20250929-v1:0` |
 
-**Why the difference?** LiteLLM can infer the provider for generation models from the Bedrock-style model ID (e.g., `anthropic.claude-*`). For embedding models, however, the `bedrock/` prefix is the only way LiteLLM distinguishes a Bedrock embedding call from other providers. If you omit the prefix on an embedding model, the server will auto-add it and emit a **deprecation warning** — but this behaviour will be removed in a future release.
+**Why the difference?** LiteLLM can infer the provider for generation models from the Bedrock-style model ID (e.g., `anthropic.claude-*`), so the `bedrock/` prefix is optional for generation. Adding it (e.g., `bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0`) also works. For embedding models, the `bedrock/` prefix is the only way LiteLLM distinguishes a Bedrock embedding call from other providers, so it is **required**. If you omit the prefix on an embedding model, the server will auto-add it and emit a **deprecation warning**, but this fallback will be removed in a future release.
 
 ---
 
@@ -136,8 +136,8 @@ uv sync --extra aws
 
 This installs:
 
-- **`boto3`** (`>=1.42.1,<2.0.0`) — AWS SDK for Python
-- **`botocore`** (`>=1.42.1,<2.0.0`) — Low-level AWS client library
+- **`boto3`** — AWS SDK for Python
+- **`botocore`** — Low-level AWS client library
 
 > **Without these packages**, any attempt to use Bedrock models will fail at import time. The standard install (`pip install agent-memory-server`) does **not** include them.
 
@@ -156,7 +156,7 @@ REGION_NAME=us-east-1            # Optional: for server-side boto3 model-existen
 EMBEDDING_MODEL=bedrock/amazon.titan-embed-text-v2:0
 REDISVL_VECTOR_DIMENSIONS=1024   # Must match the embedding model's output dimensions
 
-# For Bedrock LLM Generation Models (no prefix needed)
+# For Bedrock LLM Generation Models (bedrock/ prefix optional)
 GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
 FAST_MODEL=anthropic.claude-haiku-4-5-20251001-v1:0
 

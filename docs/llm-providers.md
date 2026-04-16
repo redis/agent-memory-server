@@ -16,7 +16,7 @@ All LLM operations go through a single `LLMClient` abstraction:
 │           └──────────┬───────────────┘                   │
 │                      ▼                                   │
 │               ┌──────────────┐                           │
-│               │   LLM Proxy  │                           │
+│               │LLM Proxy (LiteLLM)│                        │
 │               └──────┬───────┘                           │
 └──────────────────────┼───────────────────────────────────┘
                        ▼
@@ -52,7 +52,7 @@ export AWS_ACCESS_KEY_ID=...
 export AWS_SECRET_ACCESS_KEY=...
 export AWS_REGION_NAME=us-east-1                                  # Required: LiteLLM Bedrock calls
 export REGION_NAME=us-east-1                                      # Optional: server-side boto3 utilities
-export GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0 # No prefix for generation
+export GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0 # bedrock/ prefix optional for generation
 export EMBEDDING_MODEL=bedrock/amazon.titan-embed-text-v2:0       # bedrock/ prefix REQUIRED
 export REDISVL_VECTOR_DIMENSIONS=1024                             # Must match embedding model
 ```
@@ -134,7 +134,7 @@ AWS Bedrock provides access to foundation models from multiple providers (Anthro
 
 #### Installation
 
-AWS Bedrock support requires the `[aws]` extra, which installs `boto3` (`>=1.42.1`) and `botocore` (`>=1.42.1`). Without these packages, any Bedrock operation will fail at import time.
+AWS Bedrock support requires the `[aws]` extra, which installs `boto3` and `botocore`. Without these packages, any Bedrock operation will fail at import time.
 
 ```bash
 # With pip
@@ -172,7 +172,7 @@ export AWS_PROFILE=your-profile
 
 #### Generation Models
 
-Generation models use Bedrock-native model IDs **without** a prefix — LiteLLM recognises them automatically.
+Generation models use Bedrock-native model IDs. The `bedrock/` prefix is **optional** for generation (LiteLLM recognizes Bedrock model IDs automatically), but adding it also works.
 
 ```bash
 # Claude models on Bedrock (no prefix needed)
