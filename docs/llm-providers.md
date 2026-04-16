@@ -50,8 +50,8 @@ export EMBEDDING_MODEL=text-embedding-3-small   # Use OpenAI for embeddings
 # AWS Bedrock (full stack — see "AWS Bedrock" section for details)
 export AWS_ACCESS_KEY_ID=...
 export AWS_SECRET_ACCESS_KEY=...
-export REGION_NAME=us-east-1                                      # Server's own boto3 sessions
-export AWS_REGION_NAME=us-east-1                                  # LiteLLM Bedrock calls
+export AWS_REGION_NAME=us-east-1                                  # Required: LiteLLM Bedrock calls
+export REGION_NAME=us-east-1                                      # Optional: server-side boto3 utilities
 export GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0 # No prefix for generation
 export EMBEDDING_MODEL=bedrock/amazon.titan-embed-text-v2:0       # bedrock/ prefix REQUIRED
 export REDISVL_VECTOR_DIMENSIONS=1024                             # Must match embedding model
@@ -152,17 +152,15 @@ Bedrock uses standard AWS credentials. Configure using any of these methods:
 # Option 1: Environment variables (recommended for development)
 export AWS_ACCESS_KEY_ID=AKIA...
 export AWS_SECRET_ACCESS_KEY=...
-export REGION_NAME=us-east-1        # Server's own boto3 sessions (model validation)
-export AWS_REGION_NAME=us-east-1    # LiteLLM's Bedrock API calls
+export AWS_REGION_NAME=us-east-1    # Required: LiteLLM's Bedrock API calls
+export REGION_NAME=us-east-1        # Optional: server-side boto3 model-existence checks
 
 # Option 2: AWS CLI profile
 export AWS_PROFILE=my-profile
-export REGION_NAME=us-east-1
 export AWS_REGION_NAME=us-east-1
 
 # Option 3: IAM role (recommended for production on AWS)
-# No credentials needed — uses instance/container role
-export REGION_NAME=us-east-1
+# No explicit credentials needed — LiteLLM discovers them from instance metadata
 export AWS_REGION_NAME=us-east-1
 
 # Option 4: AWS SSO
@@ -170,7 +168,7 @@ aws sso login --profile your-profile
 export AWS_PROFILE=your-profile
 ```
 
-> **Why two region variables?** The server reads `REGION_NAME` (via pydantic-settings) for its own `boto3` model-validation client, while LiteLLM reads `AWS_REGION_NAME` for the actual Bedrock inference calls. Set both to the same value.
+> **Why two region variables?** `AWS_REGION_NAME` is required for LiteLLM's Bedrock inference calls. `REGION_NAME` is only needed if you use the server's optional `boto3`-based model-existence checks (`_aws/utils.py`). When both are set, use the same value.
 
 #### Generation Models
 
@@ -219,10 +217,12 @@ export EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
 |----------|------------|-------------|
 | `bedrock/amazon.titan-embed-text-v2:0` | 1024 | Latest Titan text embedding (recommended) |
 | `bedrock/amazon.titan-embed-text-v1` | 1536 | Original Titan text embedding |
-| `bedrock/amazon.titan-embed-image-v1` | 1024 | Titan multimodal (text + image) embedding |
+| `bedrock/amazon.titan-embed-image-v1` | 1024 | Titan multimodal (text + image) embedding * |
 | `bedrock/cohere.embed-english-v3` | 1024 | English-focused |
 | `bedrock/cohere.embed-multilingual-v3` | 1024 | Multilingual |
-| `bedrock/cohere.embed-v4:0` | 1024 | Cohere Embed v4 — text + image |
+| `bedrock/cohere.embed-v4:0` | 1024 | Cohere Embed v4 — text + image * |
+
+> \* Models marked with **\*** are not in `MODEL_CONFIGS`, so their dimensions cannot be auto-resolved. Set `REDISVL_VECTOR_DIMENSIONS=1024` explicitly when using them.
 
 #### Enabling Bedrock Models
 
@@ -366,7 +366,7 @@ export EMBEDDING_MODEL=text-embedding-3-small  # OpenAI
 | `FAST_MODEL` | Fast model for topic extraction, etc. | `gpt-5-mini` |
 | `SLOW_MODEL` | Slower, more capable model for complex tasks | `gpt-5` |
 | `EMBEDDING_MODEL` | Model for vector embeddings | `text-embedding-3-small` |
-| `REDISVL_VECTOR_DIMENSIONS` | Override embedding dimensions | `1536` (auto-detected for known models) |
+| `REDISVL_VECTOR_DIMENSIONS` | Fallback/override for embedding dimensions when they cannot be resolved from `MODEL_CONFIGS` | `1536` |
 
 ### Model Validation
 

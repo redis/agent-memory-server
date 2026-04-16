@@ -27,8 +27,8 @@ uv sync --extra aws
 # (or use an IAM role / AWS CLI profile instead — see "AWS Credentials" below)
 export AWS_ACCESS_KEY_ID=your-access-key-id
 export AWS_SECRET_ACCESS_KEY=your-secret-access-key
-export REGION_NAME=us-east-1          # Used by the server's own model-validation client
-export AWS_REGION_NAME=us-east-1      # Used by LiteLLM for Bedrock API calls
+export AWS_REGION_NAME=us-east-1      # Required: used by LiteLLM for Bedrock API calls
+export REGION_NAME=us-east-1          # Optional: used by server-side boto3 utilities (model-existence checks)
 
 # ── Bedrock embedding model (bedrock/ prefix REQUIRED) ──────────
 export EMBEDDING_MODEL=bedrock/amazon.titan-embed-text-v2:0
@@ -67,10 +67,10 @@ The server reads the AWS region in **two** places:
 
 | Variable | Read by | Purpose |
 |----------|---------|---------|
-| `REGION_NAME` | The server's Settings (pydantic-settings) | Creating `boto3` sessions for model-existence validation |
-| `AWS_REGION_NAME` | LiteLLM | Making the actual Bedrock inference API calls |
+| `AWS_REGION_NAME` | LiteLLM | **Required.** Making the actual Bedrock inference and embedding API calls |
+| `REGION_NAME` | The server's Settings (pydantic-settings) | **Optional.** Used only by server-side `boto3` utilities that check whether a Bedrock model exists (`_aws/utils.py`) |
 
-Set **both** to the same value to avoid surprises. If you rely solely on an IAM role or AWS CLI profile, `boto3` and LiteLLM may auto-detect the region from the instance metadata or `~/.aws/config`, but explicitly setting the variables is recommended.
+If you only use LiteLLM for Bedrock (the common case), `AWS_REGION_NAME` is sufficient. Set `REGION_NAME` as well if you want the server's optional model-existence checks to work. When both are used, set them to the same value.
 
 ---
 
@@ -97,10 +97,12 @@ All LLM operations in the server go through [LiteLLM](https://docs.litellm.ai/),
 |----------|----------|------------|-------------|
 | `bedrock/amazon.titan-embed-text-v2:0` | Amazon | 1024 | Latest Titan text embedding (recommended) |
 | `bedrock/amazon.titan-embed-text-v1` | Amazon | 1536 | Original Titan text embedding |
-| `bedrock/amazon.titan-embed-image-v1` | Amazon | 1024 | Titan multimodal (text + image) embedding |
+| `bedrock/amazon.titan-embed-image-v1` | Amazon | 1024 | Titan multimodal (text + image) embedding * |
 | `bedrock/cohere.embed-english-v3` | Cohere | 1024 | English-focused embeddings |
 | `bedrock/cohere.embed-multilingual-v3` | Cohere | 1024 | Multilingual embeddings |
-| `bedrock/cohere.embed-v4:0` | Cohere | 1024 | Cohere Embed v4 — text + image embedding |
+| `bedrock/cohere.embed-v4:0` | Cohere | 1024 | Cohere Embed v4 — text + image embedding * |
+
+> \* Models marked with **\*** are not in `MODEL_CONFIGS` and their dimensions cannot be auto-resolved. You **must** set `REDISVL_VECTOR_DIMENSIONS=1024` explicitly when using them, or you will get vector-size mismatch errors at runtime.
 
 ### Generation Models (Anthropic Claude on Bedrock)
 
@@ -147,8 +149,8 @@ Configure the following environment variables to use Bedrock models:
 
 ```bash
 # Required: AWS region where Bedrock is available
-REGION_NAME=us-east-1            # For the server's own boto3 sessions
-AWS_REGION_NAME=us-east-1        # For LiteLLM's Bedrock calls
+AWS_REGION_NAME=us-east-1        # Required: for LiteLLM's Bedrock calls
+REGION_NAME=us-east-1            # Optional: for server-side boto3 model-existence checks
 
 # For Bedrock Embedding Models (bedrock/ prefix REQUIRED)
 EMBEDDING_MODEL=bedrock/amazon.titan-embed-text-v2:0
@@ -185,7 +187,9 @@ aws_secret_access_key = your-secret-access-key
 
 #### Option 3: IAM Role (Recommended for AWS deployments)
 
-When running on AWS infrastructure (EC2, ECS, Lambda, etc.), use IAM roles for automatic credential management. No explicit credentials are needed — `boto3` and LiteLLM will discover credentials from the instance metadata service.
+When running on AWS infrastructure (EC2, ECS, Lambda, etc.), IAM roles provide automatic credential management. LiteLLM will discover credentials from the instance metadata service automatically.
+
+> **Note:** The server's built-in `boto3` model-existence utilities (`_aws/utils.py`) currently require explicit `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables. If you rely solely on an IAM role, LiteLLM Bedrock calls will work, but the optional model-existence checks will be skipped. This limitation may be removed in a future release.
 
 #### Option 4: AWS SSO / AWS CLI Profile
 
