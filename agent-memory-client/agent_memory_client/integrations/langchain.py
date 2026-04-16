@@ -8,9 +8,8 @@ Example:
     ```python
     from agent_memory_client import create_memory_client
     from agent_memory_client.integrations.langchain import get_memory_tools
-    from langchain.agents import create_tool_calling_agent, AgentExecutor
+    from langchain.agents import create_agent
     from langchain_openai import ChatOpenAI
-    from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
     # Initialize memory client
     memory_client = await create_memory_client("http://localhost:8000")
@@ -24,16 +23,15 @@ Example:
 
     # Use with LangChain agent
     llm = ChatOpenAI(model="gpt-4o")
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful assistant with memory."),
-        ("human", "{input}"),
-        MessagesPlaceholder("agent_scratchpad"),
-    ])
-    agent = create_tool_calling_agent(llm, tools, prompt)
-    executor = AgentExecutor(agent=agent, tools=tools)
+    agent = create_agent(
+        llm, tools,
+        system_prompt="You are a helpful assistant with memory."
+    )
 
     # Run the agent
-    result = await executor.ainvoke({"input": "Remember that I love pizza"})
+    result = await agent.ainvoke(
+        {"messages": [("human", "Remember that I love pizza")]}
+    )
     ```
 """
 
