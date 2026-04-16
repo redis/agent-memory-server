@@ -3,6 +3,8 @@ from datetime import datetime
 from typing import Any
 
 import ulid
+from mcp.server.auth.provider import AccessToken, TokenVerifier
+from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP as _FastMCPBase
 
 from agent_memory_server import working_memory as working_memory_core
@@ -179,22 +181,16 @@ class FastMCP(_FastMCPBase):
         ).serve()
 
     def streamable_http_app(self):
-        """Return a Starlette app for streamable-http with namespace routing."""
-        from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
-        from starlette.applications import Starlette
+        """Return a Starlette app for streamable-http with namespace routing.
+
+        Extends the parent's streamable_http_app() by adding a namespace-prefixed
+        route while preserving auth middleware and protected resource routes.
+        """
         from starlette.requests import Request
         from starlette.routing import Route
 
-        if self._session_manager is None:
-            self._session_manager = StreamableHTTPSessionManager(
-                app=self._mcp_server,
-                event_store=self._event_store,
-                retry_interval=self._retry_interval,
-                json_response=self.settings.json_response,
-                stateless=self.settings.stateless_http,
-                security_settings=self.settings.transport_security,
-            )
-
+        # Get the parent's app which includes auth middleware and well-known routes
+        app = super().streamable_http_app()
         session_manager = self._session_manager
         mcp_instance = self
 
@@ -212,14 +208,9 @@ class FastMCP(_FastMCPBase):
         handler = _NamespaceAwareHandler()
         path = self.settings.streamable_http_path
 
-        return Starlette(
-            debug=self.settings.debug,
-            routes=[
-                Route(path, endpoint=handler),
-                Route(f"/{{namespace}}{path}", endpoint=handler),
-            ],
-            lifespan=lambda app: session_manager.run(),
-        )
+        # Add namespace-prefixed route to the existing app
+        app.routes.append(Route(f"/{{namespace}}{path}", endpoint=handler))
+        return app
 
     async def run_streamable_http_async(self):
         """Start streamable HTTP MCP server."""
@@ -255,12 +246,51 @@ INSTRUCTIONS = """
 """
 
 
+class JWTTokenVerifier(TokenVerifier):
+    """Verify JWT tokens from Hydra using the existing auth module."""
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        from agent_memory_server.auth import verify_jwt
+
+        try:
+            user_info = verify_jwt(token)
+            scopes = user_info.scope.split() if user_info.scope else []
+            return AccessToken(
+                token=token,
+                client_id=user_info.sub,
+                scopes=scopes,
+                expires_at=user_info.exp,
+            )
+        except Exception:
+            return None
+
+
+def _build_mcp_auth_kwargs() -> dict[str, Any]:
+    """Build auth kwargs for FastMCP if OAuth2 is configured."""
+    if (
+        settings.auth_mode != "oauth2"
+        or not settings.oauth2_issuer_url
+        or not settings.oauth2_resource_host
+    ):
+        return {}
+
+    resource_url = f"https://{settings.oauth2_resource_host}"
+    return {
+        "auth": AuthSettings(
+            issuer_url=settings.oauth2_issuer_url,
+            resource_server_url=resource_url,
+        ),
+        "token_verifier": JWTTokenVerifier(),
+    }
+
+
 mcp_app = FastMCP(
     "Redis Agent Memory Server",
     host=settings.mcp_host,
     port=settings.mcp_port,
     instructions=INSTRUCTIONS,
     default_namespace=settings.default_mcp_namespace,
+    **_build_mcp_auth_kwargs(),
 )
 
 

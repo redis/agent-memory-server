@@ -130,6 +130,17 @@ app.include_router(health_router)
 app.include_router(memory_router)
 
 
+@app.get("/.well-known/oauth-authorization-server")
+async def oauth_authorization_server_metadata():
+    """RFC 9728 Protected Resource Metadata for MCP OIDC discovery."""
+    if not settings.oauth2_issuer_url:
+        return {"error": "OIDC not configured"}
+    return {
+        "resource": f"https://{settings.oauth2_resource_host or 'localhost'}",
+        "authorization_servers": [settings.oauth2_issuer_url],
+    }
+
+
 def on_start_logger(port: int):
     """Log startup information"""
     print("\n-----------------------------------")
