@@ -58,6 +58,8 @@ from agent_memory_server.utils.tag_codec import encode_tag_values, sanitize_tag_
 _pending_extraction_tasks: set = set()
 SEMANTIC_DEDUP_SEARCH_LIMIT = 10
 SEMANTIC_DEDUP_QUERY_LIMIT = SEMANTIC_DEDUP_SEARCH_LIMIT + 1
+MAX_MERGED_TOPICS = 15
+MAX_MERGED_ENTITIES = 20
 
 
 def _parse_extraction_response_with_fallback(content: str, logger) -> dict:
@@ -571,9 +573,10 @@ async def merge_memories_with_llm(
     if len(user_ids) > 1:
         raise ValueError("Cannot merge memories with different user IDs")
 
-        # Create a unified set of topics and entities
-    all_topics = set()
-    all_entities = set()
+    # Create a unified set of topics and entities, capped to prevent
+    # unbounded growth across successive merge rounds.
+    all_topics: set[str] = set()
+    all_entities: set[str] = set()
 
     for memory in memories:
         if memory.topics:
@@ -582,27 +585,46 @@ async def merge_memories_with_llm(
         if memory.entities:
             all_entities.update(memory.entities)
 
-    # Get the memory texts for LLM prompt
-    memory_texts = [m.text for m in memories]
+    # Keep shorter/more-specific items when capping (shorter strings tend
+    # to be more precise identifiers; longer ones are often LLM-generated
+    # verbose synonyms).
+    if len(all_topics) > MAX_MERGED_TOPICS:
+        all_topics = set(sorted(all_topics, key=len)[:MAX_MERGED_TOPICS])
+    if len(all_entities) > MAX_MERGED_ENTITIES:
+        all_entities = set(sorted(all_entities, key=len)[:MAX_MERGED_ENTITIES])
+
+    # Build memory list with timestamps so the LLM can resolve conflicts
+    # by preferring the most recent information.
+    memory_entries = []
+    for i, m in enumerate(memories, 1):
+        ts = ""
+        if m.created_at:
+            created_at = m.created_at
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=UTC)
+            else:
+                created_at = created_at.astimezone(UTC)
+            ts = f" (created: {created_at.isoformat().replace('+00:00', 'Z')})"
+        memory_entries.append(f"{i}{ts}: {m.text}")
+    memory_list = "\n".join(memory_entries)
 
     # Construct the LLM prompt
-    instruction = """
-    You are a memory merging assistant. Your job is to merge similar or
-    duplicate memories.
+    instruction = """You are a memory merging assistant. You merge similar or duplicate memories into one.
 
-    You will be given a list of memories. You will need to merge them into a
-    single, coherent memory.
-    """
-    memory_list = "\n".join([f"{i}: {text}" for i, text in enumerate(memory_texts, 1)])
+Rules:
+- If memories conflict (different approaches, different values, contradictory facts), the NEWER memory wins. Drop the outdated information entirely rather than blending contradictions.
+- If memories are complementary (different details about the same topic), combine them.
+- If one memory supersedes another (e.g., "switched from X to Y"), keep only the current state and note what changed.
+- Preserve concrete details: commit hashes, file paths, commands, version numbers.
+- Output plain text only (no markdown, no bold, no bullets). Preserve [prefix] tags like [pattern], [gotcha], [decision].
+- Output ONLY the merged text, nothing else."""
 
-    prompt = f"""
-    {instruction}
+    prompt = f"""{instruction}
 
-    The memories:
-    {memory_list}
+The memories (with creation timestamps — newer = more authoritative):
+{memory_list}
 
-    The merged memory:
-    """
+The merged memory:"""
 
     model_name = settings.fast_model
 
@@ -1635,6 +1657,45 @@ async def deduplicate_by_semantic_search(
             session_id_filter=session_id_filter,
             vector_distance_threshold=vector_distance_threshold,
         ):
+            # Full group is not cohesive (dense cluster).  Fall back to
+            # pairwise merge with just the single closest neighbor -- this
+            # avoids the "ambiguous group" deadlock where N related memories
+            # all block each other from ever merging.
+            closest = vector_search_result[0]  # already sorted by distance
+            if closest.dist is not None and closest.dist <= vector_distance_threshold:
+                logger.info(
+                    "Full group non-cohesive; attempting pairwise merge "
+                    "for %s with closest neighbor %s (dist=%.4f)",
+                    memory.id,
+                    closest.id,
+                    closest.dist,
+                )
+                pair_candidate = [closest]
+                pair_cohesive = await _semantic_merge_group_is_cohesive(
+                    db=db,
+                    memory=memory,
+                    candidate_memories=pair_candidate,
+                    namespace_filter=namespace_filter,
+                    user_id_filter=user_id_filter,
+                    session_id_filter=session_id_filter,
+                    vector_distance_threshold=vector_distance_threshold,
+                )
+                if pair_cohesive:
+                    merge_group = [memory, closest]
+                    merged_memory = await merge_memories_with_llm(merge_group)
+                    await db.delete_memories([closest.id])
+                    logger.info(
+                        "Pairwise merged memory %s with %s",
+                        memory.id,
+                        closest.id,
+                    )
+                    return merged_memory, True
+
+                logger.info(
+                    "Pairwise merge also non-cohesive for %s with %s; skipping",
+                    memory.id,
+                    closest.id,
+                )
             return memory, False
 
         # Found semantically similar memories
