@@ -554,7 +554,7 @@ async def extract_memory_structure(
 
 async def merge_memories_with_llm(
     memories: list[MemoryRecord],
-) -> MemoryRecord:
+) -> MemoryRecord | None:
     """
     Use an LLM to merge similar or duplicate memories.
 
@@ -562,7 +562,10 @@ async def merge_memories_with_llm(
         memories: List of MemoryRecord objects to merge
 
     Returns:
-        A merged memory
+        A merged memory, or ``None`` if the LLM judges the candidates to be
+        conceptually distinct despite vector similarity (NO_MERGE response).
+        Callers must check for ``None`` and preserve the originals when the
+        LLM declines to merge.
     """
     # If there's only one memory, just return it
     if len(memories) == 1:
@@ -609,7 +612,7 @@ async def merge_memories_with_llm(
     memory_list = "\n".join(memory_entries)
 
     # Construct the LLM prompt
-    instruction = """You are a memory merging assistant. You merge similar or duplicate memories into one.
+    instruction = """You are a memory merging assistant. You merge similar or duplicate memories into one — but only when merging actually improves the knowledge base.
 
 Rules:
 - If memories conflict (different approaches, different values, contradictory facts), the NEWER memory wins. Drop the outdated information entirely rather than blending contradictions.
@@ -617,7 +620,8 @@ Rules:
 - If one memory supersedes another (e.g., "switched from X to Y"), keep only the current state and note what changed.
 - Preserve concrete details: commit hashes, file paths, commands, version numbers.
 - Output plain text only (no markdown, no bold, no bullets). Preserve [prefix] tags like [pattern], [gotcha], [decision].
-- Output ONLY the merged text, nothing else."""
+- If the memories are NOT actually about the same fact, decision, or pattern (e.g., they're vector-similar but conceptually distinct topics, or they cover competing approaches that are both valid in different contexts), output exactly "NO_MERGE" on the first line followed by a brief one-line reason. Better to keep both than to fabricate a merge that loses information.
+- Otherwise, output ONLY the merged text, nothing else."""
 
     prompt = f"""{instruction}
 
@@ -635,6 +639,17 @@ The merged memory:"""
 
     # Extract the merged content
     merged_text = response.content or ""
+
+    # NO_MERGE: the LLM judged the candidates to be conceptually distinct
+    # despite vector similarity. Tolerant prefix match (LLMs occasionally
+    # add trailing punctuation or a brief reason).
+    if merged_text.strip().upper().startswith("NO_MERGE"):
+        logger.info(
+            "LLM declined to merge memories %s; response=%r",
+            [m.id for m in memories],
+            merged_text.strip()[:300],
+        )
+        return None
 
     def coerce_to_float(m: MemoryRecord, key: str) -> float:
         try:
@@ -1656,65 +1671,72 @@ async def deduplicate_by_semantic_search(
             session_id_filter=session_id_filter,
             vector_distance_threshold=vector_distance_threshold,
         ):
-            # Full group is not cohesive (dense cluster).  Fall back to
-            # pairwise merge with just the single closest neighbor -- this
-            # avoids the "ambiguous group" deadlock where N related memories
-            # all block each other from ever merging.
+            # Full group is not cohesive (dense cluster). Fall back to
+            # pairwise merge with the single closest neighbor.
+            #
+            # Authority shift: the prior implementation re-applied
+            # _semantic_merge_group_is_cohesive to the [closest] pair, which
+            # only passes for *bridge* topologies where the closest
+            # neighbor has no other in-threshold neighbors. In dense
+            # homogeneous clusters every memory has many close neighbors,
+            # so the pairwise check rejected identically — leaving 0
+            # merges. Empirically (production logs) this rejected ~99% of
+            # candidate pairs.
+            #
+            # Resolution: hand the conceptual judgement to the LLM. The
+            # vector recall already validated that closest.dist <=
+            # threshold (lexical proximity); the merge prompt now has an
+            # explicit NO_MERGE escape hatch for "vector-similar but
+            # conceptually distinct" pairs. merge_memories_with_llm
+            # returns None when the LLM declines, in which case both
+            # originals are preserved. This replaces a coarse lexical
+            # gate with strong-model judgement — a strict upgrade for
+            # the dense-cluster case while preserving the bridge case
+            # via NO_MERGE.
             closest = vector_search_result[0]  # already sorted by distance
             if closest.dist is not None and closest.dist <= vector_distance_threshold:
                 logger.info(
-                    "Full group non-cohesive; attempting pairwise merge "
+                    "Full group non-cohesive; invoking LLM pairwise merge "
                     "for %s with closest neighbor %s (dist=%.4f)",
                     memory.id,
                     closest.id,
                     closest.dist,
                 )
-                pair_candidate = [closest]
-                pair_cohesive = await _semantic_merge_group_is_cohesive(
-                    db=db,
-                    memory=memory,
-                    candidate_memories=pair_candidate,
-                    namespace_filter=namespace_filter,
-                    user_id_filter=user_id_filter,
-                    session_id_filter=session_id_filter,
-                    vector_distance_threshold=vector_distance_threshold,
-                )
-                if pair_cohesive:
-                    merge_group = [memory, closest]
-                    merged_memory = await merge_memories_with_llm(merge_group)
-                    # Index merged memory BEFORE deleting source so a failure
-                    # (e.g. embedding API error) doesn't permanently destroy
-                    # both originals. If indexing fails, abort the merge and
-                    # preserve both memories.
-                    try:
-                        await index_long_term_memories(
-                            [merged_memory],
-                            redis_client=redis_client,
-                            deduplicate=False,
-                        )
-                    except Exception as e:
-                        logger.exception(
-                            "Failed to index pairwise merged memory %s; "
-                            "aborting merge to preserve sources %s and %s: %s",
-                            merged_memory.id,
-                            memory.id,
-                            closest.id,
-                            e,
-                        )
-                        return memory, False
-                    await db.delete_memories([closest.id])
+                merged_memory = await merge_memories_with_llm([memory, closest])
+                if merged_memory is None:
                     logger.info(
-                        "Pairwise merged memory %s with %s",
+                        "LLM declined pairwise merge for %s with %s; preserving both",
                         memory.id,
                         closest.id,
                     )
-                    return merged_memory, True
-
+                    return memory, False
+                # Index merged memory BEFORE deleting source so a failure
+                # (e.g. embedding API error) doesn't permanently destroy
+                # both originals. If indexing fails, abort the merge and
+                # preserve both memories.
+                try:
+                    await index_long_term_memories(
+                        [merged_memory],
+                        redis_client=redis_client,
+                        deduplicate=False,
+                    )
+                except Exception as e:
+                    logger.exception(
+                        "Failed to index pairwise merged memory %s; "
+                        "aborting merge to preserve sources %s and %s: %s",
+                        merged_memory.id,
+                        memory.id,
+                        closest.id,
+                        e,
+                    )
+                    return memory, False
+                await db.delete_memories([closest.id])
                 logger.info(
-                    "Pairwise merge also non-cohesive for %s with %s; skipping",
+                    "Pairwise merged memory %s with %s",
                     memory.id,
                     closest.id,
                 )
+                return merged_memory, True
             return memory, False
 
         # Found semantically similar memories
@@ -1724,6 +1746,18 @@ async def deduplicate_by_semantic_search(
         merged_memory = await merge_memories_with_llm(
             merge_group,
         )
+
+        # The LLM may decline the cohesive group merge if it judges the
+        # candidates conceptually distinct. Preserve all originals when
+        # that happens.
+        if merged_memory is None:
+            logger.info(
+                "LLM declined cohesive group merge for %s with %d candidates; "
+                "preserving all",
+                memory.id,
+                len(similar_memory_ids),
+            )
+            return memory, False
 
         # Index merged memory BEFORE deleting sources so a failure (e.g.
         # embedding API error) doesn't permanently destroy all originals.
