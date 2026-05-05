@@ -18,6 +18,16 @@ from litellm.utils import get_model_info
 logger = logging.getLogger(__name__)
 
 
+# Defensive char-level truncation cap. Embedding providers have hard token
+# caps (e.g. Ollama nomic-embed-text caps at 2048 tokens architecturally:
+# `nomic-bert.context_length: 2048`, even with `options.num_ctx` set higher).
+# Token/char ratio for English prose is roughly 0.25-0.40 tokens/char, so
+# 6000 chars ~ 1500-2400 tokens — slightly conservative buffer under 2048.
+# Primary protection is the pre-merge size gate in deduplicate_by_semantic_search;
+# this is a safety net catching any path that slips through with oversized text.
+EMBEDDING_TRUNCATE_CHARS = 6000
+
+
 class LiteLLMEmbeddings:
     """
     Embeddings using LiteLLM.
@@ -149,6 +159,43 @@ class LiteLLMEmbeddings:
         kwargs.update(self._extra_kwargs)
         return kwargs
 
+    def _truncate_for_embedding(self, texts: list[str]) -> list[str]:
+        """
+        Truncate texts that exceed the safety cap.
+
+        Defense-in-depth: the primary protection against oversized texts is
+        the pre-merge size gate in deduplicate_by_semantic_search. This is
+        a safety net for any path that slips through (e.g. an oversized
+        memory ingested directly via index_long_term_memories without going
+        through compaction). Without this, Ollama nomic-embed-text returns
+        HTTP 400 "input length exceeds context length" for texts > ~2048
+        tokens, which (with the v6 index-before-delete reorder) aborts the
+        merge and preserves originals — but ALSO blocks the legitimate
+        index of an oversized memory. Truncation lets that ingest succeed
+        with degraded recall on the tail.
+
+        Logs every truncation with logger.warning so operators can detect
+        if this safety net is firing in production.
+        """
+        result: list[str] = []
+        for i, text in enumerate(texts):
+            if isinstance(text, str) and len(text) > EMBEDDING_TRUNCATE_CHARS:
+                logger.warning(
+                    "Truncating text at index %d for embedding: model=%s "
+                    "original_len=%d truncated_len=%d (cap=%d). This safety "
+                    "net should rarely fire if pre-merge size gates are in "
+                    "place; investigate the calling path if frequent.",
+                    i,
+                    self.model,
+                    len(text),
+                    EMBEDDING_TRUNCATE_CHARS,
+                    EMBEDDING_TRUNCATE_CHARS,
+                )
+                result.append(text[:EMBEDDING_TRUNCATE_CHARS])
+            else:
+                result.append(text)
+        return result
+
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """
         Embed a list of documents.
@@ -173,6 +220,10 @@ class LiteLLMEmbeddings:
                     f"Cannot embed empty string at index {i}. "
                     "OpenAI's embedding API rejects empty strings."
                 )
+
+        # Safety-net truncation BEFORE provider call so oversized texts
+        # don't crash the embedding (model token caps).
+        texts = self._truncate_for_embedding(texts)
 
         kwargs = self._build_call_kwargs(texts)
         response = embedding(**kwargs)
@@ -215,8 +266,33 @@ class LiteLLMEmbeddings:
                     "OpenAI's embedding API rejects empty strings."
                 )
 
+        # Safety-net truncation BEFORE provider call so oversized texts
+        # don't crash the embedding (model token caps).
+        texts = self._truncate_for_embedding(texts)
+
         kwargs = self._build_call_kwargs(texts)
-        response = await aembedding(**kwargs)
+        try:
+            response = await aembedding(**kwargs)
+        except Exception as e:
+            # Capture input shape on embedding failures so we can diagnose
+            # provider-specific rejections (e.g. Ollama's 400 "invalid input
+            # type" on non-string list elements). Logs types, lengths, and a
+            # truncated sample without leaking full memory content.
+            sample = texts[0] if texts else None
+            sample_repr = repr(sample)
+            if len(sample_repr) > 200:
+                sample_repr = sample_repr[:200] + "...<truncated>"
+            logger.exception(
+                "Embedding call failed: model=%s n_texts=%d types=%s "
+                "lengths=%s sample[0]=%s err=%s",
+                kwargs.get("model"),
+                len(texts),
+                [type(t).__name__ for t in texts[:5]],
+                [len(t) if isinstance(t, str) else None for t in texts[:5]],
+                sample_repr,
+                e,
+            )
+            raise
         return [item["embedding"] for item in response.data]
 
     async def aembed_query(self, text: str) -> list[float]:
