@@ -1695,6 +1695,25 @@ async def deduplicate_by_semantic_search(
             # via NO_MERGE.
             closest = vector_search_result[0]  # already sorted by distance
             if closest.dist is not None and closest.dist <= vector_distance_threshold:
+                # Pre-merge size gate. Embedding providers have token caps
+                # (Ollama nomic-embed-text: 2048 tokens architecturally).
+                # Merged outputs scale with combined input, so a merge of two
+                # ~5000-char memories produces a ~9000-char text that fails
+                # to embed and aborts the merge under index-before-delete
+                # (94f6c19). Cheaper to decline upfront than waste an LLM
+                # call and a doomed embedding round-trip.
+                pair_chars = len(memory.text) + len(closest.text)
+                if pair_chars > settings.max_merge_input_chars:
+                    logger.info(
+                        "Pre-merge size gate declined pairwise merge for %s "
+                        "with %s: combined %d chars exceeds limit %d; "
+                        "preserving both",
+                        memory.id,
+                        closest.id,
+                        pair_chars,
+                        settings.max_merge_input_chars,
+                    )
+                    return memory, False
                 logger.info(
                     "Full group non-cohesive; invoking LLM pairwise merge "
                     "for %s with closest neighbor %s (dist=%.4f)",
@@ -1741,6 +1760,23 @@ async def deduplicate_by_semantic_search(
 
         # Found semantically similar memories
         similar_memory_ids = [memory.id for memory in vector_search_result]
+
+        # Pre-merge size gate (cohesive group path). Same rationale as the
+        # pairwise gate above: cap combined source-text length to avoid
+        # producing merged outputs that exceed embedding-provider token
+        # limits.
+        group_chars = sum(len(m.text) for m in merge_group)
+        if group_chars > settings.max_merge_input_chars:
+            logger.info(
+                "Pre-merge size gate declined cohesive group merge for %s "
+                "with %d candidates: combined %d chars exceeds limit %d; "
+                "preserving all",
+                memory.id,
+                len(similar_memory_ids),
+                group_chars,
+                settings.max_merge_input_chars,
+            )
+            return memory, False
 
         # Merge the memories
         merged_memory = await merge_memories_with_llm(

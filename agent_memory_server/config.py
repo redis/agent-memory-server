@@ -414,6 +414,19 @@ class Settings(BaseSettings):
     # Lower values are stricter (fewer matches), higher values are looser (more matches)
     deduplication_distance_threshold: float = 0.35
 
+    # Maximum combined source-text length (chars) eligible for LLM merge.
+    # If sum(len(m.text) for m in merge_candidates) exceeds this, the merge is
+    # declined and originals preserved. Rationale: merged outputs scale with
+    # combined input size, and downstream embedding providers have hard token
+    # caps (e.g. Ollama nomic-embed-text caps at 2048 tokens; merged texts in
+    # the ~9k-char range have failed with HTTP 400 "input length exceeds context
+    # length"). Per memory rule: index-before-delete (94f6c19) handles the
+    # crash case, this gate avoids the crash in the first place.
+    # Conservative default: 5500 chars handles the empirical failure boundary
+    # (5881-char source embedded fine, 9436-char merge failed). Tune via
+    # MAX_MERGE_INPUT_CHARS env var.
+    max_merge_input_chars: int = 5500
+
     # Docket settings
     docket_name: str = "memory-server"
     use_docket: bool = True

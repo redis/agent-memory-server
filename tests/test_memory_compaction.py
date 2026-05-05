@@ -394,3 +394,152 @@ async def test_full_compaction_integration(
     # Expect: dup group -> 1, sim group -> 1, uniq -> 1 => total 3 remain
     assert remaining == 3
     monkeypatch.undo()
+
+
+# Pre-merge size gate tests. The gate declines merges whose combined source
+# text exceeds settings.max_merge_input_chars to avoid producing merged texts
+# that exceed downstream embedding-provider token caps (Ollama
+# nomic-embed-text caps at 2048 tokens architecturally; combined inputs > ~5500
+# chars empirically produced merged outputs that failed to embed with HTTP 400
+# "input length exceeds context length" — this gate prevents the doomed LLM
+# call upfront).
+@pytest.mark.asyncio
+async def test_pairwise_size_gate_declines_oversized_merge(
+    async_redis_client, search_index, mock_memory_vector_db, monkeypatch
+):
+    """Pairwise merge path declines when combined chars exceed gate."""
+    from agent_memory_server import long_term_memory as ltm
+    from agent_memory_server.config import settings
+
+    await async_redis_client.flushdb()
+
+    monkeypatch.setattr(settings, "max_merge_input_chars", 100)
+
+    # Force the cohesive-group check to fail so we hit the pairwise fallback.
+    async def force_non_cohesive(**kwargs):
+        return False
+
+    monkeypatch.setattr(ltm, "_semantic_merge_group_is_cohesive", force_non_cohesive)
+
+    # Mock vector search to return one close neighbor whose combined size
+    # with the input exceeds the gate.
+    big_text_a = "x" * 80
+    big_text_b = "y" * 80
+    from agent_memory_server.models import MemoryRecordResult
+
+    candidate = MemoryRecordResult(
+        id="cand-1",
+        text=big_text_b,
+        user_id="u",
+        session_id="s",
+        namespace="ns",
+        dist=0.10,
+    )
+
+    class FakeSearchResult:
+        memories = [candidate]
+
+    class FakeDB:
+        async def search_memories(self, **kwargs):
+            return FakeSearchResult()
+
+        async def delete_memories(self, ids):
+            raise AssertionError(
+                "delete_memories must NOT be called when size gate declines"
+            )
+
+    monkeypatch.setattr(ltm, "get_memory_vector_db", AsyncMock(return_value=FakeDB()))
+
+    async def boom_merge(memories):
+        raise AssertionError(
+            "merge_memories_with_llm must NOT be called when size gate declines"
+        )
+
+    monkeypatch.setattr(ltm, "merge_memories_with_llm", boom_merge)
+
+    memory = MemoryRecord(
+        id="m-1",
+        text=big_text_a,
+        user_id="u",
+        session_id="s",
+        namespace="ns",
+    )
+
+    result, was_merged = await ltm.deduplicate_by_semantic_search(
+        memory,
+        redis_client=async_redis_client,
+    )
+
+    assert was_merged is False
+    assert result is memory
+
+
+@pytest.mark.asyncio
+async def test_cohesive_group_size_gate_declines_oversized_merge(
+    async_redis_client, search_index, mock_memory_vector_db, monkeypatch
+):
+    """Cohesive group merge path declines when combined chars exceed gate."""
+    from agent_memory_server import long_term_memory as ltm
+    from agent_memory_server.config import settings
+
+    await async_redis_client.flushdb()
+
+    monkeypatch.setattr(settings, "max_merge_input_chars", 100)
+
+    # Force cohesive-group check to PASS so we hit the group merge path.
+    async def force_cohesive(**kwargs):
+        return True
+
+    monkeypatch.setattr(ltm, "_semantic_merge_group_is_cohesive", force_cohesive)
+
+    from agent_memory_server.models import MemoryRecordResult
+
+    candidates = [
+        MemoryRecordResult(
+            id=f"cand-{i}",
+            text="z" * 50,
+            user_id="u",
+            session_id="s",
+            namespace="ns",
+            dist=0.10 + 0.01 * i,
+        )
+        for i in range(2)
+    ]
+
+    class FakeSearchResult:
+        memories = candidates
+
+    class FakeDB:
+        async def search_memories(self, **kwargs):
+            return FakeSearchResult()
+
+        async def delete_memories(self, ids):
+            raise AssertionError(
+                "delete_memories must NOT be called when size gate declines"
+            )
+
+    monkeypatch.setattr(ltm, "get_memory_vector_db", AsyncMock(return_value=FakeDB()))
+
+    async def boom_merge(memories):
+        raise AssertionError(
+            "merge_memories_with_llm must NOT be called when size gate declines"
+        )
+
+    monkeypatch.setattr(ltm, "merge_memories_with_llm", boom_merge)
+
+    memory = MemoryRecord(
+        id="m-1",
+        text="a" * 50,
+        user_id="u",
+        session_id="s",
+        namespace="ns",
+    )
+
+    # Combined: 50 (memory) + 50*2 (candidates) = 150 > 100 gate
+    result, was_merged = await ltm.deduplicate_by_semantic_search(
+        memory,
+        redis_client=async_redis_client,
+    )
+
+    assert was_merged is False
+    assert result is memory
