@@ -959,16 +959,15 @@ async def compact_long_term_memories(
 
                     if was_merged:
                         semantic_memories_merged += 1
-                        # Delete the original memory using the database
+                        # Delete the original input memory. The merged memory
+                        # was already indexed inside deduplicate_by_semantic_search
+                        # BEFORE peer memories were deleted, so a crash here
+                        # at worst leaves the original alongside the merged
+                        # copy (a recoverable inconsistency) instead of
+                        # destroying both as the previous order did.
                         await db.delete_memories([memory_id])
 
-                        # Re-index the merged memory
                         if merged_memory:
-                            await index_long_term_memories(
-                                [merged_memory],
-                                redis_client=redis_client,
-                                deduplicate=False,  # Already deduplicated
-                            )
                             # Mark the merged memory as processed to prevent cycles
                             processed_ids.add(merged_memory.id)
         logger.info(
@@ -1683,6 +1682,26 @@ async def deduplicate_by_semantic_search(
                 if pair_cohesive:
                     merge_group = [memory, closest]
                     merged_memory = await merge_memories_with_llm(merge_group)
+                    # Index merged memory BEFORE deleting source so a failure
+                    # (e.g. embedding API error) doesn't permanently destroy
+                    # both originals. If indexing fails, abort the merge and
+                    # preserve both memories.
+                    try:
+                        await index_long_term_memories(
+                            [merged_memory],
+                            redis_client=redis_client,
+                            deduplicate=False,
+                        )
+                    except Exception as e:
+                        logger.exception(
+                            "Failed to index pairwise merged memory %s; "
+                            "aborting merge to preserve sources %s and %s: %s",
+                            merged_memory.id,
+                            memory.id,
+                            closest.id,
+                            e,
+                        )
+                        return memory, False
                     await db.delete_memories([closest.id])
                     logger.info(
                         "Pairwise merged memory %s with %s",
@@ -1705,6 +1724,25 @@ async def deduplicate_by_semantic_search(
         merged_memory = await merge_memories_with_llm(
             merge_group,
         )
+
+        # Index merged memory BEFORE deleting sources so a failure (e.g.
+        # embedding API error) doesn't permanently destroy all originals.
+        # If indexing fails, abort the merge and preserve all sources.
+        try:
+            await index_long_term_memories(
+                [merged_memory],
+                redis_client=redis_client,
+                deduplicate=False,
+            )
+        except Exception as e:
+            logger.exception(
+                "Failed to index group-merged memory %s; aborting merge to "
+                "preserve %d sources: %s",
+                merged_memory.id,
+                len(similar_memory_ids),
+                e,
+            )
+            return memory, False
 
         # Delete the similar memories using the database
         if similar_memory_ids:

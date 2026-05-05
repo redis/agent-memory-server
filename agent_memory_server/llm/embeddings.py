@@ -216,7 +216,28 @@ class LiteLLMEmbeddings:
                 )
 
         kwargs = self._build_call_kwargs(texts)
-        response = await aembedding(**kwargs)
+        try:
+            response = await aembedding(**kwargs)
+        except Exception as e:
+            # Capture input shape on embedding failures so we can diagnose
+            # provider-specific rejections (e.g. Ollama's 400 "invalid input
+            # type" on non-string list elements). Logs types, lengths, and a
+            # truncated sample without leaking full memory content.
+            sample = texts[0] if texts else None
+            sample_repr = repr(sample)
+            if len(sample_repr) > 200:
+                sample_repr = sample_repr[:200] + "...<truncated>"
+            logger.exception(
+                "Embedding call failed: model=%s n_texts=%d types=%s "
+                "lengths=%s sample[0]=%s err=%s",
+                kwargs.get("model"),
+                len(texts),
+                [type(t).__name__ for t in texts[:5]],
+                [len(t) if isinstance(t, str) else None for t in texts[:5]],
+                sample_repr,
+                e,
+            )
+            raise
         return [item["embedding"] for item in response.data]
 
     async def aembed_query(self, text: str) -> list[float]:
