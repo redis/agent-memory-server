@@ -32,22 +32,6 @@ agent-memory api --help        # Help for a single command
 agent-memory token --help      # Help for a command group
 ```
 
-## Commands overview
-
-| Command | Description |
-|---|---|
-| [`version`](#version) | Display the installed version |
-| [`api`](#api) | Start the REST API server |
-| [`mcp`](#mcp) | Start the Model Context Protocol (MCP) server |
-| [`task-worker`](#task-worker) | Start a Docket worker to process background tasks |
-| [`schedule-task`](#schedule-task) | Schedule a background task on the Docket queue |
-| [`rebuild_index`](#rebuild_index) | Rebuild the Redis search index |
-| [`migrate-memories`](#migrate-memories) | Run built-in long-term memory migrations |
-| [`migrate-working-memory`](#migrate-working-memory) | Migrate legacy working-memory string keys to Redis JSON |
-| [`token`](#token) | Manage authentication tokens (`add`, `list`, `show`, `remove`) |
-
----
-
 ## `version`
 
 Display the installed version of `agent-memory-server`.
