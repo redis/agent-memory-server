@@ -1,11 +1,11 @@
 
 <div align=center>
 
-# Redis Agent Memory Server
+# Agent Memory Server
 
-A memory layer for AI agents.
+Session Memory and Long-Term Memory for AI Agents.
 
-  **[Documentation](https://redis.github.io/agent-memory-server/)** • **[GitHub](https://github.com/redis/agent-memory-server)** • **[Docker](https://hub.docker.com/r/redislabs/agent-memory-server)**
+  **[Documentation](https://ai.redis.io/agent-memory/)** • **[GitHub](https://github.com/redis/agent-memory-server)** • **[Docker](https://hub.docker.com/r/redislabs/agent-memory-server)**
 
 </div>
 
@@ -144,7 +144,7 @@ results = await client.search_long_term_memory(
 )
 ```
 
-> **Note**: While you can call client functions directly as shown above, using **MCP or SDK-provided tool calls** is recommended for AI agents as it provides better integration, automatic context management, and follows AI-native patterns. For the best performance, you can add messages to working memory and allow the server to extract memories in the background. See **[Memory Integration Patterns](https://redis.github.io/agent-memory-server/memory-integration-patterns/)** for guidance on when to use each approach.
+> **Note**: While you can call client functions directly as shown above, using **MCP or SDK-provided tool calls** is recommended for AI agents as it provides better integration, automatic context management, and follows AI-native patterns. For the best performance, you can add messages to working memory and allow the server to extract memories in the background. See **[Memory Integration Patterns](https://ai.redis.io/agent-memory/user_guide/how_to_guides/integration_patterns/)** for guidance on when to use each approach.
 
 
 #### LangChain Integration
@@ -244,24 +244,24 @@ export EMBEDDING_MODEL=ollama/nomic-embed-text
 export REDISVL_VECTOR_DIMENSIONS=768  # Required for Ollama
 ```
 
-See **[LLM Providers](https://redis.github.io/agent-memory-server/llm-providers/)** for complete configuration options.
+See **[LLM Providers](https://ai.redis.io/agent-memory/user_guide/how_to_guides/llm_providers/)** for complete configuration options.
 
 ## Documentation
 
-📚 **[Full Documentation](https://redis.github.io/agent-memory-server/)** - Complete guides, API reference, and examples
+📚 **[Full Documentation](https://ai.redis.io/agent-memory/)** - Complete guides, API reference, and examples
 
 ### Key Documentation Sections:
 
-- **[Quick Start Guide](https://redis.github.io/agent-memory-server/quick-start/)** - Get up and running in minutes
-- **[Python SDK](https://redis.github.io/agent-memory-server/python-sdk/)** - Complete SDK reference with examples
-- **[LangChain Integration](https://redis.github.io/agent-memory-server/langchain-integration/)** - Automatic tool conversion for LangChain
-- **[LLM Providers](https://redis.github.io/agent-memory-server/llm-providers/)** - Configure OpenAI, Anthropic, AWS Bedrock, Ollama, and more
-- **[Embedding Providers](https://redis.github.io/agent-memory-server/embedding-providers/)** - Configure embedding models for semantic search
-- **[Custom Memory Vector Databases](https://redis.github.io/agent-memory-server/custom-memory-vector-db/)** - Configure custom memory vector databases
-- **[Authentication](https://redis.github.io/agent-memory-server/authentication/)** - OAuth2/JWT setup for production
-- **[Memory Types](https://redis.github.io/agent-memory-server/long-term-memory/#memory-types)** - Understanding semantic vs episodic memory
-- **[API Reference](https://redis.github.io/agent-memory-server/api/)** - REST API endpoints
-- **[MCP Protocol](https://redis.github.io/agent-memory-server/mcp/)** - Model Context Protocol integration
+- **[Quick Start Guide](https://ai.redis.io/agent-memory/user_guide/01_quick_start/)** - Get up and running in minutes
+- **[Python SDK](https://ai.redis.io/agent-memory/api/python_sdk/)** - Complete SDK reference with examples
+- **[LangChain Integration](https://ai.redis.io/agent-memory/examples/langchain/)** - Automatic tool conversion for LangChain
+- **[LLM Providers](https://ai.redis.io/agent-memory/user_guide/how_to_guides/llm_providers/)** - Configure OpenAI, Anthropic, AWS Bedrock, Ollama, and more
+- **[Embedding Providers](https://ai.redis.io/agent-memory/user_guide/how_to_guides/embedding_providers/)** - Configure embedding models for semantic search
+- **[Custom Memory Vector Databases](https://ai.redis.io/agent-memory/user_guide/how_to_guides/custom_vector_db/)** - Configure custom memory vector databases
+- **[Authentication](https://ai.redis.io/agent-memory/user_guide/how_to_guides/authentication/)** - OAuth2/JWT setup for production
+- **[Memory Types](https://ai.redis.io/agent-memory/concepts/long_term_memory/#memory-types)** - Understanding semantic vs episodic memory
+- **[API Reference](https://ai.redis.io/agent-memory/api/rest/)** - REST API endpoints
+- **[MCP Protocol](https://ai.redis.io/agent-memory/api/mcp/)** - Model Context Protocol integration
 
 ## Architecture
 

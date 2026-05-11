@@ -1,58 +1,66 @@
-site_name: Redis Agent Memory Server
-site_description: Give your AI agents persistent memory and context that gets smarter over time
-site_url: https://redis.github.io/agent-memory-server
+site_name: Agent Memory Server
+site_description: Session Memory and Long-Term Memory for AI Agents.
+site_url: https://ai.redis.io/agent-memory/
 repo_url: https://github.com/redis/agent-memory-server
 repo_name: redis/agent-memory-server
-edit_uri: blob/main/docs
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 Redis Inc.
 
 docs_dir: docs
+
 exclude_docs: |
-  README.md
+  _build/
+  _static/
+  _templates/
+  conf.py
+  Makefile
+  requirements.txt
 
 theme:
   name: material
+  language: en
+  logo: assets/redis-logo-script.svg
+  favicon: assets/favicon.png
+  font:
+    text: Space Grotesk
+    code: Space Mono
   palette:
-    # Palette toggle for automatic mode
     - media: "(prefers-color-scheme)"
       toggle:
         icon: material/brightness-auto
         name: Switch to light mode
-
-    # Palette toggle for light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: red
-      accent: red
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
-
-    # Palette toggle for dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: red
-      accent: red
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-4
         name: Switch to system preference
-
   features:
-    - navigation.tabs
-    - navigation.tabs.sticky
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
     - navigation.sections
-    - navigation.expand
-    - navigation.path
+    - navigation.indexes
     - navigation.top
     - navigation.footer
     - toc.follow
-    - toc.integrate
+    - search.suggest
     - search.highlight
     - search.share
     - content.code.copy
-    - content.code.select
+    - content.code.annotate
+    - content.tabs.link
     - content.action.edit
     - content.action.view
-
+    - content.tooltips
   icon:
     repo: fontawesome/brands/github
     edit: material/pencil
@@ -62,95 +70,173 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/redis/agent-memory-server
-    - icon: fontawesome/brands/docker
-      link: https://hub.docker.com/r/redislabs/agent-memory-server
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/agent-memory-server/
 
-  version:
-    provider: mike
-    default: latest
-
-nav:
-  - Home: index.md
-  - Getting Started:
-    - getting-started-index.md
-    - Quick Start: quick-start.md
-    - Installation: getting-started.md
-    - Use Cases: use-cases.md
-
-  - Developer Guide:
-    - developer-guide-index.md
-    - Memory Integration Patterns: memory-integration-patterns.md
-    - Working Memory: working-memory.md
-    - Long-term Memory: long-term-memory.md
-    - Summary Views: summary-views.md
-    - Memory Extraction Strategies: memory-extraction-strategies.md
-    - Memory Lifecycle: memory-lifecycle.md
-    - LangChain Integration: langchain-integration.md
-
-  - Operations Guide:
-    - operations-guide-index.md
-    - Configuration: configuration.md
-    - Authentication: authentication.md
-    - Security: security-custom-prompts.md
-    - LLM Providers: llm-providers.md
-    - Embedding Providers: embedding-providers.md
-    - Custom Memory Vector Databases: custom-memory-vector-db.md
-    - AWS Bedrock: aws-bedrock.md
-
-  - Examples:
-    - Agent Examples: agent-examples.md
-
-  - Advanced Topics:
-    - advanced-topics-index.md
-    - Query Optimization: query-optimization.md
-    - Recency Boost: recency-boost.md
-    - Advanced Memory Vector Database Config: advanced-memory-vector-db.md
-    - Contextual Grounding: contextual-grounding.md
-
-  - API Reference:
-    - api-reference-index.md
-    - REST API: api.md
-    - MCP Server: mcp.md
-    - CLI Reference: cli.md
-    - Client SDKs:
-      - python-sdk-index.md
-      - Python SDK: python-sdk.md
-      - TypeScript SDK: typescript-sdk.md
-      - Java SDK: java-sdk.md
-
-  - Development:
-    - Development Guide: development.md
+extra_css:
+  - stylesheets/redis-brand.css
+  - stylesheets/extra.css
 
 plugins:
-  - search:
-      separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
-  - minify:
-      minify_html: true
-  - git-revision-date-localized:
-      enable_creation_date: true
+  - search
+  - autorefs
+  - section-index
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+            merge_init_into_class: true
+            docstring_section_style: table
+            inherited_members: true
+            filters:
+              - "!^_"
+  - mkdocs-jupyter:
+      execute: false
+      include_source: true
+      theme: light
+      ignore_h1_titles: false
+      remove_tag_config:
+        remove_input_tags:
+          - hide_input
+        remove_all_outputs_tags:
+          - hide_output
+  - llmstxt:
+      full_output: llms-full.txt
+      sections:
+        Concepts:
+          - concepts/*.md
+        User Guide:
+          - user_guide/*.md
+          - user_guide/how_to_guides/*.md
+        Examples:
+          - examples/*.md
+        API Reference:
+          - api/*.md
+        For AI Agents:
+          - for-ais-only/*.md
 
 markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
   - pymdownx.snippets
-  - pymdownx.superfences
-  - admonition
-  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
-  - attr_list
-  - md_in_html
-  - pymdownx.emoji
+      slugify: !!python/object/apply:pymdownx.slugs.slugify {kwds: {case: lower}}
   - pymdownx.tasklist:
       custom_checkbox: true
-  - toc:
-      permalink: true
+  - pymdownx.tilde
 
-extra_css:
-  - stylesheets/extra.css
+watch:
+  - agent_memory_server
+  - AGENTS.md
 
-copyright: |
-  &copy; 2024 <a href="https://github.com/redis"  target="_blank" rel="noopener">Redis</a>
+
+nav:
+  - Home: index.md
+  - Concepts:
+      - concepts/index.md
+      - Working memory: concepts/working_memory.md
+      - Long-term memory: concepts/long_term_memory.md
+      - Memory lifecycle: concepts/memory_lifecycle.md
+      - Memory extraction: concepts/memory_extraction.md
+      - Contextual grounding: concepts/contextual_grounding.md
+      - Recency boost: concepts/recency_boost.md
+      - Summary views: concepts/summary_views.md
+  - User Guide:
+      - user_guide/index.md
+      - Quick start: user_guide/01_quick_start.md
+      - Getting started: user_guide/02_installation.md
+      - macOS (no Docker): user_guide/03_no_docker_setup.md
+      - How-To Guides:
+          - user_guide/how_to_guides/index.md
+          - Authentication: user_guide/how_to_guides/authentication.md
+          - Configuration: user_guide/how_to_guides/configuration.md
+          - LLM providers: user_guide/how_to_guides/llm_providers.md
+          - Embedding providers: user_guide/how_to_guides/embedding_providers.md
+          - AWS Bedrock: user_guide/how_to_guides/aws_bedrock.md
+          - Advanced vector DB: user_guide/how_to_guides/advanced_vector_db.md
+          - Custom vector DB: user_guide/how_to_guides/custom_vector_db.md
+          - Query optimization: user_guide/how_to_guides/query_optimization.md
+          - Memory editing: user_guide/how_to_guides/memory_editing.md
+          - Integration patterns: user_guide/how_to_guides/integration_patterns.md
+          - Development: user_guide/how_to_guides/development.md
+          - Custom prompt security: user_guide/how_to_guides/security.md
+  - Examples:
+      - examples/index.md
+      - Use cases: examples/use_cases.md
+      - Agent examples:
+          - examples/agent_examples.md
+          - Interactive guide: examples/agent_memory_server_interactive_guide.ipynb
+          - Travel agent: examples/travel_agent.md
+          - Memory prompt agent: examples/memory_prompt_agent.md
+          - Memory editing agent: examples/memory_editing_agent.md
+          - AI tutor: examples/ai_tutor.md
+          - Recent messages limit demo: examples/recent_messages_limit_demo.md
+      - LangChain: examples/langchain.md
+  - API Reference:
+      - api/index.md
+      - REST API: api/rest.md
+      - MCP server: api/mcp.md
+      - CLI: api/cli.md
+      - Python SDK: api/python_sdk.md
+      - TypeScript SDK: api/typescript_sdk.md
+      - Java SDK: api/java_sdk.md
+      - Server package:
+          - api/server/index.md
+          - Models: api/server/models.md
+          - Working memory: api/server/working_memory.md
+          - Long-term memory: api/server/long_term_memory.md
+          - Memory strategies: api/server/memory_strategies.md
+          - Vector DB: api/server/memory_vector_db.md
+          - Extraction: api/server/extraction.md
+          - Summarization: api/server/summarization.md
+          - Filters: api/server/filters.md
+          - Auth: api/server/auth.md
+          - Config: api/server/config.md
+          - LLM client: api/server/llm.md
+  - For AI Agents:
+      - for-ais-only/index.md
+      - Repository map: for-ais-only/REPOSITORY_MAP.md
+      - Build and test: for-ais-only/BUILD_AND_TEST.md
+      - Failure modes: for-ais-only/FAILURE_MODES.md
+      - Authoring standard: for-ais-only/AUTHORING_STANDARD.md
+  - Changelog: https://github.com/redis/agent-memory-server/releases

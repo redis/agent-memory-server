@@ -1,4 +1,4 @@
-/* Custom styles for Redis Agent Memory Server documentation */
+/* Custom styles for Agent Memory Server documentation */
 
 /* Code block improvements */
 .highlight pre {
@@ -18,6 +18,29 @@ table th {
 /* Better spacing for navigation items */
 .md-nav__item--nested > .md-nav__link {
   font-weight: 500;
+}
+
+/* Left sidebar (sections nav) scrolls independently when the nav is taller
+ * than the viewport. Material's defaults handle this on long pages, but with
+ * navigation.sections expanded across many sections (User Guide, How-To,
+ * API Reference, Server package) the nav can exceed viewport height while
+ * the page itself is short — leaving the bottom of the sidebar unreachable.
+ * Constrain the scrollwrap to viewport-minus-header and force overflow.
+ *
+ * Header heights mirror Material defaults: 2.4rem header + 2.4rem tabs on
+ * desktop, 2.4rem header alone when tabs are absent. We target the larger
+ * value to be safe; a couple of extra rems of breathing room costs nothing.
+ */
+@media screen and (min-width: 76.25em) {
+  .md-sidebar--primary .md-sidebar__scrollwrap {
+    max-height: calc(100vh - 5.5rem);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+  .md-sidebar--secondary .md-sidebar__scrollwrap {
+    max-height: calc(100vh - 5.5rem);
+    overflow-y: auto;
+  }
 }
 
 /* Highlight new features */
@@ -54,4 +77,37 @@ table th {
 .highlight .language-json,
 .highlight .language-yaml {
   border-left: 4px solid var(--md-accent-fg-color);
+}
+
+/* mkdocs-jupyter rendering: leave JupyterLab's defaults intact, but draw
+ * explicit dividers so the reader can tell at a glance:
+ *   1. where a prose (markdown) cell ends and a code cell begins (and
+ *      vice versa), and
+ *   2. where a code cell's input ends and its output begins.
+ */
+.jupyter-wrapper .jp-MarkdownCell + .jp-CodeCell,
+.jupyter-wrapper .jp-CodeCell + .jp-MarkdownCell,
+.jupyter-wrapper .jp-MarkdownCell + .jp-RawCell,
+.jupyter-wrapper .jp-RawCell + .jp-MarkdownCell {
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.jupyter-wrapper .jp-CodeCell .jp-Cell-outputWrapper {
+  border-top: 1px dashed var(--md-default-fg-color--lighter);
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+}
+
+/* Layout: pin the left sidebar to the viewport's left edge and the right
+ * TOC to the viewport's right edge by removing Material's centered grid
+ * cap. Sidebars keep their default 12.1rem widths; the content column
+ * absorbs all remaining space. Header/tabs use the same grid so they
+ * also span full width, keeping the layout consistent.
+ */
+@media screen and (min-width: 76.25em) {
+  .md-grid {
+    max-width: none;
+  }
 }
