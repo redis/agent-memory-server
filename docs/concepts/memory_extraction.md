@@ -123,9 +123,9 @@ working_memory = WorkingMemory(
 
 Allows you to provide a custom extraction prompt for specialized domains.
 
-```{danger} Security Critical
-Custom prompts can introduce security risks including prompt injection and code execution attempts. This strategy includes comprehensive security validation, but understanding the risks is essential for safe usage.
-```
+!!! danger "Security Critical"
+
+    Custom prompts can introduce security risks including prompt injection and code execution attempts. This strategy includes comprehensive security validation, but understanding the risks is essential for safe usage.
 
 ```python
 custom_config = MemoryStrategyConfig(
@@ -210,9 +210,9 @@ else:
     strategy = DiscreteMemoryStrategy()
 ```
 
-```{note} Full Security Documentation
-For comprehensive security guidance, attack examples, and production recommendations, see the [Security Guide](../user_guide/how_to_guides/security.md).
-```
+!!! note "Full Security Documentation"
+
+    For comprehensive security guidance, attack examples, and production recommendations, see the [Security Guide](../user_guide/how_to_guides/security.md).
 
 ## REST API Usage
 
@@ -313,6 +313,6 @@ pytest tests/test_prompt_security.py -v
 
 ---
 
-```{tip} Getting Started
-Start with the **Discrete Strategy** for most applications. It provides excellent general-purpose memory extraction. Move to specialized strategies (Summary, Preferences, Custom) as your needs become more specific.
-```
+!!! tip "Getting Started"
+
+    Start with the **Discrete Strategy** for most applications. It provides excellent general-purpose memory extraction. Move to specialized strategies (Summary, Preferences, Custom) as your needs become more specific.

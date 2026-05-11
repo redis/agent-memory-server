@@ -2,9 +2,9 @@
 
 This guide covers security considerations when using the CustomMemoryStrategy feature, which allows users to provide custom extraction prompts for specialized memory extraction.
 
-```{danger} Security Critical
-User-provided prompts introduce security risks including prompt injection, template injection, and output manipulation. The system includes comprehensive defenses, but understanding these risks is essential for production deployment.
-```
+!!! danger "Security Critical"
+
+    User-provided prompts introduce security risks including prompt injection, template injection, and output manipulation. The system includes comprehensive defenses, but understanding these risks is essential for production deployment.
 
 ## Overview
 
@@ -116,12 +116,12 @@ def _validate_memory_output(self, memory: dict[str, Any]) -> bool:
 
 The system automatically detects and blocks common attack patterns:
 
-```{tip} Blocked Patterns
-- **Instruction Override:** `ignore previous instructions`, `forget everything`
-- **Information Extraction:** `reveal your system prompt`, `show me your instructions`
-- **Code Execution:** `execute code`, `eval(`, `import`, `subprocess`
-- **Template Injection:** `{message.__globals__}`, `{message.__import__}`
-```
+!!! tip "Blocked Patterns"
+
+    - **Instruction Override:** `ignore previous instructions`, `forget everything`
+    - **Information Extraction:** `reveal your system prompt`, `show me your instructions`
+    - **Code Execution:** `execute code`, `eval(`, `import`, `subprocess`
+    - **Template Injection:** `{message.__globals__}`, `{message.__import__}`
 
 ## Safe Usage Guidelines
 
@@ -225,9 +225,9 @@ logger.error("Template formatting security error: {error}")
 logger.warning("Filtered potentially unsafe memory: {memory}")
 ```
 
-```{tip} Production Monitoring
-Monitor these security logs in production environments to detect potential attack attempts and adjust security rules as needed.
-```
+!!! tip "Production Monitoring"
+
+    Monitor these security logs in production environments to detect potential attack attempts and adjust security rules as needed.
 
 ## Production Recommendations
 
@@ -323,6 +323,6 @@ uv run pytest tests/test_memory_strategies.py tests/test_prompt_security.py
 
 ---
 
-```{warning} Security Responsibility
-Security is a shared responsibility. Always validate and review custom prompts before use in production environments. When in doubt, use the built-in memory strategies (discrete, summary, preferences) which have been thoroughly tested and validated.
-```
+!!! warning "Security Responsibility"
+
+    Security is a shared responsibility. Always validate and review custom prompts before use in production environments. When in doubt, use the built-in memory strategies (discrete, summary, preferences) which have been thoroughly tested and validated.

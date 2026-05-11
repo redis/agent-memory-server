@@ -227,9 +227,9 @@ There are two main ways to create long-term memories:
 
 The most common approach is to let the system automatically promote memories from working memory to long-term storage. This handles extraction strategies, background processing, and batch optimization.
 
-```{note} Working Memory Integration
-For automatic memory promotion from conversations, see the [Working Memory documentation](working_memory.md). This covers extraction strategies, background processing, and how to configure the memory server to automatically create long-term memories from conversation content.
-```
+!!! note "Working Memory Integration"
+
+    For automatic memory promotion from conversations, see the [Working Memory documentation](working_memory.md). This covers extraction strategies, background processing, and how to configure the memory server to automatically create long-term memories from conversation content.
 
 ### 2. Manual Creation via API
 

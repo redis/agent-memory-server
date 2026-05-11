@@ -24,15 +24,23 @@ python recent_messages_limit_demo.py
 
 ## Key Implementation Pattern
 
+The `recent_messages_limit` parameter is not yet exposed in the high-level Python SDK. Use the REST API directly via `httpx`:
+
 ```python
-from agent_memory_client import create_memory_client
+import httpx
 
-client = await create_memory_client(base_url="http://localhost:8000")
+async with httpx.AsyncClient(base_url="http://localhost:8000") as http:
+    # Get only the 3 most recent messages
+    resp = await http.get(
+        f"/v1/working-memory/{session_id}",
+        params={"namespace": "demo", "recent_messages_limit": 3},
+    )
+    resp.raise_for_status()
+    messages = resp.json()["messages"]
+```
 
-# Get only the 3 most recent messages
-_created, memory = await client.get_or_create_working_memory(
-    session_id="my-session",
-    namespace="demo",
-    context_window_max=3
-)
+The equivalent raw request is:
+
+```
+GET /v1/working-memory/{session_id}?namespace=demo&recent_messages_limit=3
 ```

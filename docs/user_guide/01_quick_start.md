@@ -445,42 +445,42 @@ services:
   redis:
     image: redis/redis-stack:latest
     ports:
-     - "6379:6379"
+      - "6379:6379"
     volumes:
-     - redis_data:/data
+      - redis_data:/data
 
   api:
     build: .
     ports:
-     - "8000:8000"
+      - "8000:8000"
     environment:
-     - REDIS_URL=redis://redis:6379
-     - DISABLE_AUTH=false
-     - OAUTH2_ISSUER_URL=${OAUTH2_ISSUER_URL}
-     - OAUTH2_AUDIENCE=${OAUTH2_AUDIENCE}
+      - REDIS_URL=redis://redis:6379
+      - DISABLE_AUTH=false
+      - OAUTH2_ISSUER_URL=${OAUTH2_ISSUER_URL}
+      - OAUTH2_AUDIENCE=${OAUTH2_AUDIENCE}
     command: uv run agent-memory api
     depends_on:
-     - redis
+      - redis
 
   worker:
     build: .
     environment:
-     - REDIS_URL=redis://redis:6379
+      - REDIS_URL=redis://redis:6379
     command: uv run agent-memory task-worker --concurrency 10
     depends_on:
-     - redis
+      - redis
     deploy:
       replicas: 2  # Scale workers as needed
 
   mcp:
     build: .
     ports:
-     - "9000:9000"
+      - "9000:9000"
     environment:
-     - REDIS_URL=redis://redis:6379
+      - REDIS_URL=redis://redis:6379
     command: uv run agent-memory mcp --mode streamable-http --port 9000 --task-backend docket
     depends_on:
-     - redis
+      - redis
 
 volumes:
   redis_data:
