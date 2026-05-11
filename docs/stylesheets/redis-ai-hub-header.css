@@ -1,0 +1,195 @@
+/* Redis AI Hub: shared header + brand tokens
+ * Mirrors redis.io typography (Space Grotesk display, Inter body, JetBrains
+ * Mono code) and brand palette (Redis red #DC382C, Midnight #091A23).
+ */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+:root {
+  --rds-red: #DC382C;
+  --rds-red-hover: #B82A20;
+  --rds-red-bright: #FF4438;
+  --rds-midnight: #091A23;
+  --rds-ink: #161F31;
+  --rds-slate: #2D4754;
+  --rds-mute: #B9C2C6;
+  --rds-line: #E8EBEC;
+  --rds-bg: #FFFFFF;
+  --rds-font-display: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --rds-font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  --rds-font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+
+#rah-header {
+  position: sticky;
+  top: 0;
+  z-index: 9999;
+  background: var(--rds-bg);
+  color: var(--rds-midnight);
+  font-family: var(--rds-font-body);
+  border-bottom: 1px solid var(--rds-line);
+}
+html[data-theme="dark"] #rah-header {
+  background: var(--rds-midnight);
+  color: var(--rds-line);
+  border-bottom-color: var(--rds-slate);
+}
+
+.rah-bar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px 24px;
+  max-width: 100%;
+}
+
+.rah-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--rds-midnight) !important;
+  text-decoration: none !important;
+  font-family: var(--rds-font-display);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+html[data-theme="dark"] .rah-brand { color: #fff !important; }
+.rah-brand:hover { opacity: 0.85; }
+
+.rah-nav { display: flex; align-items: center; gap: 4px; flex: 1; }
+
+.rah-dropdown { position: relative; }
+.rah-dropdown-btn,
+.rah-link {
+  background: none;
+  border: none;
+  color: #4A5C66;
+  font-family: var(--rds-font-body);
+  font-size: 14px;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  text-decoration: none !important;
+  font-weight: 500;
+}
+html[data-theme="dark"] .rah-dropdown-btn,
+html[data-theme="dark"] .rah-link { color: var(--rds-mute); }
+.rah-dropdown-btn:hover,
+.rah-link:hover { background: rgba(9,26,35,0.05); color: var(--rds-midnight); }
+html[data-theme="dark"] .rah-dropdown-btn:hover,
+html[data-theme="dark"] .rah-link:hover { background: rgba(255,255,255,0.06); color: #fff; }
+.rah-caret { font-size: 10px; opacity: 0.6; }
+
+.rah-dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: var(--rds-bg);
+  border: 1px solid var(--rds-line);
+  border-radius: 8px;
+  min-width: 200px;
+  padding: 6px;
+  box-shadow: 0 12px 28px rgba(9,26,35,0.10);
+}
+html[data-theme="dark"] .rah-dropdown-menu {
+  background: var(--rds-ink);
+  border-color: var(--rds-slate);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.5);
+}
+.rah-dropdown:hover .rah-dropdown-menu,
+.rah-dropdown:focus-within .rah-dropdown-menu { display: block; }
+
+.rah-item {
+  display: block;
+  padding: 8px 12px;
+  color: var(--rds-midnight) !important;
+  text-decoration: none !important;
+  border-radius: 4px;
+  font-size: 13.5px;
+}
+html[data-theme="dark"] .rah-item { color: var(--rds-line) !important; }
+.rah-item:hover { background: rgba(220,56,44,0.08); color: var(--rds-red) !important; }
+.rah-item--active { color: var(--rds-red) !important; font-weight: 600; }
+
+.rah-actions { display: flex; gap: 10px; align-items: center; }
+.rah-search {
+  background: rgba(9,26,35,0.04);
+  border: 1px solid var(--rds-line);
+  color: #4A5C66;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+html[data-theme="dark"] .rah-search {
+  background: rgba(255,255,255,0.06);
+  border-color: var(--rds-slate);
+  color: var(--rds-mute);
+}
+.rah-search:hover { background: rgba(9,26,35,0.08); color: var(--rds-midnight); }
+html[data-theme="dark"] .rah-search:hover { background: rgba(255,255,255,0.12); color: #fff; }
+.rah-gh {
+  color: #4A5C66 !important;
+  text-decoration: none !important;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 4px;
+}
+html[data-theme="dark"] .rah-gh { color: var(--rds-mute) !important; }
+.rah-gh:hover { color: var(--rds-midnight) !important; background: rgba(9,26,35,0.05); }
+html[data-theme="dark"] .rah-gh:hover { color: #fff !important; background: rgba(255,255,255,0.06); }
+
+.rah-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 24px;
+  border-top: 1px solid var(--rds-line);
+  background: #FAFBFC;
+  overflow-x: auto;
+}
+html[data-theme="dark"] .rah-tabs {
+  border-top-color: var(--rds-slate);
+  background: var(--rds-ink);
+}
+.rah-tab {
+  color: #6B7A82 !important;
+  text-decoration: none !important;
+  padding: 10px 16px;
+  font-size: 13px;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  font-weight: 500;
+}
+html[data-theme="dark"] .rah-tab { color: #8A99A0 !important; }
+.rah-tab:hover { color: var(--rds-midnight) !important; }
+html[data-theme="dark"] .rah-tab:hover { color: var(--rds-line) !important; }
+.rah-tab--active {
+  color: var(--rds-red) !important;
+  border-bottom-color: var(--rds-red);
+  font-weight: 600;
+}
+
+/* Apply redis.io fonts to the host Sphinx theme too */
+body,
+.bd-container,
+.bd-content,
+.bd-sidebar-primary,
+.bd-sidebar-secondary {
+  font-family: var(--rds-font-body);
+}
+h1, h2, h3, h4, h5, h6,
+.bd-page-width h1, .bd-page-width h2, .bd-page-width h3 {
+  font-family: var(--rds-font-display);
+  letter-spacing: -0.015em;
+}
+code, kbd, pre, samp,
+.highlight pre {
+  font-family: var(--rds-font-mono);
+}
+
+body { padding-top: 0; }
+

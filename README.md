@@ -1,9 +1,9 @@
 
 <div align=center>
 
-# Redis Agent Memory Server
+# Agent Memory Server
 
-A memory layer for AI agents.
+Session Memory and Long-Term Memory for AI Agents.
 
   **[Documentation](https://redis.github.io/agent-memory-server/)** • **[GitHub](https://github.com/redis/agent-memory-server)** • **[Docker](https://hub.docker.com/r/redislabs/agent-memory-server)**
 

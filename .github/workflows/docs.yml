@@ -34,30 +34,22 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
-      - name: Cache dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
 
       - name: Install MkDocs and dependencies
-        run: |
-          pip install mkdocs-material
-          pip install mkdocs-minify-plugin
-          pip install mkdocs-git-revision-date-localized-plugin
+        run: uv sync --group docs
 
       - name: Setup Pages
         if: github.ref == 'refs/heads/main'
         uses: actions/configure-pages@v4
 
       - name: Build documentation
-        run: mkdocs build --clean --strict
+        run: uv run mkdocs build --clean --strict
 
       - name: Upload artifact
         if: github.ref == 'refs/heads/main'
