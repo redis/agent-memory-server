@@ -1,42 +1,92 @@
 # Command Line Interface
 
-The `agent-memory-server` provides a command-line interface (CLI) for managing the server and related tasks. You can access the CLI using the `agent-memory` command (assuming the package is installed in a way that makes the script available in your PATH, e.g., via `pip install ...`).
+The `agent-memory-server` package provides a command-line interface (CLI) called `agent-memory` for running the REST API and MCP servers, scheduling and processing background tasks, running migrations, and managing authentication tokens.
 
-## Available Commands
+## Installation
 
-Here's a list of available commands and their functions:
+The `agent-memory` command is included when you install the server package.
 
-### `version`
+```bash
+pip install agent-memory-server
+```
 
-Displays the current version of `agent-memory-server`.
+Verify the installation by running:
 
 ```bash
 agent-memory version
 ```
 
-### `api`
+## Getting help
 
-Starts the REST API server.
+All commands and command groups support the `--help` flag.
+
+| Flag | Description |
+|---|---|
+| `--help` | Display usage information for the command or command group |
+
+**Examples**
+
+```bash
+agent-memory --help            # Top-level help
+agent-memory api --help        # Help for a single command
+agent-memory token --help      # Help for a command group
+```
+
+## Commands overview
+
+| Command | Description |
+|---|---|
+| [`version`](#version) | Display the installed version |
+| [`api`](#api) | Start the REST API server |
+| [`mcp`](#mcp) | Start the Model Context Protocol (MCP) server |
+| [`task-worker`](#task-worker) | Start a Docket worker to process background tasks |
+| [`schedule-task`](#schedule-task) | Schedule a background task on the Docket queue |
+| [`rebuild_index`](#rebuild_index) | Rebuild the Redis search index |
+| [`migrate-memories`](#migrate-memories) | Run built-in long-term memory migrations |
+| [`migrate-working-memory`](#migrate-working-memory) | Migrate legacy working-memory string keys to Redis JSON |
+| [`token`](#token) | Manage authentication tokens (`add`, `list`, `show`, `remove`) |
+
+---
+
+## `version`
+
+Display the installed version of `agent-memory-server`.
+
+**Syntax**
+
+```bash
+agent-memory version
+```
+
+---
+
+## `api`
+
+Start the REST API server.
+
+**Syntax**
 
 ```bash
 agent-memory api [OPTIONS]
 ```
 
-**Options:**
+**Options**
 
-- `--port INTEGER`: Port to run the server on. (Default: value from `settings.port`, usually 8000)
-- `--host TEXT`: Host to run the server on. (Default: "0.0.0.0")
-- `--reload`: Enable auto-reload for development.
-- `--task-backend [asyncio|docket]`: Background task backend. `docket` (default) uses Docket-based background workers (requires a running `agent-memory task-worker` for non-blocking tasks). `asyncio` runs tasks inline in the API process and does **not** require a separate worker.
-- `--no-worker` (**deprecated**): Backwards-compatible alias for `--task-backend=asyncio`. Maintained for older scripts; prefer `--task-backend`.
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `--port` | integer | `settings.port` (usually `8000`) | Port to run the server on |
+| `--host` | string | `0.0.0.0` | Host to bind the server to |
+| `--reload` | flag | disabled | Enable auto-reload for development |
+| `--task-backend` | `asyncio` \| `docket` | `docket` | Background task backend. `docket` requires a running `agent-memory task-worker`; `asyncio` runs tasks inline in the API process. |
+| `--no-worker` *(deprecated)* | flag | — | Backwards-compatible alias for `--task-backend=asyncio`. Prefer `--task-backend`. |
 
-**Examples:**
+**Examples**
 
 ```bash
-# Development mode (no separate worker needed, asyncio backend)
+# Development mode (no separate worker needed)
 agent-memory api --port 8080 --reload --task-backend asyncio
 
-# Production mode (default Docket backend; requires separate worker process)
+# Production mode (default Docket backend; requires a separate worker)
 agent-memory api --port 8080
 ```
 
@@ -50,24 +100,30 @@ agent-memory api --port 8080
 
     For production deployments, use the default `docket` backend with a separate `agent-memory task-worker` process.
 
-### `mcp`
+---
 
-Starts the Model Context Protocol (MCP) server.
+## `mcp`
+
+Start the Model Context Protocol (MCP) server.
+
+**Syntax**
 
 ```bash
 agent-memory mcp [OPTIONS]
 ```
 
-**Options:**
+**Options**
 
-- `--port INTEGER`: Port to run the MCP server on. (Default: value from `settings.mcp_port`, usually 9000)
-- `--mode [stdio|sse|streamable-http]`: Run the MCP server in stdio, SSE, or streamable-http mode. (Default: stdio)
-- `--task-backend [asyncio|docket]`: Background task backend. `asyncio` (default) runs tasks inline in the MCP process with no separate worker. `docket` sends tasks to a Docket queue, which requires running `agent-memory task-worker`.
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `--port` | integer | `settings.mcp_port` (usually `9000`) | Port to run the MCP server on |
+| `--mode` | `stdio` \| `sse` \| `streamable-http` | `stdio` | MCP transport mode |
+| `--task-backend` | `asyncio` \| `docket` | `asyncio` | Background task backend. `docket` requires a running `agent-memory task-worker`. |
 
-**Examples:**
+**Examples**
 
 ```bash
-# Stdio mode (recommended for Claude Desktop) - default asyncio backend
+# Stdio mode (recommended for Claude Desktop)
 agent-memory mcp
 
 # SSE mode for development (no separate worker needed)
@@ -76,112 +132,177 @@ agent-memory mcp --mode sse --port 9001
 # Streamable HTTP mode for network deployments (e.g. Kubernetes)
 agent-memory mcp --mode streamable-http --port 9000
 
-# SSE mode for production (requires separate worker process)
+# SSE mode for production (requires a separate worker process)
 agent-memory mcp --mode sse --port 9001 --task-backend docket
 ```
 
-**Note:** Stdio mode is designed for tools like Claude Desktop and, by default, uses the asyncio backend (no worker). Streamable HTTP mode is suited for deploying the MCP server as a network service where HTTP clients (like Claude Code) connect over the network. Use `--task-backend docket` if you want MCP to enqueue background work into a shared Docket worker.
+!!! note "Choosing a mode"
 
-### `schedule-task`
+    Stdio mode is designed for tools like Claude Desktop and uses the asyncio backend by default (no worker required). Streamable HTTP mode is suited for deploying the MCP server as a network service where HTTP clients (like Claude Code) connect over the network. Use `--task-backend docket` if you want MCP to enqueue background work into a shared Docket worker.
 
-Schedules a background task to be processed by a Docket worker.
+---
 
-```bash
-agent-memory schedule-task <TASK_PATH> [OPTIONS]
-```
+## `task-worker`
 
-**Arguments:**
+Start a Docket worker to process background tasks from the queue. The worker uses the Docket name configured in settings.
 
-- `TASK_PATH`: The Python import path to the task function. For example: `"agent_memory_server.long_term_memory.compact_long_term_memories"`
-
-**Options:**
-
-- `--args TEXT` / `-a TEXT`: Arguments to pass to the task in `key=value` format. Can be specified multiple times. Values are automatically converted to boolean, integer, or float if possible, otherwise they remain strings.
-
-Example:
-
-```bash
-agent-memory schedule-task "agent_memory_server.long_term_memory.compact_long_term_memories" -a limit=500 -a namespace=my_namespace -a compact_semantic_duplicates=false
-```
-
-### `task-worker`
-
-Starts a Docket worker to process background tasks from the queue. This worker uses the Docket name configured in settings.
+**Syntax**
 
 ```bash
 agent-memory task-worker [OPTIONS]
 ```
 
-**Options:**
+**Options**
 
-- `--concurrency INTEGER`: Number of tasks to process concurrently. (Default: 10)
-- `--redelivery-timeout INTEGER`: Seconds to wait before a task is redelivered to another worker if the current worker fails or times out. (Default: `2 x llm_task_timeout_minutes` from server settings; with the default config, this is 600 seconds.)
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `--concurrency` | integer | `10` | Number of tasks to process concurrently |
+| `--redelivery-timeout` | integer | `2 × llm_task_timeout_minutes` (`600` seconds with default config) | Seconds to wait before a task is redelivered to another worker if the current worker fails or times out |
 
-Example:
+**Example**
 
 ```bash
 agent-memory task-worker --concurrency 5 --redelivery-timeout 600
 ```
 
-### `rebuild_index`
+---
 
-Rebuilds the search index for Redis Memory Server.
+## `schedule-task`
+
+Schedule a background task to be processed by a Docket worker.
+
+**Syntax**
+
+```bash
+agent-memory schedule-task <TASK_PATH> [OPTIONS]
+```
+
+**Arguments**
+
+| Argument | Description |
+|---|---|
+| `TASK_PATH` | Python import path to the task function (e.g. `agent_memory_server.long_term_memory.compact_long_term_memories`) |
+
+**Options**
+
+| Option | Description |
+|---|---|
+| `-a`, `--args TEXT` | Arguments to pass to the task in `key=value` format. Repeatable. Values are auto-converted to bool, integer, or float when possible; otherwise they remain strings. |
+
+**Example**
+
+```bash
+agent-memory schedule-task "agent_memory_server.long_term_memory.compact_long_term_memories" \
+  -a limit=500 \
+  -a namespace=my_namespace \
+  -a compact_semantic_duplicates=false
+```
+
+---
+
+## `rebuild_index`
+
+Rebuild the Redis search index.
+
+**Syntax**
 
 ```bash
 agent-memory rebuild_index
 ```
 
-### `migrate-memories`
+---
 
-Runs the built-in long-term memory migrations. Safe to rerun.
+## `migrate-memories`
 
-Use this after upgrading if you need to backfill fields on existing memory
-records.
+Run the built-in long-term memory migrations. Safe to rerun. Use this after upgrading if you need to backfill fields on existing memory records.
 
-```bash
-uv run agent-memory migrate-memories
-```
-
-### `migrate-working-memory`
-
-Migrates legacy `working_memory:*` string keys to Redis JSON.
-
-Use this if you are upgrading from an older working-memory format or if you
-want to remove deprecated legacy `sessions` / `sessions:*` sorted sets from the
-old session-listing path.
-
-Check what needs migration first:
+**Syntax**
 
 ```bash
-uv run agent-memory migrate-working-memory --dry-run
+agent-memory migrate-memories
 ```
 
-Run the migration:
+---
+
+## `migrate-working-memory`
+
+Migrate legacy `working_memory:*` string keys to Redis JSON. Use this if you are upgrading from an older working-memory format or if you want to remove deprecated legacy `sessions` / `sessions:*` sorted sets from the old session-listing path.
+
+**Syntax**
 
 ```bash
-uv run agent-memory migrate-working-memory
+agent-memory migrate-working-memory [OPTIONS]
 ```
 
-### `token` Commands
+**Options**
 
-Manages authentication tokens for token-based authentication. The token command group provides subcommands for creating, listing, viewing, and removing API tokens.
+| Option | Description |
+|---|---|
+| `--dry-run` | Report what would be migrated without making any changes |
 
-#### `token add`
-
-Creates a new authentication token.
+**Examples**
 
 ```bash
-agent-memory token add --description "DESCRIPTION" [--expires-days DAYS] [--format text|json] [--token TOKEN_VALUE]
+# Inspect what would change
+agent-memory migrate-working-memory --dry-run
+
+# Run the migration
+agent-memory migrate-working-memory
 ```
 
-**Options:**
+---
 
-- `--description TEXT` / `-d TEXT`: **Required**. Description for the token (e.g., "API access for service X")
-- `--expires-days INTEGER` / `-e INTEGER`: **Optional**. Number of days until token expires. If not specified, token never expires.
-- `--format [text|json]`: **Optional**. Output format. `text` (default) is human-readable; `json` is machine-readable and recommended for CI or scripting.
-- `--token TEXT`: **Optional**. Use a pre-generated token value instead of having the CLI generate one. The CLI will hash and store the provided token; make sure you've stored the plaintext securely in your secrets manager or CI system.
+## `token`
 
-**Examples:**
+Manage authentication tokens for token-based authentication. This command group provides subcommands for creating, listing, viewing, and removing API tokens.
+
+**Syntax**
+
+```bash
+agent-memory token <subcommand> [OPTIONS]
+```
+
+**Subcommands**
+
+| Subcommand | Description |
+|---|---|
+| [`add`](#token-add) | Create a new authentication token |
+| [`list`](#token-list) | List all authentication tokens |
+| [`show`](#token-show) | Show detailed information about a specific token |
+| [`remove`](#token-remove) | Remove an authentication token |
+
+**Security features**
+
+- All tokens are hashed using bcrypt before storage
+- Tokens automatically expire based on Redis TTL if an expiration is set
+- The server never stores plaintext tokens
+- Partial hash matching is supported for CLI convenience
+
+### `token add`
+
+Create a new authentication token.
+
+**Syntax**
+
+```bash
+agent-memory token add --description <text> [OPTIONS]
+```
+
+**Required options**
+
+| Option | Description |
+|---|---|
+| `-d`, `--description TEXT` | Description for the token (e.g. "API access for service X") |
+
+**Optional options**
+
+| Option | Default | Description |
+|---|---|---|
+| `-e`, `--expires-days INTEGER` | never expires | Number of days until the token expires |
+| `--format` `text` \| `json` | `text` | Output format. `json` is recommended for CI and scripting. |
+| `--token TEXT` | auto-generated | Use a pre-generated token value instead of letting the CLI generate one. The CLI hashes and stores the provided token; store the plaintext securely in your secrets manager or CI system. |
+
+**Examples**
 
 ```bash
 # Create a token that expires in 30 days
@@ -197,18 +318,45 @@ agent-memory token add --description "CI token" --expires-days 30 --format json
 agent-memory token add --description "Terraform bootstrap" --token "$MY_TOKEN" --format json
 ```
 
-**Security Note:** The generated token is displayed only once. Store it securely as it cannot be retrieved again.
+!!! warning "Token shown only once"
 
-#### `token list`
+    The generated token is displayed only once. Store it securely; it cannot be retrieved again.
 
-Lists all authentication tokens, showing masked token hashes, descriptions, and expiration dates.
+### `token list`
+
+List all authentication tokens, showing masked token hashes, descriptions, and expiration dates.
+
+**Syntax**
 
 ```bash
-agent-memory token list [--format text|json]
+agent-memory token list [OPTIONS]
 ```
 
-When `--format json` is used, the command prints a JSON array of token summaries suitable for scripting and CI pipelines. The default `text` format produces human-readable output like the example below.
-**JSON Output Example:**
+**Options**
+
+| Option | Default | Description |
+|---|---|---|
+| `--format` `text` \| `json` | `text` | Output format. `json` returns a machine-readable array suitable for CI pipelines. |
+
+**Text output example**
+
+```
+Authentication Tokens:
+==================================================
+Token: abc12345...xyz67890
+Description: API access token
+Created: 2025-07-10T18:30:00.000000+00:00
+Expires: 2025-08-09T18:30:00.000000+00:00
+------------------------------
+Token: def09876...uvw54321
+Description: Service account token
+Created: 2025-07-10T19:00:00.000000+00:00
+Expires: Never
+------------------------------
+```
+
+**JSON output example**
+
 ```json
 [
   {
@@ -228,32 +376,40 @@ When `--format json` is used, the command prints a JSON array of token summaries
 ]
 ```
 
-**Example Output:**
-```
-Authentication Tokens:
-==================================================
-Token: abc12345...xyz67890
-Description: API access token
-Created: 2025-07-10T18:30:00.000000+00:00
-Expires: 2025-08-09T18:30:00.000000+00:00
-------------------------------
-Token: def09876...uvw54321
-Description: Service account token
-Created: 2025-07-10T19:00:00.000000+00:00
-Expires: Never
-------------------------------
-```
+### `token show`
 
-#### `token show`
+Show detailed information about a specific token. Supports partial hash matching for convenience.
 
-Shows detailed information about a specific token. Supports partial hash matching for convenience.
+**Syntax**
 
 ```bash
-agent-memory token show TOKEN_HASH [--format text|json]
+agent-memory token show <TOKEN_HASH> [OPTIONS]
 ```
 
-When `--format json` is used, the command prints a JSON object with token details (including status) suitable for scripting and CI pipelines. The default `text` format produces human-readable output.
-**JSON Output Example:**
+**Arguments**
+
+| Argument | Description |
+|---|---|
+| `TOKEN_HASH` | The token hash (or partial hash) to display. Can be the full hash or just the first few characters; partial hashes must be unique. |
+
+**Options**
+
+| Option | Default | Description |
+|---|---|---|
+| `--format` `text` \| `json` | `text` | Output format. `json` returns a machine-readable object including status. |
+
+**Examples**
+
+```bash
+# Show token details using full hash
+agent-memory token show abc12345def67890xyz
+
+# Show token details using partial hash (must be unique)
+agent-memory token show abc123
+```
+
+**JSON output example**
+
 ```json
 {
   "hash": "abc12345def67890xyz",
@@ -264,37 +420,29 @@ When `--format json` is used, the command prints a JSON object with token detail
 }
 ```
 
-**Arguments:**
+### `token remove`
 
-- `TOKEN_HASH`: The token hash (or partial hash) to display. Can be the full hash or just the first few characters.
+Remove an authentication token. By default, asks for confirmation before removal.
 
-**Examples:**
-
-```bash
-# Show token details using full hash
-agent-memory token show abc12345def67890xyz
-
-# Show token details using partial hash (must be unique)
-agent-memory token show abc123
-```
-
-#### `token remove`
-
-Removes an authentication token. By default, asks for confirmation before removal.
+**Syntax**
 
 ```bash
-agent-memory token remove TOKEN_HASH [--force]
+agent-memory token remove <TOKEN_HASH> [OPTIONS]
 ```
 
-**Arguments:**
+**Arguments**
 
-- `TOKEN_HASH`: The token hash (or partial hash) to remove. Can be the full hash or just the first few characters.
+| Argument | Description |
+|---|---|
+| `TOKEN_HASH` | The token hash (or partial hash) to remove. Can be the full hash or just the first few characters. |
 
-**Options:**
+**Options**
 
-- `--force` / `-f`: Remove the token without asking for confirmation.
+| Option | Description |
+|---|---|
+| `-f`, `--force` | Remove the token without asking for confirmation |
 
-**Examples:**
+**Examples**
 
 ```bash
 # Remove token with confirmation prompt
@@ -302,22 +450,4 @@ agent-memory token remove abc123
 
 # Remove token without confirmation
 agent-memory token remove abc123 --force
-```
-
-**Security Features:**
-
-- All tokens are hashed using bcrypt before storage
-- Tokens automatically expire based on Redis TTL if expiration is set
-- Server never stores plaintext tokens
-- Partial hash matching for CLI convenience
-
-## Getting Help
-
-To see help for any command, you can use `--help`:
-
-```bash
-agent-memory --help
-agent-memory api --help
-agent-memory mcp --help
-# etc.
 ```
