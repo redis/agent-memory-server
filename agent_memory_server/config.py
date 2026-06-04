@@ -552,6 +552,21 @@ New lines of conversation:
 New summary:
 """
 
+    @field_validator("redisvl_datatype")
+    @classmethod
+    def validate_redisvl_datatype(cls, v: str) -> str:
+        """Normalize and validate the vector datatype against RedisVL's set."""
+        from redisvl.schema.fields import VectorDataType
+
+        try:
+            VectorDataType(v.upper())
+        except ValueError as e:
+            valid = sorted(t.lower() for t in VectorDataType)
+            raise ValueError(
+                f"redisvl_datatype must be one of {valid}, got {v!r}"
+            ) from e
+        return v.lower()
+
     @field_validator("progressive_summarization_prompt")
     @classmethod
     def validate_progressive_summarization_prompt(cls, v: str) -> str:

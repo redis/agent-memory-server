@@ -426,7 +426,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         arr = np.asarray(embedding, dtype=np.float32)
         peak = float(np.max(np.abs(arr))) or 1.0
         scaled = np.clip(np.round(arr * (127.0 / peak)), -127, 127)
-        return scaled.astype(np.int8).tolist()
+        return scaled.astype(np.int8)
 
     def _encode_vector(self, embedding: Any) -> bytes:
         """Encode an embedding to bytes for the configured datatype."""

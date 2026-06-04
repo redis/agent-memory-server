@@ -760,7 +760,7 @@ class TestConfigurableVectorDatatype:
     def test_maybe_quantize_int8_range_and_scaling(self):
         db = self._db("int8")
         out = db._maybe_quantize([0.5, -1.0, 0.25])
-        assert out == [64, -127, 32]
+        assert list(out) == [64, -127, 32]
         assert all(-127 <= x <= 127 for x in out)
 
     def test_encode_vector_int8_byte_width(self):
@@ -776,15 +776,33 @@ class TestConfigurableVectorDatatype:
 
         assert Settings().redisvl_datatype == "float32"
 
-    def test_build_schema_uses_configured_datatype(self):
+    def test_build_schema_uses_configured_datatype(self, monkeypatch):
         from agent_memory_server.config import settings
         from agent_memory_server.memory_vector_db_factory import _build_redis_schema
 
-        original = settings.redisvl_datatype
-        try:
-            settings.redisvl_datatype = "int8"
-            schema = _build_redis_schema()
-            vec = next(f for f in schema["fields"] if f.get("type") == "vector")
-            assert vec["attrs"]["datatype"] == "int8"
-        finally:
-            settings.redisvl_datatype = original
+        monkeypatch.setattr(settings, "redisvl_datatype", "int8")
+        schema = _build_redis_schema()
+        vec = next(f for f in schema["fields"] if f.get("type") == "vector")
+        assert vec["attrs"]["datatype"] == "int8"
+
+    def test_datatype_validator_normalizes_case(self):
+        from agent_memory_server.config import Settings
+
+        assert Settings(redisvl_datatype="INT8").redisvl_datatype == "int8"
+
+    def test_datatype_validator_rejects_invalid(self):
+        from pydantic import ValidationError
+
+        from agent_memory_server.config import Settings
+
+        with pytest.raises(ValidationError):
+            Settings(redisvl_datatype="not-a-real-type")
+
+    def test_int8_requires_cosine_distance_metric(self, monkeypatch):
+        from agent_memory_server.config import settings
+        from agent_memory_server.memory_vector_db_factory import _build_redis_schema
+
+        monkeypatch.setattr(settings, "redisvl_datatype", "int8")
+        monkeypatch.setattr(settings, "redisvl_distance_metric", "L2")
+        with pytest.raises(ValueError, match="cosine"):
+            _build_redis_schema()

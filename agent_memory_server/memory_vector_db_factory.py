@@ -134,6 +134,15 @@ def _build_redis_schema() -> dict:
     """
     embedding_dimensions = _get_embedding_dimensions()
 
+    datatype = settings.redisvl_datatype.lower()
+    metric = settings.redisvl_distance_metric.lower()
+    if datatype in ("int8", "uint8") and metric != "cosine":
+        raise ValueError(
+            f"redisvl_datatype={datatype!r} (quantized) requires "
+            f"redisvl_distance_metric='cosine', got {metric!r}: per-vector "
+            f"quantization changes geometry for non-cosine metrics."
+        )
+
     return {
         "index": {
             "name": settings.redisvl_index_name,
