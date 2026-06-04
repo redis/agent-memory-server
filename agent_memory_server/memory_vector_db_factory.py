@@ -166,7 +166,7 @@ def _build_redis_schema() -> dict:
                     "dims": embedding_dimensions,
                     "distance_metric": settings.redisvl_distance_metric.lower(),
                     "algorithm": settings.redisvl_indexing_algorithm.lower(),
-                    "datatype": "float32",
+                    "datatype": settings.redisvl_datatype,
                 },
             },
         ],
@@ -192,7 +192,9 @@ def create_redis_memory_vector_db(
             schema,
             redis_url=redis_url_for_redisvl(settings.redis_url),
         )
-        return RedisVLMemoryVectorDatabase(index, embeddings)
+        return RedisVLMemoryVectorDatabase(
+            index, embeddings, datatype=settings.redisvl_datatype
+        )
     except Exception as e:
         logger.error(f"Error creating Redis memory vector database: {e}")
         raise

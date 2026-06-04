@@ -20,6 +20,7 @@ from redisvl.query import (
     VectorQuery,
 )
 from redisvl.query.filter import FilterExpression
+from redisvl.redis.utils import array_to_buffer
 from redisvl.utils.token_escaper import TokenEscaper
 
 from agent_memory_server.filters import (
@@ -398,7 +399,9 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         "event_date",
     ]
 
-    def __init__(self, index: AsyncSearchIndex, embeddings: Any):
+    def __init__(
+        self, index: AsyncSearchIndex, embeddings: Any, datatype: str = "float32"
+    ):
         """Initialize the RedisVL memory vector database.
 
         Args:
@@ -409,6 +412,25 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         self._index = index
         self.embeddings = embeddings
         self._index_created = False
+        self._datatype = datatype
+
+    def _maybe_quantize(self, embedding: Any) -> Any:
+        """Quantize a float embedding to int8 range for an int8 index.
+
+        RedisVL validates the int8 range but does not quantize; float
+        datatypes pass through unchanged. Per-vector max-abs scaling is
+        used, which COSINE distance is invariant to.
+        """
+        if self._datatype.lower() != "int8":
+            return embedding
+        arr = np.asarray(embedding, dtype=np.float32)
+        peak = float(np.max(np.abs(arr))) or 1.0
+        scaled = np.clip(np.round(arr * (127.0 / peak)), -127, 127)
+        return scaled.astype(np.int8).tolist()
+
+    def _encode_vector(self, embedding: Any) -> bytes:
+        """Encode an embedding to bytes for the configured datatype."""
+        return array_to_buffer(self._maybe_quantize(embedding), dtype=self._datatype)
 
     @property
     def index(self) -> AsyncSearchIndex:
@@ -676,12 +698,14 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         """
         # Embed the query text to vector
         embedding_vector = await self.embeddings.aembed_query(query)
+        embedding_vector = self._maybe_quantize(embedding_vector)
 
         # Build base KNN or range query
         if distance_threshold is not None:
             knn = RangeQuery(
                 vector=embedding_vector,
                 vector_field_name="vector",
+                dtype=self._datatype,
                 filter_expression=redis_filter,
                 distance_threshold=float(distance_threshold),
                 num_results=limit,
@@ -690,6 +714,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
             knn = VectorQuery(
                 vector=embedding_vector,
                 vector_field_name="vector",
+                dtype=self._datatype,
                 filter_expression=redis_filter,
                 num_results=limit,
             )
@@ -763,7 +788,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
             memory_ids = []
             for memory, embedding in zip(memories, embeddings, strict=False):
                 data = self._memory_to_data(memory)
-                data["vector"] = np.array(embedding, dtype=np.float32).tobytes()
+                data["vector"] = self._encode_vector(embedding)
                 data_list.append(data)
                 memory_ids.append(memory.id)
 
@@ -884,11 +909,13 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                     break
         elif search_mode == SearchModeEnum.HYBRID:
             embedding_vector = await self.embeddings.aembed_query(query)
+            embedding_vector = self._maybe_quantize(embedding_vector)
             hybrid_query = PhraseAwareAggregateHybridQuery(
                 text=query,
                 text_field_name="text",
                 vector=embedding_vector,
                 vector_field_name="vector",
+                dtype=self._datatype,
                 text_scorer=text_scorer,
                 filter_expression=redis_filter,
                 alpha=hybrid_alpha,
@@ -926,10 +953,12 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                     break
         else:
             embedding_vector = await self.embeddings.aembed_query(query)
+            embedding_vector = self._maybe_quantize(embedding_vector)
             if distance_threshold is not None:
                 vector_query = RangeQuery(
                     vector=embedding_vector,
                     vector_field_name="vector",
+                    dtype=self._datatype,
                     filter_expression=redis_filter,
                     distance_threshold=float(distance_threshold),
                     num_results=limit + offset,
@@ -939,6 +968,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                 vector_query = VectorQuery(
                     vector=embedding_vector,
                     vector_field_name="vector",
+                    dtype=self._datatype,
                     filter_expression=redis_filter,
                     num_results=limit + offset,
                     return_fields=self.RETURN_FIELDS,

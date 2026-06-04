@@ -738,3 +738,53 @@ class TestCreateEmbeddings:
                 ModelValidationError, match="Anthropic does not provide embedding"
             ):
                 create_embeddings()
+
+
+class TestConfigurableVectorDatatype:
+    """Tests for the configurable vector datatype (int8 quantization)."""
+
+    def _db(self, datatype):
+        return RedisVLMemoryVectorDatabase(
+            MagicMock(), MockEmbeddings(), datatype=datatype
+        )
+
+    def test_default_datatype_is_float32(self):
+        db = RedisVLMemoryVectorDatabase(MagicMock(), MockEmbeddings())
+        assert db._datatype == "float32"
+
+    def test_maybe_quantize_passthrough_for_float(self):
+        db = self._db("float32")
+        v = [0.1, -0.2, 0.3]
+        assert db._maybe_quantize(v) == v
+
+    def test_maybe_quantize_int8_range_and_scaling(self):
+        db = self._db("int8")
+        out = db._maybe_quantize([0.5, -1.0, 0.25])
+        assert out == [64, -127, 32]
+        assert all(-127 <= x <= 127 for x in out)
+
+    def test_encode_vector_int8_byte_width(self):
+        import numpy as np
+
+        db = self._db("int8")
+        blob = db._encode_vector([0.5, -1.0, 0.25])
+        assert len(blob) == 3  # int8 = 1 byte/component
+        assert list(np.frombuffer(blob, dtype=np.int8)) == [64, -127, 32]
+
+    def test_config_default_datatype_is_float32(self):
+        from agent_memory_server.config import Settings
+
+        assert Settings().redisvl_datatype == "float32"
+
+    def test_build_schema_uses_configured_datatype(self):
+        from agent_memory_server.config import settings
+        from agent_memory_server.memory_vector_db_factory import _build_redis_schema
+
+        original = settings.redisvl_datatype
+        try:
+            settings.redisvl_datatype = "int8"
+            schema = _build_redis_schema()
+            vec = next(f for f in schema["fields"] if f.get("type") == "vector")
+            assert vec["attrs"]["datatype"] == "int8"
+        finally:
+            settings.redisvl_datatype = original

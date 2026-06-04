@@ -402,6 +402,7 @@ class Settings(BaseSettings):
     redisvl_vector_dimensions: str = "1536"
     redisvl_index_prefix: str = "memory_idx"
     redisvl_indexing_algorithm: str = "HNSW"
+    redisvl_datatype: str = "float32"
 
     # Working Memory Index Settings
     # Used for listing sessions via Redis Search instead of sorted sets
