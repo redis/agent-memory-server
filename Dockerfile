@@ -105,8 +105,8 @@ USER agentmemory
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8000/v1/health || exit 1
+# No HEALTHCHECK here — the image is shared by api, mcp, and task-worker which each need
+# a different check (or none). Healthchecks are defined per-service in docker-compose.yml.
 
 # Enable authentication by default.
 # You may override with DISABLE_AUTH=true in development.
@@ -136,8 +136,8 @@ USER agentmemory
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8000/v1/health || exit 1
+# No HEALTHCHECK here — the image is shared by api, mcp, and task-worker which each need
+# a different check (or none). Healthchecks are defined per-service in docker-compose.yml.
 
 # Enable authentication by default.
 # You may override with DISABLE_AUTH=true in development.

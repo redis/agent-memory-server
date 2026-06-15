@@ -772,12 +772,17 @@ async def search_long_term_memory(
             for key in (
                 "topics",
                 "entities",
-                "namespace",
                 "memory_type",
                 "extraction_strategy",
                 "event_date",
             ):
                 fallback_kwargs.pop(key, None)
+            # Only drop namespace filter if it is a broad (any/all) filter, not an exact eq match.
+            # An eq namespace filter means the caller asked a precise question; returning a
+            # record from the wrong namespace is more harmful than returning zero results.
+            ns_filter = filters.get("namespace") if filters else None
+            if ns_filter is None or getattr(ns_filter, "eq", None) is None:
+                fallback_kwargs.pop("namespace", None)
 
             def _vals(f):
                 vals: list[str] = []
