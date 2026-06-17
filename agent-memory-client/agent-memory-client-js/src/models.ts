@@ -116,6 +116,12 @@ export interface MemoryRecord {
   extracted_from?: string[] | null;
   /** Date/time when the event described in this memory occurred */
   event_date?: string | null;
+  /** Memory extraction strategy used when this was promoted from working memory */
+  extraction_strategy?: string;
+  /** Configuration for the extraction strategy used */
+  extraction_strategy_config?: Record<string, unknown>;
+  /** Additional non-indexed metadata for provenance and display */
+  metadata?: Record<string, JSONValue>;
 }
 
 /** JSON value types for working memory data */
@@ -282,6 +288,7 @@ export interface SearchRequestParams {
   last_accessed?: LastAccessedFilter | null;
   user_id?: UserIdFilter | null;
   memory_type?: MemoryTypeFilter | null;
+  extraction_strategy?: ExtractionStrategyFilter | null;
   event_date?: EventDateFilter | null;
   distance_threshold?: number | null;
   limit?: number;
@@ -350,6 +357,13 @@ export interface EventDateFilter {
 }
 
 export interface MemoryTypeFilter {
+  eq?: string | null;
+  in_?: string[] | null;
+  not_eq?: string | null;
+  not_in?: string[] | null;
+}
+
+export interface ExtractionStrategyFilter {
   eq?: string | null;
   in_?: string[] | null;
   not_eq?: string | null;
@@ -451,6 +465,10 @@ export interface SummaryViewPartitionResult {
   summary: string;
   /** Number of memories that contributed to this summary */
   memory_count: number;
+  /** Whether this partition had no matching memories */
+  empty?: boolean;
+  /** Machine-readable reason for an empty partition */
+  empty_reason?: string | null;
   /** When this summary was computed */
   computed_at?: string;
 }

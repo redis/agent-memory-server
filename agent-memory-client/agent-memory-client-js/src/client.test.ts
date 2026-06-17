@@ -468,6 +468,7 @@ describe("MemoryAPIClient", () => {
       expect(result.session_id).toBe("test");
       expect(callCount).toBe(2);
     });
+
   });
 
   describe("deleteWorkingMemory", () => {
@@ -712,6 +713,18 @@ describe("MemoryAPIClient", () => {
       expect(callBody.memory_type).toEqual({ eq: "episodic" });
     });
 
+    it("should handle ExtractionStrategy filter class", async () => {
+      const { ExtractionStrategy } = await import("./filters");
+      mockFetch = createMockFetch({ memories: [], total: 0 });
+      client["fetchFn"] = mockFetch;
+      await client.searchLongTermMemory({
+        text: "test",
+        extractionStrategy: new ExtractionStrategy({ eq: "summary" }),
+      });
+      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(callBody.extraction_strategy).toEqual({ eq: "summary" });
+    });
+
     it("should handle EventDate filter class", async () => {
       const { EventDate } = await import("./filters");
       mockFetch = createMockFetch({ memories: [], total: 0 });
@@ -826,6 +839,17 @@ describe("MemoryAPIClient", () => {
       });
       const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(callBody.memory_type).toEqual({ eq: "episodic" });
+    });
+
+    it("should handle plain object extractionStrategy filter", async () => {
+      mockFetch = createMockFetch({ memories: [], total: 0 });
+      client["fetchFn"] = mockFetch;
+      await client.searchLongTermMemory({
+        text: "test",
+        extractionStrategy: { eq: "summary" },
+      });
+      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(callBody.extraction_strategy).toEqual({ eq: "summary" });
     });
 
     it("should handle plain object eventDate filter", async () => {

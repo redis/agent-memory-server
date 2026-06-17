@@ -99,3 +99,12 @@ class MemoryType(BaseFilter):
     in_: list[str] | None = None
     not_eq: str | None = None
     not_in: list[str] | None = None
+
+
+class ExtractionStrategy(BaseFilter):
+    """Filter by extraction strategy"""
+
+    eq: str | None = None
+    in_: list[str] | None = None
+    not_eq: str | None = None
+    not_in: list[str] | None = None

@@ -16,7 +16,12 @@ from agent_memory_server.long_term_memory import (
     promote_working_memory_to_long_term,
     run_delayed_extraction,
 )
-from agent_memory_server.models import MemoryMessage, MemoryRecord, WorkingMemory
+from agent_memory_server.models import (
+    MemoryMessage,
+    MemoryRecord,
+    MemoryStrategyConfig,
+    WorkingMemory,
+)
 from agent_memory_server.working_memory import get_working_memory, set_working_memory
 
 
@@ -237,6 +242,7 @@ class TestExtractionLogicFixes:
                 ),
             ],
             memories=[],
+            long_term_memory_strategy=MemoryStrategyConfig(strategy="discrete"),
         )
 
         await set_working_memory(working_memory, redis_client=async_redis_client)
@@ -290,6 +296,7 @@ class TestExtractionLogicFixes:
                 ),
             ],
             memories=[],
+            long_term_memory_strategy=MemoryStrategyConfig(strategy="discrete"),
         )
 
         await set_working_memory(working_memory, redis_client=async_redis_client)
@@ -448,3 +455,182 @@ class TestExtractionLogicFixes:
 
         finally:
             settings.enable_discrete_memory_extraction = original_setting
+
+    @pytest.mark.asyncio
+    async def test_summary_strategy_produces_first_class_thread_summary(
+        self, async_redis_client
+    ):
+        """Summary extraction should produce one durable semantic thread memory."""
+        session_id = "test-summary-thread"
+        user_id = "test-user"
+        namespace = "test"
+
+        working_memory = WorkingMemory(
+            session_id=session_id,
+            user_id=user_id,
+            namespace=namespace,
+            messages=[
+                MemoryMessage(
+                    id="msg-1",
+                    role="user",
+                    content="We should use Redis for search.",
+                    created_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+                    discrete_memory_extracted="f",
+                ),
+                MemoryMessage(
+                    id="msg-2",
+                    role="assistant",
+                    content="Redis is a good fit for that.",
+                    created_at=datetime(2026, 5, 1, 12, 1, tzinfo=UTC),
+                    discrete_memory_extracted="f",
+                ),
+            ],
+            memories=[],
+            long_term_memory_strategy=MemoryStrategyConfig(
+                strategy="summary",
+                config={"topics": ["coding-agent"], "summary_version": "v2"},
+            ),
+        )
+        await set_working_memory(working_memory, redis_client=async_redis_client)
+
+        mock_strategy = AsyncMock()
+        mock_strategy.extract_memories.return_value = [
+            {
+                "type": "semantic",
+                "text": "User and assistant discussed using Redis for search.",
+                "topics": ["redis"],
+                "entities": ["User", "Redis"],
+            }
+        ]
+
+        with (
+            patch(
+                "agent_memory_server.long_term_memory._existing_summary_matches_source",
+                return_value=False,
+            ),
+            patch(
+                "agent_memory_server.memory_strategies.get_memory_strategy",
+                return_value=mock_strategy,
+            ),
+        ):
+            extracted = await extract_memories_from_session_thread(
+                session_id=session_id,
+                namespace=namespace,
+                user_id=user_id,
+            )
+
+        assert len(extracted) == 1
+        summary = extracted[0]
+        assert summary.id.startswith("thread_summary_")
+        assert summary.memory_type == "semantic"
+        assert summary.extraction_strategy == "summary"
+        assert summary.event_date is None
+        assert summary.session_id == session_id
+        assert summary.namespace == namespace
+        assert summary.user_id == user_id
+        assert summary.extracted_from == ["msg-1", "msg-2"]
+        assert summary.topics == ["coding-agent", "redis", "thread-summary"]
+        assert summary.metadata["source_session_id"] == session_id
+        assert summary.metadata["message_count"] == 2
+        assert summary.metadata["summary_version"] == "v2"
+        assert summary.metadata["source_message_ids"] == ["msg-1", "msg-2"]
+        assert summary.metadata["source_created_at_min"] == (
+            "2026-05-01T12:00:00+00:00"
+        )
+        assert summary.metadata["source_created_at_max"] == (
+            "2026-05-01T12:01:00+00:00"
+        )
+        assert "source_message_fingerprint" in summary.metadata
+
+        mock_strategy.extract_memories.assert_awaited_once()
+        call_text = mock_strategy.extract_memories.await_args.args[0]
+        call_context = mock_strategy.extract_memories.await_args.kwargs["context"]
+        assert "[USER]: We should use Redis for search." in call_text
+        assert call_context["source_message_ids"] == ["msg-1", "msg-2"]
+
+    @pytest.mark.asyncio
+    async def test_summary_strategy_skips_unchanged_existing_summary(
+        self, async_redis_client
+    ):
+        """Unchanged summary extraction should skip the model call."""
+        session_id = "test-summary-thread-skip"
+        working_memory = WorkingMemory(
+            session_id=session_id,
+            messages=[
+                MemoryMessage(
+                    id="msg-1",
+                    role="user",
+                    content="No changes.",
+                    created_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+                    discrete_memory_extracted="f",
+                )
+            ],
+            memories=[],
+            long_term_memory_strategy=MemoryStrategyConfig(strategy="summary"),
+        )
+        await set_working_memory(working_memory, redis_client=async_redis_client)
+
+        with (
+            patch(
+                "agent_memory_server.long_term_memory._existing_summary_matches_source",
+                return_value=True,
+            ) as mock_existing,
+            patch(
+                "agent_memory_server.memory_strategies.get_memory_strategy"
+            ) as mock_get_strategy,
+        ):
+            extracted = await extract_memories_from_session_thread(
+                session_id=session_id
+            )
+
+        assert extracted == []
+        mock_existing.assert_awaited_once()
+        mock_get_strategy.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_summary_strategy_changed_thread_keeps_same_id(
+        self, async_redis_client
+    ):
+        """Changed sessions should refresh the same deterministic summary ID."""
+        session_id = "test-summary-thread-same-id"
+
+        async def run_once(message_text: str) -> str:
+            working_memory = WorkingMemory(
+                session_id=session_id,
+                messages=[
+                    MemoryMessage(
+                        id="msg-1",
+                        role="user",
+                        content=message_text,
+                        created_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+                        discrete_memory_extracted="f",
+                    )
+                ],
+                memories=[],
+                long_term_memory_strategy=MemoryStrategyConfig(strategy="summary"),
+            )
+            await set_working_memory(working_memory, redis_client=async_redis_client)
+
+            mock_strategy = AsyncMock()
+            mock_strategy.extract_memories.return_value = [
+                {"type": "semantic", "text": f"Summary: {message_text}"}
+            ]
+            with (
+                patch(
+                    "agent_memory_server.long_term_memory._existing_summary_matches_source",
+                    return_value=False,
+                ),
+                patch(
+                    "agent_memory_server.memory_strategies.get_memory_strategy",
+                    return_value=mock_strategy,
+                ),
+            ):
+                extracted = await extract_memories_from_session_thread(
+                    session_id=session_id
+                )
+            return extracted[0].id
+
+        first_id = await run_once("Initial content.")
+        second_id = await run_once("Changed content.")
+
+        assert first_id == second_id

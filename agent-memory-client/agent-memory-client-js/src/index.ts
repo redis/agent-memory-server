@@ -27,6 +27,7 @@ export {
   LastAccessed,
   EventDate,
   MemoryType,
+  ExtractionStrategy,
 } from "./filters";
 
 // Export models

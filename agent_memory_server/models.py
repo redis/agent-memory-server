@@ -16,6 +16,7 @@ from agent_memory_server.filters import (
     CreatedAt,
     Entities,
     EventDate,
+    ExtractionStrategy,
     LastAccessed,
     MemoryType,
     Namespace,
@@ -28,7 +29,7 @@ from agent_memory_server.utils.tag_codec import validate_no_commas_in_tags
 
 logger = logging.getLogger(__name__)
 
-JSONTypes = str | float | int | bool | list | dict
+JSONTypes = str | float | int | bool | list | dict | None
 
 
 class MemoryTypeEnum(str, Enum):
@@ -111,6 +112,7 @@ class MemoryStrategyConfig(BaseModel):
 
     def model_dump(self, **kwargs) -> dict[str, Any]:
         """Override to ensure JSON serialization works properly."""
+        kwargs.pop("mode", None)
         return super().model_dump(mode="json", **kwargs)
 
 
@@ -330,6 +332,10 @@ class MemoryRecord(BaseModel):
         default_factory=dict,
         description="Configuration for the extraction strategy used",
     )
+    metadata: dict[str, JSONTypes] = Field(
+        default_factory=dict,
+        description="Additional non-indexed metadata for provenance and display",
+    )
 
     @field_validator("topics", "entities", "extracted_from", mode="after")
     @classmethod
@@ -422,7 +428,6 @@ class WorkingMemory(BaseModel):
         """
         from agent_memory_server.memory_strategies import get_memory_strategy
 
-        # Get the configured strategy
         strategy = get_memory_strategy(
             self.long_term_memory_strategy.strategy,
             **self.long_term_memory_strategy.config,
@@ -771,6 +776,10 @@ class SearchRequest(BaseModel):
         default=None,
         description="Optional memory type to filter by",
     )
+    extraction_strategy: ExtractionStrategy | None = Field(
+        default=None,
+        description="Optional extraction strategy to filter by",
+    )
     event_date: EventDate | None = Field(
         default=None,
         description="Optional event date to filter by (for episodic memories)",
@@ -848,6 +857,9 @@ class SearchRequest(BaseModel):
 
         if self.memory_type is not None:
             filters["memory_type"] = self.memory_type
+
+        if self.extraction_strategy is not None:
+            filters["extraction_strategy"] = self.extraction_strategy
 
         if self.event_date is not None:
             filters["event_date"] = self.event_date
@@ -1072,10 +1084,21 @@ class SummaryViewPartitionResult(BaseModel):
     group: dict[str, str] = Field(
         description="Concrete values for the view's group_by fields",
     )
-    summary: str = Field(description="Summarized text for this partition")
+    summary: str = Field(
+        default="",
+        description="Summarized text for this partition",
+    )
     memory_count: int = Field(
         ge=0,
         description="Number of memories that contributed to this summary",
+    )
+    empty: bool = Field(
+        default=False,
+        description="Whether this partition had no matching memories",
+    )
+    empty_reason: str | None = Field(
+        default=None,
+        description="Machine-readable reason for an empty partition",
     )
     computed_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),

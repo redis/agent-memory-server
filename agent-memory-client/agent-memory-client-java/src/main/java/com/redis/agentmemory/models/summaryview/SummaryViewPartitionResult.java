@@ -24,6 +24,12 @@ public class SummaryViewPartitionResult {
     @JsonProperty("memory_count")
     private int memoryCount;
 
+    private boolean empty;
+
+    @Nullable
+    @JsonProperty("empty_reason")
+    private String emptyReason;
+
     @Nullable
     @JsonProperty("computed_at")
     private String computedAt;
@@ -77,6 +83,23 @@ public class SummaryViewPartitionResult {
         this.memoryCount = memoryCount;
     }
 
+    public boolean isEmpty() {
+        return empty;
+    }
+
+    public void setEmpty(boolean empty) {
+        this.empty = empty;
+    }
+
+    @Nullable
+    public String getEmptyReason() {
+        return emptyReason;
+    }
+
+    public void setEmptyReason(@Nullable String emptyReason) {
+        this.emptyReason = emptyReason;
+    }
+
     @Nullable
     public String getComputedAt() {
         return computedAt;
@@ -91,6 +114,8 @@ public class SummaryViewPartitionResult {
         return "SummaryViewPartitionResult{" +
                 "viewId='" + viewId + '\'' +
                 ", group=" + group +
+                ", empty=" + empty +
+                ", emptyReason='" + emptyReason + '\'' +
                 ", memoryCount=" + memoryCount +
                 '}';
     }

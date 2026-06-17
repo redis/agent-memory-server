@@ -461,4 +461,23 @@ class LongTermMemoryServiceTest {
         assertFalse(request.getServerSideRecency());
     }
 
+    @Test
+    void testSearchRequestBuilder_ExtractionStrategy() throws Exception {
+        mockServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"memories\":[],\"total\":0}"));
+
+        SearchRequest request = SearchRequest.builder()
+                .text("query")
+                .extractionStrategy("summary")
+                .build();
+
+        client.longTermMemory().searchLongTermMemories(request);
+
+        RecordedRequest recorded = mockServer.takeRequest();
+        String requestBody = recorded.getBody().readUtf8();
+        assertTrue(requestBody.contains("\"extraction_strategy\":{\"eq\":\"summary\"}"));
+    }
+
 }

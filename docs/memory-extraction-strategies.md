@@ -7,7 +7,7 @@ This reference documents the configurable extraction strategies that determine h
 | Strategy | Description | Best For |
 |----------|-------------|----------|
 | **Discrete** (default) | Extract individual facts and preferences | General chat, factual information |
-| **Summary** | Create conversation summaries | Meeting notes, long conversations |
+| **Summary** | Create one durable session/thread summary | Coding-agent sessions, meeting notes, long conversations |
 | **Preferences** | Focus on user preferences and characteristics | Personalization, user profiles |
 | **Custom** | Use domain-specific extraction prompts | Technical, legal, medical domains |
 
@@ -69,8 +69,16 @@ working_memory = WorkingMemory(
 
 **Configuration Options:**
 - `max_summary_length`: Maximum characters in summary (default: 500)
+- `summary_version`: Optional version marker for deterministic reruns
+- `topics`: Optional additional topics to attach to summary memories
 
 **Best for:** Long conversations, meeting notes, comprehensive context preservation.
+
+Summary extraction produces a durable semantic memory with
+`extraction_strategy="summary"` and topic `thread-summary`. The summary memory
+uses a deterministic ID per namespace/user/session so reruns update the same
+record. If the source message fingerprint and `summary_version` are unchanged,
+rerunning summary extraction is a no-op.
 
 **Example Output:**
 ```json
@@ -231,6 +239,18 @@ curl -X PUT "http://localhost:8000/v1/working-memory/my-session" \
 ```
 
 For more comprehensive integration examples, see [Memory Integration Patterns](memory-integration-patterns.md).
+
+## Deployment Note
+
+`extraction_strategy` is indexed as a RediSearch tag field. After deploying a
+version that adds this field, rebuild the long-term memory index so existing
+records are available through extraction-strategy filters:
+
+```bash
+uv run agent-memory rebuild-index
+```
+
+Run `uv run agent-memory migrate-memories` as usual for data migrations.
 
 ## Best Practices
 

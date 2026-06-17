@@ -20,6 +20,7 @@ import {
   LastAccessed,
   EventDate,
   MemoryType,
+  ExtractionStrategy,
 } from "./filters";
 import {
   AckResponse,
@@ -82,6 +83,7 @@ export interface SearchOptions {
   lastAccessed?: LastAccessed | { gte?: Date | string; lte?: Date | string; eq?: Date | string };
   userId?: UserId | { eq?: string; in_?: string[]; not_eq?: string; not_in?: string[] };
   memoryType?: MemoryType | { eq?: string; in_?: string[]; not_eq?: string; not_in?: string[] };
+  extractionStrategy?: ExtractionStrategy | { eq?: string; in_?: string[]; not_eq?: string; not_in?: string[] };
   eventDate?: EventDate | { gte?: Date | string; lte?: Date | string; eq?: Date | string };
   distanceThreshold?: number;
   limit?: number;
@@ -442,6 +444,12 @@ export class MemoryAPIClient {
         options.memoryType instanceof MemoryType
           ? options.memoryType.toJSON()
           : options.memoryType;
+    }
+    if (options.extractionStrategy) {
+      body.extraction_strategy =
+        options.extractionStrategy instanceof ExtractionStrategy
+          ? options.extractionStrategy.toJSON()
+          : options.extractionStrategy;
     }
     if (options.eventDate) {
       body.event_date =

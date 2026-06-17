@@ -27,6 +27,7 @@ from .exceptions import (
 from .filters import (
     CreatedAt,
     Entities,
+    ExtractionStrategy,
     LastAccessed,
     MemoryType,
     Namespace,
@@ -400,6 +401,8 @@ class MemoryAPIClient:
                     memories=[],
                     data={},
                     user_id=user_id,
+                    long_term_memory_strategy=long_term_memory_strategy
+                    or MemoryStrategyConfig(),
                 )
 
                 created_memory = await self.put_working_memory(
@@ -1046,6 +1049,7 @@ class MemoryAPIClient:
         user_id: UserId | dict[str, Any] | None = None,
         distance_threshold: float | None = None,
         memory_type: MemoryType | dict[str, Any] | None = None,
+        extraction_strategy: ExtractionStrategy | dict[str, Any] | None = None,
         recency: RecencyConfig | None = None,
         limit: int = 10,
         offset: int = 0,
@@ -1068,6 +1072,7 @@ class MemoryAPIClient:
             user_id: Optional user ID filter
             distance_threshold: Optional distance threshold for search results
             memory_type: Optional memory type filter
+            extraction_strategy: Optional extraction strategy filter
             limit: Maximum number of results to return (default: 10)
             offset: Offset for pagination (default: 0)
             optimize_query: Whether to optimize the query for semantic (vector) search using a fast model; ignored for keyword and hybrid modes (default: False)
@@ -1111,6 +1116,8 @@ class MemoryAPIClient:
             last_accessed = LastAccessed(**last_accessed)
         if isinstance(memory_type, dict):
             memory_type = MemoryType(**memory_type)
+        if isinstance(extraction_strategy, dict):
+            extraction_strategy = ExtractionStrategy(**extraction_strategy)
 
         # Apply default namespace if needed and no namespace filter specified
         if namespace is None and self.config.default_namespace is not None:
@@ -1146,6 +1153,10 @@ class MemoryAPIClient:
                 payload["user_id"] = user_id.model_dump(exclude_none=True)
         if memory_type:
             payload["memory_type"] = memory_type.model_dump(exclude_none=True)
+        if extraction_strategy:
+            payload["extraction_strategy"] = extraction_strategy.model_dump(
+                exclude_none=True
+            )
         if distance_threshold is not None:
             payload["distance_threshold"] = distance_threshold
         payload["search_mode"] = (

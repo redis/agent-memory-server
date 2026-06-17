@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import numbers
@@ -23,6 +24,7 @@ from agent_memory_server.filters import (
     CreatedAt,
     Entities,
     EventDate,
+    ExtractionStrategy,
     LastAccessed,
     MemoryHash,
     MemoryType,
@@ -38,6 +40,7 @@ from agent_memory_server.models import (
     MemoryRecord,
     MemoryRecordResult,
     MemoryRecordResults,
+    MemoryStrategyConfig,
     MemoryTypeEnum,
     SearchModeEnum,
 )
@@ -417,6 +420,201 @@ async def run_delayed_extraction(
         return 0
 
 
+def _build_thread_extraction_context(
+    working_memory: Any,
+) -> tuple[str, dict[str, Any]]:
+    conversation_messages = []
+    source_message_ids = []
+    message_context = []
+    created_at_values = []
+
+    for msg in working_memory.messages:
+        role_prefix = (
+            f"[{msg.role.upper()}]: " if hasattr(msg, "role") and msg.role else ""
+        )
+        conversation_messages.append(f"{role_prefix}{msg.content}")
+        source_message_ids.append(msg.id)
+        created_at_values.append(msg.created_at)
+        message_context.append(
+            {
+                "id": msg.id,
+                "role": msg.role,
+                "created_at": msg.created_at.isoformat(),
+            }
+        )
+
+    full_conversation = "\n".join(conversation_messages)
+    created_at_min = min(created_at_values) if created_at_values else None
+    created_at_max = max(created_at_values) if created_at_values else None
+
+    fingerprint_parts = [
+        "\x1f".join(
+            [
+                msg.id or "",
+                msg.created_at.isoformat() if msg.created_at else "",
+                msg.role or "",
+                msg.content or "",
+            ]
+        )
+        for msg in working_memory.messages
+    ]
+    source_message_fingerprint = hashlib.sha256(
+        "\x1e".join(fingerprint_parts).encode("utf-8")
+    ).hexdigest()
+
+    context: dict[str, Any] = {
+        "session_id": working_memory.session_id,
+        "namespace": working_memory.namespace,
+        "user_id": working_memory.user_id,
+        "message_count": len(working_memory.messages),
+        "source_message_ids": source_message_ids,
+        "messages": message_context,
+        "created_at_min": created_at_min.isoformat() if created_at_min else None,
+        "created_at_max": created_at_max.isoformat() if created_at_max else None,
+        "source_message_fingerprint": source_message_fingerprint,
+    }
+    return full_conversation, context
+
+
+def _thread_summary_memory_id(
+    *,
+    namespace: str | None,
+    user_id: str | None,
+    session_id: str,
+) -> str:
+    material = "|".join([namespace or "", user_id or "", session_id])
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
+    return f"thread_summary_{digest}"
+
+
+def _parse_optional_extracted_datetime(
+    memory_data: dict[str, Any], field_name: str, *, session_id: str
+) -> datetime | None:
+    raw_value = memory_data.get(field_name)
+    if raw_value is None:
+        return None
+    if isinstance(raw_value, datetime):
+        return raw_value
+    if isinstance(raw_value, str) and raw_value:
+        try:
+            return parse_iso8601_datetime(raw_value)
+        except ValueError:
+            logger.warning(
+                "Skipping invalid extracted %s %r for memory %r in session %s",
+                field_name,
+                raw_value,
+                memory_data.get("text"),
+                session_id,
+            )
+    return None
+
+
+async def _existing_summary_matches_source(
+    *,
+    memory_id: str,
+    summary_version: str,
+    source_message_fingerprint: str,
+) -> bool:
+    try:
+        from agent_memory_server.filters import Id
+
+        db = await get_memory_vector_db()
+        results = await db.list_memories(id=Id(eq=memory_id), limit=1)
+    except Exception:
+        logger.exception("Failed checking existing summary memory %s", memory_id)
+        return False
+
+    if not results.memories:
+        return False
+
+    metadata = results.memories[0].metadata or {}
+    return (
+        metadata.get("summary_version") == summary_version
+        and metadata.get("source_message_fingerprint") == source_message_fingerprint
+    )
+
+
+def _memory_data_to_record(
+    *,
+    memory_data: dict[str, Any],
+    strategy_config: MemoryStrategyConfig,
+    thread_context: dict[str, Any],
+    extraction_time: datetime,
+) -> MemoryRecord:
+    strategy_type = strategy_config.strategy
+    is_summary = strategy_type == "summary"
+    summary_version = str(
+        strategy_config.config.get("summary_version", "thread-summary-v1")
+    )
+
+    event_date = _parse_optional_extracted_datetime(
+        memory_data, "event_date", session_id=str(thread_context["session_id"])
+    )
+    created_at = (
+        _parse_optional_extracted_datetime(
+            memory_data, "created_at", session_id=str(thread_context["session_id"])
+        )
+        or extraction_time
+    )
+
+    topics = sanitize_tag_values(memory_data.get("topics", []))
+    if is_summary:
+        configured_topics = (
+            sanitize_tag_values(strategy_config.config.get("topics", [])) or []
+        )
+        topics = sorted({*(topics or []), *configured_topics, "thread-summary"})
+
+    metadata: dict[str, Any] = dict(memory_data.get("metadata") or {})
+    if is_summary:
+        metadata.update(
+            {
+                "source_session_id": thread_context.get("session_id"),
+                "message_count": thread_context.get("message_count"),
+                "source_message_ids": thread_context.get("source_message_ids", []),
+                "source_created_at_min": thread_context.get("created_at_min"),
+                "source_created_at_max": thread_context.get("created_at_max"),
+                "source_message_fingerprint": thread_context.get(
+                    "source_message_fingerprint"
+                ),
+                "summary_version": summary_version,
+            }
+        )
+
+    return MemoryRecord(
+        id=(
+            _thread_summary_memory_id(
+                namespace=thread_context.get("namespace"),
+                user_id=thread_context.get("user_id"),
+                session_id=str(thread_context["session_id"]),
+            )
+            if is_summary
+            else str(ULID())
+        ),
+        text=memory_data["text"],
+        memory_type=(
+            MemoryTypeEnum.SEMANTIC
+            if is_summary
+            else memory_data.get("type", "semantic")
+        ),
+        topics=topics,
+        entities=sanitize_tag_values(memory_data.get("entities", [])),
+        event_date=event_date,
+        session_id=thread_context.get("session_id"),
+        namespace=thread_context.get("namespace"),
+        user_id=thread_context.get("user_id"),
+        created_at=created_at,
+        extraction_strategy=strategy_type,
+        extraction_strategy_config=strategy_config.config,
+        extracted_from=(
+            thread_context.get("source_message_ids", [])
+            if is_summary
+            else memory_data.get("extracted_from")
+        ),
+        metadata=metadata,
+        discrete_memory_extracted="t",
+    )
+
+
 async def extract_memories_from_session_thread(
     session_id: str,
     namespace: str | None = None,
@@ -447,16 +645,7 @@ async def extract_memories_from_session_thread(
         logger.info(f"No working memory messages found for session {session_id}")
         return []
 
-    # Build full conversation context from all messages
-    conversation_messages = []
-    for msg in working_memory.messages:
-        # Include role and content for better context
-        role_prefix = (
-            f"[{msg.role.upper()}]: " if hasattr(msg, "role") and msg.role else ""
-        )
-        conversation_messages.append(f"{role_prefix}{msg.content}")
-
-    full_conversation = "\n".join(conversation_messages)
+    full_conversation, thread_context = _build_thread_extraction_context(working_memory)
 
     logger.info(
         f"Extracting memories from {len(working_memory.messages)} messages in session {session_id}"
@@ -465,52 +654,58 @@ async def extract_memories_from_session_thread(
         f"Full conversation context length: {len(full_conversation)} characters"
     )
 
-    # Use the new memory strategy system for extraction
     from agent_memory_server.memory_strategies import get_memory_strategy
 
+    strategy_config = working_memory.long_term_memory_strategy or MemoryStrategyConfig()
     try:
-        # Get the discrete memory strategy for contextual grounding
-        strategy = get_memory_strategy("discrete")
+        if strategy_config.strategy == "summary":
+            summary_version = str(
+                strategy_config.config.get("summary_version", "thread-summary-v1")
+            )
+            summary_id = _thread_summary_memory_id(
+                namespace=working_memory.namespace,
+                user_id=working_memory.user_id,
+                session_id=working_memory.session_id,
+            )
+            if await _existing_summary_matches_source(
+                memory_id=summary_id,
+                summary_version=summary_version,
+                source_message_fingerprint=str(
+                    thread_context["source_message_fingerprint"]
+                ),
+            ):
+                logger.info(
+                    "Skipping unchanged summary extraction for session %s",
+                    session_id,
+                )
+                return []
 
-        # Extract memories using the strategy
-        memories_data = await strategy.extract_memories(full_conversation)
-
-        logger.info(
-            f"Extracted {len(memories_data)} memories from session thread {session_id}"
+        strategy = get_memory_strategy(
+            strategy_config.strategy,
+            **strategy_config.config,
+        )
+        memories_data = await strategy.extract_memories(
+            full_conversation, context=thread_context
         )
 
-        # Convert to MemoryRecord objects
-        extracted_memories = []
-        for memory_data in memories_data:
-            event_date = None
-            event_date_str = memory_data.get("event_date")
-            if event_date_str:
-                try:
-                    event_date = parse_iso8601_datetime(event_date_str)
-                except ValueError:
-                    logger.warning(
-                        "Skipping invalid extracted event_date %r for memory %r in session %s",
-                        event_date_str,
-                        memory_data.get("text"),
-                        session_id,
-                    )
+        logger.info(
+            "Extracted %d memories from session thread %s using strategy %s",
+            len(memories_data or []),
+            session_id,
+            strategy_config.strategy,
+        )
 
-            memory = MemoryRecord(
-                id=str(ULID()),
-                text=memory_data["text"],
-                memory_type=memory_data.get("type", "semantic"),
-                topics=sanitize_tag_values(memory_data.get("topics", [])),
-                entities=sanitize_tag_values(memory_data.get("entities", [])),
-                event_date=event_date,
-                session_id=session_id,
-                namespace=namespace,
-                user_id=user_id,
-                discrete_memory_extracted="t",  # Mark as extracted
+        extraction_time = datetime.now(UTC)
+        return [
+            _memory_data_to_record(
+                memory_data=memory_data,
+                strategy_config=strategy_config,
+                thread_context=thread_context,
+                extraction_time=extraction_time,
             )
-            extracted_memories.append(memory)
-
-        return extracted_memories
-
+            for memory_data in memories_data or []
+            if memory_data.get("text")
+        ]
     except Exception as e:
         logger.error(f"Error extracting memories from session thread {session_id}: {e}")
         return []
@@ -1118,6 +1313,7 @@ async def search_long_term_memories(
     entities: Entities | None = None,
     distance_threshold: float | None = None,
     memory_type: MemoryType | None = None,
+    extraction_strategy: ExtractionStrategy | None = None,
     event_date: EventDate | None = None,
     memory_hash: MemoryHash | None = None,
     server_side_recency: bool | None = None,
@@ -1148,6 +1344,7 @@ async def search_long_term_memories(
         entities: Optional entities filter
         distance_threshold: Optional similarity threshold
         memory_type: Optional memory type filter
+        extraction_strategy: Optional extraction strategy filter
         event_date: Optional event date filter
         memory_hash: Optional memory hash filter
         limit: Maximum number of results
@@ -1175,6 +1372,7 @@ async def search_long_term_memories(
             topics=topics,
             entities=entities,
             memory_type=memory_type,
+            extraction_strategy=extraction_strategy,
             event_date=event_date,
             memory_hash=memory_hash,
             limit=limit,
@@ -1216,6 +1414,7 @@ async def search_long_term_memories(
         topics=topics,
         entities=entities,
         memory_type=memory_type,
+        extraction_strategy=extraction_strategy,
         event_date=event_date,
         memory_hash=memory_hash,
         distance_threshold=distance_threshold,
@@ -1247,6 +1446,7 @@ async def search_long_term_memories(
                 topics=topics,
                 entities=entities,
                 memory_type=memory_type,
+                extraction_strategy=extraction_strategy,
                 event_date=event_date,
                 memory_hash=memory_hash,
                 distance_threshold=distance_threshold,
@@ -1837,6 +2037,7 @@ async def promote_working_memory_to_long_term(
 
                 # Set extraction strategy configuration from working memory
                 current_memory.extraction_strategy = "message"
+                current_memory.extraction_strategy_config = {}
 
                 # Collect memory record for batch indexing
                 message_records_to_index.append(current_memory)
