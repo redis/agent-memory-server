@@ -48,6 +48,10 @@ public class SearchRequest {
     @JsonProperty("distance_threshold")
     private Double distanceThreshold;
 
+    @Nullable
+    @JsonProperty("extraction_strategy")
+    private String extractionStrategy;
+
     private int limit = 10;
 
     private int offset = 0;
@@ -178,6 +182,15 @@ public class SearchRequest {
         this.distanceThreshold = distanceThreshold;
     }
 
+    @Nullable
+    public String getExtractionStrategy() {
+        return extractionStrategy;
+    }
+
+    public void setExtractionStrategy(@Nullable String extractionStrategy) {
+        this.extractionStrategy = extractionStrategy;
+    }
+
     public int getLimit() {
         return limit;
     }
@@ -279,6 +292,7 @@ public class SearchRequest {
                 ", entities=" + entities +
                 ", userId='" + userId + '\'' +
                 ", distanceThreshold=" + distanceThreshold +
+                ", extractionStrategy='" + extractionStrategy + '\'' +
                 ", limit=" + limit +
                 ", offset=" + offset +
                 ", recencyBoost=" + recencyBoost +
@@ -353,6 +367,11 @@ public class SearchRequest {
 
         public Builder distanceThreshold(@Nullable Double distanceThreshold) {
             request.distanceThreshold = distanceThreshold;
+            return this;
+        }
+
+        public Builder extractionStrategy(@Nullable String extractionStrategy) {
+            request.extractionStrategy = extractionStrategy;
             return this;
         }
 

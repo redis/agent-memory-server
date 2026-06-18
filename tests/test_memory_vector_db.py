@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from agent_memory_server.filters import ExtractionStrategy
 from agent_memory_server.memory_vector_db import (
     MemoryVectorDatabase,
     PhraseAwareAggregateHybridQuery,
@@ -119,6 +120,9 @@ class TestMemoryVectorDatabase:
             topics=["testing", "memory"],
             entities=["test"],
             memory_type=MemoryTypeEnum.SEMANTIC,
+            extraction_strategy="summary",
+            extraction_strategy_config={"summary_version": "v1"},
+            metadata={"source_session_id": "session-456", "message_count": 2},
         )
 
         data = db._memory_to_data(memory)
@@ -131,6 +135,9 @@ class TestMemoryVectorDatabase:
         assert data["topics"] == "testing,memory"
         assert data["entities"] == "test"
         assert data["memory_type"] == "semantic"
+        assert data["extraction_strategy"] == "summary"
+        assert '"summary_version": "v1"' in data["extraction_strategy_config"]
+        assert '"message_count": 2' in data["metadata"]
 
     def test_data_to_memory_result_conversion(self):
         """Test converting data dict to MemoryRecordResult."""
@@ -147,6 +154,9 @@ class TestMemoryVectorDatabase:
             "topics": "testing,memory",
             "entities": "test",
             "memory_type": "semantic",
+            "extraction_strategy": "summary",
+            "extraction_strategy_config": '{"summary_version":"v1"}',
+            "metadata": '{"source_session_id":"session-456","message_count":2}',
             "created_at": "1704067200",  # 2024-01-01T00:00:00Z
             "last_accessed": "1704067200",
             "updated_at": "1704067200",
@@ -163,8 +173,77 @@ class TestMemoryVectorDatabase:
         assert result.topics == ["testing", "memory"]
         assert result.entities == ["test"]
         assert result.memory_type == "semantic"
+        assert result.extraction_strategy == "summary"
+        assert result.extraction_strategy_config == {"summary_version": "v1"}
+        assert result.metadata == {
+            "source_session_id": "session-456",
+            "message_count": 2,
+        }
         assert result.dist == 0.2
         assert result.discrete_memory_extracted == "t"
+
+    def test_data_to_memory_result_preserves_empty_extraction_strategy(self):
+        """Explicit empty extraction_strategy should not trigger legacy fallback."""
+        mock_index = MagicMock()
+        mock_embeddings = MockEmbeddings()
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        result = db._data_to_memory_result(
+            {
+                "id_": "test-123",
+                "text": "This is a test memory",
+                "memory_type": "semantic",
+                "extraction_strategy": "",
+            }
+        )
+
+        assert result.extraction_strategy == ""
+
+    def test_data_to_memory_result_defaults_missing_extraction_strategy(self):
+        """Missing extraction_strategy should retain legacy read defaults."""
+        mock_index = MagicMock()
+        mock_embeddings = MockEmbeddings()
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        semantic_result = db._data_to_memory_result(
+            {
+                "id_": "semantic-123",
+                "text": "This is a semantic memory",
+                "memory_type": "semantic",
+            }
+        )
+        message_result = db._data_to_memory_result(
+            {
+                "id_": "message-123",
+                "text": "This is a message memory",
+                "memory_type": "message",
+            }
+        )
+
+        assert semantic_result.extraction_strategy == "discrete"
+        assert message_result.extraction_strategy == "message"
+
+    def test_redis_schema_includes_extraction_metadata_fields(self):
+        """RedisVL schema should expose extraction strategy fields."""
+        schema = _build_redis_schema()
+        fields = {field["name"]: field for field in schema["fields"]}
+
+        assert fields["extraction_strategy"]["type"] == "tag"
+        assert fields["extraction_strategy_config"]["type"] == "text"
+        assert fields["metadata"]["type"] == "text"
+
+    def test_build_filter_expression_supports_extraction_strategy(self):
+        """The RedisVL filter expression should include extraction_strategy."""
+        mock_index = MagicMock()
+        mock_embeddings = MockEmbeddings()
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        expression = db._build_filter_expression(
+            extraction_strategy=ExtractionStrategy(eq="summary")
+        )
+
+        assert "extraction_strategy" in str(expression)
+        assert "summary" in str(expression)
 
     @pytest.mark.asyncio
     async def test_add_memories_with_mock_index(self):

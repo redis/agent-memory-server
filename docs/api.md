@@ -589,6 +589,7 @@ A memory record
 | `event_date` | string \| null | No | Date/time when the event described in this memory occurred ( |
 | `extraction_strategy` | string | No | Memory extraction strategy used when this was promoted from  |
 | `extraction_strategy_config` | object | No | Configuration for the extraction strategy used |
+| `metadata` | object | No | Strategy-specific metadata and provenance |
 
 ### CreateMemoryRecordRequest
 
@@ -643,6 +644,7 @@ Payload for long-term memory search
 | `distance_threshold` | number \| null | No | Optional distance threshold to filter by |
 | `memory_type` | MemoryType \| null | No | Optional memory type to filter by |
 | `event_date` | EventDate \| null | No | Optional event date to filter by (for episodic memories) |
+| `extraction_strategy` | ExtractionStrategy \| null | No | Optional extraction strategy to filter by |
 | `limit` | integer | No | Optional limit on the number of results |
 | `offset` | integer | No | Optional offset |
 | `recency_boost` | boolean \| null | No | Enable recency-aware re-ranking (defaults to enabled if None |
@@ -745,6 +747,8 @@ group_by fields, e.g. {"user_id": "alice"} or
 | `summary` | string | Yes | Summarized text for this partition |
 | `memory_count` | integer | Yes | Number of memories that contributed to this summary |
 | `computed_at` | string | No | When this summary was computed |
+| `empty` | boolean | No | True when the partition had no matching memories |
+| `empty_reason` | string \| null | No | Machine-readable reason for an empty result, such as `no_matching_memories` |
 
 ### Task
 

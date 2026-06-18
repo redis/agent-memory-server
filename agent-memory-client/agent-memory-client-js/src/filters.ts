@@ -293,3 +293,34 @@ export class MemoryType {
     return result;
   }
 }
+
+/**
+ * Filter by extraction strategy
+ */
+export class ExtractionStrategy {
+  eq?: string;
+  in_?: string[];
+  not_eq?: string;
+  not_in?: string[];
+
+  constructor(options: {
+    eq?: string;
+    in_?: string[];
+    not_eq?: string;
+    not_in?: string[];
+  } = {}) {
+    this.eq = options.eq;
+    this.in_ = options.in_;
+    this.not_eq = options.not_eq;
+    this.not_in = options.not_in;
+  }
+
+  toJSON(): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    if (this.eq !== undefined) result.eq = this.eq;
+    if (this.in_ !== undefined) result.in_ = this.in_;
+    if (this.not_eq !== undefined) result.not_eq = this.not_eq;
+    if (this.not_in !== undefined) result.not_in = this.not_in;
+    return result;
+  }
+}

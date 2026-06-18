@@ -62,6 +62,25 @@ Create summaries for each conversation session:
 }
 ```
 
+To summarize durable thread summaries created by the `summary` extraction
+strategy, filter long-term memory by extraction metadata:
+
+```json
+{
+  "name": "coding_agent_thread_summaries",
+  "source": "long_term",
+  "group_by": ["namespace", "session_id"],
+  "filters": {
+    "memory_type": "semantic",
+    "extraction_strategy": "summary",
+    "topics": {"all": ["thread-summary"]}
+  }
+}
+```
+
+Summary views can filter by `extraction_strategy`, `topics`, and `event_date`
+in addition to `user_id`, `namespace`, `session_id`, and `memory_type`.
+
 ## API Endpoints
 
 ### Create a Summary View
@@ -135,9 +154,15 @@ Response:
   "group": {"user_id": "alice"},
   "summary": "Alice prefers dark mode and uses Python for ML projects...",
   "memory_count": 42,
+  "empty": false,
+  "empty_reason": null,
   "computed_at": "2024-01-15T10:30:00Z"
 }
 ```
+
+When no memories match a partition, the response is structured instead of a
+placeholder summary: `summary` is an empty string, `memory_count` is `0`,
+`empty` is `true`, and `empty_reason` is `"no_matching_memories"`.
 
 ### Run All Partitions (Async)
 
@@ -193,6 +218,9 @@ Both `group_by` and `filters` support:
 - `namespace` - Partition/filter by namespace
 - `session_id` - Partition/filter by session
 - `memory_type` - Partition/filter by type (`semantic`, `episodic`, `message`)
+- `extraction_strategy` - Filter by how memories were extracted (`summary`, `discrete`, `preferences`, `custom`)
+- `topics` - Filter by tag list, including `{"all": ["thread-summary"]}`
+- `event_date` - Filter by structured event date ranges
 
 ## Continuous Mode
 

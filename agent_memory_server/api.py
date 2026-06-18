@@ -753,7 +753,14 @@ async def search_long_term_memory(
     try:
         had_any_strict_filters = any(
             key in kwargs and kwargs[key] is not None
-            for key in ("topics", "entities", "namespace", "memory_type", "event_date")
+            for key in (
+                "topics",
+                "entities",
+                "namespace",
+                "memory_type",
+                "extraction_strategy",
+                "event_date",
+            )
         )
         if (
             raw_results.total == 0
@@ -762,7 +769,14 @@ async def search_long_term_memory(
             == SearchModeEnum.SEMANTIC
         ):
             fallback_kwargs = dict(kwargs)
-            for key in ("topics", "entities", "namespace", "memory_type", "event_date"):
+            for key in (
+                "topics",
+                "entities",
+                "namespace",
+                "memory_type",
+                "extraction_strategy",
+                "event_date",
+            ):
                 fallback_kwargs.pop(key, None)
 
             def _vals(f):
@@ -781,6 +795,9 @@ async def search_long_term_memory(
             entities_vals = _vals(filters.get("entities")) if filters else []
             namespace_vals = _vals(filters.get("namespace")) if filters else []
             memory_type_vals = _vals(filters.get("memory_type")) if filters else []
+            extraction_strategy_vals = (
+                _vals(filters.get("extraction_strategy")) if filters else []
+            )
 
             hint_parts: list[str] = []
             if topics_vals:
@@ -793,6 +810,11 @@ async def search_long_term_memory(
                 )
             if memory_type_vals:
                 hint_parts.append(f"type: {', '.join(sorted(set(memory_type_vals)))}")
+            if extraction_strategy_vals:
+                hint_parts.append(
+                    "extraction strategy: "
+                    + ", ".join(sorted(set(extraction_strategy_vals)))
+                )
 
             base_text = payload.text or ""
             hint_suffix = f" ({'; '.join(hint_parts)})" if hint_parts else ""
@@ -1152,12 +1174,20 @@ def _validate_summary_view_keys(payload: CreateSummaryViewRequest) -> None:
             ),
         )
 
-    allowed_group_by = {"user_id", "namespace", "session_id", "memory_type"}
+    allowed_group_by = {
+        "user_id",
+        "namespace",
+        "session_id",
+        "memory_type",
+    }
     allowed_filters = {
         "user_id",
         "namespace",
         "session_id",
         "memory_type",
+        "extraction_strategy",
+        "topics",
+        "event_date",
     }
 
     invalid_group = [k for k in payload.group_by if k not in allowed_group_by]

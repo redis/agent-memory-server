@@ -3,6 +3,7 @@ package com.redis.agentmemory.models.longtermemory;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
+import java.util.Map;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -19,6 +20,9 @@ class MemoryRecordTest {
         assertNotNull(record.getUpdatedAt());
         assertEquals("f", record.getDiscreteMemoryExtracted());
         assertEquals(MemoryType.MESSAGE, record.getMemoryType());
+        assertEquals("discrete", record.getExtractionStrategy());
+        assertNotNull(record.getExtractionStrategyConfig());
+        assertNotNull(record.getMetadata());
     }
 
     @Test
@@ -45,6 +49,9 @@ class MemoryRecordTest {
         record.setEntities(entities);
 
         record.setMemoryType(MemoryType.SEMANTIC);
+        record.setExtractionStrategy("summary");
+        record.setExtractionStrategyConfig(Map.of("summary_version", "v1"));
+        record.setMetadata(Map.of("message_count", 2));
 
         assertEquals("Test memory", record.getText());
         assertEquals("session-123", record.getSessionId());
@@ -53,5 +60,8 @@ class MemoryRecordTest {
         assertEquals(topics, record.getTopics());
         assertEquals(entities, record.getEntities());
         assertEquals(MemoryType.SEMANTIC, record.getMemoryType());
+        assertEquals("summary", record.getExtractionStrategy());
+        assertEquals("v1", record.getExtractionStrategyConfig().get("summary_version"));
+        assertEquals(2, record.getMetadata().get("message_count"));
     }
 }

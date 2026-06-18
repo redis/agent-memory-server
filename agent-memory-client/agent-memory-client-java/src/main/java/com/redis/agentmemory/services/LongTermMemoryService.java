@@ -106,6 +106,9 @@ public class LongTermMemoryService extends BaseService {
         if (request.getDistanceThreshold() != null) {
             payload.put("distance_threshold", request.getDistanceThreshold());
         }
+        if (request.getExtractionStrategy() != null) {
+            payload.put("extraction_strategy", Map.of("eq", request.getExtractionStrategy()));
+        }
 
         // Add recency boost parameters if present
         if (request.getRecencyBoost() != null) {

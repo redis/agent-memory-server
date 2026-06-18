@@ -21,6 +21,7 @@ from agent_memory_server.filters import (
     CreatedAt,
     Entities,
     EventDate,
+    ExtractionStrategy,
     LastAccessed,
     MemoryType,
     Namespace,
@@ -468,6 +469,7 @@ async def search_long_term_memory(
     last_accessed: LastAccessed | None = None,
     user_id: UserId | None = None,
     memory_type: MemoryType | None = None,
+    extraction_strategy: ExtractionStrategy | None = None,
     event_date: EventDate | None = None,
     distance_threshold: float | None = None,
     limit: int = 10,
@@ -578,6 +580,7 @@ async def search_long_term_memory(
         last_accessed: Filter by last access date
         user_id: Filter by user ID
         memory_type: Filter by memory type
+        extraction_strategy: Filter by extraction strategy
         event_date: Filter by event date (for episodic memories)
         distance_threshold: Distance threshold for semantic search
         limit: Maximum number of results
@@ -617,6 +620,7 @@ async def search_long_term_memory(
             last_accessed=last_accessed,
             user_id=user_id,
             memory_type=memory_type,
+            extraction_strategy=extraction_strategy,
             event_date=event_date,
             distance_threshold=distance_threshold,
             limit=limit,
