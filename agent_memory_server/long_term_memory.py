@@ -1267,6 +1267,7 @@ async def index_long_term_memories(
         for memory in valid_memories:
             current_memory = memory
             was_deduplicated = False
+            is_summary_memory = current_memory.extraction_strategy == "summary"
 
             # Check for id-based duplicates
             if not was_deduplicated:
@@ -1282,7 +1283,7 @@ async def index_long_term_memories(
                     current_memory = deduped_memory or current_memory
 
             # Check for hash-based duplicates
-            if not was_deduplicated:
+            if not was_deduplicated and not is_summary_memory:
                 deduped_memory, was_dup = await deduplicate_by_hash(
                     memory=current_memory,
                     redis_client=redis,
@@ -1294,7 +1295,11 @@ async def index_long_term_memories(
                     current_memory = deduped_memory or current_memory
 
             # Check for semantic duplicates (respects compact_semantic_duplicates setting)
-            if not was_deduplicated and settings.compact_semantic_duplicates:
+            if (
+                not was_deduplicated
+                and not is_summary_memory
+                and settings.compact_semantic_duplicates
+            ):
                 deduped_memory, was_merged = await deduplicate_by_semantic_search(
                     memory=current_memory,
                     redis_client=redis,
