@@ -590,6 +590,12 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         user_id = fields.get("user_id") or None
         namespace = fields.get("namespace") or None
 
+        extraction_strategy = fields.get("extraction_strategy")
+        if extraction_strategy is None:
+            extraction_strategy = (
+                "message" if fields.get("memory_type") == "message" else "discrete"
+            )
+
         return MemoryRecordResult(
             text=fields.get("text", ""),
             id=fields.get("id_", ""),
@@ -606,8 +612,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
             memory_hash=fields.get("memory_hash", ""),
             discrete_memory_extracted=fields.get("discrete_memory_extracted", "f"),
             memory_type=fields.get("memory_type", "message"),
-            extraction_strategy=fields.get("extraction_strategy")
-            or ("message" if fields.get("memory_type") == "message" else "discrete"),
+            extraction_strategy=extraction_strategy,
             extraction_strategy_config=parse_json_dict(
                 fields.get("extraction_strategy_config")
             ),

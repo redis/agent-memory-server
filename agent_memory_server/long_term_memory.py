@@ -615,6 +615,45 @@ def _memory_data_to_record(
     )
 
 
+def _coalesce_summary_memory_data(
+    memories_data: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    valid_memories = [memory for memory in memories_data if memory.get("text")]
+    if len(valid_memories) <= 1:
+        return valid_memories
+
+    coalesced = dict(valid_memories[0])
+    coalesced["text"] = "\n\n".join(
+        str(memory["text"]).strip()
+        for memory in valid_memories
+        if str(memory.get("text", "")).strip()
+    )
+    coalesced["type"] = "semantic"
+    coalesced["topics"] = sorted(
+        {
+            topic
+            for memory in valid_memories
+            for topic in (sanitize_tag_values(memory.get("topics", [])) or [])
+        }
+    )
+    coalesced["entities"] = sorted(
+        {
+            entity
+            for memory in valid_memories
+            for entity in (sanitize_tag_values(memory.get("entities", [])) or [])
+        }
+    )
+
+    metadata: dict[str, Any] = {}
+    for memory in valid_memories:
+        if isinstance(memory.get("metadata"), dict):
+            metadata.update(memory["metadata"])
+    if metadata:
+        coalesced["metadata"] = metadata
+
+    return [coalesced]
+
+
 async def extract_memories_from_session_thread(
     session_id: str,
     namespace: str | None = None,
@@ -695,6 +734,14 @@ async def extract_memories_from_session_thread(
             strategy_config.strategy,
         )
 
+        valid_memories_data = [
+            memory_data
+            for memory_data in memories_data or []
+            if memory_data.get("text")
+        ]
+        if strategy_config.strategy == "summary":
+            valid_memories_data = _coalesce_summary_memory_data(valid_memories_data)
+
         extraction_time = datetime.now(UTC)
         return [
             _memory_data_to_record(
@@ -703,8 +750,7 @@ async def extract_memories_from_session_thread(
                 thread_context=thread_context,
                 extraction_time=extraction_time,
             )
-            for memory_data in memories_data or []
-            if memory_data.get("text")
+            for memory_data in valid_memories_data
         ]
     except Exception as e:
         logger.error(f"Error extracting memories from session thread {session_id}: {e}")

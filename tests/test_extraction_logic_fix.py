@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from agent_memory_server.long_term_memory import (
+    _coalesce_summary_memory_data,
     extract_memories_from_session_thread,
     promote_working_memory_to_long_term,
     run_delayed_extraction,
@@ -547,6 +548,37 @@ class TestExtractionLogicFixes:
         call_context = mock_strategy.extract_memories.await_args.kwargs["context"]
         assert "[USER]: We should use Redis for search." in call_text
         assert call_context["source_message_ids"] == ["msg-1", "msg-2"]
+
+    def test_summary_strategy_coalesces_multiple_model_memories(self):
+        """Summary extraction should produce one record even if the model returns many."""
+        coalesced = _coalesce_summary_memory_data(
+            [
+                {
+                    "type": "semantic",
+                    "text": "User chose Redis for search.",
+                    "topics": ["redis"],
+                    "entities": ["Redis"],
+                },
+                {
+                    "type": "semantic",
+                    "text": "User plans to add dashboard filters.",
+                    "topics": ["dashboard"],
+                    "entities": ["User"],
+                },
+            ]
+        )
+
+        assert coalesced == [
+            {
+                "type": "semantic",
+                "text": (
+                    "User chose Redis for search.\n\n"
+                    "User plans to add dashboard filters."
+                ),
+                "topics": ["dashboard", "redis"],
+                "entities": ["Redis", "User"],
+            }
+        ]
 
     @pytest.mark.asyncio
     async def test_summary_strategy_skips_unchanged_existing_summary(

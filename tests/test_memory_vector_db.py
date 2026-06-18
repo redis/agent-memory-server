@@ -182,6 +182,47 @@ class TestMemoryVectorDatabase:
         assert result.dist == 0.2
         assert result.discrete_memory_extracted == "t"
 
+    def test_data_to_memory_result_preserves_empty_extraction_strategy(self):
+        """Explicit empty extraction_strategy should not trigger legacy fallback."""
+        mock_index = MagicMock()
+        mock_embeddings = MockEmbeddings()
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        result = db._data_to_memory_result(
+            {
+                "id_": "test-123",
+                "text": "This is a test memory",
+                "memory_type": "semantic",
+                "extraction_strategy": "",
+            }
+        )
+
+        assert result.extraction_strategy == ""
+
+    def test_data_to_memory_result_defaults_missing_extraction_strategy(self):
+        """Missing extraction_strategy should retain legacy read defaults."""
+        mock_index = MagicMock()
+        mock_embeddings = MockEmbeddings()
+        db = RedisVLMemoryVectorDatabase(mock_index, mock_embeddings)
+
+        semantic_result = db._data_to_memory_result(
+            {
+                "id_": "semantic-123",
+                "text": "This is a semantic memory",
+                "memory_type": "semantic",
+            }
+        )
+        message_result = db._data_to_memory_result(
+            {
+                "id_": "message-123",
+                "text": "This is a message memory",
+                "memory_type": "message",
+            }
+        )
+
+        assert semantic_result.extraction_strategy == "discrete"
+        assert message_result.extraction_strategy == "message"
+
     def test_redis_schema_includes_extraction_metadata_fields(self):
         """RedisVL schema should expose extraction strategy fields."""
         schema = _build_redis_schema()
