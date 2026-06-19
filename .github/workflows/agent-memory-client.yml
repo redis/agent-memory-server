@@ -31,11 +31,11 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Run tests
-        working-directory: agent-memory-client/agent-memory-client-java
+        working-directory: V0/agent-memory-client/agent-memory-client-java
         run: ./gradlew test
 
       - name: Build
-        working-directory: agent-memory-client/agent-memory-client-java
+        working-directory: V0/agent-memory-client/agent-memory-client-java
         run: ./gradlew build
 
   test-js:
@@ -54,15 +54,15 @@ jobs:
           node-version: ${{ matrix.node-version }}
 
       - name: Install dependencies
-        working-directory: agent-memory-client/agent-memory-client-js
+        working-directory: V0/agent-memory-client/agent-memory-client-js
         run: npm ci
 
       - name: Run tests with coverage
-        working-directory: agent-memory-client/agent-memory-client-js
+        working-directory: V0/agent-memory-client/agent-memory-client-js
         run: npm run test:coverage -- --run
 
       - name: Build
-        working-directory: agent-memory-client/agent-memory-client-js
+        working-directory: V0/agent-memory-client/agent-memory-client-js
         run: npm run build
 
   test:
@@ -84,7 +84,7 @@ jobs:
         uses: astral-sh/setup-uv@v3
 
       - name: Install dependencies
-        working-directory: agent-memory-client
+        working-directory: V0/agent-memory-client
         run: uv sync --extra dev
 
       - name: Run pre-commit
@@ -92,7 +92,7 @@ jobs:
           uv run pre-commit run --all-files
 
       - name: Run tests
-        working-directory: agent-memory-client
+        working-directory: V0/agent-memory-client
         run: uv run pytest tests/ --cov=agent_memory_client --cov-report=xml
 
   publish-testpypi:
@@ -118,14 +118,14 @@ jobs:
           pip install build
 
       - name: Build package
-        working-directory: agent-memory-client
+        working-directory: V0/agent-memory-client
         run: python -m build
 
       - name: Publish package to TestPyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
-          packages-dir: agent-memory-client/dist/
+          packages-dir: V0/agent-memory-client/dist/
 
   publish-pypi:
     name: Publish to PyPI
@@ -150,13 +150,13 @@ jobs:
           pip install build
 
       - name: Build package
-        working-directory: agent-memory-client
+        working-directory: V0/agent-memory-client
         run: python -m build
 
       - name: Publish package to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: agent-memory-client/dist/
+          packages-dir: V0/agent-memory-client/dist/
 
   publish-npm:
     name: Publish to npm
@@ -176,15 +176,15 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
-        working-directory: agent-memory-client/agent-memory-client-js
+        working-directory: V0/agent-memory-client/agent-memory-client-js
         run: npm ci
 
       - name: Build
-        working-directory: agent-memory-client/agent-memory-client-js
+        working-directory: V0/agent-memory-client/agent-memory-client-js
         run: npm run build
 
       - name: Publish to npm
-        working-directory: agent-memory-client/agent-memory-client-js
+        working-directory: V0/agent-memory-client/agent-memory-client-js
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -211,7 +211,7 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/client-java/v}" >> $GITHUB_OUTPUT
 
       - name: Build and publish
-        working-directory: agent-memory-client/agent-memory-client-java
+        working-directory: V0/agent-memory-client/agent-memory-client-java
         run: ./gradlew publish -Pversion=${{ steps.version.outputs.VERSION }}
         env:
           ORG_GRADLE_PROJECT_signingKey: ${{ secrets.GPG_SIGNING_KEY }}
@@ -247,12 +247,12 @@ jobs:
 #         uses: pypa/gh-action-pypi-publish@release/v1
 #         with:
 #           repository-url: https://test.pypi.org/legacy/
-#           packages-dir: agent-memory-client/dist/
+#           packages-dir: V0/agent-memory-client/dist/
 #           password: ${{ secrets.TEST_PYPI_API_TOKEN }}
 #
 # For PyPI job, replace the publish step with:
 #       - name: Publish package to PyPI
 #         uses: pypa/gh-action-pypi-publish@release/v1
 #         with:
-#           packages-dir: agent-memory-client/dist/
+#           packages-dir: V0/agent-memory-client/dist/
 #           password: ${{ secrets.PYPI_API_TOKEN }}

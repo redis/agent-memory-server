@@ -3,7 +3,7 @@
     "agent-memory": {
       "command": "uv",
       "args": ["run", "agent-memory", "mcp"],
-      "cwd": "/workspace",
+      "cwd": "/workspace/V0",
       "env": {
         "REDIS_URL": "redis://redis:6379",
         "DISABLE_AUTH": "true",

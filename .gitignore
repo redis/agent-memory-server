@@ -173,7 +173,7 @@ venv.bak/
 .ropeproject
 
 # mkdocs documentation
-/site
+/V0/site
 
 # mypy
 .mypy_cache/
@@ -233,14 +233,16 @@ libs/redis/docs/.Trash*
 *.pyc
 .ai
 .claude
+.omc/
+.omx/
 TASK_MEMORY.md
 *.code-workspace
-/agent-memory-client/agent-memory-client-java/.gradle/
+/V0/agent-memory-client/agent-memory-client-java/.gradle/
 augment*.md
 dev_docs/
 
 # Root-level Node artifacts (workbench has its own)
-/node_modules/
-/package.json
-/package-lock.json
+/V0/node_modules/
+/V0/package.json
+/V0/package-lock.json
 .gitnexus

@@ -1,0 +1,311 @@
+
+<div align=center>
+
+# Redis Agent Memory Server
+
+A memory layer for AI agents.
+
+  **[Documentation](https://redis.github.io/agent-memory-server/)** • **[GitHub](https://github.com/redis/agent-memory-server)** • **[Docker](https://hub.docker.com/r/redislabs/agent-memory-server)**
+
+</div>
+
+## Features
+- **Dual Interface**: REST API and Model Context Protocol (MCP) server
+- **Two-Tier Memory**: Working memory (session-scoped) and long-term memory (persistent)
+- **Configurable Memory Strategies**: Customize how memories are extracted (discrete, summary, preferences, custom)
+- **Semantic, Keyword & Hybrid Search**: Vector-based similarity, full-text keyword, and combined hybrid search with metadata filtering
+- **Flexible Backends**: Pluggable memory vector database factory system
+- **Multi-Provider LLM Support**: OpenAI, Anthropic, AWS Bedrock, Ollama, Azure, Gemini via [LiteLLM](https://docs.litellm.ai/)
+- **AI Integration**: Automatic topic extraction, entity recognition, and conversation summarization
+- **Python SDK**: Easy integration with AI applications
+
+## Quick Start
+
+### 1. Installation
+
+#### Using Docker
+
+Pre-built Docker images are available from:
+- **Docker Hub**: [redislabs/agent-memory-server](https://hub.docker.com/r/redislabs/agent-memory-server)
+- **GitHub Packages**: [ghcr.io/redis/agent-memory-server](https://github.com/redis/agent-memory-server/pkgs/container/agent-memory-server)
+
+**Quick Start (Development Mode)**:
+```bash
+# Start with docker compose
+# Note: The 'api' service exposes port 8000.
+# Choose one depending on your needs:
+
+# Option 1: Development mode (no worker, immediate task execution)
+docker compose up api redis
+
+# Option 2: Production-like mode (with background worker)
+docker compose up api task-worker redis mcp
+
+# Or run just the API server (requires separate Redis)
+docker run -p 8000:8000 \
+  -e REDIS_URL=redis://your-redis:6379 \
+  -e OPENAI_API_KEY=your-key \
+  redislabs/agent-memory-server:latest \
+  agent-memory api --host 0.0.0.0 --port 8000 --task-backend=asyncio
+```
+
+By default, the image runs the API with the **Docket** task backend, which
+expects a separate `agent-memory task-worker` process for non-blocking
+background tasks. The example above shows how to override this to use the
+asyncio backend for a single-container development setup.
+
+If you are connecting to a Redis Cluster and want Docket-backed workers, set
+`REDIS_URL` to a `redis+cluster://...` or `rediss+cluster://...` URL. AMS will
+translate that URL for its other Redis clients internally.
+
+**Production Deployment**:
+
+For production, run separate containers for the API and background workers:
+
+```bash
+# API Server (without background worker)
+docker run -p 8000:8000 \
+  -e REDIS_URL=redis://your-redis:6379 \
+  -e OPENAI_API_KEY=your-key \
+  -e DISABLE_AUTH=false \
+  redislabs/agent-memory-server:latest \
+  agent-memory api --host 0.0.0.0 --port 8000
+
+# Background Worker (separate container)
+docker run \
+  -e REDIS_URL=redis://your-redis:6379 \
+  -e OPENAI_API_KEY=your-key \
+  redislabs/agent-memory-server:latest \
+  agent-memory task-worker --concurrency 10
+
+# MCP Server (if needed)
+docker run -p 9000:9000 \
+  -e REDIS_URL=redis://your-redis:6379 \
+  -e OPENAI_API_KEY=your-key \
+  redislabs/agent-memory-server:latest \
+  agent-memory mcp --mode sse --port 9000
+```
+
+#### From Source
+
+```bash
+# Install dependencies
+pip install uv
+uv sync --all-extras
+
+# Start Redis
+docker compose up redis
+
+# Start the server (development mode, asyncio task backend)
+uv run agent-memory api --task-backend=asyncio
+```
+
+### Core CLI Commands
+
+| Command | Typical Use | Backend Behavior |
+|---|---|---|
+| `uv run agent-memory api --task-backend=asyncio` | Local development (single process) | Uses `asyncio` inline tasks; no separate worker |
+| `uv run agent-memory api` | Production API server | Defaults to `docket`; run `uv run agent-memory task-worker` |
+| `uv run agent-memory mcp` | Claude Desktop / local stdio MCP | Defaults to `asyncio`; no worker required |
+| `uv run agent-memory mcp --mode sse --port 9000 --task-backend docket` | Network MCP with shared workers | Uses `docket`; run `uv run agent-memory task-worker` |
+| `uv run agent-memory task-worker --concurrency 10` | Background processing | Processes queued Docket tasks |
+
+### 2. Python SDK
+
+Allowing the server to extract memories from working memory is easiest. However, you can also manually create memories:
+
+```bash
+# Install the client
+pip install agent-memory-client
+
+# For LangChain integration
+pip install agent-memory-client langchain-core
+```
+
+```python
+from agent_memory_client import MemoryAPIClient, MemoryClientConfig
+
+# Connect to server
+client = MemoryAPIClient(MemoryClientConfig(base_url="http://localhost:8000"))
+
+# Store memories
+await client.create_long_term_memory([
+    {
+        "text": "User prefers morning meetings",
+        "user_id": "user123",
+        "memory_type": "preference"
+    }
+])
+
+# Search memories
+results = await client.search_long_term_memory(
+    text="What time does the user like meetings?",
+    user_id="user123"
+)
+```
+
+> **Note**: While you can call client functions directly as shown above, using **MCP or SDK-provided tool calls** is recommended for AI agents as it provides better integration, automatic context management, and follows AI-native patterns. For the best performance, you can add messages to working memory and allow the server to extract memories in the background. See **[Memory Integration Patterns](https://redis.github.io/agent-memory-server/memory-integration-patterns/)** for guidance on when to use each approach.
+
+
+#### LangChain Integration
+
+For LangChain users, the SDK provides automatic conversion of memory client tools to LangChain-compatible tools, eliminating the need for manual wrapping with `@tool` decorators.
+
+```python
+from agent_memory_client import create_memory_client
+from agent_memory_client.integrations.langchain import get_memory_tools
+from langchain.agents import create_agent
+from langchain_openai import ChatOpenAI
+
+# Get LangChain-compatible tools automatically
+memory_client = await create_memory_client("http://localhost:8000")
+tools = get_memory_tools(
+    memory_client=memory_client,
+    session_id="my_session",
+    user_id="alice"
+)
+
+# Create a LangGraph-based agent with memory tools
+llm = ChatOpenAI(model="gpt-4o")
+agent = create_agent(
+    llm, tools,
+    system_prompt="You are a helpful assistant with memory."
+)
+
+# Use the agent
+result = await agent.ainvoke({"messages": [("human", "Remember that I love pizza")]})
+print(result["messages"][-1].content)
+```
+
+### 3. MCP Integration
+
+```bash
+# Start MCP server (stdio mode - recommended for Claude Desktop)
+uv run agent-memory mcp
+
+# Or with SSE mode (development mode, default asyncio backend)
+uv run agent-memory mcp --mode sse --port 9000
+```
+
+### MCP config via uvx (recommended)
+
+Use this in your MCP tool configuration (e.g., Claude Desktop mcp.json):
+
+```json
+{
+  "mcpServers": {
+    "memory": {
+      "command": "uvx",
+      "args": ["--from", "agent-memory-server", "agent-memory", "mcp"],
+      "env": {
+        "DISABLE_AUTH": "true",
+        "REDIS_URL": "redis://localhost:6379",
+        "OPENAI_API_KEY": "<your-openai-key>"
+      }
+    }
+  }
+}
+```
+
+Notes:
+- API keys: Set either `OPENAI_API_KEY` (default models use OpenAI) or switch to Anthropic by setting `ANTHROPIC_API_KEY` and `GENERATION_MODEL` to an Anthropic model (e.g., `claude-3-5-haiku-20241022`).
+
+- Make sure your MCP host can find `uvx` (on its PATH or by using an absolute command path).
+  - macOS: `brew install uv`
+  - If not on PATH, set `"command"` to the absolute path (e.g., `/opt/homebrew/bin/uvx` on Apple Silicon, `/usr/local/bin/uvx` on Intel macOS). On Linux, `~/.local/bin/uvx` is common. See https://docs.astral.sh/uv/getting-started/
+- For production, remove `DISABLE_AUTH` and configure proper authentication.
+
+## LLM Provider Configuration
+
+The server uses [LiteLLM](https://docs.litellm.ai/) to support 100+ LLM providers. Configure via environment variables:
+
+```bash
+# OpenAI (default)
+export OPENAI_API_KEY=sk-...
+export GENERATION_MODEL=gpt-4o
+export EMBEDDING_MODEL=text-embedding-3-small
+
+# Anthropic
+export ANTHROPIC_API_KEY=sk-ant-...
+export GENERATION_MODEL=claude-3-5-sonnet-20241022
+export EMBEDDING_MODEL=text-embedding-3-small  # Use OpenAI for embeddings
+
+# AWS Bedrock
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_REGION_NAME=us-east-1
+export GENERATION_MODEL=anthropic.claude-sonnet-4-5-20250929-v1:0
+export EMBEDDING_MODEL=bedrock/amazon.titan-embed-text-v2:0  # Note: bedrock/ prefix required
+
+# Ollama (local)
+export OLLAMA_API_BASE=http://localhost:11434
+export GENERATION_MODEL=ollama/llama2
+export EMBEDDING_MODEL=ollama/nomic-embed-text
+export REDISVL_VECTOR_DIMENSIONS=768  # Required for Ollama
+```
+
+See **[LLM Providers](https://redis.github.io/agent-memory-server/llm-providers/)** for complete configuration options.
+
+## Documentation
+
+📚 **[Full Documentation](https://redis.github.io/agent-memory-server/)** - Complete guides, API reference, and examples
+
+### Key Documentation Sections:
+
+- **[Quick Start Guide](https://redis.github.io/agent-memory-server/quick-start/)** - Get up and running in minutes
+- **[Python SDK](https://redis.github.io/agent-memory-server/python-sdk/)** - Complete SDK reference with examples
+- **[LangChain Integration](https://redis.github.io/agent-memory-server/langchain-integration/)** - Automatic tool conversion for LangChain
+- **[LLM Providers](https://redis.github.io/agent-memory-server/llm-providers/)** - Configure OpenAI, Anthropic, AWS Bedrock, Ollama, and more
+- **[Embedding Providers](https://redis.github.io/agent-memory-server/embedding-providers/)** - Configure embedding models for semantic search
+- **[Custom Memory Vector Databases](https://redis.github.io/agent-memory-server/custom-memory-vector-db/)** - Configure custom memory vector databases
+- **[Authentication](https://redis.github.io/agent-memory-server/authentication/)** - OAuth2/JWT setup for production
+- **[Memory Types](https://redis.github.io/agent-memory-server/long-term-memory/#memory-types)** - Understanding semantic vs episodic memory
+- **[API Reference](https://redis.github.io/agent-memory-server/api/)** - REST API endpoints
+- **[MCP Protocol](https://redis.github.io/agent-memory-server/mcp/)** - Model Context Protocol integration
+
+## Architecture
+
+```
+Working Memory (Session-scoped)  →  Long-term Memory (Persistent)
+    ↓                                      ↓
+- Messages                         - Semantic, keyword & hybrid search
+- Structured memories              - Topic modeling
+- Summary of past messages         - Entity recognition
+- Metadata                         - Deduplication
+```
+
+## Use Cases
+
+- **AI Assistants**: Persistent memory across conversations
+- **Customer Support**: Context from previous interactions
+- **Personal AI**: Learning user preferences and history
+- **Research Assistants**: Accumulating knowledge over time
+- **Chatbots**: Maintaining context and personalization
+
+## Development
+
+```bash
+# Initial setup
+make setup
+
+# Full local verification (matches CI lint + service tests)
+make verify
+
+# Or run individual layers
+make pre-commit
+make test
+make test-api
+
+# Start development stack (choose one based on your needs)
+docker compose up api redis                    # Development mode
+docker compose up api task-worker redis mcp    # Production-like mode
+```
+
+`make verify` requires `OPENAI_API_KEY` because it runs `make test-api`.
+## License
+
+Apache License 2.0 - see [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+We welcome contributions! Please see the [development documentation](docs/development.md) for guidelines.
