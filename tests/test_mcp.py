@@ -15,6 +15,7 @@ from agent_memory_server.models import (
     MemoryRecord,
     MemoryRecordResult,
     MemoryRecordResults,
+    SearchModeEnum,
     SystemMessage,
     WorkingMemoryResponse,
 )
@@ -263,6 +264,7 @@ class TestMCP:
                     "namespace": {"eq": "test-namespace"},
                     "topics": {"any": ["test-topic"]},
                     "entities": {"any": ["test-entity"]},
+                    "search_mode": "hybrid",
                     "limit": 5,
                 },
             )
@@ -284,6 +286,104 @@ class TestMCP:
             assert captured_params["long_term_search"].limit == 5
             assert captured_params["long_term_search"].topics is not None
             assert captured_params["long_term_search"].entities is not None
+
+            # Verify search_mode was forwarded (hybrid_alpha and text_scorer
+            # are server-level config, not exposed to LLMs)
+            assert (
+                captured_params["long_term_search"].search_mode == SearchModeEnum.HYBRID
+            )
+
+    @pytest.mark.asyncio
+    async def test_memory_prompt_session_only_mode(self, session, monkeypatch):
+        """Test memory_prompt with include_long_term_search=False (session-only mode)."""
+        captured_params = {}
+
+        async def mock_core_memory_prompt(
+            params: MemoryPromptRequest, background_tasks, optimize_query: bool = False
+        ):
+            captured_params["query"] = params.query
+            captured_params["session"] = params.session
+            captured_params["long_term_search"] = params.long_term_search
+
+            return MemoryPromptResponse(
+                messages=[
+                    SystemMessage(
+                        content=TextContent(type="text", text="Session only response")
+                    )
+                ]
+            )
+
+        monkeypatch.setattr(
+            "agent_memory_server.mcp.core_memory_prompt", mock_core_memory_prompt
+        )
+
+        async with client_session(mcp_app._mcp_server) as client:
+            prompt = await client.call_tool(
+                "memory_prompt",
+                {
+                    "query": "Continue our conversation",
+                    "session_id": {"eq": session},
+                    "include_long_term_search": False,
+                },
+            )
+
+            assert isinstance(prompt, CallToolResult)
+            assert captured_params["session"] is not None
+            assert captured_params["session"].session_id == session
+            assert captured_params["long_term_search"] is None
+
+    @pytest.mark.asyncio
+    async def test_memory_prompt_session_only_ignores_search_params(
+        self, session, monkeypatch
+    ):
+        """Test that session-only mode does not validate search-only params."""
+        captured_params = {}
+
+        async def mock_core_memory_prompt(
+            params: MemoryPromptRequest, background_tasks, optimize_query: bool = False
+        ):
+            captured_params["long_term_search"] = params.long_term_search
+            return MemoryPromptResponse(
+                messages=[SystemMessage(content=TextContent(type="text", text="OK"))]
+            )
+
+        monkeypatch.setattr(
+            "agent_memory_server.mcp.core_memory_prompt", mock_core_memory_prompt
+        )
+
+        async with client_session(mcp_app._mcp_server) as client:
+            # This should NOT raise even though distance_threshold + keyword is invalid
+            prompt = await client.call_tool(
+                "memory_prompt",
+                {
+                    "query": "test",
+                    "session_id": {"eq": session},
+                    "include_long_term_search": False,
+                    "distance_threshold": 0.8,
+                    "search_mode": "keyword",
+                },
+            )
+
+            assert isinstance(prompt, CallToolResult)
+            assert captured_params["long_term_search"] is None
+
+    @pytest.mark.asyncio
+    async def test_memory_prompt_no_session_no_search_raises(self, mcp_test_setup):
+        """Test that omitting both session_id and include_long_term_search raises."""
+        async with client_session(mcp_app._mcp_server) as client:
+            result = await client.call_tool(
+                "memory_prompt",
+                {
+                    "query": "test",
+                    "include_long_term_search": False,
+                },
+            )
+            assert result.isError
+            assert any(
+                "session_id" in str(c.text).lower()
+                or "include_long_term_search" in str(c.text).lower()
+                for c in result.content
+            )
 
     @pytest.mark.asyncio
     async def test_set_working_memory_tool(self, mcp_test_setup):
@@ -457,9 +557,9 @@ class TestMCP:
             namespace="user_preferences",
         )
 
-        assert (
-            lenient_memory.discrete_memory_extracted == "t"
-        ), f"LenientMemoryRecord should default to 't', got '{lenient_memory.discrete_memory_extracted}'"
+        assert lenient_memory.discrete_memory_extracted == "t", (
+            f"LenientMemoryRecord should default to 't', got '{lenient_memory.discrete_memory_extracted}'"
+        )
         assert lenient_memory.memory_type.value == "semantic"
         assert lenient_memory.id is not None
 
@@ -468,9 +568,9 @@ class TestMCP:
             id="test_001", text="User prefers coffee", memory_type="semantic"
         )
 
-        assert (
-            extracted_memory.discrete_memory_extracted == "t"
-        ), f"ExtractedMemoryRecord should default to 't', got '{extracted_memory.discrete_memory_extracted}'"
+        assert extracted_memory.discrete_memory_extracted == "t", (
+            f"ExtractedMemoryRecord should default to 't', got '{extracted_memory.discrete_memory_extracted}'"
+        )
         assert extracted_memory.memory_type.value == "semantic"
 
     @pytest.mark.asyncio
@@ -621,13 +721,13 @@ class TestMCP:
                 call_args = mock_search.call_args
 
                 # background_tasks should be passed as a keyword argument
-                assert (
-                    "background_tasks" in call_args[1]
-                ), "background_tasks parameter must be passed to core_search_long_term_memory"
+                assert "background_tasks" in call_args[1], (
+                    "background_tasks parameter must be passed to core_search_long_term_memory"
+                )
                 background_tasks = call_args[1]["background_tasks"]
-                assert isinstance(
-                    background_tasks, HybridBackgroundTasks
-                ), f"background_tasks should be HybridBackgroundTasks, got {type(background_tasks)}"
+                assert isinstance(background_tasks, HybridBackgroundTasks), (
+                    f"background_tasks should be HybridBackgroundTasks, got {type(background_tasks)}"
+                )
 
     @pytest.mark.asyncio
     async def test_compact_long_term_memories(self, mcp_test_setup):

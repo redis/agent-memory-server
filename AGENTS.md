@@ -10,9 +10,8 @@ Do not use Redis Stack or other earlier versions of Redis.
 Get started in a new environment by installing `uv`:
 ```bash
 pip install uv               # Install uv (once)
-uv venv                      # Create a virtualenv (once)
-uv install --all-extras      # Install dependencies
-uv sync --all-extras         # Sync latest dependencies
+make setup                   # Create .venv, sync deps, install pre-commit hooks
+make sync                    # Sync latest dependencies
 ```
 
 ### Activate the virtual environment
@@ -29,14 +28,15 @@ code basepassing to commit.
 Run all tests like this, including tests that require API keys in the
 environment:
 ```bash
-uv run pytest --run-api-tests
+make test-api
 ```
 
 ### Linting
 
 ```bash
-uv run ruff check            # Run linting
-uv run ruff format           # Format code
+make pre-commit              # Run the exact formatting/lint hooks used in CI
+make verify                  # Run full local verification (pre-commit + API tests)
+```
 
 ### Managing Dependencies
 uv add <dependency>          # Add a dependency to pyproject.toml and update lock file
@@ -70,8 +70,7 @@ docker-compose down          # Stop all services
 IMPORTANT: This project uses `pre-commit`. You should run `pre-commit`
 before committing:
 ```bash
-uv run pre-commit install  # Install the hooks first
-uv run pre-commit run --all-files
+make pre-commit
 ```
 
 ## Important Architectural Patterns
@@ -130,11 +129,11 @@ Always use RedisVL query types for any search operations. This is a project requ
 
 The project uses `pytest` with `testcontainers` for Redis integration testing:
 
-- `uv run pytest` - Run all tests
-- `uv run pytest tests/unit/` - Unit tests only
-- `uv run pytest tests/integration/` - Integration tests (require Redis)
-- `uv run pytest -v` - Verbose output
-- `uv run pytest --cov` - With coverage
+- `make test` - Run the standard test suite
+- `make test-api` - Run all tests including API-key-dependent tests
+- `make test-unit` - Unit tests only
+- `make test-integration` - Integration tests (require Redis)
+- `make test-cov` - Run tests with coverage
 
 ## Project Structure
 
@@ -246,11 +245,11 @@ ENABLE_NER=true
 ## Development Workflow
 
 0. **Install uv**: `pip install uv` to get started with uv
-1. **Setup**: `uv install` to install dependencies
+1. **Setup**: `make setup`
 2. **Redis**: Start Redis Stack via `docker-compose up redis`
 3. **Development**: Use `DISABLE_AUTH=true` for local testing
-4. **Testing**: Run `uv run pytest` before committing
-5. **Linting**: Pre-commit hooks handle code formatting
+4. **Testing**: Run `make verify` before committing
+5. **Linting**: `make pre-commit` matches the CI lint gate exactly
 6. **Background Tasks**: Start worker with `uv run agent-memory task-worker`
 
 ## Documentation

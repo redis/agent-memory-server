@@ -6,7 +6,9 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A memory record in the system.
@@ -72,6 +74,17 @@ public class MemoryRecord {
     @JsonProperty("event_date")
     private Instant eventDate;
 
+    @NotNull
+    @JsonProperty("extraction_strategy")
+    private String extractionStrategy;
+
+    @NotNull
+    @JsonProperty("extraction_strategy_config")
+    private Map<String, Object> extractionStrategyConfig;
+
+    @NotNull
+    private Map<String, Object> metadata;
+
     public MemoryRecord() {
         this.id = UlidCreator.getUlid().toString();
         Instant now = Instant.now();
@@ -80,6 +93,9 @@ public class MemoryRecord {
         this.updatedAt = now;
         this.discreteMemoryExtracted = "f";
         this.memoryType = MemoryType.MESSAGE;
+        this.extractionStrategy = "discrete";
+        this.extractionStrategyConfig = new HashMap<>();
+        this.metadata = new HashMap<>();
     }
 
     public MemoryRecord(@NotNull String text) {
@@ -233,6 +249,33 @@ public class MemoryRecord {
         this.eventDate = eventDate;
     }
 
+    @NotNull
+    public String getExtractionStrategy() {
+        return extractionStrategy;
+    }
+
+    public void setExtractionStrategy(@NotNull String extractionStrategy) {
+        this.extractionStrategy = extractionStrategy;
+    }
+
+    @NotNull
+    public Map<String, Object> getExtractionStrategyConfig() {
+        return extractionStrategyConfig;
+    }
+
+    public void setExtractionStrategyConfig(@NotNull Map<String, Object> extractionStrategyConfig) {
+        this.extractionStrategyConfig = extractionStrategyConfig;
+    }
+
+    @NotNull
+    public Map<String, Object> getMetadata() {
+        return metadata;
+    }
+
+    public void setMetadata(@NotNull Map<String, Object> metadata) {
+        this.metadata = metadata;
+    }
+
     @Override
     public String toString() {
         return "MemoryRecord{" +
@@ -251,6 +294,9 @@ public class MemoryRecord {
                 ", memoryType=" + memoryType +
                 ", extractedFrom=" + extractedFrom +
                 ", eventDate=" + eventDate +
+                ", extractionStrategy='" + extractionStrategy + '\'' +
+                ", extractionStrategyConfig=" + extractionStrategyConfig +
+                ", metadata=" + metadata +
                 '}';
     }
 
@@ -282,6 +328,9 @@ public class MemoryRecord {
         private Instant persistedAt;
         private List<String> extractedFrom;
         private Instant eventDate;
+        private String extractionStrategy;
+        private Map<String, Object> extractionStrategyConfig;
+        private Map<String, Object> metadata;
 
         private Builder() {
             // Initialize with defaults for extracted memories (client-created long-term memories)
@@ -292,6 +341,9 @@ public class MemoryRecord {
             this.updatedAt = now;
             this.discreteMemoryExtracted = "t";  // "t" for extracted memories
             this.memoryType = MemoryType.SEMANTIC;  // SEMANTIC for long-term memories
+            this.extractionStrategy = "manual";
+            this.extractionStrategyConfig = new HashMap<>();
+            this.metadata = new HashMap<>();
         }
 
         /**
@@ -316,6 +368,9 @@ public class MemoryRecord {
             this.persistedAt = record.persistedAt;
             this.extractedFrom = record.extractedFrom;
             this.eventDate = record.eventDate;
+            this.extractionStrategy = record.extractionStrategy;
+            this.extractionStrategyConfig = record.extractionStrategyConfig;
+            this.metadata = record.metadata;
             return this;
         }
 
@@ -480,6 +535,36 @@ public class MemoryRecord {
         }
 
         /**
+         * Sets the extraction strategy.
+         * @param extractionStrategy the extraction strategy
+         * @return this builder
+         */
+        public Builder extractionStrategy(@NotNull String extractionStrategy) {
+            this.extractionStrategy = extractionStrategy;
+            return this;
+        }
+
+        /**
+         * Sets the extraction strategy configuration.
+         * @param extractionStrategyConfig the extraction strategy configuration
+         * @return this builder
+         */
+        public Builder extractionStrategyConfig(@NotNull Map<String, Object> extractionStrategyConfig) {
+            this.extractionStrategyConfig = extractionStrategyConfig;
+            return this;
+        }
+
+        /**
+         * Sets additional metadata.
+         * @param metadata the metadata map
+         * @return this builder
+         */
+        public Builder metadata(@NotNull Map<String, Object> metadata) {
+            this.metadata = metadata;
+            return this;
+        }
+
+        /**
          * Builds the MemoryRecord instance.
          * @return a new MemoryRecord
          * @throws IllegalStateException if required fields are not set
@@ -506,6 +591,9 @@ public class MemoryRecord {
             record.persistedAt = this.persistedAt;
             record.extractedFrom = this.extractedFrom;
             record.eventDate = this.eventDate;
+            record.extractionStrategy = this.extractionStrategy;
+            record.extractionStrategyConfig = this.extractionStrategyConfig;
+            record.metadata = this.metadata;
             return record;
         }
     }

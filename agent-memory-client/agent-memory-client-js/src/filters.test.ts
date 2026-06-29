@@ -9,6 +9,7 @@ import {
   LastAccessed,
   EventDate,
   MemoryType,
+  ExtractionStrategy,
 } from "./filters";
 
 describe("SessionId", () => {
@@ -255,6 +256,33 @@ describe("MemoryType", () => {
 
   it("should create empty filter", () => {
     const filter = new MemoryType();
+    expect(filter.toJSON()).toEqual({});
+  });
+});
+
+describe("ExtractionStrategy", () => {
+  it("should create with eq option", () => {
+    const filter = new ExtractionStrategy({ eq: "summary" });
+    expect(filter.toJSON()).toEqual({ eq: "summary" });
+  });
+
+  it("should create with in_ option", () => {
+    const filter = new ExtractionStrategy({ in_: ["summary", "discrete"] });
+    expect(filter.toJSON()).toEqual({ in_: ["summary", "discrete"] });
+  });
+
+  it("should create with not_eq option", () => {
+    const filter = new ExtractionStrategy({ not_eq: "manual" });
+    expect(filter.toJSON()).toEqual({ not_eq: "manual" });
+  });
+
+  it("should create with not_in option", () => {
+    const filter = new ExtractionStrategy({ not_in: ["manual", "message"] });
+    expect(filter.toJSON()).toEqual({ not_in: ["manual", "message"] });
+  });
+
+  it("should create empty filter", () => {
+    const filter = new ExtractionStrategy();
     expect(filter.toJSON()).toEqual({});
   });
 });

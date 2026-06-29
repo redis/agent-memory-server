@@ -139,9 +139,9 @@ class TestDeduplicationE2E:
             limit=10,
         )
 
-        assert (
-            len(results.memories) == 1
-        ), f"Expected 1 search result, got {len(results.memories)}"
+        assert len(results.memories) == 1, (
+            f"Expected 1 search result, got {len(results.memories)}"
+        )
 
         # The merged memory should contain key information
         merged_text = results.memories[0].text.lower()

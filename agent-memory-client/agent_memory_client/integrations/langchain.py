@@ -8,9 +8,8 @@ Example:
     ```python
     from agent_memory_client import create_memory_client
     from agent_memory_client.integrations.langchain import get_memory_tools
-    from langchain.agents import create_tool_calling_agent, AgentExecutor
+    from langchain.agents import create_agent
     from langchain_openai import ChatOpenAI
-    from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
     # Initialize memory client
     memory_client = await create_memory_client("http://localhost:8000")
@@ -24,16 +23,15 @@ Example:
 
     # Use with LangChain agent
     llm = ChatOpenAI(model="gpt-4o")
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful assistant with memory."),
-        ("human", "{input}"),
-        MessagesPlaceholder("agent_scratchpad"),
-    ])
-    agent = create_tool_calling_agent(llm, tools, prompt)
-    executor = AgentExecutor(agent=agent, tools=tools)
+    agent = create_agent(
+        llm, tools,
+        system_prompt="You are a helpful assistant with memory."
+    )
 
     # Run the agent
-    result = await executor.ainvoke({"input": "Remember that I love pizza"})
+    result = await agent.ainvoke(
+        {"messages": [("human", "Remember that I love pizza")]}
+    )
     ```
 """
 
@@ -127,7 +125,7 @@ def get_memory_tools(
     tool_configs = {
         "search_memory": {
             "name": "search_memory",
-            "description": "Search long-term memory for relevant information using semantic search. Use this to recall past conversations, user preferences, or stored facts. Returns memories ranked by relevance with scores.",
+            "description": "Search long-term memory for relevant information using semantic, keyword, or hybrid search. Use this to recall past conversations, user preferences, or stored facts. Returns memories ranked by relevance with scores.",
             "func": _create_search_memory_func(memory_client),
         },
         "get_or_create_working_memory": {
@@ -224,6 +222,7 @@ def _create_search_memory_func(client: MemoryAPIClient) -> Any:
 
     async def search_memory(
         query: str,
+        search_mode: Literal["semantic", "keyword", "hybrid"] = "semantic",
         topics: list[str] | None = None,
         entities: list[str] | None = None,
         memory_type: str | None = None,
@@ -234,6 +233,7 @@ def _create_search_memory_func(client: MemoryAPIClient) -> Any:
         """Search long-term memory for relevant information."""
         result = await client.search_memory_tool(
             query=query,
+            search_mode=search_mode,
             topics=topics,
             entities=entities,
             memory_type=memory_type,

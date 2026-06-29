@@ -3,6 +3,7 @@ This module provides an abstraction layer for memory vector database operations,
 with a RedisVL-based implementation for Redis backends.
 """
 
+import json
 import logging
 import re
 from abc import ABC, abstractmethod
@@ -27,6 +28,7 @@ from agent_memory_server.filters import (
     DiscreteMemoryExtracted,
     Entities,
     EventDate,
+    ExtractionStrategy,
     Id,
     LastAccessed,
     MemoryHash,
@@ -167,6 +169,7 @@ class MemoryVectorDatabase(ABC):
         topics: Topics | None = None,
         entities: Entities | None = None,
         memory_type: MemoryType | None = None,
+        extraction_strategy: ExtractionStrategy | None = None,
         event_date: EventDate | None = None,
         memory_hash: MemoryHash | None = None,
         id: Id | None = None,
@@ -198,6 +201,7 @@ class MemoryVectorDatabase(ABC):
             topics: Optional topics filter
             entities: Optional entities filter
             memory_type: Optional memory type filter
+            extraction_strategy: Optional extraction strategy filter
             event_date: Optional event date filter
             memory_hash: Optional memory hash filter
             id: Optional memory ID filter
@@ -267,6 +271,7 @@ class MemoryVectorDatabase(ABC):
         topics: Topics | None = None,
         entities: Entities | None = None,
         memory_type: MemoryType | None = None,
+        extraction_strategy: ExtractionStrategy | None = None,
         event_date: EventDate | None = None,
         memory_hash: MemoryHash | None = None,
         id: Id | None = None,
@@ -289,6 +294,7 @@ class MemoryVectorDatabase(ABC):
             topics: Optional topics filter
             entities: Optional entities filter
             memory_type: Optional memory type filter
+            extraction_strategy: Optional extraction strategy filter
             event_date: Optional event date filter
             memory_hash: Optional memory hash filter
             id: Optional memory ID filter
@@ -393,6 +399,9 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         "memory_hash",
         "discrete_memory_extracted",
         "memory_type",
+        "extraction_strategy",
+        "extraction_strategy_config",
+        "metadata",
         "persisted_at",
         "extracted_from",
         "event_date",
@@ -457,6 +466,10 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
             if hasattr(memory.memory_type, "value")
             else str(memory.memory_type)
         )
+        extraction_strategy_config = json.dumps(
+            memory.extraction_strategy_config or {}, sort_keys=True
+        )
+        metadata = json.dumps(memory.metadata or {}, sort_keys=True)
 
         data: dict[str, Any] = {
             "text": memory.text,
@@ -465,6 +478,9 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
             "user_id": memory.user_id or "",
             "namespace": memory.namespace or "",
             "memory_type": memory_type_val,
+            "extraction_strategy": memory.extraction_strategy or "",
+            "extraction_strategy_config": extraction_strategy_config,
+            "metadata": metadata,
             "topics": topics_str,
             "entities": entities_str,
             "memory_hash": memory.memory_hash or "",
@@ -533,6 +549,21 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         persisted_at = parse_timestamp(fields.get("persisted_at"))
         event_date = parse_timestamp(fields.get("event_date"))
 
+        def parse_json_dict(val: Any) -> dict[str, Any]:
+            if val is None or val == "":
+                return {}
+            if isinstance(val, dict):
+                return val
+            if isinstance(val, bytes):
+                val = val.decode("utf-8")
+            if isinstance(val, str):
+                try:
+                    parsed = json.loads(val)
+                    return parsed if isinstance(parsed, dict) else {}
+                except json.JSONDecodeError:
+                    return {}
+            return {}
+
         # Provide defaults for required fields
         if not created_at:
             created_at = datetime.now(UTC)
@@ -559,6 +590,12 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         user_id = fields.get("user_id") or None
         namespace = fields.get("namespace") or None
 
+        extraction_strategy = fields.get("extraction_strategy")
+        if extraction_strategy is None:
+            extraction_strategy = (
+                "message" if fields.get("memory_type") == "message" else "discrete"
+            )
+
         return MemoryRecordResult(
             text=fields.get("text", ""),
             id=fields.get("id_", ""),
@@ -575,6 +612,11 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
             memory_hash=fields.get("memory_hash", ""),
             discrete_memory_extracted=fields.get("discrete_memory_extracted", "f"),
             memory_type=fields.get("memory_type", "message"),
+            extraction_strategy=extraction_strategy,
+            extraction_strategy_config=parse_json_dict(
+                fields.get("extraction_strategy_config")
+            ),
+            metadata=parse_json_dict(fields.get("metadata")),
             persisted_at=persisted_at,
             extracted_from=self._parse_list_field(fields.get("extracted_from")),
             event_date=event_date,
@@ -791,6 +833,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         topics: Topics | None = None,
         entities: Entities | None = None,
         memory_type: MemoryType | None = None,
+        extraction_strategy: ExtractionStrategy | None = None,
         event_date: EventDate | None = None,
         memory_hash: MemoryHash | None = None,
         id: Id | None = None,
@@ -817,6 +860,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
             user_id=user_id,
             namespace=namespace,
             memory_type=memory_type,
+            extraction_strategy=extraction_strategy,
             topics=topics,
             entities=entities,
             created_at=created_at,
@@ -1028,6 +1072,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
         topics: Topics | None = None,
         entities: Entities | None = None,
         memory_type: MemoryType | None = None,
+        extraction_strategy: ExtractionStrategy | None = None,
         event_date: EventDate | None = None,
         memory_hash: MemoryHash | None = None,
         id: Id | None = None,
@@ -1049,6 +1094,7 @@ class RedisVLMemoryVectorDatabase(MemoryVectorDatabase):
                 user_id=user_id,
                 namespace=namespace,
                 memory_type=memory_type,
+                extraction_strategy=extraction_strategy,
                 topics=topics,
                 entities=entities,
                 created_at=created_at,

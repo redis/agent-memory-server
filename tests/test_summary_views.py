@@ -3,6 +3,8 @@
 These tests verify that all examples from docs/summary-views.md work correctly.
 """
 
+from datetime import UTC, datetime
+
 import pytest
 
 from agent_memory_server.models import MemoryRecord, SummaryView, TaskStatusEnum
@@ -628,6 +630,118 @@ class TestSupportedGroupByAndFilters:
         assert view["filters"] == {"namespace": "test_ns", "memory_type": "semantic"}
 
 
+def test_build_long_term_filters_supports_extraction_topics_and_event_date():
+    """Summary views should support extraction strategy, topic, and event-date filters."""
+    from agent_memory_server.summary_views import _build_long_term_filters_for_view
+
+    view = SummaryView(
+        id="view-filters",
+        source="long_term",
+        group_by=["session_id"],
+        filters={
+            "extraction_strategy": "summary",
+            "topics": {"all": ["thread-summary"]},
+            "event_date": {"gte": datetime(2026, 5, 1, tzinfo=UTC)},
+        },
+    )
+
+    filters = _build_long_term_filters_for_view(view)
+
+    assert filters["extraction_strategy"].eq == "summary"
+    assert filters["topics"].all == ["thread-summary"]
+    assert filters["event_date"].gte == datetime(2026, 5, 1, tzinfo=UTC)
+
+
+def test_build_long_term_summary_prompt_includes_metadata_and_sorts():
+    """Summary prompts should include memory metadata in deterministic order."""
+    from agent_memory_server.summary_views import _build_long_term_summary_prompt
+
+    view = SummaryView(id="view-prompt", source="long_term", group_by=["session_id"])
+    newer = MemoryRecord(
+        id="mem-newer",
+        text="Newer memory",
+        session_id="s2",
+        namespace="test",
+        user_id="u1",
+        created_at=datetime(2026, 5, 2, 12, 0, tzinfo=UTC),
+        extraction_strategy="discrete",
+        topics=["preference"],
+        metadata={"source_session_id": "s2"},
+    )
+    older = MemoryRecord(
+        id="mem-older",
+        text="Older summary",
+        session_id="s1",
+        namespace="test",
+        user_id="u1",
+        created_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        extraction_strategy="summary",
+        topics=["thread-summary"],
+        metadata={"message_count": 3, "summary_version": "v1"},
+    )
+
+    prompt = _build_long_term_summary_prompt(
+        view=view,
+        group={"session_id": "s1"},
+        memories=[newer, older],
+        model_name="gpt-4o-mini",
+        instructions="Summarize these memories.",
+    )
+
+    assert prompt.index("mem-older") < prompt.index("mem-newer")
+    assert '"extraction_strategy":"summary"' in prompt
+    assert '"session_id":"s1"' in prompt
+    assert '"metadata":{"message_count":3,"summary_version":"v1"}' in prompt
+    assert "Current date" not in prompt
+    assert "current date" not in prompt.lower()
+
+
+@pytest.mark.asyncio
+async def test_summarize_partition_long_term_returns_structured_empty_result():
+    """Empty summary partitions should be machine-readable, not text placeholders."""
+    from agent_memory_server.summary_views import summarize_partition_long_term
+
+    view = SummaryView(id="view-empty", source="long_term", group_by=["user_id"])
+
+    result = await summarize_partition_long_term(view, {"user_id": "missing"}, [])
+
+    assert result.summary == ""
+    assert result.memory_count == 0
+    assert result.empty is True
+    assert result.empty_reason == "no_matching_memories"
+
+
+@pytest.mark.asyncio
+async def test_summarize_partition_long_term_fallback_sorts_memories(monkeypatch):
+    """Fallback summaries should use the same deterministic memory ordering."""
+    from agent_memory_server.config import settings
+    from agent_memory_server.summary_views import summarize_partition_long_term
+
+    monkeypatch.setattr(settings, "openai_api_key", None)
+    monkeypatch.setattr(settings, "anthropic_api_key", None)
+    monkeypatch.setattr(settings, "aws_access_key_id", None)
+
+    view = SummaryView(id="view-sort", source="long_term", group_by=["session_id"])
+    newer = MemoryRecord(
+        id="mem-newer",
+        text="Newer memory",
+        created_at=datetime(2026, 5, 2, 12, 0, tzinfo=UTC),
+        extraction_strategy="discrete",
+    )
+    older = MemoryRecord(
+        id="mem-older",
+        text="Older memory",
+        created_at=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+        extraction_strategy="summary",
+    )
+
+    result = await summarize_partition_long_term(
+        view, {"session_id": "s1"}, [newer, older]
+    )
+
+    assert result.summary.index("Older memory") < result.summary.index("Newer memory")
+
+
 class TestConfigurationOptionsTable:
     """Tests verifying configuration options documented in the SummaryView Fields table."""
 
@@ -1082,7 +1196,7 @@ class TestSummarizePartitionLongTerm:
 
     @pytest.mark.asyncio
     async def test_returns_no_memories_message_for_empty_list(self):
-        """summarize_partition_long_term should return message when no memories."""
+        """summarize_partition_long_term should return structured empty result."""
         from agent_memory_server.models import SummaryView
         from agent_memory_server.summary_views import summarize_partition_long_term
 
@@ -1095,7 +1209,9 @@ class TestSummarizePartitionLongTerm:
         )
 
         assert result.memory_count == 0
-        assert "No memories found" in result.summary
+        assert result.summary == ""
+        assert result.empty is True
+        assert result.empty_reason == "no_matching_memories"
 
     @pytest.mark.asyncio
     async def test_fallback_when_no_api_keys(self, monkeypatch):

@@ -673,6 +673,7 @@ class MockMemoryVectorDatabase(MemoryVectorDatabase):
         topics: Any = None,
         entities: Any = None,
         memory_type: Any = None,
+        extraction_strategy: Any = None,
         event_date: Any = None,
         memory_hash: Any = None,
         id: Any = None,
@@ -723,6 +724,13 @@ class MockMemoryVectorDatabase(MemoryVectorDatabase):
                 )
                 if mem_type_val != memory_type.eq:
                     continue
+            if (
+                extraction_strategy
+                and hasattr(extraction_strategy, "eq")
+                and extraction_strategy.eq
+                and memory.extraction_strategy != extraction_strategy.eq
+            ):
+                continue
 
             result = MemoryRecordResult(
                 id=memory.id,
@@ -741,6 +749,9 @@ class MockMemoryVectorDatabase(MemoryVectorDatabase):
                 if hasattr(memory.memory_type, "value")
                 else str(memory.memory_type),
                 persisted_at=memory.persisted_at,
+                extraction_strategy=memory.extraction_strategy,
+                extraction_strategy_config=memory.extraction_strategy_config,
+                metadata=memory.metadata,
             )
             results.append(result)
 
@@ -799,6 +810,7 @@ class MockMemoryVectorDatabase(MemoryVectorDatabase):
         topics: Any = None,
         entities: Any = None,
         memory_type: Any = None,
+        extraction_strategy: Any = None,
         event_date: Any = None,
         memory_hash: Any = None,
         id: Any = None,
@@ -848,6 +860,13 @@ class MockMemoryVectorDatabase(MemoryVectorDatabase):
                 )
                 if mem_type_val != memory_type.eq:
                     continue
+            if (
+                extraction_strategy
+                and hasattr(extraction_strategy, "eq")
+                and extraction_strategy.eq
+                and memory.extraction_strategy != extraction_strategy.eq
+            ):
+                continue
 
             result = MemoryRecordResult(
                 id=memory.id,
@@ -866,6 +885,9 @@ class MockMemoryVectorDatabase(MemoryVectorDatabase):
                 if hasattr(memory.memory_type, "value")
                 else str(memory.memory_type),
                 persisted_at=memory.persisted_at,
+                extraction_strategy=memory.extraction_strategy,
+                extraction_strategy_config=memory.extraction_strategy_config,
+                metadata=memory.metadata,
             )
             results.append(result)
 

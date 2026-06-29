@@ -54,17 +54,25 @@ class JsonSerializationTest {
         record.setMemoryType(MemoryType.SEMANTIC);
         record.setTopics(Arrays.asList("topic1", "topic2"));
         record.setEntities(Arrays.asList("entity1", "entity2"));
+        record.setExtractionStrategy("summary");
+        record.setExtractionStrategyConfig(Map.of("summary_version", "v1"));
+        record.setMetadata(Map.of("message_count", 2));
 
         String json = objectMapper.writeValueAsString(record);
         assertNotNull(json);
         assertTrue(json.contains("\"text\":\"Test memory\""));
         assertTrue(json.contains("\"user_id\":\"user-123\""));
         assertTrue(json.contains("\"memory_type\":\"semantic\""));
+        assertTrue(json.contains("\"extraction_strategy\":\"summary\""));
+        assertTrue(json.contains("\"metadata\""));
 
         MemoryRecord deserialized = objectMapper.readValue(json, MemoryRecord.class);
         assertEquals("Test memory", deserialized.getText());
         assertEquals("user-123", deserialized.getUserId());
         assertEquals(MemoryType.SEMANTIC, deserialized.getMemoryType());
+        assertEquals("summary", deserialized.getExtractionStrategy());
+        assertEquals("v1", deserialized.getExtractionStrategyConfig().get("summary_version"));
+        assertEquals(2, deserialized.getMetadata().get("message_count"));
         assertNotNull(deserialized.getTopics());
         assertEquals(2, deserialized.getTopics().size());
     }
@@ -105,7 +113,6 @@ class JsonSerializationTest {
         assertNotNull(json);
         assertTrue(json.contains("\"session_id\":\"session-123\""));
         assertTrue(json.contains("\"user_id\":\"user-456\""));
-
         WorkingMemory deserialized = objectMapper.readValue(json, WorkingMemory.class);
         assertEquals("session-123", deserialized.getSessionId());
         assertEquals("user-456", deserialized.getUserId());

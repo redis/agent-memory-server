@@ -21,9 +21,12 @@ from agent_memory_server import long_term_memory
 from agent_memory_server.config import settings
 from agent_memory_server.filters import (
     CreatedAt,
+    EventDate,
+    ExtractionStrategy,
     MemoryType,
     Namespace,
     SessionId,
+    Topics,
     UserId,
 )
 from agent_memory_server.models import (
@@ -210,6 +213,24 @@ def _build_long_term_filters_for_view(
 
     filters: dict[str, Any] = {}
 
+    def _tag_filter(filter_cls: type, value: Any) -> Any:
+        if isinstance(value, filter_cls):
+            return value
+        if isinstance(value, str):
+            return filter_cls(eq=value)
+        if isinstance(value, list):
+            return filter_cls(any=[str(item) for item in value])
+        if isinstance(value, dict):
+            return filter_cls(**value)
+        return filter_cls(eq=str(value))
+
+    def _datetime_filter(filter_cls: type, value: Any) -> Any:
+        if isinstance(value, filter_cls):
+            return value
+        if isinstance(value, dict):
+            return filter_cls(**value)
+        return filter_cls(eq=value)
+
     def _apply_filter(key: str, value: str | Any) -> None:
         """Apply a single filter mapping from a raw key/value pair.
 
@@ -225,6 +246,12 @@ def _build_long_term_filters_for_view(
             filters["session_id"] = SessionId(eq=str(value))
         elif key == "memory_type":
             filters["memory_type"] = MemoryType(eq=str(value))
+        elif key == "extraction_strategy":
+            filters["extraction_strategy"] = _tag_filter(ExtractionStrategy, value)
+        elif key == "topics":
+            filters["topics"] = _tag_filter(Topics, value)
+        elif key == "event_date":
+            filters["event_date"] = _datetime_filter(EventDate, value)
 
     # Static filters from the view config
     for key, value in view.filters.items():
@@ -375,10 +402,33 @@ def _build_long_term_summary_prompt(
     # single extremely long memory cannot dominate the prompt.
     max_bullet_tokens = min(1024, full_context_tokens // 20)
 
+    sorted_memories = sorted(
+        memories,
+        key=lambda mem: (
+            mem.event_date or mem.created_at,
+            mem.created_at,
+            mem.session_id or "",
+            mem.extraction_strategy or "",
+            mem.id,
+        ),
+    )
+
     bullet_lines: list[str] = []
-    for mem in memories[:_MAX_MEMORIES_FOR_LLM_PROMPT]:
+    for mem in sorted_memories[:_MAX_MEMORIES_FOR_LLM_PROMPT]:
         text = mem.text or ""
-        bullet = f"- {text}"
+        memory_payload = {
+            "id": mem.id,
+            "text": text,
+            "created_at": mem.created_at.isoformat() if mem.created_at else None,
+            "event_date": mem.event_date.isoformat() if mem.event_date else None,
+            "extraction_strategy": mem.extraction_strategy,
+            "session_id": mem.session_id,
+            "namespace": mem.namespace,
+            "user_id": mem.user_id,
+            "topics": mem.topics or [],
+            "metadata": mem.metadata or {},
+        }
+        bullet = json.dumps(memory_payload, sort_keys=True, separators=(",", ":"))
         bullet_tokens = len(encoding.encode(bullet))
 
         if bullet_tokens > max_bullet_tokens:
@@ -386,8 +436,8 @@ def _build_long_term_summary_prompt(
             # recompute tokens. This mirrors the approach used in
             # agent_memory_server.summarization.
             approx_chars = max_bullet_tokens * 4
-            text = text[:approx_chars]
-            bullet = f"- {text}"
+            memory_payload["text"] = text[:approx_chars]
+            bullet = json.dumps(memory_payload, sort_keys=True, separators=(",", ":"))
             bullet_tokens = len(encoding.encode(bullet))
 
         if bullet_tokens > remaining_tokens:
@@ -420,14 +470,26 @@ async def summarize_partition_long_term(
     """
 
     if not memories:
-        summary_text = f"No memories found for group {group!r}."
         return SummaryViewPartitionResult(
             view_id=view.id,
             group=group,
-            summary=summary_text,
+            summary="",
             memory_count=0,
+            empty=True,
+            empty_reason="no_matching_memories",
             computed_at=datetime.now(UTC),
         )
+
+    memories = sorted(
+        memories,
+        key=lambda mem: (
+            mem.event_date or mem.created_at,
+            mem.created_at,
+            mem.session_id or "",
+            mem.extraction_strategy or "",
+            mem.id,
+        ),
+    )
 
     # If no LLM credentials are configured, fall back to a simple
     # deterministic summary that just concatenates memory texts.
@@ -452,7 +514,9 @@ async def summarize_partition_long_term(
         default_instructions = (
             "You are a summarization assistant. Given a set of long-term "
             "memories, produce a concise summary that highlights key facts, "
-            "stable preferences, and important events relevant to the group."
+            "stable preferences, and important events relevant to the group. "
+            "Use only supplied memory metadata for dates and timestamps; "
+            "ignore missing metadata rather than inferring it."
         )
         instructions = view.prompt or default_instructions
 

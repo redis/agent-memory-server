@@ -3,6 +3,7 @@ from unittest import mock
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
+from redis.commands.core import HashDataPersistOptions
 
 from agent_memory_server.filters import Entities, Namespace, SessionId, Topics
 from agent_memory_server.long_term_memory import (
@@ -343,7 +344,7 @@ class TestLongTermMemory:
             mapping = call_kwargs[1]["mapping"]
             assert mapping["topics"] == "topic1,topic2"
             assert mapping["entities"] == "entity1,entity2"
-            assert call_kwargs[1]["data_persist_option"] == "FXX"
+            assert call_kwargs[1]["data_persist_option"] == HashDataPersistOptions.FXX
             assert call_kwargs[1]["keepttl"] is True
 
     @pytest.mark.asyncio
@@ -734,6 +735,69 @@ class TestLongTermMemory:
 
             # Semantic dedup should NOT be called when setting is disabled
             mock_semantic_dedup.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_index_skips_hash_and_semantic_dedup_for_summary_memories(
+        self, mock_async_redis_client
+    ):
+        """Summary records must keep their deterministic IDs and provenance."""
+        with (
+            patch("agent_memory_server.long_term_memory.settings") as mock_settings,
+            patch(
+                "agent_memory_server.long_term_memory.get_memory_vector_db"
+            ) as mock_get_db,
+            patch(
+                "agent_memory_server.long_term_memory.deduplicate_by_id"
+            ) as mock_id_dedup,
+            patch(
+                "agent_memory_server.long_term_memory.deduplicate_by_hash"
+            ) as mock_hash_dedup,
+            patch(
+                "agent_memory_server.long_term_memory.deduplicate_by_semantic_search"
+            ) as mock_semantic_dedup,
+            patch(
+                "agent_memory_server.long_term_memory.get_background_tasks"
+            ) as mock_get_bg,
+        ):
+            mock_settings.compact_semantic_duplicates = True
+            mock_settings.generation_model = "test-model"
+            mock_settings.long_term_memory_index_name = "memory_records"
+            mock_settings.llm_task_timeout_minutes = 5
+            mock_settings.enable_discrete_memory_extraction = False
+
+            mock_adapter = AsyncMock()
+            mock_get_db.return_value = mock_adapter
+            mock_id_dedup.return_value = (None, False)
+            mock_bg = MagicMock()
+            mock_get_bg.return_value = mock_bg
+
+            summary = MemoryRecord(
+                id="thread_summary_abc123",
+                text="User discussed Redis search.",
+                namespace="test",
+                memory_type=MemoryTypeEnum.SEMANTIC,
+                extraction_strategy="summary",
+                metadata={
+                    "source_message_fingerprint": "fp",
+                    "summary_version": "thread-summary-v1",
+                },
+            )
+
+            await index_long_term_memories(
+                [summary],
+                redis_client=mock_async_redis_client,
+                deduplicate=True,
+            )
+
+            mock_id_dedup.assert_awaited_once()
+            mock_hash_dedup.assert_not_called()
+            mock_semantic_dedup.assert_not_called()
+            mock_adapter.add_memories.assert_awaited_once()
+            indexed_memories = mock_adapter.add_memories.await_args.args[0]
+            assert indexed_memories == [summary]
+            assert indexed_memories[0].id == "thread_summary_abc123"
+            assert indexed_memories[0].extraction_strategy == "summary"
+            assert indexed_memories[0].metadata["source_message_fingerprint"] == "fp"
 
     @pytest.mark.asyncio
     async def test_promote_working_memory_to_long_term(self, mock_async_redis_client):
@@ -1243,9 +1307,9 @@ class TestLongTermMemoryIntegration:
             namespace=Namespace(eq="issue-156-ns"),
             limit=10,
         )
-        assert (
-            results_no_filter.total >= 1
-        ), "Baseline search without topics filter failed"
+        assert results_no_filter.total >= 1, (
+            "Baseline search without topics filter failed"
+        )
 
         # Test 2: Search WITH topics.any filter (was failing with 500 error)
         results_topics_any = await search_long_term_memories(
@@ -1258,9 +1322,9 @@ class TestLongTermMemoryIntegration:
         # Verify the returned memories have the expected topic
         for memory in results_topics_any.memories:
             assert memory.topics is not None, "Memory should have topics"
-            assert (
-                "family" in memory.topics
-            ), f"Memory topics {memory.topics} should contain 'family'"
+            assert "family" in memory.topics, (
+                f"Memory topics {memory.topics} should contain 'family'"
+            )
 
         # Test 3: Search WITH topics.eq filter (was also failing with 500 error)
         results_topics_eq = await search_long_term_memories(
@@ -1272,9 +1336,9 @@ class TestLongTermMemoryIntegration:
         assert results_topics_eq.total >= 1, "Search with topics.eq filter failed"
         for memory in results_topics_eq.memories:
             assert memory.topics is not None, "Memory should have topics"
-            assert (
-                "documents" in memory.topics
-            ), f"Memory topics {memory.topics} should contain 'documents'"
+            assert "documents" in memory.topics, (
+                f"Memory topics {memory.topics} should contain 'documents'"
+            )
 
         # Test 4: Search WITH entities filter (same underlying issue)
         results_entities = await search_long_term_memories(
@@ -1286,9 +1350,9 @@ class TestLongTermMemoryIntegration:
         assert results_entities.total >= 1, "Search with entities filter failed"
         for memory in results_entities.memories:
             assert memory.entities is not None, "Memory should have entities"
-            assert (
-                "folder" in memory.entities
-            ), f"Memory entities {memory.entities} should contain 'folder'"
+            assert "folder" in memory.entities, (
+                f"Memory entities {memory.entities} should contain 'folder'"
+            )
 
         # Test 5: Combined topics and namespace filter (real-world scenario from issue)
         results_combined = await search_long_term_memories(

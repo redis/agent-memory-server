@@ -29,22 +29,22 @@ class TestContextPercentageCalculation:
             )
         )
 
-        assert (
-            total_percentage is not None
-        ), "total_percentage should not be None when context_window_max is provided"
-        assert (
-            until_summarization_percentage is not None
-        ), "until_summarization_percentage should not be None when context_window_max is provided"
+        assert total_percentage is not None, (
+            "total_percentage should not be None when context_window_max is provided"
+        )
+        assert until_summarization_percentage is not None, (
+            "until_summarization_percentage should not be None when context_window_max is provided"
+        )
         assert isinstance(total_percentage, float), "total_percentage should be a float"
-        assert isinstance(
-            until_summarization_percentage, float
-        ), "until_summarization_percentage should be a float"
-        assert (
-            0 <= total_percentage <= 100
-        ), "total_percentage should be between 0 and 100"
-        assert (
-            0 <= until_summarization_percentage <= 100
-        ), "until_summarization_percentage should be between 0 and 100"
+        assert isinstance(until_summarization_percentage, float), (
+            "until_summarization_percentage should be a float"
+        )
+        assert 0 <= total_percentage <= 100, (
+            "total_percentage should be between 0 and 100"
+        )
+        assert 0 <= until_summarization_percentage <= 100, (
+            "until_summarization_percentage should be between 0 and 100"
+        )
 
     def test_context_percentages_with_model_name(self):
         """Test that context percentages are calculated when model_name is provided"""
@@ -59,16 +59,16 @@ class TestContextPercentageCalculation:
             )
         )
 
-        assert (
-            total_percentage is not None
-        ), "total_percentage should not be None when model_name is provided"
-        assert (
-            until_summarization_percentage is not None
-        ), "until_summarization_percentage should not be None when model_name is provided"
+        assert total_percentage is not None, (
+            "total_percentage should not be None when model_name is provided"
+        )
+        assert until_summarization_percentage is not None, (
+            "until_summarization_percentage should not be None when model_name is provided"
+        )
         assert isinstance(total_percentage, float), "total_percentage should be a float"
-        assert isinstance(
-            until_summarization_percentage, float
-        ), "until_summarization_percentage should be a float"
+        assert isinstance(until_summarization_percentage, float), (
+            "until_summarization_percentage should be a float"
+        )
 
     def test_context_percentages_without_model_info(self):
         """Test that context percentages return None when no model info is provided"""
@@ -83,12 +83,12 @@ class TestContextPercentageCalculation:
             )
         )
 
-        assert (
-            total_percentage is None
-        ), "total_percentage should be None when no model info is provided"
-        assert (
-            until_summarization_percentage is None
-        ), "until_summarization_percentage should be None when no model info is provided"
+        assert total_percentage is None, (
+            "total_percentage should be None when no model info is provided"
+        )
+        assert until_summarization_percentage is None, (
+            "until_summarization_percentage should be None when no model info is provided"
+        )
 
     def test_context_percentages_with_empty_messages(self):
         """Test context percentages with empty messages list but model info provided"""
@@ -101,12 +101,12 @@ class TestContextPercentageCalculation:
         )
 
         # CORRECTED: Should return 0.0 when model info is provided, even with empty messages
-        assert (
-            total_percentage == 0.0
-        ), "total_percentage should be 0.0 for empty messages when model info provided"
-        assert (
-            until_summarization_percentage == 0.0
-        ), "until_summarization_percentage should be 0.0 for empty messages when model info provided"
+        assert total_percentage == 0.0, (
+            "total_percentage should be 0.0 for empty messages when model info provided"
+        )
+        assert until_summarization_percentage == 0.0, (
+            "until_summarization_percentage should be 0.0 for empty messages when model info provided"
+        )
 
     def test_context_percentages_precedence(self):
         """Test that context_window_max takes precedence over model_name"""
@@ -131,9 +131,9 @@ class TestContextPercentageCalculation:
         )
 
         # Results should be the same, proving context_window_max takes precedence
-        assert (
-            total_percentage_both == total_percentage_max_only
-        ), "context_window_max should take precedence over model_name"
+        assert total_percentage_both == total_percentage_max_only, (
+            "context_window_max should take precedence over model_name"
+        )
         assert (
             until_summarization_percentage_both
             == until_summarization_percentage_max_only
@@ -163,9 +163,9 @@ class TestContextPercentageCalculation:
         assert until_summarization_percentage is not None
         # Should be capped at 100%
         assert total_percentage <= 100.0, "total_percentage should be capped at 100%"
-        assert (
-            until_summarization_percentage <= 100.0
-        ), "until_summarization_percentage should be capped at 100%"
+        assert until_summarization_percentage <= 100.0, (
+            "until_summarization_percentage should be capped at 100%"
+        )
 
     def test_context_percentages_zero_context_window_regression(self):
         """
@@ -185,9 +185,9 @@ class TestContextPercentageCalculation:
 
         # Should return None for invalid context window
         assert total_percentage is None, "Should return None for zero context window"
-        assert (
-            until_summarization_percentage is None
-        ), "Should return None for zero context window"
+        assert until_summarization_percentage is None, (
+            "Should return None for zero context window"
+        )
 
         # Test with negative context window
         total_percentage, until_summarization_percentage = (
@@ -197,12 +197,12 @@ class TestContextPercentageCalculation:
         )
 
         # Should return None for invalid context window
-        assert (
-            total_percentage is None
-        ), "Should return None for negative context window"
-        assert (
-            until_summarization_percentage is None
-        ), "Should return None for negative context window"
+        assert total_percentage is None, (
+            "Should return None for negative context window"
+        )
+        assert until_summarization_percentage is None, (
+            "Should return None for negative context window"
+        )
 
     def test_context_percentages_very_small_context_window_regression(self):
         """
@@ -224,17 +224,17 @@ class TestContextPercentageCalculation:
         )
 
         # Should handle this gracefully without division by zero
-        assert (
-            total_percentage is not None
-        ), "Should handle small context window without error"
-        assert (
-            until_summarization_percentage is not None
-        ), "Should handle small context window without error"
+        assert total_percentage is not None, (
+            "Should handle small context window without error"
+        )
+        assert until_summarization_percentage is not None, (
+            "Should handle small context window without error"
+        )
         assert isinstance(total_percentage, float), "Should return valid float"
-        assert isinstance(
-            until_summarization_percentage, float
-        ), "Should return valid float"
+        assert isinstance(until_summarization_percentage, float), (
+            "Should return valid float"
+        )
         # until_summarization_percentage should be 100% when threshold is 0
-        assert (
-            until_summarization_percentage == 100.0
-        ), "Should return 100% when token threshold is 0"
+        assert until_summarization_percentage == 100.0, (
+            "Should return 100% when token threshold is 0"
+        )

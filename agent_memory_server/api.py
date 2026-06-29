@@ -1,3 +1,4 @@
+import time
 from typing import Any
 
 import tiktoken
@@ -54,6 +55,9 @@ from agent_memory_server.utils.redis import get_redis_conn
 
 
 logger = get_logger(__name__)
+_tiktoken_encoding: Any | None = None
+_tiktoken_encoding_last_failed_at: float | None = None
+_TIKTOKEN_ENCODING_RETRY_INTERVAL_SECONDS = 300
 
 router = APIRouter()
 
@@ -102,15 +106,56 @@ def _get_effective_token_limit(
 
 def _calculate_messages_token_count(messages: list[MemoryMessage]) -> int:
     """Calculate total token count for a list of messages."""
-    encoding = tiktoken.get_encoding("cl100k_base")
-    total_tokens = 0
+    return sum(_count_message_tokens(msg) for msg in messages)
 
-    for msg in messages:
-        msg_str = f"{msg.role}: {msg.content}"
-        msg_tokens = len(encoding.encode(msg_str))
-        total_tokens += msg_tokens
 
-    return total_tokens
+def _get_tiktoken_encoding() -> Any | None:
+    """Load the tokenizer encoding once and fall back safely if unavailable."""
+    global _tiktoken_encoding, _tiktoken_encoding_last_failed_at
+
+    if _tiktoken_encoding is not None:
+        return _tiktoken_encoding
+
+    now = time.monotonic()
+    last_failed_at = _tiktoken_encoding_last_failed_at
+    retry_after = (
+        None
+        if last_failed_at is None
+        else last_failed_at + _TIKTOKEN_ENCODING_RETRY_INTERVAL_SECONDS
+    )
+    if retry_after is not None and now < retry_after:
+        return None
+
+    try:
+        _tiktoken_encoding = tiktoken.get_encoding("cl100k_base")
+        _tiktoken_encoding_last_failed_at = None
+    except Exception as exc:
+        _tiktoken_encoding_last_failed_at = now
+        logger.warning(
+            "tiktoken encoding unavailable, using character-based token estimate",
+            error=str(exc),
+        )
+        return None
+
+    return _tiktoken_encoding
+
+
+def _estimate_text_token_count(text: str) -> int:
+    """Estimate token count when tiktoken is unavailable."""
+    return max(1, (len(text) + 3) // 4)
+
+
+def _count_text_tokens(text: str) -> int:
+    """Count tokens accurately when possible, otherwise fall back to estimation."""
+    encoding = _get_tiktoken_encoding()
+    if encoding is None:
+        return _estimate_text_token_count(text)
+    return len(encoding.encode(text))
+
+
+def _count_message_tokens(message: MemoryMessage) -> int:
+    """Count tokens for a single working-memory message."""
+    return _count_text_tokens(f"{message.role}: {message.content}")
 
 
 def _calculate_context_usage_percentages(
@@ -250,7 +295,6 @@ async def _summarize_working_memory(
     buffer_tokens = min(max(230, summarization_max_tokens // 100), 1000)
     max_message_tokens = summarization_max_tokens - summary_max_tokens - buffer_tokens
 
-    encoding = tiktoken.get_encoding("cl100k_base")
     total_tokens = 0
     messages_to_summarize = []
 
@@ -266,7 +310,7 @@ async def _summarize_working_memory(
     for i in range(len(memory.messages) - 1, -1, -1):
         msg = memory.messages[i]
         msg_str = f"{msg.role}: {msg.content}"
-        msg_tokens = len(encoding.encode(msg_str))
+        msg_tokens = _count_text_tokens(msg_str)
 
         if recent_messages_tokens + msg_tokens <= target_remaining_tokens:
             recent_messages_tokens += msg_tokens
@@ -281,12 +325,12 @@ async def _summarize_working_memory(
 
     for msg in messages_to_check:
         msg_str = f"{msg.role}: {msg.content}"
-        msg_tokens = len(encoding.encode(msg_str))
+        msg_tokens = _count_text_tokens(msg_str)
 
         # Handle oversized messages
         if msg_tokens > max_message_tokens:
             msg_str = msg_str[: max_message_tokens // 2]
-            msg_tokens = len(encoding.encode(msg_str))
+            msg_tokens = _count_text_tokens(msg_str)
 
         if total_tokens + msg_tokens <= max_message_tokens:
             total_tokens += msg_tokens
@@ -654,7 +698,7 @@ async def search_long_term_memory(
 
     Args:
         payload: Search payload with filter objects for precise queries
-        optimize_query: Whether to optimize the query for vector search using a fast model (default: False)
+        optimize_query: Whether to optimize the query for semantic (vector) search using a fast model; ignored for keyword and hybrid modes (default: False)
 
     Returns:
         List of search results
@@ -709,7 +753,14 @@ async def search_long_term_memory(
     try:
         had_any_strict_filters = any(
             key in kwargs and kwargs[key] is not None
-            for key in ("topics", "entities", "namespace", "memory_type", "event_date")
+            for key in (
+                "topics",
+                "entities",
+                "namespace",
+                "memory_type",
+                "extraction_strategy",
+                "event_date",
+            )
         )
         if (
             raw_results.total == 0
@@ -718,7 +769,14 @@ async def search_long_term_memory(
             == SearchModeEnum.SEMANTIC
         ):
             fallback_kwargs = dict(kwargs)
-            for key in ("topics", "entities", "namespace", "memory_type", "event_date"):
+            for key in (
+                "topics",
+                "entities",
+                "namespace",
+                "memory_type",
+                "extraction_strategy",
+                "event_date",
+            ):
                 fallback_kwargs.pop(key, None)
 
             def _vals(f):
@@ -737,6 +795,9 @@ async def search_long_term_memory(
             entities_vals = _vals(filters.get("entities")) if filters else []
             namespace_vals = _vals(filters.get("namespace")) if filters else []
             memory_type_vals = _vals(filters.get("memory_type")) if filters else []
+            extraction_strategy_vals = (
+                _vals(filters.get("extraction_strategy")) if filters else []
+            )
 
             hint_parts: list[str] = []
             if topics_vals:
@@ -749,6 +810,11 @@ async def search_long_term_memory(
                 )
             if memory_type_vals:
                 hint_parts.append(f"type: {', '.join(sorted(set(memory_type_vals)))}")
+            if extraction_strategy_vals:
+                hint_parts.append(
+                    "extraction strategy: "
+                    + ", ".join(sorted(set(extraction_strategy_vals)))
+                )
 
             base_text = payload.text or ""
             hint_suffix = f" ({'; '.join(hint_parts)})" if hint_parts else ""
@@ -926,7 +992,7 @@ async def memory_prompt(
 
     Args:
         params: MemoryPromptRequest
-        optimize_query: Whether to optimize the query for vector search using a fast model (default: False)
+        optimize_query: Whether to optimize the query for semantic (vector) search using a fast model; ignored for keyword and hybrid modes (default: False)
 
     Returns:
         List of messages to send to an LLM, hydrated with relevant memory context
@@ -1108,12 +1174,20 @@ def _validate_summary_view_keys(payload: CreateSummaryViewRequest) -> None:
             ),
         )
 
-    allowed_group_by = {"user_id", "namespace", "session_id", "memory_type"}
+    allowed_group_by = {
+        "user_id",
+        "namespace",
+        "session_id",
+        "memory_type",
+    }
     allowed_filters = {
         "user_id",
         "namespace",
         "session_id",
         "memory_type",
+        "extraction_strategy",
+        "topics",
+        "event_date",
     }
 
     invalid_group = [k for k in payload.group_by if k not in allowed_group_by]

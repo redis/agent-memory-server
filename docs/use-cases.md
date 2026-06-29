@@ -701,7 +701,7 @@ guidance = await health.get_contextual_health_guidance(
 ### Search Optimization
 - **Enable recency boost**: For time-sensitive domains like support or health
 - **Use query optimization**: For natural language queries from end users
-- **Filter strategically**: Combine semantic search with metadata filters
+- **Filter strategically**: Combine semantic, keyword, or hybrid search with metadata filters
 
 ### Privacy and Security
 - **User isolation**: Always filter by user_id for personal data

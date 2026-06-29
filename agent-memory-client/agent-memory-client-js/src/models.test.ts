@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateId, MemoryTypeEnum } from "./models";
+import { generateId, MemoryTypeEnum, type MemoryRecord } from "./models";
 
 describe("generateId", () => {
   it("should generate a ULID string", () => {
@@ -20,5 +20,21 @@ describe("MemoryTypeEnum", () => {
     expect(MemoryTypeEnum.EPISODIC).toBe("episodic");
     expect(MemoryTypeEnum.SEMANTIC).toBe("semantic");
     expect(MemoryTypeEnum.MESSAGE).toBe("message");
+  });
+});
+
+describe("MemoryRecord", () => {
+  it("should allow extraction metadata fields", () => {
+    const record: MemoryRecord = {
+      id: "mem-1",
+      text: "Thread summary",
+      extraction_strategy: "summary",
+      extraction_strategy_config: { summary_version: "v1" },
+      metadata: { message_count: 2 },
+    };
+
+    expect(record.extraction_strategy).toBe("summary");
+    expect(record.extraction_strategy_config).toEqual({ summary_version: "v1" });
+    expect(record.metadata).toEqual({ message_count: 2 });
   });
 });
