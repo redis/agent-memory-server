@@ -81,15 +81,12 @@ make pre-commit
 - Both interfaces share the same core memory management logic
 
 ### Memory Architecture
-```python
-# Two-tier memory system
-Working Memory (Session-scoped)  →  Long-term Memory (Persistent)
-    ↓                                      ↓
-- Messages                          - Semantic search
-- Context                          - Topic modeling
-- Structured memories              - Entity recognition
-- Metadata                         - Deduplication
-```
+Two-tier memory system. Data flows from Working Memory → Long-term Memory:
+important information written to working memory is extracted and promoted to
+long-term memory.
+
+- **Working Memory** (session-scoped): messages, context, structured memories, metadata
+- **Long-term Memory** (persistent): semantic search, topic modeling, entity recognition, deduplication
 
 ### RedisVL Integration
 **CRITICAL**: Always use RedisVL query types instead of direct redis-py client access for searches:
