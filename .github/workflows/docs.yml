@@ -4,16 +4,16 @@ on:
   push:
     branches: [main]
     paths:
-      - 'docs/**'
-      - 'mkdocs.yml'
-      - 'index.md'
+      - 'V0/docs/**'
+      - 'V0/mkdocs.yml'
+      - 'V0/index.md'
       - '.github/workflows/docs.yml'
   pull_request:
     branches: [main]
     paths:
-      - 'docs/**'
-      - 'mkdocs.yml'
-      - 'index.md'
+      - 'V0/docs/**'
+      - 'V0/mkdocs.yml'
+      - 'V0/index.md'
 
 permissions:
   contents: read
@@ -27,6 +27,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: V0
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -63,7 +66,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./site
+          path: V0/site
 
   deploy:
     if: github.ref == 'refs/heads/main'

@@ -20,18 +20,18 @@ echo ""
 mkdir -p /tmp/ams-logs
 
 # Load environment variables from workbench .env if it exists
-if [ -f "/workspace/workbench/.env" ]; then
-    echo -e "${YELLOW}Loading environment from /workspace/workbench/.env...${NC}"
+if [ -f "/workspace/V0/workbench/.env" ]; then
+    echo -e "${YELLOW}Loading environment from /workspace/V0/workbench/.env...${NC}"
     set -a  # automatically export all variables
-    source /workspace/workbench/.env
+    source /workspace/V0/workbench/.env
     set +a
 fi
 
-# Also check for root .env file
-if [ -f "/workspace/.env" ]; then
-    echo -e "${YELLOW}Loading environment from /workspace/.env...${NC}"
+# Also check for the V0 project .env file
+if [ -f "/workspace/V0/.env" ]; then
+    echo -e "${YELLOW}Loading environment from /workspace/V0/.env...${NC}"
     set -a
-    source /workspace/.env
+    source /workspace/V0/.env
     set +a
 fi
 
@@ -48,12 +48,12 @@ echo -e "${GREEN}Redis is ready!${NC}"
 
 # Start Memory Server
 echo -e "${YELLOW}Starting Memory Server...${NC}"
-cd /workspace
+cd /workspace/V0
 if [ -f "pyproject.toml" ]; then
     nohup uv run agent-memory api --host 0.0.0.0 --port 8000 --task-backend=asyncio > /tmp/ams-logs/memory-server.log 2>&1 &
     echo $! > /tmp/ams-logs/memory-server.pid
 else
-    echo -e "${RED}Error: pyproject.toml not found in /workspace${NC}"
+    echo -e "${RED}Error: pyproject.toml not found in /workspace/V0${NC}"
     exit 1
 fi
 
@@ -74,7 +74,7 @@ echo -e "${GREEN}Memory Server is ready!${NC}"
 
 # Start MCP Server (SSE mode for workbench browser client)
 echo -e "${YELLOW}Starting MCP Server (SSE mode on port 9000)...${NC}"
-cd /workspace
+cd /workspace/V0
 nohup uv run agent-memory mcp --mode sse --port 9000 --task-backend=asyncio > /tmp/ams-logs/mcp-server.log 2>&1 &
 echo $! > /tmp/ams-logs/mcp-server.pid
 # Give MCP server a moment to bind
@@ -82,9 +82,9 @@ sleep 3
 echo -e "${GREEN}MCP Server started!${NC}"
 
 # Start Workbench UI if it exists
-if [ -d "/workspace/workbench" ] && [ -f "/workspace/workbench/package.json" ]; then
+if [ -d "/workspace/V0/workbench" ] && [ -f "/workspace/V0/workbench/package.json" ]; then
     echo -e "${YELLOW}Starting Workbench UI...${NC}"
-    cd /workspace/workbench
+    cd /workspace/V0/workbench
 
     # Install dependencies if node_modules doesn't exist
     if [ ! -d "node_modules" ]; then
@@ -105,7 +105,7 @@ if [ -d "/workspace/workbench" ] && [ -f "/workspace/workbench/package.json" ]; 
         attempt=$((attempt + 1))
         if [ $attempt -ge $max_attempts ]; then
             echo -e "${RED}Workbench UI failed to start. Check logs at /tmp/ams-logs/workbench-ui.log${NC}"
-            echo -e "${YELLOW}You can start it manually: cd /workspace/workbench && npm run dev${NC}"
+            echo -e "${YELLOW}You can start it manually: cd /workspace/V0/workbench && npm run dev${NC}"
             break
         fi
         sleep 1
@@ -116,7 +116,7 @@ if [ -d "/workspace/workbench" ] && [ -f "/workspace/workbench/package.json" ]; 
     fi
 else
     echo -e "${YELLOW}Workbench UI not found. Skipping...${NC}"
-    echo -e "${YELLOW}To set up the workbench, run: cd /workspace/workbench && npm install${NC}"
+    echo -e "${YELLOW}To set up the workbench, run: cd /workspace/V0/workbench && npm install${NC}"
 fi
 
 echo ""
