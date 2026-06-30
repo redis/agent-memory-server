@@ -55,6 +55,9 @@ public class TagFilter {
     }
 
     public static TagFilter any(@NotNull List<String> values) {
+        if (values.isEmpty()) {
+            throw new IllegalArgumentException("any cannot be an empty list");
+        }
         TagFilter f = new TagFilter();
         f.any = List.copyOf(values);
         return f;
@@ -65,6 +68,9 @@ public class TagFilter {
     }
 
     public static TagFilter all(@NotNull List<String> values) {
+        if (values.isEmpty()) {
+            throw new IllegalArgumentException("all cannot be an empty list");
+        }
         TagFilter f = new TagFilter();
         f.all = List.copyOf(values);
         return f;
@@ -75,6 +81,9 @@ public class TagFilter {
     }
 
     public static TagFilter startsWith(@NotNull String prefix) {
+        if (prefix.isEmpty()) {
+            throw new IllegalArgumentException("startswith cannot be an empty string");
+        }
         TagFilter f = new TagFilter();
         f.startswith = prefix;
         return f;

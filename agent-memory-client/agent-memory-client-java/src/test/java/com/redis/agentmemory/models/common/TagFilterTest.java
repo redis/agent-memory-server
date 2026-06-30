@@ -52,4 +52,39 @@ class TagFilterTest {
         String json = objectMapper.writeValueAsString(TagFilter.startsWith("tenant-"));
         assertEquals("{\"startswith\":\"tenant-\"}", json);
     }
+
+    @Test
+    void any_emptyVarargs_throws() {
+        IllegalArgumentException ex =
+                assertThrows(IllegalArgumentException.class, () -> TagFilter.any());
+        assertEquals("any cannot be an empty list", ex.getMessage());
+    }
+
+    @Test
+    void any_emptyList_throws() {
+        IllegalArgumentException ex =
+                assertThrows(IllegalArgumentException.class, () -> TagFilter.any(List.of()));
+        assertEquals("any cannot be an empty list", ex.getMessage());
+    }
+
+    @Test
+    void all_emptyVarargs_throws() {
+        IllegalArgumentException ex =
+                assertThrows(IllegalArgumentException.class, () -> TagFilter.all());
+        assertEquals("all cannot be an empty list", ex.getMessage());
+    }
+
+    @Test
+    void all_emptyList_throws() {
+        IllegalArgumentException ex =
+                assertThrows(IllegalArgumentException.class, () -> TagFilter.all(List.of()));
+        assertEquals("all cannot be an empty list", ex.getMessage());
+    }
+
+    @Test
+    void startsWith_emptyString_throws() {
+        IllegalArgumentException ex =
+                assertThrows(IllegalArgumentException.class, () -> TagFilter.startsWith(""));
+        assertEquals("startswith cannot be an empty string", ex.getMessage());
+    }
 }
