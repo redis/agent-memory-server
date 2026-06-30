@@ -6,6 +6,7 @@ import com.redis.agentmemory.exceptions.*;
 import com.redis.agentmemory.models.common.AckResponse;
 import com.redis.agentmemory.models.longtermemory.*;
 import com.redis.agentmemory.models.workingmemory.*;
+import okhttp3.OkHttpClient;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -402,6 +403,62 @@ class MemoryAPIClientTest {
         assertNotNull(response);
         assertEquals("ok", response.getStatus());
         assertEquals(1, mockServer.getRequestCount()); // Only GET, no CREATE
+    }
+
+    @Test
+    void testCustomHttpClientReachesServer() throws Exception {
+        // caller-supplied client
+        OkHttpClient customClient = new OkHttpClient.Builder()
+                .addInterceptor(chain -> chain.proceed(
+                        chain.request().newBuilder()
+                                .header("X-Custom-Header", "custom-header-value")
+                                .build()))
+                .build();
+
+        try (MemoryAPIClient customizedClient = MemoryAPIClient.builder(mockServer.url("/").toString())
+                .httpClient(customClient)
+                .build()) {
+
+            mockServer.enqueue(new MockResponse()
+                .setBody("{}")
+                .addHeader("Content-Type", "application/json"));
+
+            customizedClient.health().healthCheck();
+
+            RecordedRequest request = mockServer.takeRequest();
+            // provided client headers
+            assertEquals("custom-header-value", request.getHeader("X-Custom-Header"));
+            // normal headers
+            assertTrue(request.getHeader("User-Agent").startsWith("agent-memory-client-java/"));
+            assertNotNull(request.getHeader("X-Client-Version"));
+        }
+    }
+
+    @Test
+    void testDefaultHttpClientHeaders() throws Exception {
+        mockServer.enqueue(new MockResponse()
+                .setBody("{}")
+                .addHeader("Content-Type", "application/json"));
+
+        client.health().healthCheck();
+
+        RecordedRequest request = mockServer.takeRequest();
+        assertTrue(request.getHeader("User-Agent").startsWith("agent-memory-client-java/"));
+        assertNotNull(request.getHeader("X-Client-Version"));
+    }
+
+    @Test
+    void testCloseDoesNotShutDownCallerSuppliedClient() throws Exception {
+        OkHttpClient customClient = new OkHttpClient.Builder().build();
+
+        MemoryAPIClient customizedClient = MemoryAPIClient.builder(mockServer.url("/").toString())
+                .httpClient(customClient)
+                .build();
+
+        customizedClient.close();
+
+        assertFalse(customClient.dispatcher().executorService().isShutdown(),
+                "caller-supplied client's executor must survive MemoryAPIClient.close()");
     }
 
     // ===== Tests for Phase 2: Convenience Overloads =====
