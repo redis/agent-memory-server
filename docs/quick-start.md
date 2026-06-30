@@ -178,7 +178,7 @@ await memory_client.create_long_term_memory([
 
 ## Step 7: Search Your Memories
 
-Search across all stored memories with semantic similarity:
+Search across all stored memories using semantic similarity, keyword matching, or hybrid search:
 
 ```python
 # Search for work-related information
@@ -331,7 +331,7 @@ You've just worked with both types of memory:
 - **Scope**: Cross-session, persistent
 - **Lifetime**: Permanent until deleted
 - **Use case**: User preferences, facts, knowledge
-- **Search**: Semantic vector search with advanced filtering
+- **Search**: Semantic, keyword, and hybrid search with advanced filtering
 
 ## Next Steps
 
@@ -537,7 +537,7 @@ redis-cli -h localhost -p 6379
 
 You now have a working AI agent memory system! Your memories will:
 - ✅ Persist across sessions
-- ✅ Be searchable with semantic similarity
+- ✅ Be searchable with semantic, keyword, or hybrid search
 - ✅ Automatically extract context from conversations
 - ✅ Provide relevant context to AI responses
 

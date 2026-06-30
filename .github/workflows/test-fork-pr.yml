@@ -1,4 +1,4 @@
-name: Test Fork PR
+name: Test External PR
 
 on:
   workflow_dispatch:
@@ -18,6 +18,7 @@ jobs:
     name: Validate PR
     runs-on: ubuntu-latest
     outputs:
+      pr_number: ${{ steps.pr-info.outputs.pr_number }}
       head_sha: ${{ steps.pr-info.outputs.head_sha }}
       head_repo: ${{ steps.pr-info.outputs.head_repo }}
     steps:
@@ -26,26 +27,32 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const prNumber = Number('${{ inputs.pr_number }}');
+
             const pr = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              pull_number: ${{ inputs.pr_number }}
+              pull_number: prNumber
             });
 
             if (pr.data.state !== 'open') {
-              core.setFailed(`PR #${{ inputs.pr_number }} is not open`);
+              core.setFailed(`PR #${prNumber} is not open`);
               return;
             }
 
-            if (pr.data.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`) {
-              core.setFailed(`PR #${{ inputs.pr_number }} is not from a fork. Use the regular workflow.`);
+            const isFork = pr.data.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`;
+            const isDependabot = pr.data.user.login === 'dependabot[bot]';
+
+            if (!isFork && !isDependabot) {
+              core.setFailed(`PR #${prNumber} is not from a fork or Dependabot. Use the regular workflow.`);
               return;
             }
 
+            core.setOutput('pr_number', prNumber.toString());
             core.setOutput('head_sha', pr.data.head.sha);
             core.setOutput('head_repo', pr.data.head.repo.full_name);
 
-            console.log(`Testing PR #${{ inputs.pr_number }}`);
+            console.log(`Testing PR #${prNumber}`);
             console.log(`  Head SHA: ${pr.data.head.sha}`);
             console.log(`  Head Repo: ${pr.data.head.repo.full_name}`);
 
@@ -59,21 +66,29 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const detailsUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const check = await github.rest.checks.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              name: 'Fork PR - Service Tests',
+              name: 'External PR - Service Tests',
               head_sha: '${{ needs.setup.outputs.head_sha }}',
               status: 'in_progress',
-              started_at: new Date().toISOString()
+              started_at: new Date().toISOString(),
+              details_url: detailsUrl,
+              output: {
+                title: 'Service Tests Running',
+                summary: `Service tests are currently running for PR #${{ needs.setup.outputs.pr_number }}.`,
+                text: `**Workflow Run:** [View Active Run](${detailsUrl})\n\n**PR:** #${{ needs.setup.outputs.pr_number }}\n**Commit:** ${{ needs.setup.outputs.head_sha }}`
+              }
             });
             core.setOutput('check_id', check.data.id);
 
-      - name: Check out fork PR code
+      - name: Check out PR code
         uses: actions/checkout@v4
         with:
           repository: ${{ needs.setup.outputs.head_repo }}
           ref: ${{ needs.setup.outputs.head_sha }}
+          persist-credentials: false
 
       - name: Set Redis image name
         run: |
@@ -116,7 +131,7 @@ jobs:
               details_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               output: {
                 title: 'Service Tests Passed',
-                summary: `All service tests passed for PR #${{ inputs.pr_number }}.`
+                summary: `All service tests passed for PR #${{ needs.setup.outputs.pr_number }}.`
               }
             });
 
@@ -135,7 +150,7 @@ jobs:
               details_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               output: {
                 title: 'Service Tests Failed',
-                summary: `The service tests failed for PR #${{ inputs.pr_number }}. Click "Details" to view the full test output and logs.`,
-                text: `**Workflow Run:** [View Details](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})\n\n**PR:** #${{ inputs.pr_number }}\n**Commit:** ${{ needs.setup.outputs.head_sha }}`
+                summary: `The service tests failed for PR #${{ needs.setup.outputs.pr_number }}. Click "Details" to view the full test output and logs.`,
+                text: `**Workflow Run:** [View Details](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})\n\n**PR:** #${{ needs.setup.outputs.pr_number }}\n**Commit:** ${{ needs.setup.outputs.head_sha }}`
               }
             });

@@ -737,6 +737,69 @@ class TestLongTermMemory:
             mock_semantic_dedup.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_index_skips_hash_and_semantic_dedup_for_summary_memories(
+        self, mock_async_redis_client
+    ):
+        """Summary records must keep their deterministic IDs and provenance."""
+        with (
+            patch("agent_memory_server.long_term_memory.settings") as mock_settings,
+            patch(
+                "agent_memory_server.long_term_memory.get_memory_vector_db"
+            ) as mock_get_db,
+            patch(
+                "agent_memory_server.long_term_memory.deduplicate_by_id"
+            ) as mock_id_dedup,
+            patch(
+                "agent_memory_server.long_term_memory.deduplicate_by_hash"
+            ) as mock_hash_dedup,
+            patch(
+                "agent_memory_server.long_term_memory.deduplicate_by_semantic_search"
+            ) as mock_semantic_dedup,
+            patch(
+                "agent_memory_server.long_term_memory.get_background_tasks"
+            ) as mock_get_bg,
+        ):
+            mock_settings.compact_semantic_duplicates = True
+            mock_settings.generation_model = "test-model"
+            mock_settings.long_term_memory_index_name = "memory_records"
+            mock_settings.llm_task_timeout_minutes = 5
+            mock_settings.enable_discrete_memory_extraction = False
+
+            mock_adapter = AsyncMock()
+            mock_get_db.return_value = mock_adapter
+            mock_id_dedup.return_value = (None, False)
+            mock_bg = MagicMock()
+            mock_get_bg.return_value = mock_bg
+
+            summary = MemoryRecord(
+                id="thread_summary_abc123",
+                text="User discussed Redis search.",
+                namespace="test",
+                memory_type=MemoryTypeEnum.SEMANTIC,
+                extraction_strategy="summary",
+                metadata={
+                    "source_message_fingerprint": "fp",
+                    "summary_version": "thread-summary-v1",
+                },
+            )
+
+            await index_long_term_memories(
+                [summary],
+                redis_client=mock_async_redis_client,
+                deduplicate=True,
+            )
+
+            mock_id_dedup.assert_awaited_once()
+            mock_hash_dedup.assert_not_called()
+            mock_semantic_dedup.assert_not_called()
+            mock_adapter.add_memories.assert_awaited_once()
+            indexed_memories = mock_adapter.add_memories.await_args.args[0]
+            assert indexed_memories == [summary]
+            assert indexed_memories[0].id == "thread_summary_abc123"
+            assert indexed_memories[0].extraction_strategy == "summary"
+            assert indexed_memories[0].metadata["source_message_fingerprint"] == "fp"
+
+    @pytest.mark.asyncio
     async def test_promote_working_memory_to_long_term(self, mock_async_redis_client):
         """Test promoting memories from working memory to long-term storage"""
 

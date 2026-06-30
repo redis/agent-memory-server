@@ -256,6 +256,10 @@ class MemoryType(EnumFilter):
         super().__init__(**data)
 
 
+class ExtractionStrategy(TagFilter):
+    field: str = "extraction_strategy"
+
+
 class EventDate(DateTimeFilter):
     field: str = "event_date"
 

@@ -452,8 +452,10 @@ class TestRecencyConfig:
             "hybrid",
         ]
         assert properties["search_mode"]["default"] == "semantic"
-        assert "default" not in properties["hybrid_alpha"]
-        assert "default" not in properties["text_scorer"]
+        # hybrid_alpha and text_scorer are intentionally excluded from the
+        # LLM-facing tool schema (they are hyperparameters, not user-facing).
+        assert "hybrid_alpha" not in properties
+        assert "text_scorer" not in properties
         assert "search_mode" in properties["min_relevance"]["description"]
         assert "semantic" in properties["min_relevance"]["description"]
 
@@ -1025,6 +1027,11 @@ class TestForgetLongTermMemories:
         assert result.deleted == 5
         assert len(result.deleted_ids) == 5
         assert result.dry_run is False
+        enhanced_test_client._client.post.assert_called_once_with(
+            "/v1/long-term-memory/forget",
+            params={"dry_run": False},
+            json={"policy": {"max_age_days": 30}},
+        )
 
     @pytest.mark.asyncio
     async def test_forget_long_term_memories_dry_run(self, enhanced_test_client):
@@ -1048,6 +1055,11 @@ class TestForgetLongTermMemories:
 
         assert isinstance(result, ForgetResponse)
         assert result.dry_run is True
+        enhanced_test_client._client.post.assert_called_once_with(
+            "/v1/long-term-memory/forget",
+            params={"dry_run": True},
+            json={"policy": {"max_inactive_days": 14}},
+        )
 
     @pytest.mark.asyncio
     async def test_forget_long_term_memories_with_filters(self, enhanced_test_client):
@@ -1070,7 +1082,16 @@ class TestForgetLongTermMemories:
         )
 
         assert isinstance(result, ForgetResponse)
-        enhanced_test_client._client.post.assert_called_once()
+        enhanced_test_client._client.post.assert_called_once_with(
+            "/v1/long-term-memory/forget",
+            params={
+                "namespace": "test-ns",
+                "user_id": "user-1",
+                "session_id": "sess-1",
+                "dry_run": False,
+            },
+            json={"policy": {"budget": 100}},
+        )
 
 
 # ==================== Summary Views Tests ====================
