@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.redis.agentmemory.MemoryAPIClient;
 import com.redis.agentmemory.models.common.AckResponse;
+import com.redis.agentmemory.models.common.TagFilter;
 import com.redis.agentmemory.models.longtermemory.*;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -436,6 +437,162 @@ class LongTermMemoryServiceTest {
     }
 
     @Test
+    void testSearchLongTermMemories_WithUserIdString() throws Exception {
+        // backward compat: plain String userId still serializes {"eq": "..."}
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(emptyResults()))
+                .addHeader("Content-Type", "application/json"));
+
+        SearchRequest request = SearchRequest.builder()
+                .text("query")
+                .userId("user-123")
+                .build();
+        client.longTermMemory().searchLongTermMemories(request);
+
+        RecordedRequest recorded = mockServer.takeRequest();
+        String body = recorded.getBody().readUtf8();
+        assertTrue(body.contains("\"user_id\":{\"eq\":\"user-123\"}"));
+    }
+
+
+    @Test
+    void testSearchLongTermMemories_WithUserIdAny() throws Exception {
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(emptyResults()))
+                .addHeader("Content-Type", "application/json"));
+
+        SearchRequest request = SearchRequest.builder()
+                .text("query")
+                .userId(TagFilter.any("user-123", "__account__"))
+                .build();
+        client.longTermMemory().searchLongTermMemories(request);
+
+        RecordedRequest recorded = mockServer.takeRequest();
+        String body = recorded.getBody().readUtf8();
+        assertTrue(body.contains("\"user_id\":{\"any\":[\"user-123\",\"__account__\"]}"));
+        assertFalse(body.contains("\"eq\""));
+    }
+
+    @Test
+    void testSearchLongTermMemory_WithNamespaceTagFilter() throws Exception {
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(emptyResults()))
+                .addHeader("Content-Type", "application/json"));
+
+        SearchRequest request = SearchRequest.builder()
+                .text("query")
+                .namespace(TagFilter.startsWith("tenant-"))
+                .build();
+        client.longTermMemory().searchLongTermMemories(request);
+
+        RecordedRequest recorded = mockServer.takeRequest();
+        String body = recorded.getBody().readUtf8();
+        assertTrue(body.contains("\"namespace\":{\"startswith\":\"tenant-\"}"));
+    }
+
+    @Test
+    void testSearchLongTermMemory_WithSessionIdAny() throws Exception {
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(emptyResults()))
+                .addHeader("Content-Type", "application/json"));
+
+        SearchRequest request = SearchRequest.builder()
+                .text("query")
+                .sessionId(TagFilter.any("session-a", "session-b"))
+                .build();
+        client.longTermMemory().searchLongTermMemories(request);
+
+        RecordedRequest recorded = mockServer.takeRequest();
+        String body = recorded.getBody().readUtf8();
+        assertTrue(body.contains("\"session_id\":{\"any\":[\"session-a\",\"session-b\"]}"));
+    }
+
+    @Test
+    void testSearchLongTermMemory_WithTopicsList() throws Exception {
+        // backward compat: List<String> convenience API still serializes {"any": [...]}
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(emptyResults()))
+                .addHeader("Content-Type", "application/json"));
+
+        SearchRequest request = SearchRequest.builder()
+                .text("query")
+                .topics(List.of("finance", "real-estate"))
+                .build();
+        client.longTermMemory().searchLongTermMemories(request);
+
+        RecordedRequest recorded = mockServer.takeRequest();
+        String body = recorded.getBody().readUtf8();
+        assertTrue(body.contains("\"topics\":{\"any\":[\"finance\",\"real-estate\"]}"));
+    }
+
+    @Test
+    void testSearchLongTermMemory_WithTopicsAllFilter() throws Exception {
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(emptyResults()))
+                .addHeader("Content-Type", "application/json"));
+
+        SearchRequest request = SearchRequest.builder()
+                .text("query")
+                .topics(TagFilter.all("finance", "real-estate"))
+                .build();
+        client.longTermMemory().searchLongTermMemories(request);
+
+        RecordedRequest recorded = mockServer.takeRequest();
+        String body = recorded.getBody().readUtf8();
+        assertTrue(body.contains("\"topics\":{\"all\":[\"finance\",\"real-estate\"]}"));
+    }
+
+    @Test
+    void testSearchLongTermMemory_WithEntitiesTagFilter() throws Exception {
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(emptyResults()))
+                .addHeader("Content-Type", "application/json"));
+
+        SearchRequest request = SearchRequest.builder()
+                .text("query")
+                .entities(TagFilter.any("Google", "Apple"))
+                .build();
+        client.longTermMemory().searchLongTermMemories(request);
+
+        RecordedRequest recorded = mockServer.takeRequest();
+        String body = recorded.getBody().readUtf8();
+        assertTrue(body.contains("\"entities\":{\"any\":[\"Google\",\"Apple\"]}"));
+    }
+
+    @Test
+    void testSearchLongTermMemory_WithEmptyTopicsList() throws Exception {
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(emptyResults()))
+                .addHeader("Content-Type", "application/json"));
+
+        SearchRequest request = SearchRequest.builder()
+                .text("query")
+                .topics(List.of())
+                .build();
+        client.longTermMemory().searchLongTermMemories(request);
+
+        RecordedRequest recorded = mockServer.takeRequest();
+        String body = recorded.getBody().readUtf8();
+        assertFalse(body.contains("\"topics\""));
+    }
+
+    @Test
+    void testSearchLongTermMemory_WithNoUserId() throws Exception {
+        mockServer.enqueue(new MockResponse()
+                .setBody(objectMapper.writeValueAsString(emptyResults()))
+                .addHeader("Content-Type", "application/json"));
+
+        SearchRequest request = SearchRequest.builder()
+                .text("query")
+                .build();
+        client.longTermMemory().searchLongTermMemories(request);
+
+        RecordedRequest recorded = mockServer.takeRequest();
+        String body = recorded.getBody().readUtf8();
+        assertFalse(body.contains("\"user_id\""));
+    }
+
+    @Test
     void testSearchRequestBuilder_AllRecencyFields() {
         // Test that all recency fields can be set via builder
         SearchRequest request = SearchRequest.builder()
@@ -480,4 +637,10 @@ class LongTermMemoryServiceTest {
         assertTrue(requestBody.contains("\"extraction_strategy\":{\"eq\":\"summary\"}"));
     }
 
+    private MemoryRecordResults emptyResults() {
+        MemoryRecordResults r = new MemoryRecordResults();
+        r.setMemories(new ArrayList<>());
+        r.setTotal(0);
+        return r;
+    }
 }
