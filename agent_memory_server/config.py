@@ -427,6 +427,7 @@ class Settings(BaseSettings):
     oauth2_audience: str | None = None
     oauth2_jwks_url: str | None = None
     oauth2_algorithms: list[str] = ["RS256"]
+    oauth2_resource_host: str | None = None
 
     # Token Authentication settings
     token_auth_enabled: bool = False
