@@ -777,9 +777,9 @@ async def search_long_term_memory(
                 "event_date",
             ):
                 fallback_kwargs.pop(key, None)
-            # Only drop namespace filter if it is a broad (any/all) filter, not an exact eq match.
-            # An eq namespace filter means the caller asked a precise question; returning a
-            # record from the wrong namespace is more harmful than returning zero results.
+            # Preserve only an exact namespace eq match in fallback; drop namespace for any other
+            # namespace filter (any/all/ne/startswith) to widen the search without crossing an
+            # explicit eq scope boundary.
             ns_filter = filters.get("namespace") if filters else None
             if ns_filter is None or getattr(ns_filter, "eq", None) is None:
                 fallback_kwargs.pop("namespace", None)
