@@ -15,6 +15,7 @@ from agent_memory_server.llm import LLMClient
 from agent_memory_server.logging import get_logger
 from agent_memory_server.models import MemoryRecord
 from agent_memory_server.utils.datetime import parse_iso8601_datetime
+from agent_memory_server.utils.llm_json import parse_llm_json
 from agent_memory_server.utils.tag_codec import sanitize_tag_values
 
 
@@ -152,7 +153,7 @@ Example: {{"entities": ["John Smith", "Apple Inc.", "New York"]}}
                 response_format={"type": "json_object"},
             )
             try:
-                entities = json.loads(response.content).get("entities", [])
+                entities = parse_llm_json(response.content).get("entities", [])
             except (json.JSONDecodeError, KeyError):
                 logger.error(f"Error decoding NER JSON: {response.content}")
                 entities = []
@@ -191,7 +192,7 @@ Example: {{"topics": ["machine learning", "data science", "python"]}}
                 response_format={"type": "json_object"},
             )
             try:
-                topics = json.loads(response.content).get("topics", [])
+                topics = parse_llm_json(response.content).get("topics", [])
             except (json.JSONDecodeError, KeyError):
                 logger.error(f"Error decoding topics JSON: {response.content}")
                 topics = []
