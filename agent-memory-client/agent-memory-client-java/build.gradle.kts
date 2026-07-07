@@ -36,7 +36,8 @@ repositories {
 
 dependencies {
     // HTTP Client
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // api so that `Builder.httpClient` callers can avoid version skew
+    api("com.squareup.okhttp3:okhttp:4.12.0")
 
     // JSON Processing
     implementation("com.fasterxml.jackson.core:jackson-databind:2.16.1")

@@ -36,6 +36,7 @@ public class MemoryAPIClient implements AutoCloseable {
     private final String defaultModelName;
     private final Integer defaultContextWindowMax;
     private final OkHttpClient httpClient;
+    private final boolean ownsHttpClient;
     private final ObjectMapper objectMapper;
 
     // Service instances
@@ -53,10 +54,17 @@ public class MemoryAPIClient implements AutoCloseable {
         this.defaultModelName = builder.defaultModelName;
         this.defaultContextWindowMax = builder.defaultContextWindowMax;
 
-        this.httpClient = new OkHttpClient.Builder()
-                .connectTimeout((long) timeout, TimeUnit.SECONDS)
-                .readTimeout((long) timeout, TimeUnit.SECONDS)
-                .writeTimeout((long) timeout, TimeUnit.SECONDS)
+        OkHttpClient.Builder httpClientBuilder = builder.httpClient != null
+                ? builder.httpClient.newBuilder()
+                : new OkHttpClient.Builder()
+                        .connectTimeout((long) timeout, TimeUnit.SECONDS)
+                        .readTimeout((long) timeout, TimeUnit.SECONDS)
+                        .writeTimeout((long) timeout, TimeUnit.SECONDS);
+
+        // when the caller provides a client, we don't own it's lifecycle
+        this.ownsHttpClient = builder.httpClient == null;
+
+        this.httpClient = httpClientBuilder
                 .addInterceptor(chain -> {
                     Request original = chain.request();
                     Request request = original.newBuilder()
@@ -161,8 +169,11 @@ public class MemoryAPIClient implements AutoCloseable {
 
     @Override
     public void close() {
-        httpClient.dispatcher().executorService().shutdown();
-        httpClient.connectionPool().evictAll();
+        // when the caller provides a client, we don't own it's lifecycle
+        if (ownsHttpClient) {
+            httpClient.dispatcher().executorService().shutdown();
+            httpClient.connectionPool().evictAll();
+        }
     }
 
     /**
@@ -355,6 +366,7 @@ public class MemoryAPIClient implements AutoCloseable {
         private String defaultNamespace = null;
         private String defaultModelName = null;
         private Integer defaultContextWindowMax = null;
+        private OkHttpClient httpClient = null;
 
         private Builder(@NotNull String baseUrl) {
             this.baseUrl = baseUrl;
@@ -397,6 +409,19 @@ public class MemoryAPIClient implements AutoCloseable {
          */
         public Builder defaultContextWindowMax(@Nullable Integer defaultContextWindowMax) {
             this.defaultContextWindowMax = defaultContextWindowMax;
+            return this;
+        }
+
+        /**
+         * Sets an {@link OkHttpClient} to use for all requests.
+         *
+         * <p>
+         * When provided, the {@link #timeout(double)} settings is ignored.
+         * @param httpClient the OkHttpClient to use, or null to use the default
+         * @return this builder
+         */
+        public Builder httpClient(@Nullable OkHttpClient httpClient) {
+            this.httpClient = httpClient;
             return this;
         }
 
