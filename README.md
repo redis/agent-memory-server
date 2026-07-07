@@ -246,6 +246,56 @@ export REDISVL_VECTOR_DIMENSIONS=768  # Required for Ollama
 
 See **[LLM Providers](https://redis.github.io/agent-memory-server/llm-providers/)** for complete configuration options.
 
+## Redis Cloud Agent Memory migration
+
+Redis Cloud Agent Memory Service stores long-term memories in a Cloud service key layout, while local `agent-memory-server` stores records in the RedisVL index layout. If you copy Redis data from a Cloud Agent Memory store into a local Redis deployment, run the migration command before rebuilding the local search index.
+
+Cloud exports observed in Redis use keys like:
+
+```text
+memory:<store_id>:ltm:<memory_id>
+```
+
+with fields such as `id`, `owner_id`, and `text_vector`. Local `agent-memory-server` indexes keys like:
+
+```text
+memory_idx:<memory_id>
+```
+
+with fields such as `id_`, `user_id`, and `vector`. The migration copies source hashes into local-shaped hashes, converts Cloud millisecond timestamps to seconds, and downcasts Cloud float64 vector blobs to RedisVL's local FLOAT32 vector format when needed. Source keys are not deleted.
+
+Dry run first:
+
+```bash
+uv run agent-memory migrate-cloud-long-term-memory \
+  --store-id <redis-cloud-agent-memory-store-id>
+```
+
+Apply the migration:
+
+```bash
+uv run agent-memory migrate-cloud-long-term-memory \
+  --store-id <redis-cloud-agent-memory-store-id> \
+  --apply
+```
+
+Then rebuild the local index:
+
+```bash
+uv run agent-memory rebuild-index
+```
+
+Useful options:
+
+```text
+--source-pattern <pattern>   Override the source SCAN pattern.
+--target-prefix <prefix>     Override the local target prefix, default memory_idx.
+--batch-size <n>             Tune SCAN/write batch size.
+--overwrite                  Replace existing target keys instead of skipping them.
+```
+
+See [Redis Cloud Agent Memory migration](docs/redis-cloud-migration.md) for the full schema mapping and Cloud-to-local workflow.
+
 ## Documentation
 
 📚 **[Full Documentation](https://redis.github.io/agent-memory-server/)** - Complete guides, API reference, and examples

@@ -109,6 +109,81 @@ def migrate_memories():
     click.echo("Memory migrations completed successfully.")
 
 
+@cli.command("migrate-cloud-long-term-memory")
+@click.option(
+    "--store-id",
+    default=None,
+    help="Redis Cloud Agent Memory store ID. Builds source pattern memory:<store-id>:ltm:*.",
+)
+@click.option(
+    "--source-pattern",
+    default=None,
+    help="Explicit source SCAN pattern. Defaults to memory:<store-id>:ltm:* or memory:*:ltm:*.",
+)
+@click.option(
+    "--target-prefix",
+    default=None,
+    help="Local RedisVL memory key prefix. Defaults to REDIS_MEMORY_REDISVL_INDEX_PREFIX/memory_idx.",
+)
+@click.option("--batch-size", default=500, show_default=True, type=int)
+@click.option(
+    "--apply",
+    "apply_changes",
+    is_flag=True,
+    help="Actually write migrated memory_idx:<id> hashes. Without this, runs dry-run only.",
+)
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    help="Overwrite existing target keys. By default existing local records are skipped.",
+)
+def migrate_cloud_long_term_memory_command(
+    store_id: str | None,
+    source_pattern: str | None,
+    target_prefix: str | None,
+    batch_size: int,
+    apply_changes: bool,
+    overwrite: bool,
+):
+    """Copy Redis Cloud Agent Memory Service LTM hashes into local AMS schema.
+
+    This migrates cloud-exported hashes shaped as memory:<store_id>:ltm:<id>
+    with fields id/owner_id/text_vector into the local RedisVL schema shaped as
+    memory_idx:<id> with fields id_/user_id/vector. Source keys are never deleted.
+    """
+    import asyncio
+
+    from agent_memory_server.redis_cloud_migration import (
+        migrate_cloud_long_term_memory,
+    )
+
+    configure_logging()
+
+    async def run_migration():
+        redis = await get_redis_conn()
+        return await migrate_cloud_long_term_memory(
+            redis,
+            store_id=store_id,
+            source_pattern=source_pattern,
+            target_prefix=target_prefix,
+            batch_size=batch_size,
+            dry_run=not apply_changes,
+            overwrite=overwrite,
+        )
+
+    stats = asyncio.run(run_migration())
+    result = stats.as_dict()
+    result["dry_run"] = not apply_changes
+    result["overwrite"] = overwrite
+    result["source_pattern"] = source_pattern or (
+        f"memory:{store_id}:ltm:*" if store_id else "memory:*:ltm:*"
+    )
+    result["target_prefix"] = target_prefix or settings.redisvl_index_prefix
+    click.echo(json.dumps(result, indent=2, sort_keys=True))
+    if not apply_changes:
+        click.echo("Dry run only. Re-run with --apply to write migrated target keys.")
+
+
 @cli.command()
 @click.option(
     "--batch-size",
