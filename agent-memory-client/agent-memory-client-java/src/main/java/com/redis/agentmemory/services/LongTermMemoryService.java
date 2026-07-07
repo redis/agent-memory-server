@@ -3,6 +3,7 @@ package com.redis.agentmemory.services;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.redis.agentmemory.exceptions.MemoryClientException;
 import com.redis.agentmemory.models.common.AckResponse;
+import com.redis.agentmemory.models.common.TagFilter;
 import com.redis.agentmemory.models.longtermemory.*;
 import okhttp3.*;
 import org.jetbrains.annotations.NotNull;
@@ -86,22 +87,22 @@ public class LongTermMemoryService extends BaseService {
 
         // Add filters if present
         if (request.getSessionId() != null) {
-            payload.put("session_id", Map.of("eq", request.getSessionId()));
+            payload.put("session_id", request.getSessionId());
         }
         if (request.getUserId() != null) {
-            payload.put("user_id", Map.of("eq", request.getUserId()));
+            payload.put("user_id", request.getUserId());
         }
         if (request.getNamespace() != null) {
-            payload.put("namespace", Map.of("eq", request.getNamespace()));
+            payload.put("namespace", request.getNamespace());
         } else if (defaultNamespace != null) {
-            payload.put("namespace", Map.of("eq", defaultNamespace));
+            payload.put("namespace", TagFilter.eq(defaultNamespace));
         }
 
-        if (request.getTopics() != null && !request.getTopics().isEmpty()) {
-            payload.put("topics", Map.of("any", request.getTopics()));
+        if (request.getTopics() != null) {
+            payload.put("topics", request.getTopics());
         }
-        if (request.getEntities() != null && !request.getEntities().isEmpty()) {
-            payload.put("entities", Map.of("any", request.getEntities()));
+        if (request.getEntities() != null) {
+            payload.put("entities", request.getEntities());
         }
         if (request.getDistanceThreshold() != null) {
             payload.put("distance_threshold", request.getDistanceThreshold());

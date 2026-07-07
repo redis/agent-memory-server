@@ -2,6 +2,7 @@ package com.redis.agentmemory.models.longtermemory;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.redis.agentmemory.models.common.TagFilter;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -29,20 +30,20 @@ public class SearchRequest {
 
     @Nullable
     @JsonProperty("session_id")
-    private String sessionId;
+    private TagFilter sessionId;
 
     @Nullable
-    private String namespace;
+    private TagFilter namespace;
 
     @Nullable
-    private List<String> topics;
+    private TagFilter topics;
 
     @Nullable
-    private List<String> entities;
+    private TagFilter entities;
 
     @Nullable
     @JsonProperty("user_id")
-    private String userId;
+    private TagFilter userId;
 
     @Nullable
     @JsonProperty("distance_threshold")
@@ -129,47 +130,69 @@ public class SearchRequest {
     }
 
     @Nullable
-    public String getSessionId() {
+    public TagFilter getSessionId() {
         return sessionId;
     }
 
     public void setSessionId(@Nullable String sessionId) {
+        this.sessionId = sessionId != null ? TagFilter.eq(sessionId) : null;
+    }
+
+    public void setSessionId(@Nullable TagFilter sessionId) {
         this.sessionId = sessionId;
     }
 
     @Nullable
-    public String getNamespace() {
+    public TagFilter getNamespace() {
         return namespace;
     }
 
     public void setNamespace(@Nullable String namespace) {
+        this.namespace = namespace != null ? TagFilter.eq(namespace) : null;
+    }
+
+    public void setNamespace(@Nullable TagFilter namespace) {
         this.namespace = namespace;
     }
 
     @Nullable
-    public List<String> getTopics() {
+    public TagFilter getTopics() {
         return topics;
     }
 
     public void setTopics(@Nullable List<String> topics) {
+        var present = topics != null && !topics.isEmpty();
+        this.topics = present ? TagFilter.any(topics) : null;
+    }
+
+    public void setTopics(@Nullable TagFilter topics) {
         this.topics = topics;
     }
 
     @Nullable
-    public List<String> getEntities() {
+    public TagFilter getEntities() {
         return entities;
     }
 
     public void setEntities(@Nullable List<String> entities) {
+        var present = entities != null && !entities.isEmpty();
+        this.entities = present ? TagFilter.any(entities) : null;
+    }
+
+    public void setEntities(@Nullable TagFilter entities) {
         this.entities = entities;
     }
 
     @Nullable
-    public String getUserId() {
+    public TagFilter getUserId() {
         return userId;
     }
 
     public void setUserId(@Nullable String userId) {
+        this.userId = userId != null ? TagFilter.eq(userId) : null;
+    }
+
+    public void setUserId(@Nullable TagFilter userId) {
         this.userId = userId;
     }
 
@@ -286,11 +309,11 @@ public class SearchRequest {
                 ", searchMode='" + searchMode + '\'' +
                 ", hybridAlpha=" + hybridAlpha +
                 ", textScorer='" + textScorer + '\'' +
-                ", sessionId='" + sessionId + '\'' +
-                ", namespace='" + namespace + '\'' +
+                ", sessionId=" + sessionId +
+                ", namespace=" + namespace +
                 ", topics=" + topics +
                 ", entities=" + entities +
-                ", userId='" + userId + '\'' +
+                ", userId=" + userId +
                 ", distanceThreshold=" + distanceThreshold +
                 ", extractionStrategy='" + extractionStrategy + '\'' +
                 ", limit=" + limit +
@@ -341,26 +364,53 @@ public class SearchRequest {
         }
 
         public Builder sessionId(@Nullable String sessionId) {
+            request.sessionId = sessionId != null ? TagFilter.eq(sessionId) : null;
+            return this;
+        }
+
+        public Builder sessionId(@Nullable TagFilter sessionId) {
             request.sessionId = sessionId;
             return this;
         }
 
         public Builder namespace(@Nullable String namespace) {
+            request.namespace = namespace != null ? TagFilter.eq(namespace) : null;
+            return this;
+        }
+
+        public Builder namespace(@Nullable TagFilter namespace) {
             request.namespace = namespace;
             return this;
         }
 
         public Builder topics(@Nullable List<String> topics) {
+            var present = topics != null && !topics.isEmpty();
+            request.topics = present ? TagFilter.any(topics) : null;
+            return this;
+        }
+
+        public Builder topics(@Nullable TagFilter topics) {
             request.topics = topics;
             return this;
         }
 
         public Builder entities(@Nullable List<String> entities) {
+            var present = entities != null && !entities.isEmpty();
+            request.entities = present ? TagFilter.any(entities) : null;
+            return this;
+        }
+
+        public Builder entities(@Nullable TagFilter entities) {
             request.entities = entities;
             return this;
         }
 
         public Builder userId(@Nullable String userId) {
+            request.userId = userId != null ? TagFilter.eq(userId) : null;
+            return this;
+        }
+
+        public Builder userId(@Nullable TagFilter userId) {
             request.userId = userId;
             return this;
         }
