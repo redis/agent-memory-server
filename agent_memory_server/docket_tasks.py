@@ -6,6 +6,7 @@ import logging
 
 from docket import Docket
 
+import agent_memory_server.litellm_pickle_compat  # noqa: F401 — patches litellm exceptions for cloudpickle
 from agent_memory_server.config import settings
 from agent_memory_server.extraction import (
     extract_memories_with_strategy,
