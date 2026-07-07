@@ -36,6 +36,7 @@ jobs:
       jreleaser-arguments: 'assemble --git-root-search'
       clone-to-dist-repo: false
       update-antora-version: false
+      jreleaser-version: 'early-access'
       working-directory: 'agent-memory-client/agent-memory-client-java'
       tag-prefix: 'java-client-v'
       git-root-search: true
