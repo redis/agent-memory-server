@@ -134,6 +134,15 @@ def _build_redis_schema() -> dict:
     """
     embedding_dimensions = _get_embedding_dimensions()
 
+    datatype = settings.redisvl_datatype.lower()
+    metric = settings.redisvl_distance_metric.lower()
+    if datatype in ("int8", "uint8") and metric != "cosine":
+        raise ValueError(
+            f"redisvl_datatype={datatype!r} (quantized) requires "
+            f"redisvl_distance_metric='cosine', got {metric!r}: per-vector "
+            f"quantization changes geometry for non-cosine metrics."
+        )
+
     return {
         "index": {
             "name": settings.redisvl_index_name,
@@ -169,7 +178,7 @@ def _build_redis_schema() -> dict:
                     "dims": embedding_dimensions,
                     "distance_metric": settings.redisvl_distance_metric.lower(),
                     "algorithm": settings.redisvl_indexing_algorithm.lower(),
-                    "datatype": "float32",
+                    "datatype": settings.redisvl_datatype,
                 },
             },
         ],
@@ -195,7 +204,9 @@ def create_redis_memory_vector_db(
             schema,
             redis_url=redis_url_for_redisvl(settings.redis_url),
         )
-        return RedisVLMemoryVectorDatabase(index, embeddings)
+        return RedisVLMemoryVectorDatabase(
+            index, embeddings, datatype=settings.redisvl_datatype
+        )
     except Exception as e:
         logger.error(f"Error creating Redis memory vector database: {e}")
         raise
