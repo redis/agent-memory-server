@@ -46,6 +46,5 @@ It serves as the research foundation and architectural starting point for Redis 
 
 ## License
 
-This project is licensed under the **Apache License 2.0** (Redis, Inc.). A copy
-is provided at both the repository root ([`LICENSE`](./LICENSE)) and inside
-[`V0/LICENSE`](./V0/LICENSE).
+This project is licensed under the **Apache License 2.0** (Redis, Inc.). See
+[`LICENSE`](./LICENSE) at the repository root.
