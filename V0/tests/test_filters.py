@@ -24,6 +24,7 @@ from agent_memory_server.filters import (
 from agent_memory_server.models import (
     MemoryRecordResult,
     MemoryRecordResults,
+    SearchRequest,
 )
 
 
@@ -266,11 +267,58 @@ class TestTagFilterValidation:
         with pytest.raises(ValueError, match="any cannot be an empty list"):
             TagFilter(field="test", any=[])
 
+    def test_not_in_cannot_be_empty_list(self):
+        """not_in cannot be an empty list."""
+        with pytest.raises(ValueError, match="not_in cannot be an empty list"):
+            TagFilter(field="test", not_in=[])
+
+    def test_in_alias_maps_to_any(self):
+        """Legacy SDK in_ alias should produce an any filter."""
+        filter_obj = TagFilter(field="tags", in_=["tag1", "tag2"])
+        assert filter_obj.any == ["tag1", "tag2"]
+        assert str(filter_obj.to_filter()) == "@tags:{tag1|tag2}"
+
+    def test_not_eq_alias_maps_to_ne(self):
+        """Legacy SDK not_eq alias should produce an ne filter."""
+        filter_obj = TagFilter(field="tags", not_eq="tag1")
+        assert filter_obj.ne == "tag1"
+        assert str(filter_obj.to_filter()) == "(-@tags:{tag1})"
+
+    def test_not_in_filter_creates_negated_union(self):
+        """not_in should exclude any matching tag value."""
+        filter_obj = TagFilter(field="tags", not_in=["tag1", "tag2"])
+        assert str(filter_obj.to_filter()) == "(-@tags:{tag1|tag2})"
+
+    def test_none_alias_maps_to_not_in(self):
+        """Legacy SDK none alias should produce a not_in filter."""
+        filter_obj = TagFilter(field="topics", none=["topic1", "topic2"])
+        assert filter_obj.not_in == ["topic1", "topic2"]
+        assert str(filter_obj.to_filter()) == "(-@topics:{topic1|topic2})"
+
     def test_all_filter_creates_expression(self):
         """all filter should create a valid FilterExpression."""
         filter_obj = TagFilter(field="tags", all=["tag1", "tag2"])
         result = filter_obj.to_filter()
         assert isinstance(result, FilterExpression)
+        assert str(result) == "(@tags:{tag1} @tags:{tag2})"
+
+    def test_search_request_accepts_legacy_sdk_tag_filter_aliases(self):
+        """SDK-emitted aliases should survive request parsing as real filters."""
+        request = SearchRequest.model_validate(
+            {
+                "text": "query",
+                "session_id": {"in_": ["session-1", "session-2"]},
+                "namespace": {"not_eq": "archived"},
+                "topics": {"none": ["private"]},
+            }
+        )
+
+        assert request.session_id is not None
+        assert request.session_id.any == ["session-1", "session-2"]
+        assert request.namespace is not None
+        assert request.namespace.ne == "archived"
+        assert request.topics is not None
+        assert request.topics.not_in == ["private"]
 
     def test_no_filter_provided_raises(self):
         """No filter provided should raise ValueError."""
@@ -362,6 +410,39 @@ class TestEnumFilter:
         """any cannot be an empty list."""
         with pytest.raises(ValueError, match="any cannot be an empty list"):
             EnumFilter(field="status", enum_class=_SampleEnum, any=[])
+
+    def test_not_in_cannot_be_empty(self):
+        """not_in cannot be an empty list."""
+        with pytest.raises(ValueError, match="not_in cannot be an empty list"):
+            EnumFilter(field="status", enum_class=_SampleEnum, not_in=[])
+
+    def test_in_alias_maps_to_any(self):
+        """Legacy SDK in_ alias should produce an any enum filter."""
+        filter_obj = EnumFilter(
+            field="status", enum_class=_SampleEnum, in_=["value1", "value2"]
+        )
+        assert filter_obj.any == ["value1", "value2"]
+        assert str(filter_obj.to_filter()) == "@status:{value1|value2}"
+
+    def test_not_eq_alias_maps_to_ne(self):
+        """Legacy SDK not_eq alias should produce an ne enum filter."""
+        filter_obj = EnumFilter(field="status", enum_class=_SampleEnum, not_eq="value1")
+        assert filter_obj.ne == "value1"
+        assert str(filter_obj.to_filter()) == "(-@status:{value1})"
+
+    def test_not_in_filter_creates_negated_union(self):
+        """not_in should exclude any matching enum value."""
+        filter_obj = EnumFilter(
+            field="status", enum_class=_SampleEnum, not_in=["value1", "value2"]
+        )
+        assert str(filter_obj.to_filter()) == "(-@status:{value1|value2})"
+
+    def test_not_in_with_invalid_value_raises(self):
+        """not_in with invalid enum value should raise."""
+        with pytest.raises(ValueError, match="not in valid enum values"):
+            EnumFilter(
+                field="status", enum_class=_SampleEnum, not_in=["value1", "invalid"]
+            )
 
     def test_no_filter_provided_raises(self):
         """No filter provided should raise ValueError."""

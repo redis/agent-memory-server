@@ -1,11 +1,35 @@
 from datetime import datetime
 from enum import Enum
-from typing import Self
+from functools import reduce
+from typing import Any, Self
 
 from pydantic import BaseModel
 from pydantic.functional_validators import model_validator
 from redisvl.query.filter import FilterExpression, Num, Tag
 from redisvl.utils.token_escaper import TokenEscaper
+
+
+def _normalize_tag_filter_aliases(data: Any, aliases: dict[str, str]) -> Any:
+    if not isinstance(data, dict):
+        return data
+
+    normalized = dict(data)
+    for alias, target in aliases.items():
+        if alias not in normalized:
+            continue
+
+        alias_value = normalized.pop(alias)
+        if alias_value is None:
+            continue
+        if normalized.get(target) is not None:
+            raise ValueError(f"{alias} and {target} cannot both be set")
+        normalized[target] = alias_value
+
+    return normalized
+
+
+def _and_filter_expressions(expressions: list[FilterExpression]) -> FilterExpression:
+    return reduce(lambda left, right: left & right, expressions)
 
 
 class TagFilter(BaseModel):
@@ -14,7 +38,20 @@ class TagFilter(BaseModel):
     ne: str | None = None
     any: list[str] | None = None
     all: list[str] | None = None
+    not_in: list[str] | None = None
     startswith: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_aliases(cls, data: Any) -> Any:
+        return _normalize_tag_filter_aliases(
+            data,
+            {
+                "in_": "any",
+                "not_eq": "ne",
+                "none": "not_in",
+            },
+        )
 
     @model_validator(mode="after")
     def validate_filters(self) -> Self:
@@ -26,6 +63,8 @@ class TagFilter(BaseModel):
             raise ValueError("all cannot be an empty list")
         if self.any is not None and len(self.any) == 0:
             raise ValueError("any cannot be an empty list")
+        if self.not_in is not None and len(self.not_in) == 0:
+            raise ValueError("not_in cannot be an empty list")
         # Validate startswith doesn't combine with other filters
         if self.startswith is not None:
             if self.startswith == "":
@@ -38,6 +77,8 @@ class TagFilter(BaseModel):
                 raise ValueError("startswith and any cannot both be set")
             if self.all is not None:
                 raise ValueError("startswith and all cannot both be set")
+            if self.not_in is not None:
+                raise ValueError("startswith and not_in cannot both be set")
         return self
 
     def to_filter(self) -> FilterExpression:
@@ -54,7 +95,11 @@ class TagFilter(BaseModel):
         if self.any is not None:
             return Tag(self.field) == self.any
         if self.all is not None:
-            return Tag(self.field) == self.all
+            return _and_filter_expressions(
+                [Tag(self.field) == value for value in self.all]
+            )
+        if self.not_in is not None:
+            return Tag(self.field) != self.not_in
         raise ValueError("No filter provided")
 
 
@@ -67,6 +112,18 @@ class EnumFilter(BaseModel):
     ne: str | None = None
     any: list[str] | None = None
     all: list[str] | None = None
+    not_in: list[str] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_aliases(cls, data: Any) -> Any:
+        return _normalize_tag_filter_aliases(
+            data,
+            {
+                "in_": "any",
+                "not_eq": "ne",
+            },
+        )
 
     @model_validator(mode="after")
     def validate_filters(self) -> Self:
@@ -78,6 +135,8 @@ class EnumFilter(BaseModel):
             raise ValueError("all cannot be an empty list")
         if self.any is not None and len(self.any) == 0:
             raise ValueError("any cannot be an empty list")
+        if self.not_in is not None and len(self.not_in) == 0:
+            raise ValueError("not_in cannot be an empty list")
 
         # Validate enum values
         valid_values = [e.value for e in self.enum_class]
@@ -102,6 +161,12 @@ class EnumFilter(BaseModel):
                     raise ValueError(
                         f"all value '{val}' not in valid enum values: {valid_values}"
                     )
+        if self.not_in is not None:
+            for val in self.not_in:
+                if val not in valid_values:
+                    raise ValueError(
+                        f"not_in value '{val}' not in valid enum values: {valid_values}"
+                    )
 
         return self
 
@@ -113,7 +178,11 @@ class EnumFilter(BaseModel):
         if self.any is not None:
             return Tag(self.field) == self.any
         if self.all is not None:
-            return Tag(self.field) == self.all
+            return _and_filter_expressions(
+                [Tag(self.field) == value for value in self.all]
+            )
+        if self.not_in is not None:
+            return Tag(self.field) != self.not_in
         raise ValueError("No filter provided")
 
 
