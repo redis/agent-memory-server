@@ -186,13 +186,12 @@ services:
   # SHARED SERVICES
   # =============================================================================
   redis:
-    image: redis/redis-stack-server:${REDIS_VERSION:-latest}
+    image: redis:${REDIS_VERSION:-8}
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    environment:
-      - REDIS_ARGS=--appendonly yes
+    command: [ "redis-server", "--appendonly", "yes" ]
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 30s
