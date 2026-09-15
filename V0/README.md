@@ -11,13 +11,19 @@ A memory layer for AI agents.
 
 
 >
-> This is the original reference implementation of Redis Agent Memory Server. It remains a useful reference and starting point for understanding agent memory, but **it is no longer actively maintained and is not the supported production path.**
+> This is the pivotal open-source research foundation behind Redis Agent Memory.
+> Its two-tier architecture, extraction strategies, retrieval, and lifecycle work
+> helped move agent memory from research into productization. The `V0/` path
+> intentionally preserves that work as a versioned artifact for study,
+> experimentation, and community development. **It is no longer actively
+> maintained and is not the supported production path.**
 >
-> For production use, Redis’s official managed path is **[Redis Agent Memory in Redis Iris](https://redis.io/agent-memory/)**, the same two-tier memory model delivered as a managed service, with dedicated endpoints, secure API key management, configurable schemas, and automatic TTL-based lifecycle management, so you don't have to build and operate the memory infrastructure yourself.
+> For production use, Redis’s official managed path is **[Redis Agent Memory in Redis Iris](https://redis.io/agent-memory/)**, the two-tier memory model delivered as a managed service with dedicated endpoints, secure API key management, configurable schemas, and automatic TTL-based lifecycle management, so you don't have to build and operate the memory infrastructure yourself.
 >
 > - Agent Memory overview: [redis.io/agent-memory](https://redis.io/agent-memory/)
 > - Docs: [Redis Agent Memory docs](https://redis.io/docs/latest/develop/ai/context-engine/agent-memory/)
 > - Get started on Redis Cloud: [Create an Agent Memory service](https://redis.io/docs/latest/operate/rc/context-engine/agent-memory/create-service/)
+> - Build: [Python SDK quickstart](https://redis.io/docs/latest/develop/ai/context-engine/agent-memory/python-sdk-quickstart/) or [REST API quickstart](https://redis.io/docs/latest/develop/ai/context-engine/agent-memory/rest-api-quickstart/)
 
 ## Features
 - **Dual Interface**: REST API and Model Context Protocol (MCP) server

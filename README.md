@@ -1,50 +1,57 @@
-<div align=center>
-
 # Redis Agent Memory
 
-A memory layer that gives agents intelligent short-term memory and persistent context across conversations.
+[Redis Agent Memory](https://redis.io/agent-memory/) is Redis's managed memory layer for AI agents: a persistent store that lets an agent recall facts, events, and preferences across sessions, without stuffing every token of history back into the prompt. It is part of [Redis Iris](https://redis.io/iris/), Redis's real-time context engine for agents.
 
-</div>
+[Redis Agent Memory docs](https://redis.io/docs/latest/develop/ai/context-engine/agent-memory/) · [Benchmark harness](./agent-memory-benchmark/) · [Benchmark write-up](https://redis.github.io/redis-ai-research-public/longmemeval-agent-memory/)
 
-## Redis Agent Memory in Redis Iris
-
-[Redis Agent Memory in Redis Iris](https://redis.io/agent-memory/) is Redis’s official managed path for teams that want agent memory as a service, not another subsystem to build and operate themselves. [Redis Iris](https://redis.io/iris/) is the real-time context engine for agents, designed to deliver fresh, relevant context at runtime, and Redis Agent Memory is the part of Iris that makes context compound across turns, sessions, channels, and agents.
-
-Redis Agent Memory in Iris gives you the Redis-managed experience: a persistent, structured memory layer for AI agents exposed through a REST API and client libraries, with dedicated endpoints, secure API key management, configurable memory schemas, and automatic TTL-based lifecycle management. The point is not just storage. It is to remove the custom memory infrastructure teams otherwise end up building around session handling, extraction, retrieval, and lifecycle management.
-
-Redis Agent Memory uses a two-tier model. Session memory keeps the active conversation state, session history, and session-specific metadata close at hand, with configurable TTL control for retention. Long-term memory stores extracted facts and learned patterns from past interactions as text plus vector embeddings for semantic retrieval. As new events are written to working memory, Redis Agent Memory automatically extracts important information and promotes it to long-term memory in the background, so memory accumulates without slowing down the live agent loop.
-
-That matters because Redis Iris is not just a memory feature in isolation. It is a broader context engine built to address the production problems agents actually hit: fragmented data, stale operational state, slow retrieval, and interactions that do not improve over time. Within that story, Redis Agent Memory is the compounding memory layer; [Redis Context Retriever](https://redis.io/context-retriever/) makes business data navigable; [Redis Data Integration](https://redis.io/data-integration/) keeps operational state fresh; and [Redis LangCache](https://redis.io/langcache/) helps repeated work stay inside the latency budget.
-
-If you are evaluating the supported Redis path, these are the best places to start:
+## Getting started
 
 - Product overview: [Redis Iris](https://redis.io/iris/)
 - Agent Memory overview: [Redis Agent Memory docs](https://redis.io/docs/latest/develop/ai/context-engine/agent-memory/)
 - Redis Cloud service guide: [Redis Agent Memory on Redis Cloud](https://redis.io/docs/latest/operate/rc/context-engine/agent-memory/)
 
-A practical getting-started flow on Redis Cloud looks like this:
+On Redis Cloud:
 
-- [Create a database](https://redis.io/docs/latest/operate/rc/databases/create-database/)
-- [Create an Agent Memory service](https://redis.io/docs/latest/operate/rc/context-engine/agent-memory/create-service/)
-- [Use the Agent Memory API](https://redis.io/docs/latest/operate/rc/context-engine/agent-memory/use-agent-memory/) from your application
-- [View and manage your service](https://redis.io/docs/latest/operate/rc/context-engine/agent-memory/view-service/)
+1. [Create a database](https://redis.io/docs/latest/operate/rc/databases/create-database/).
+2. [Create an Agent Memory service](https://redis.io/docs/latest/operate/rc/context-engine/agent-memory/create-service/).
+3. Use the [Python SDK](https://redis.io/docs/latest/develop/ai/context-engine/agent-memory/python-sdk-quickstart/), [TypeScript SDK](https://redis.io/docs/latest/develop/ai/context-engine/agent-memory/typescript-sdk-quickstart/), or [REST API](https://redis.io/docs/latest/develop/ai/context-engine/agent-memory/rest-api-quickstart/) from your app.
+4. Manage the service with the [Redis Cloud guide](https://redis.io/docs/latest/operate/rc/context-engine/agent-memory/).
 
-For implementation details and usage examples, see:
+Implementation details: [API and SDK examples](https://redis.io/docs/latest/develop/ai/context-engine/agent-memory/) and the [API reference](https://redis.io/docs/latest/develop/ai/context-engine/agent-memory/api-reference/).
 
-- [API and SDK examples](https://redis.io/docs/latest/develop/ai/context-engine/agent-memory/api-examples/)
-- [API reference](https://redis.io/docs/latest/develop/ai/context-engine/agent-memory/api-reference/)
+## How it works
 
+Redis Agent Memory uses a two-tier model. Session memory keeps active conversation state close at hand, with configurable TTL. Long-term memory stores extracted facts from past sessions as text plus vector embeddings for later retrieval.
+
+As new events land in session memory, Redis Agent Memory extracts what matters and promotes it to long-term memory in the background. Memory can accumulate without slowing the live agent loop.
+
+Keeping full conversation history in the prompt does not scale. Context windows are bounded, long prompts are slow and expensive, and accuracy degrades as prompts grow. Agent memory lets an agent stay fast and cheap on every turn while still recalling what happened weeks ago.
+
+## Validated independently
+
+We ran a best-effort LongMemEval comparison across a sweep of memory systems, on a shared answer model and judge, to put those systems on more equal footing (Wu et al., ICLR 2025). Some vendors publish higher scores than we report. We were not able to reproduce those numbers under this protocol.
+
+A separate research configuration that combined two retrieval strategies (Instruct extraction and Remis) reached **86.5%** task-averaged accuracy in our evaluation, at about $0.07 per session. Remis is **not** in Redis Agent Memory in Iris yet, and that configuration is **not** what this public harness runs. Do not treat 86.5% as a Redis Cloud product score.
+
+The public harness in [`agent-memory-benchmark/`](./agent-memory-benchmark/) evaluates the shipping Redis Agent Memory REST API and other adapters. It is an audit surface, not a timeless ranking. A result is evidence about a specific provider version, split, models, retrieval settings, artifacts, and run date.
+
+```bash
+git clone https://github.com/redis/agent-memory-server.git
+cd agent-memory-server/agent-memory-benchmark
+```
+
+Setup, protocol, and provider recipes: [`agent-memory-benchmark/README.md`](./agent-memory-benchmark/README.md).
 
 ## V0 — the open-source research foundation
 
-[**`V0/`**](./V0/) contains the original Redis Agent Memory Server: an open-source reference implementation for agent memory with REST and MCP interfaces, working and long-term memory, configurable extraction strategies, and Redis-backed semantic search.
-It serves as the research foundation and architectural starting point for Redis Agent Memory, but it is not the current supported production path.
+[`V0/`](./V0/) is the original Redis Agent Memory Server. It informed the Iris product. We keep it here as an open research artifact, not as the supported production distribution. Start at [`V0/README.md`](./V0/README.md).
 
-- **Start here:** [`V0/README.md`](./V0/README.md)
-- **Documentation:** [`V0/docs/`](./V0/docs/index.md)
-- Build, test, and run everything from inside `V0/` (e.g. `cd V0 && make test`).
+## Citing this work
+
+Redis Applied AI Research, "How Redis Agent Memory Stacks Up: Benchmarking Memory Systems for AI Agents on LongMemEval," 2026.
+
+Also see [Building and evaluating long-term conversational memory](https://redis.github.io/redis-ai-research-public/longmemeval-agent-memory/).
 
 ## License
 
-This project is licensed under the **Apache License 2.0** (Redis, Inc.). See
-[`LICENSE`](./LICENSE) at the repository root.
+Apache License 2.0 (Redis, Inc.). See [`LICENSE`](./LICENSE).
