@@ -56,9 +56,9 @@ def test_shared_prompt_is_provider_neutral_and_handles_empty_context() -> None:
     prompt = build_prompt("", "Where is it?", question_date="2026-08-26")
 
     assert [message["role"] for message in prompt] == ["system", "user"]
-    assert "(no memories found)" in prompt[0]["content"]
-    assert "Question date: 2026-08-26" in prompt[0]["content"]
-    assert "supplied memory context" in prompt[0]["content"]
+    assert "Memories:" in prompt[0]["content"]
+    assert "Current date/time: 2026-08-26" in prompt[0]["content"]
+    assert "personal assistant" in prompt[0]["content"]
     assert prompt[1]["content"] == "Where is it?"
 
 

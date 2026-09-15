@@ -195,6 +195,18 @@ async def test_v1_runner_resumes_and_skips_completed_questions(
 
     assert len(first_records) == 2
     assert resumed_records == first_records
+    hypotheses = [
+        json.loads(line)
+        for line in (out_dir / "hypotheses.jsonl").read_text().splitlines()
+        if line.strip()
+    ]
+    assert hypotheses == [
+        {
+            "question_id": record.question_id,
+            "hypothesis": record.predicted_answer,
+        }
+        for record in first_records
+    ]
     assert sorted(FakeStore.queried) == ["question 0", "question 1"]
     assert len(FakeStore.constructed) == 2
     assert all(record.memories == ["fixture memory"] for record in first_records)

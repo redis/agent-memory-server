@@ -18,6 +18,7 @@ from agent_memory_benchmark.benchmark.models import (
     append_jsonl,
     create_metadata,
     experiment_dir,
+    hypothesis_record,
     read_jsonl,
 )
 from agent_memory_benchmark.datasets import LongMemEvalAdapter
@@ -152,6 +153,10 @@ def _prepare_run(
         if answers_path.exists()
         else set()
     )
+    hypotheses_path = out_dir / "hypotheses.jsonl"
+    if answers_path.exists() and not hypotheses_path.exists():
+        for row in read_jsonl(answers_path, AnswerRecord):
+            append_jsonl(hypotheses_path, hypothesis_record(row))
     return out_dir, metadata, completed
 
 
@@ -253,6 +258,7 @@ async def run_longmemeval_v1(
         examples = examples[:limit]
     answers_path = out_dir / "answers.jsonl"
     errors_path = out_dir / "errors.jsonl"
+    hypotheses_path = out_dir / "hypotheses.jsonl"
     write_lock = asyncio.Lock()
     semaphore = asyncio.Semaphore(concurrency)
     started = datetime.now(timezone.utc)
@@ -305,6 +311,7 @@ async def run_longmemeval_v1(
                             metadata.provider_metadata = store.get_store_metadata()
                             metadata.save(out_dir / "metadata.json")
                         append_jsonl(answers_path, record)
+                        append_jsonl(hypotheses_path, hypothesis_record(record))
                         completed.add(key)
             except Exception as exc:
                 logger.exception("Failed LongMemEval question %s", key)

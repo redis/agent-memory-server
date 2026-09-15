@@ -116,6 +116,10 @@ def read_jsonl(path: Path, record_type: type[RecordT]) -> list[RecordT]:
     return records
 
 
+def hypothesis_record(record: AnswerRecord) -> dict[str, str | None]:
+    return {"question_id": record.question_id, "hypothesis": record.predicted_answer}
+
+
 def create_metadata(
     *,
     run_name: str,

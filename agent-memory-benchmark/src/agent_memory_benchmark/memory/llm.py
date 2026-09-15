@@ -4,11 +4,26 @@ from typing import Any
 
 from agent_memory_benchmark.memory.base import QueryResult
 
-ANSWER_SYSTEM_PROMPT = """Answer the question using only the supplied memory context.
-Be accurate, concise, and direct. Use dates in the context to resolve temporal
-questions. Follow output-format and unknown-answer instructions in the question
-exactly. If no format is requested and the context does not contain the answer,
-say that the available memories are insufficient."""
+ANSWER_SYSTEM_PROMPT = (
+    "You are a personal assistant with access to the user's past "
+    "conversation history.\n"
+    "Answer the user's question using the provided memories, which contain "
+    "excerpts\n"
+    "from their previous conversations.\n"
+    "\n"
+    "Draw on any relevant details — including the user's stated preferences,\n"
+    "past experiences, habits, and opinions — to give a personalized, "
+    "helpful answer.\n"
+    "\n"
+    "If you see conflicting memories, always put more weight on the more "
+    "recent one. \n"
+    "\n"
+    'Only say "I don\'t have enough information to answer that" if the '
+    "context\n"
+    "contains nothing relevant to the question.\n"
+    "\n"
+    "Be concise and direct.\n"
+)
 
 _client: Any = None
 
@@ -32,8 +47,12 @@ def build_prompt(
 ) -> list[dict[str, str]]:
     parts = [ANSWER_SYSTEM_PROMPT]
     if question_date:
-        parts.append(f"\nQuestion date: {question_date}")
-    parts.append(f"\n\nMemory context:\n{context or '(no memories found)'}")
+        parts.append(
+            f"\nCurrent date/time: {question_date}\n"
+            "Use this as 'now' when interpreting relative time expressions "
+            "like 'last week', 'recently', 'how long ago', etc."
+        )
+    parts.append(f"\nMemories:\n{context}")
     return [
         {"role": "system", "content": "".join(parts)},
         {"role": "user", "content": question},

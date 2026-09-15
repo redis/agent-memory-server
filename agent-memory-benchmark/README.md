@@ -44,10 +44,12 @@ This harness targets the LongMemEval setup used in
 | Models | **gpt-4o** defaults for answers and judging; configurable |
 | Metric | Task-averaged accuracy |
 
-The built-in judge uses task-specific binary prompts adapted from LongMemEval's
-official evaluator. For a result you intend to publish, pin exact model snapshots,
-retain the complete output directory, and independently re-grade the hypotheses
-with the [upstream evaluation script](https://github.com/xiaowu0162/LongMemEval/blob/main/src/evaluation/evaluate_qa.py).
+The built-in judge uses the official LongMemEval task-specific binary prompts
+from `evaluate_qa.py`. Each run also writes `hypotheses.jsonl` (`question_id` +
+`hypothesis`) so you can re-grade with the
+[upstream evaluation script](https://github.com/xiaowu0162/LongMemEval/blob/main/src/evaluation/evaluate_qa.py).
+For a result you intend to publish, pin exact model snapshots and keep the
+complete output directory.
 
 ## Quick start
 
@@ -135,6 +137,7 @@ Each run writes `experiment_results/<run-name>/`:
 | File | Contents |
 |------|----------|
 | `answers.jsonl` | Per-question answer, retrieved context, prompt, latency, and token fields |
+| `hypotheses.jsonl` | Same answers in LongMemEval's `question_id` / `hypothesis` schema |
 | `judgments.jsonl` | Per-question score and raw judge response |
 | `metadata.json` | Provider and benchmark configuration, Git state, models, and completion state |
 | `errors.jsonl` | Failed examples |
@@ -147,18 +150,11 @@ per-question answers and judgments, any generated error log, and run date should
 not be added to a comparison. Treat a run with failed or missing questions as
 incomplete.
 
-To verify judgments with LongMemEval's upstream evaluator, first convert the
-answer records to its hypothesis schema:
-
-```bash
-jq -c '{question_id, hypothesis: .predicted_answer}' \
-  experiment_results/<run-name>/answers.jsonl > hypotheses.jsonl
-```
-
-Then follow the upstream
-[`evaluate_qa.py` instructions](https://github.com/xiaowu0162/LongMemEval#testing-your-system)
-with the same cleaned dataset file. Judge calls can be nondeterministic even at
-temperature zero, so retain both sets of judgments if they differ.
+To verify judgments with LongMemEval's upstream evaluator, pass the run's
+`hypotheses.jsonl` and the same cleaned dataset file to
+[`evaluate_qa.py`](https://github.com/xiaowu0162/LongMemEval#testing-your-system).
+Judge calls can be nondeterministic even at temperature zero, so retain both
+sets of judgments if they differ.
 
 ## Interpreting and sharing results
 

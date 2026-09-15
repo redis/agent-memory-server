@@ -66,12 +66,14 @@ def _judgment(answer: AnswerRecord, score: int) -> JudgmentRecord:
         ("yes", 1),
         (" YES. ", 1),
         ("The answer is no.", 0),
-        ("yesterday", -1),
+        ("yesterday", 1),
         ("correct", -1),
         ("", -1),
     ],
 )
-def test_score_parser_uses_standalone_yes_or_no(response: str, expected: int) -> None:
+def test_score_parser_matches_official_yes_substring(
+    response: str, expected: int
+) -> None:
     assert _score(response) == expected
 
 
@@ -128,8 +130,8 @@ def test_judge_prompt_selects_abstention_and_temporal_rubrics() -> None:
         abstain=False,
     )
 
-    assert "question is unanswerable" in abstention
-    assert "off-by-one error" in temporal
+    assert "unanswerable" in abstention
+    assert "off-by-one errors" in temporal
 
 
 def test_judge_prompt_keeps_braces_in_answers() -> None:

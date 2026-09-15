@@ -1,34 +1,65 @@
-"""Published-protocol LongMemEval judge prompts."""
+"""Official LongMemEval judge prompts (Wu et al., ICLR 2025).
+
+Source: github.com/xiaowu0162/LongMemEval  src/evaluation/evaluate_qa.py
+Placeholders are substituted without str.format so braces in answers stay intact.
+"""
 
 DEFAULT = (
-    "I will give you a question, a correct answer, and a model response. "
-    "Answer yes if the response contains the correct answer or is equivalent to it. "
-    "Answer no if required information is missing.\n\nQuestion: {question}\n\n"
-    "Correct Answer: {answer}\n\nModel Response: {response}\n\n"
+    "I will give you a question, a correct answer, and a response from a model. "
+    "Please answer yes if the response contains the correct answer. Otherwise, "
+    "answer no. If the response is equivalent to the correct answer or contains "
+    "all the intermediate steps to get the correct answer, you should also answer "
+    "yes. If the response only contains a subset of the information required by "
+    "the answer, answer no. "
+    "\n\nQuestion: {question}\n\nCorrect Answer: {answer}\n\n"
+    "Model Response: {response}\n\n"
     "Is the model response correct? Answer yes or no only."
 )
-TEMPORAL = DEFAULT.replace(
-    "Answer no if required information is missing.",
-    "Answer no if required information is missing. Do not penalize an off-by-one "
-    "error when the requested answer is a number of days, weeks, or months.",
+TEMPORAL = (
+    "I will give you a question, a correct answer, and a response from a model. "
+    "Please answer yes if the response contains the correct answer. Otherwise, "
+    "answer no. If the response is equivalent to the correct answer or contains "
+    "all the intermediate steps to get the correct answer, you should also answer "
+    "yes. If the response only contains a subset of the information required by "
+    "the answer, answer no. In addition, do not penalize off-by-one errors for "
+    "the number of days. If the question asks for the number of "
+    "days/weeks/months, etc., and the model makes off-by-one errors (e.g., "
+    "predicting 19 days when the answer is 18), the model's response is still "
+    "correct. "
+    "\n\nQuestion: {question}\n\nCorrect Answer: {answer}\n\n"
+    "Model Response: {response}\n\n"
+    "Is the model response correct? Answer yes or no only."
 )
 KNOWLEDGE_UPDATE = (
-    "Compare the model response with the correct updated answer. A response may "
-    "mention older information, but is correct if it clearly gives the required "
-    "updated answer."
+    "I will give you a question, a correct answer, and a response from a model. "
+    "Please answer yes if the response contains the correct answer. Otherwise, "
+    "answer no. If the response contains some previous information along with an "
+    "updated answer, the response should be considered as correct as long as the "
+    "updated answer is the required answer."
     "\n\nQuestion: {question}\n\nCorrect Answer: {answer}\n\n"
-    "Model Response: {response}\n\nAnswer yes or no only."
+    "Model Response: {response}\n\n"
+    "Is the model response correct? Answer yes or no only."
 )
 PREFERENCE = (
-    "Judge whether the response satisfies the personalized-response rubric. It need "
-    "not include every rubric point, but must use the user's personal information "
-    "correctly.\n\nQuestion: {question}\n\nRubric: {answer}\n\n"
-    "Model Response: {response}\n\nAnswer yes or no only."
+    "I will give you a question, a rubric for desired personalized response, "
+    "and a response from a model. Please answer yes if the response satisfies "
+    "the desired response. Otherwise, answer no. The model does not need to "
+    "reflect all the points in the rubric. The response is correct as long as "
+    "it recalls and utilizes the user's personal information correctly."
+    "\n\nQuestion: {question}\n\nRubric: {answer}\n\n"
+    "Model Response: {response}\n\n"
+    "Is the model response correct? Answer yes or no only."
 )
 ABSTENTION = (
-    "The question is unanswerable. Judge whether the model correctly identifies that "
-    "the requested information is absent or insufficient.\n\nQuestion: {question}\n\n"
-    "Explanation: {answer}\n\nModel Response: {response}\n\nAnswer yes or no only."
+    "I will give you an unanswerable question, an explanation, and a response "
+    "from a model. Please answer yes if the model correctly identifies the "
+    "question as unanswerable. The model could say that the information is "
+    "incomplete, or some other information is given but the asked information "
+    "is not."
+    "\n\nQuestion: {question}\n\nExplanation: {answer}\n\n"
+    "Model Response: {response}\n\n"
+    "Does the model correctly identify the question as unanswerable? "
+    "Answer yes or no only."
 )
 
 BY_TYPE = {

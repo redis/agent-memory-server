@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -46,10 +45,12 @@ def _key(record: AnswerRecord | JudgmentRecord) -> str:
 
 
 def _score(text: str) -> int:
-    match = re.search(r"\b(yes|no)\b", text.strip(), re.IGNORECASE)
-    if not match:
-        return -1
-    return 1 if match.group(1).lower() == "yes" else 0
+    lowered = text.strip().lower()
+    if "yes" in lowered:
+        return 1
+    if "no" in lowered:
+        return 0
+    return -1
 
 
 async def _judge_one(
@@ -73,7 +74,7 @@ async def _judge_one(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
                 seed=DEFAULT_SEED,
-                max_tokens=16,
+                max_tokens=10,
             )
             raw = response.choices[0].message.content or ""
             usage = response.usage
