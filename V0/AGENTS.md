@@ -62,7 +62,7 @@ uv run agent-memory schedule-task "agent_memory_server.long_term_memory.compact_
 ### Running All Containers
 # Docker development
 docker-compose up            # Start full stack (API, MCP, Redis)
-docker-compose up redis      # Start only Redis Stack
+docker-compose up redis      # Start only Redis
 docker-compose down          # Stop all services
 ```
 
@@ -243,7 +243,7 @@ ENABLE_NER=true
 
 0. **Install uv**: `pip install uv` to get started with uv
 1. **Setup**: `make setup`
-2. **Redis**: Start Redis Stack via `docker-compose up redis`
+2. **Redis**: Start Redis 8 via `docker-compose up redis`
 3. **Development**: Use `DISABLE_AUTH=true` for local testing
 4. **Testing**: Run `make verify` before committing
 5. **Linting**: `make pre-commit` matches the CI lint gate exactly

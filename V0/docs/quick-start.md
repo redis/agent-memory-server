@@ -40,8 +40,8 @@ uv sync
 Start Redis using Docker:
 
 ```bash
-# Start Redis with RediSearch module
-docker run -d --name redis-stack -p 6379:6379 redis/redis-stack:latest
+# Start Redis 8 (the query engine and JSON support are built in)
+docker run -d --name redis -p 6379:6379 redis:8
 
 # Or use the provided docker-compose
 docker-compose up redis -d
@@ -436,7 +436,7 @@ For production deployment with Docker:
 version: '3.8'
 services:
   redis:
-    image: redis/redis-stack:latest
+    image: redis:8
     ports:
       - "6379:6379"
     volumes:
