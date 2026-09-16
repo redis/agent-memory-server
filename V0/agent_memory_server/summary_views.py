@@ -151,10 +151,23 @@ async def delete_summary_view(view_id: str) -> None:
     up in a later pass if needed.
     """
 
+    cursor = 0
+
     redis = await get_redis_conn()
     await redis.delete(_config_key(view_id))
     await redis.srem(_SUMMARY_VIEW_INDEX_KEY, view_id)
 
+    pattern = _summary_key(view_id, "*")
+
+    while True: 
+        cursor, keys = await redis.scan(cursor=cursor, match=pattern, count=100) 
+
+        for key in keys:
+            await redis.delete(key)
+
+        if cursor == 0:
+            break
+        
 
 async def save_partition_result(result: SummaryViewPartitionResult) -> None:
     """Persist a single partition result for a SummaryView."""
