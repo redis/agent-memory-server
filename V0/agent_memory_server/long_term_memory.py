@@ -1434,6 +1434,10 @@ async def search_long_term_memories(
     # preserve the literal text for lexical matching.
     search_query = text
     optimized_applied = False
+
+    if optimize_query and search_mode != SearchModeEnum.SEMANTIC:
+            logger.warning(f"optimize_query=True is only supported for semantic search, but search_mode='{search_mode.value}'")
+
     if optimize_query and text and search_mode == SearchModeEnum.SEMANTIC:
         search_query = await optimize_query_for_vector_search(text)
         optimized_applied = True
