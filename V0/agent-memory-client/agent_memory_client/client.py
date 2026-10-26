@@ -1073,7 +1073,9 @@ class MemoryAPIClient:
             distance_threshold: Optional distance threshold for search results
             memory_type: Optional memory type filter
             extraction_strategy: Optional extraction strategy filter
-            limit: Maximum number of results to return (default: 10)
+            limit: Maximum number of results to return (default: 10). The
+                server accepts 1-100; larger values raise MemoryServerError
+                (HTTP 422) rather than returning results.
             offset: Offset for pagination (default: 0)
             optimize_query: Whether to optimize the query for semantic (vector) search using a fast model; ignored for keyword and hybrid modes (default: False)
 

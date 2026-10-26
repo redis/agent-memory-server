@@ -574,6 +574,23 @@ class TestMCP:
         assert extracted_memory.memory_type.value == "semantic"
 
     @pytest.mark.asyncio
+    async def test_search_long_term_memory_rejects_limit_above_maximum(
+        self, session, mcp_test_setup
+    ):
+        """An over-limit search must surface as a tool error, not as no results."""
+        async with client_session(mcp_app._mcp_server) as client:
+            with mock.patch(
+                "agent_memory_server.mcp.core_search_long_term_memory"
+            ) as mock_search:
+                result = await client.call_tool(
+                    "search_long_term_memory", {"text": "anything", "limit": 101}
+                )
+
+                assert result.isError
+                assert "limit" in result.content[0].text
+                mock_search.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_search_long_term_memory_with_optimize_query_false_default(
         self, session, mcp_test_setup
     ):
