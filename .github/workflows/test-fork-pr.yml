@@ -60,6 +60,9 @@ jobs:
     name: Service Tests
     runs-on: ubuntu-latest
     needs: setup
+    defaults:
+      run:
+        working-directory: V0
     steps:
       - name: Create check run
         id: check

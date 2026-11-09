@@ -1,0 +1,345 @@
+from datetime import datetime
+from enum import Enum
+from functools import reduce
+from typing import Any, Self
+
+from pydantic import BaseModel
+from pydantic.functional_validators import model_validator
+from redisvl.query.filter import FilterExpression, Num, Tag
+from redisvl.utils.token_escaper import TokenEscaper
+
+
+def _normalize_tag_filter_aliases(data: Any, aliases: dict[str, str]) -> Any:
+    if not isinstance(data, dict):
+        return data
+
+    normalized = dict(data)
+    for alias, target in aliases.items():
+        if alias not in normalized:
+            continue
+
+        alias_value = normalized.pop(alias)
+        if alias_value is None:
+            continue
+        if normalized.get(target) is not None:
+            raise ValueError(f"{alias} and {target} cannot both be set")
+        normalized[target] = alias_value
+
+    return normalized
+
+
+def _and_filter_expressions(expressions: list[FilterExpression]) -> FilterExpression:
+    return reduce(lambda left, right: left & right, expressions)
+
+
+class TagFilter(BaseModel):
+    field: str
+    eq: str | None = None
+    ne: str | None = None
+    any: list[str] | None = None
+    all: list[str] | None = None
+    not_in: list[str] | None = None
+    startswith: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_aliases(cls, data: Any) -> Any:
+        return _normalize_tag_filter_aliases(
+            data,
+            {
+                "in_": "any",
+                "not_eq": "ne",
+                "none": "not_in",
+            },
+        )
+
+    @model_validator(mode="after")
+    def validate_filters(self) -> Self:
+        if self.eq is not None and self.ne is not None:
+            raise ValueError("eq and ne cannot both be set")
+        if self.any is not None and self.all is not None:
+            raise ValueError("any and all cannot both be set")
+        if self.all is not None and len(self.all) == 0:
+            raise ValueError("all cannot be an empty list")
+        if self.any is not None and len(self.any) == 0:
+            raise ValueError("any cannot be an empty list")
+        if self.not_in is not None and len(self.not_in) == 0:
+            raise ValueError("not_in cannot be an empty list")
+        # Validate startswith doesn't combine with other filters
+        if self.startswith is not None:
+            if self.startswith == "":
+                raise ValueError("startswith cannot be an empty string")
+            if self.eq is not None:
+                raise ValueError("startswith and eq cannot both be set")
+            if self.ne is not None:
+                raise ValueError("startswith and ne cannot both be set")
+            if self.any is not None:
+                raise ValueError("startswith and any cannot both be set")
+            if self.all is not None:
+                raise ValueError("startswith and all cannot both be set")
+            if self.not_in is not None:
+                raise ValueError("startswith and not_in cannot both be set")
+        return self
+
+    def to_filter(self) -> FilterExpression:
+        if self.startswith is not None:
+            # Use raw FilterExpression for prefix matching
+            # Escape special characters in the prefix, but add unescaped * at end
+            escaper = TokenEscaper()
+            escaped_prefix = escaper.escape(self.startswith)
+            return FilterExpression(f"@{self.field}:{{{escaped_prefix}*}}")
+        if self.eq is not None:
+            return Tag(self.field) == self.eq
+        if self.ne is not None:
+            return Tag(self.field) != self.ne
+        if self.any is not None:
+            return Tag(self.field) == self.any
+        if self.all is not None:
+            return _and_filter_expressions(
+                [Tag(self.field) == value for value in self.all]
+            )
+        if self.not_in is not None:
+            return Tag(self.field) != self.not_in
+        raise ValueError("No filter provided")
+
+
+class EnumFilter(BaseModel):
+    """Filter for enum fields - accepts enum values and validates them"""
+
+    field: str
+    enum_class: type[Enum]
+    eq: str | None = None
+    ne: str | None = None
+    any: list[str] | None = None
+    all: list[str] | None = None
+    not_in: list[str] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_aliases(cls, data: Any) -> Any:
+        return _normalize_tag_filter_aliases(
+            data,
+            {
+                "in_": "any",
+                "not_eq": "ne",
+            },
+        )
+
+    @model_validator(mode="after")
+    def validate_filters(self) -> Self:
+        if self.eq is not None and self.ne is not None:
+            raise ValueError("eq and ne cannot both be set")
+        if self.any is not None and self.all is not None:
+            raise ValueError("any and all cannot both be set")
+        if self.all is not None and len(self.all) == 0:
+            raise ValueError("all cannot be an empty list")
+        if self.any is not None and len(self.any) == 0:
+            raise ValueError("any cannot be an empty list")
+        if self.not_in is not None and len(self.not_in) == 0:
+            raise ValueError("not_in cannot be an empty list")
+
+        # Validate enum values
+        valid_values = [e.value for e in self.enum_class]
+
+        if self.eq is not None and self.eq not in valid_values:
+            raise ValueError(
+                f"eq value '{self.eq}' not in valid enum values: {valid_values}"
+            )
+        if self.ne is not None and self.ne not in valid_values:
+            raise ValueError(
+                f"ne value '{self.ne}' not in valid enum values: {valid_values}"
+            )
+        if self.any is not None:
+            for val in self.any:
+                if val not in valid_values:
+                    raise ValueError(
+                        f"any value '{val}' not in valid enum values: {valid_values}"
+                    )
+        if self.all is not None:
+            for val in self.all:
+                if val not in valid_values:
+                    raise ValueError(
+                        f"all value '{val}' not in valid enum values: {valid_values}"
+                    )
+        if self.not_in is not None:
+            for val in self.not_in:
+                if val not in valid_values:
+                    raise ValueError(
+                        f"not_in value '{val}' not in valid enum values: {valid_values}"
+                    )
+
+        return self
+
+    def to_filter(self) -> FilterExpression:
+        if self.eq is not None:
+            return Tag(self.field) == self.eq
+        if self.ne is not None:
+            return Tag(self.field) != self.ne
+        if self.any is not None:
+            return Tag(self.field) == self.any
+        if self.all is not None:
+            return _and_filter_expressions(
+                [Tag(self.field) == value for value in self.all]
+            )
+        if self.not_in is not None:
+            return Tag(self.field) != self.not_in
+        raise ValueError("No filter provided")
+
+
+class NumFilter(BaseModel):
+    field: str
+    gt: int | None = None
+    lt: int | None = None
+    gte: int | None = None
+    lte: int | None = None
+    eq: int | None = None
+    ne: int | None = None
+    between: list[float] | None = None
+    inclusive: str = "both"
+
+    @model_validator(mode="after")
+    def validate_filters(self) -> Self:
+        if self.between is not None and len(self.between) != 2:
+            raise ValueError("between must be a list of two numbers")
+        if self.between is not None and self.eq is not None:
+            raise ValueError("between and eq cannot both be set")
+        if self.between is not None and self.ne is not None:
+            raise ValueError("between and ne cannot both be set")
+        if self.between is not None and self.gt is not None:
+            raise ValueError("between and gt cannot both be set")
+        if self.between is not None and self.lt is not None:
+            raise ValueError("between and lt cannot both be set")
+        if self.between is not None and self.gte is not None:
+            raise ValueError("between and gte cannot both be set")
+        return self
+
+    def to_filter(self) -> FilterExpression:
+        if self.between is not None:
+            return Num(self.field).between(
+                int(self.between[0]), int(self.between[1]), self.inclusive
+            )
+        if self.eq is not None:
+            return Num(self.field) == self.eq
+        if self.ne is not None:
+            return Num(self.field) != self.ne
+        if self.gt is not None:
+            return Num(self.field) > self.gt
+        if self.lt is not None:
+            return Num(self.field) < self.lt
+        if self.gte is not None:
+            return Num(self.field) >= self.gte
+        if self.lte is not None:
+            return Num(self.field) <= self.lte
+        raise ValueError("No filter provided")
+
+
+class DateTimeFilter(BaseModel):
+    """Filter for datetime fields - accepts datetime objects and converts to timestamps for Redis queries"""
+
+    field: str
+    gt: datetime | None = None
+    lt: datetime | None = None
+    gte: datetime | None = None
+    lte: datetime | None = None
+    eq: datetime | None = None
+    ne: datetime | None = None
+    between: list[datetime] | None = None
+    inclusive: str = "both"
+
+    @model_validator(mode="after")
+    def validate_filters(self) -> Self:
+        if self.between is not None and len(self.between) != 2:
+            raise ValueError("between must be a list of two datetimes")
+        if self.between is not None and self.eq is not None:
+            raise ValueError("between and eq cannot both be set")
+        if self.between is not None and self.ne is not None:
+            raise ValueError("between and ne cannot both be set")
+        if self.between is not None and self.gt is not None:
+            raise ValueError("between and gt cannot both be set")
+        if self.between is not None and self.lt is not None:
+            raise ValueError("between and lt cannot both be set")
+        if self.between is not None and self.gte is not None:
+            raise ValueError("between and gte cannot both be set")
+        return self
+
+    def to_filter(self) -> FilterExpression:
+        """Convert datetime objects to timestamps for Redis numerical queries"""
+        if self.between is not None:
+            return Num(self.field).between(
+                int(self.between[0].timestamp()),
+                int(self.between[1].timestamp()),
+                self.inclusive,
+            )
+        if self.eq is not None:
+            return Num(self.field) == int(self.eq.timestamp())
+        if self.ne is not None:
+            return Num(self.field) != int(self.ne.timestamp())
+        if self.gt is not None:
+            return Num(self.field) > int(self.gt.timestamp())
+        if self.lt is not None:
+            return Num(self.field) < int(self.lt.timestamp())
+        if self.gte is not None:
+            return Num(self.field) >= int(self.gte.timestamp())
+        if self.lte is not None:
+            return Num(self.field) <= int(self.lte.timestamp())
+        raise ValueError("No filter provided")
+
+
+class SessionId(TagFilter):
+    field: str = "session_id"
+
+
+class UserId(TagFilter):
+    field: str = "user_id"
+
+
+class Namespace(TagFilter):
+    field: str = "namespace"
+
+
+class CreatedAt(DateTimeFilter):
+    field: str = "created_at"
+
+
+class LastAccessed(DateTimeFilter):
+    field: str = "last_accessed"
+
+
+class Topics(TagFilter):
+    field: str = "topics"
+
+
+class Entities(TagFilter):
+    field: str = "entities"
+
+
+class MemoryType(EnumFilter):
+    field: str = "memory_type"
+    enum_class: type[Enum] | None = None  # Will be set in __init__
+
+    def __init__(self, **data):
+        # Import here to avoid circular imports
+        from agent_memory_server.models import MemoryTypeEnum
+
+        data["enum_class"] = MemoryTypeEnum
+        super().__init__(**data)
+
+
+class ExtractionStrategy(TagFilter):
+    field: str = "extraction_strategy"
+
+
+class EventDate(DateTimeFilter):
+    field: str = "event_date"
+
+
+class MemoryHash(TagFilter):
+    field: str = "memory_hash"
+
+
+class Id(TagFilter):
+    field: str = "id_"
+
+
+class DiscreteMemoryExtracted(TagFilter):
+    field: str = "discrete_memory_extracted"

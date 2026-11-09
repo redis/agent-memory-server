@@ -23,6 +23,9 @@ jobs:
   build:
     name: Build package
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: V0
     steps:
       - uses: actions/checkout@v4
 
@@ -43,7 +46,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: dist/*
+          path: V0/dist/*
 
   publish-testpypi:
     name: Publish to TestPyPI
@@ -130,8 +133,8 @@ jobs:
       - name: Build and push Docker image (standard)
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./Dockerfile
+          context: ./V0
+          file: ./V0/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
@@ -145,8 +148,8 @@ jobs:
       - name: Build and push Docker image (standalone)
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./Dockerfile.standalone
+          context: ./V0
+          file: ./V0/Dockerfile.standalone
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
@@ -233,8 +236,8 @@ jobs:
       - name: Build and push Docker image (standard)
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./Dockerfile
+          context: ./V0
+          file: ./V0/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
@@ -248,8 +251,8 @@ jobs:
       - name: Build and push Docker image (standalone)
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./Dockerfile.standalone
+          context: ./V0
+          file: ./V0/Dockerfile.standalone
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |

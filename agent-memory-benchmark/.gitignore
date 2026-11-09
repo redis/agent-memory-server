@@ -1,0 +1,35 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.python-version
+!.python-version
+.venv/
+__pycache__/
+*.egg-info/
+*.py[cod]
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+
+# Downloaded datasets and resumable benchmark output
+data/
+experiment_results/
+*.jsonl
+*.log
+
+# Leftover Agent Memory Server checkout (do not publish)
+agent_memory_server/
+agent-memory-client/
+
+# Provider and cloud state
+.aws/
+.gcloud/
+.terraform/
+terraform.tfstate*
+cdk.out/

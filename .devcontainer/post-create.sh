@@ -14,13 +14,13 @@ echo ""
 
 # Install Python dependencies for the memory server
 echo -e "${YELLOW}Installing Memory Server dependencies...${NC}"
-cd /workspace
+cd /workspace/V0
 uv sync --all-extras
 
 # Install Workbench UI dependencies if the project exists
-if [ -d "/workspace/workbench" ] && [ -f "/workspace/workbench/package.json" ]; then
+if [ -d "/workspace/V0/workbench" ] && [ -f "/workspace/V0/workbench/package.json" ]; then
     echo -e "${YELLOW}Installing Workbench UI dependencies...${NC}"
-    cd /workspace/workbench
+    cd /workspace/V0/workbench
     npm install || {
         echo -e "${YELLOW}Warning: npm install had issues. You may need to run 'npm install' manually.${NC}"
     }
@@ -45,8 +45,8 @@ echo -e "  3. To use Claude with memory tools:"
 echo -e "     ${BLUE}claude --mcp-config /workspace/.devcontainer/mcp-config.json${NC}"
 echo ""
 echo -e "  4. Run examples:"
-echo -e "     ${BLUE}cd /workspace && uv run python examples/travel_agent.py${NC}"
+echo -e "     ${BLUE}cd /workspace/V0 && uv run python examples/travel_agent.py${NC}"
 echo ""
 echo -e "  5. Run tests:"
-echo -e "     ${BLUE}cd /workspace && uv run pytest${NC}"
+echo -e "     ${BLUE}cd /workspace/V0 && uv run pytest${NC}"
 echo ""

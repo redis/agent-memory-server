@@ -1,0 +1,40 @@
+site_name: Redis Agent Memory
+site_description: The supported Redis product for persistent agent memory
+site_url: https://redis.github.io/agent-memory-server/
+repo_url: https://github.com/redis/agent-memory-server
+repo_name: redis/agent-memory-server
+
+docs_dir: landing
+site_dir: site
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: red
+      accent: red
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: red
+      accent: red
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Redis Agent Memory: index.md
+
+plugins: []
+
+markdown_extensions:
+  - attr_list

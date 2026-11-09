@@ -1,0 +1,902 @@
+import contextlib
+import os
+import platform
+import time
+from datetime import UTC, datetime
+from typing import Any
+from unittest import mock
+from unittest.mock import AsyncMock, patch
+
+import docket
+import pytest
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+from redis.asyncio import Redis as AsyncRedis
+from testcontainers.compose import DockerCompose
+
+from agent_memory_server.api import router as memory_router
+from agent_memory_server.config import settings
+from agent_memory_server.dependencies import HybridBackgroundTasks
+from agent_memory_server.healthcheck import router as health_router
+from agent_memory_server.llm import LLMClient
+from agent_memory_server.memory_vector_db import MemoryVectorDatabase
+from agent_memory_server.models import (
+    MemoryMessage,
+    MemoryRecord,
+    MemoryRecordResult,
+    MemoryRecordResults,
+)
+
+# Import the module to access its global for resetting
+from agent_memory_server.utils import redis as redis_utils_module
+from agent_memory_server.utils.keys import Keys
+from agent_memory_server.working_memory_index import (
+    drop_working_memory_index,
+    ensure_working_memory_index,
+)
+
+
+load_dotenv()
+
+
+async def extract_with_retry(
+    session_id, namespace, user_id, max_attempts=3, allow_empty=False
+):
+    """Retry LLM extraction up to max_attempts times.
+
+    Args:
+        session_id: The session to extract from.
+        namespace: The namespace for extraction.
+        user_id: The user ID for extraction.
+        max_attempts: Number of retries before giving up.
+        allow_empty: If True, return the (empty) result instead of skipping
+            when all attempts produce no memories. Useful for tests that
+            assert extraction correctly returns nothing.
+    """
+    from agent_memory_server.long_term_memory import (
+        extract_memories_from_session_thread,
+    )
+
+    result = []
+    for _attempt in range(max_attempts):
+        result = await extract_memories_from_session_thread(
+            session_id=session_id,
+            namespace=namespace,
+            user_id=user_id,
+        )
+        if len(result) >= 1:
+            return result
+    if allow_empty:
+        return result
+    pytest.skip(f"LLM extraction returned empty results after {max_attempts} attempts")
+
+
+@pytest.fixture()
+def memory_message():
+    """Create a sample memory message"""
+    return MemoryMessage(role="user", content="Hello, world!")
+
+
+@pytest.fixture()
+def memory_messages():
+    """Create a list of sample memory messages"""
+    return [
+        MemoryMessage(role="user", content="What is the capital of France?"),
+        MemoryMessage(role="assistant", content="The capital of France is Paris."),
+        MemoryMessage(role="user", content="And what about Germany?"),
+        MemoryMessage(role="assistant", content="The capital of Germany is Berlin."),
+    ]
+
+
+@pytest.fixture()
+def mock_llm_client():
+    """Create a mock LLM client"""
+    return AsyncMock(spec=LLMClient)
+
+    # We won't set default side effects here, allowing tests to set their own mocks
+    # This prevents conflicts with tests that need specific return values
+
+
+@pytest.fixture(autouse=True)
+async def search_index(async_redis_client):
+    """Create a Redis connection pool for testing"""
+    if async_redis_client is None:
+        # Redis not available - skip for unit tests
+        yield
+        return
+
+    # Reset the cached index in redis_utils_module
+    redis_utils_module._index = None
+
+    yield
+
+
+@pytest.fixture(autouse=True)
+async def working_memory_index(async_redis_client):
+    """Ensure working memory search index exists for session listing tests."""
+    if async_redis_client is None:
+        # Redis not available - skip for unit tests
+        yield
+        return
+
+    await ensure_working_memory_index(async_redis_client)
+
+    yield
+
+    # Clean up after tests
+    with contextlib.suppress(Exception):
+        await drop_working_memory_index(async_redis_client)
+
+
+@pytest.fixture()
+async def session(use_test_redis_connection, async_redis_client, request):
+    """Set up a test session with Redis data for testing"""
+    import logging
+
+    logging.getLogger(__name__)
+
+    try:
+        session_id = "test-session"
+        namespace = "test-namespace"
+
+        # Create working memory data
+        from agent_memory_server.models import MemoryMessage, WorkingMemory
+
+        messages = [
+            MemoryMessage(role="user", content="Hello"),
+            MemoryMessage(role="assistant", content="Hi there"),
+        ]
+
+        working_memory = WorkingMemory(
+            messages=messages,
+            memories=[],  # No structured memories for this test
+            context="Sample context",
+            user_id="test-user",
+            tokens=150,
+            session_id=session_id,
+            namespace=namespace,
+        )
+
+        # Store in unified working memory format
+        from agent_memory_server.working_memory import set_working_memory
+
+        await set_working_memory(
+            working_memory=working_memory,
+            redis_client=use_test_redis_connection,
+        )
+
+        # Note: Session is now automatically indexed via Redis Search index
+        # on the working memory JSON document (no sorted set needed)
+
+        # Index the messages as long-term memories directly without background tasks
+        from redisvl.utils.vectorize import OpenAITextVectorizer
+        from ulid import ULID
+
+        from agent_memory_server.models import MemoryRecord
+
+        # Create MemoryRecord objects for each message
+        long_term_memories = []
+        for msg in messages:
+            memory = MemoryRecord(
+                id=str(ULID()),
+                text=f"{msg.role}: {msg.content}",
+                session_id=session_id,
+                namespace=namespace,
+                user_id="test-user",
+            )
+            long_term_memories.append(memory)
+
+        # Index the memories directly (only if tests explicitly opt-in to using
+        # real API keys). This prevents tests that don't require external
+        # services from accidentally making network calls when OPENAI_API_KEY
+        # is set in the environment.
+        import os
+
+        requires_api_keys_marker = request.node.get_closest_marker("requires_api_keys")
+        has_api_key = bool(os.getenv("OPENAI_API_KEY"))
+
+        if not (has_api_key and requires_api_keys_marker):
+            # Skip embedding creation if no API key is configured or the test
+            # has not been marked as requiring API keys. Tests can still run
+            # with an empty semantic index.
+            embeddings = []
+        else:
+            vectorizer = OpenAITextVectorizer()
+            embeddings = await vectorizer.aembed_many(
+                [memory.text for memory in long_term_memories],
+                batch_size=20,
+                as_buffer=True,
+            )
+
+        # Only index if we have embeddings
+        if embeddings:
+            async with use_test_redis_connection.pipeline(transaction=False) as pipe:
+                for idx, vector in enumerate(embeddings):
+                    memory = long_term_memories[idx]
+                    id_ = memory.id if memory.id else str(ULID())
+                    key = Keys.memory_key(id_)
+
+                    # Generate memory hash for the memory
+                    from agent_memory_server.long_term_memory import (
+                        generate_memory_hash,
+                    )
+
+                    memory_hash = generate_memory_hash(memory)
+
+                    await pipe.hset(  # type: ignore
+                        key,
+                        mapping={
+                            "text": memory.text,
+                            "id_": id_,
+                            "session_id": memory.session_id or "",
+                            "user_id": memory.user_id or "",
+                            "last_accessed": int(memory.last_accessed.timestamp())
+                            if memory.last_accessed
+                            else int(time.time()),
+                            "created_at": int(memory.created_at.timestamp())
+                            if memory.created_at
+                            else int(time.time()),
+                            "namespace": memory.namespace or "",
+                            "memory_hash": memory_hash,
+                            "vector": vector,
+                            "topics": "",
+                            "entities": "",
+                        },
+                    )
+
+                await pipe.execute()
+
+        return session_id
+    except Exception:
+        raise
+
+
+@pytest.fixture(scope="session", autouse=True)
+def redis_container(request):
+    """
+    If using xdist, create a unique Compose project for each xdist worker by
+    setting COMPOSE_PROJECT_NAME. That prevents collisions on container/volume
+    names.
+
+    Skips container startup if Docker is not available or returns errors.
+    """
+    import subprocess
+
+    # Check if Docker is available and working
+    try:
+        result = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            # Docker not available or not working
+            yield None
+            return
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        # Docker not available
+        yield None
+        return
+
+    # In xdist, the config has "workerid" in workerinput
+    workerinput = getattr(request.config, "workerinput", {})
+    worker_id = workerinput.get("workerid", "master")
+
+    # Set the Compose project name so containers do not clash across workers
+    os.environ["COMPOSE_PROJECT_NAME"] = f"redis_test_{worker_id}"
+    os.environ.setdefault("REDIS_IMAGE", "redis:8.6")
+
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+
+    compose_file_name = "docker-compose.yml"
+    if platform.machine().lower() in {"arm64", "aarch64"}:
+        compose_file_name = "docker-compose.amd64.yml"
+
+    compose = DockerCompose(
+        context=current_dir,
+        compose_file_name=compose_file_name,
+        pull=True,
+    )
+
+    try:
+        compose.start()
+    except Exception:
+        # Docker compose failed (e.g., image pull failed)
+        # Attempt cleanup to avoid leaking containers/resources
+        with contextlib.suppress(Exception):
+            compose.stop()
+        yield None
+        return
+
+    yield compose
+
+    compose.stop()
+
+
+@pytest.fixture(scope="session")
+def redis_url(redis_container):
+    """
+    Use the `DockerCompose` fixture to get host/port of the 'redis' service
+    on container port 6379 (mapped to an ephemeral port on the host).
+
+    Returns None if Redis is not available (allows unit tests to run without Redis).
+    """
+    if redis_container is None:
+        return None
+
+    host, port = redis_container.get_service_host_and_port("redis", 6379)
+
+    # On macOS, testcontainers sometimes returns 0.0.0.0 which doesn't work
+    # Replace with localhost if we get 0.0.0.0
+    if host == "0.0.0.0":
+        host = "localhost"
+
+    redis_url = f"redis://{host}:{port}"
+
+    # Verify the connection works before returning with retries
+    import time
+
+    import redis
+
+    max_retries = 10
+    retry_delay = 1
+
+    for attempt in range(max_retries):
+        try:
+            client = redis.Redis.from_url(redis_url)
+            client.ping()
+            break  # Connection successful
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise ConnectionError(
+                    f"Failed to connect to Redis at {redis_url} after {max_retries} attempts: {e}"
+                ) from e
+            time.sleep(retry_delay)
+
+    return redis_url
+
+
+@pytest.fixture()
+def async_redis_client(use_test_redis_connection):
+    """
+    An async Redis client that uses the same connection as other test fixtures.
+    """
+    return use_test_redis_connection
+
+
+@pytest.fixture()
+def requires_redis(async_redis_client):
+    """Fixture that skips tests when Redis is not available.
+
+    Use this fixture in tests that require a real Redis connection.
+    """
+    if async_redis_client is None:
+        pytest.skip("Redis is not available - skipping integration test")
+    return async_redis_client
+
+
+@pytest.fixture()
+def mock_async_redis_client():
+    """Create a mock async Redis client"""
+    return AsyncMock(spec=AsyncRedis)
+
+
+@pytest.fixture(autouse=True)
+def use_test_redis_connection(redis_url):
+    """Replace the Redis connection with a test one.
+
+    If Redis is not available (redis_url is None), yields None to allow
+    unit tests that don't need Redis to run.
+    """
+    if redis_url is None:
+        # Redis not available - allow unit tests to run without Redis
+        yield None
+        return
+
+    replacement_redis = AsyncRedis.from_url(redis_url)
+
+    # Create a mock get_redis_conn function that always returns the replacement_redis
+    async def mock_get_redis_conn(*args, **kwargs):
+        # Ignore any URL parameter and always return the replacement_redis
+        return replacement_redis
+
+    # Create a patched Docket class that uses the test Redis URL
+    original_docket_init = docket.Docket.__init__
+
+    def patched_docket_init(self, name, url=None, *args, **kwargs):
+        # Use the test Redis URL instead of the default one
+        return original_docket_init(self, name, *args, url=redis_url, **kwargs)
+
+    # Reset all global state and patch get_redis_conn
+    import agent_memory_server.memory_vector_db_factory
+    import agent_memory_server.utils.redis
+
+    with (
+        # Core Redis helper
+        patch("agent_memory_server.utils.redis.get_redis_conn", mock_get_redis_conn),
+        # Modules that imported get_redis_conn directly must also be patched
+        patch("agent_memory_server.api.get_redis_conn", mock_get_redis_conn),
+        patch("agent_memory_server.working_memory.get_redis_conn", mock_get_redis_conn),
+        patch(
+            "agent_memory_server.long_term_memory.get_redis_conn", mock_get_redis_conn
+        ),
+        patch("agent_memory_server.summary_views.get_redis_conn", mock_get_redis_conn),
+        patch("agent_memory_server.tasks.get_redis_conn", mock_get_redis_conn),
+        # Ensure Docket uses the test Redis URL
+        patch("docket.docket.Docket.__init__", patched_docket_init),
+        # Point settings.redis_url at the testcontainer Redis
+        patch.object(settings, "redis_url", redis_url),
+    ):
+        # Reset global state to force recreation with test Redis
+        agent_memory_server.utils.redis._redis_pool = None
+        agent_memory_server.utils.redis._index = None
+        agent_memory_server.memory_vector_db_factory._memory_vector_db = None
+
+        yield replacement_redis
+
+        # Clean up global state after test
+        agent_memory_server.utils.redis._redis_pool = None
+        agent_memory_server.utils.redis._index = None
+        agent_memory_server.memory_vector_db_factory._memory_vector_db = None
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--run-api-tests",
+        action="store_true",
+        default=False,
+        help="Run tests that require API keys",
+    )
+    parser.addoption(
+        "--run-integration-tests",
+        action="store_true",
+        default=False,
+        help="Run integration tests (requires running memory server)",
+    )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "requires_api_keys: mark test as requiring API keys",
+    )
+    config.addinivalue_line(
+        "markers",
+        "benchmark: mark test as a benchmark test",
+    )
+    config.addinivalue_line(
+        "markers",
+        "integration: mark test as an integration test (requires running memory server)",
+    )
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    for item in items:
+        if item.get_closest_marker("integration") and not config.getoption(
+            "--run-integration-tests"
+        ):
+            item.add_marker(
+                pytest.mark.skip(
+                    reason="Not running integration tests. Use --run-integration-tests to run these tests."
+                )
+            )
+
+        if item.get_closest_marker("requires_api_keys") and not config.getoption(
+            "--run-api-tests"
+        ):
+            item.add_marker(
+                pytest.mark.skip(
+                    reason="Not running tests that require API keys. Use --run-api-tests to run these tests."
+                )
+            )
+
+
+@pytest.fixture()
+def mock_background_tasks():
+    """Create a mock HybridBackgroundTasks instance"""
+    return mock.Mock(name="HybridBackgroundTasks", spec=HybridBackgroundTasks)
+
+
+@pytest.fixture()
+def app(use_test_redis_connection):
+    """Create a test FastAPI app with routers"""
+    app = FastAPI()
+
+    # Include routers
+    app.include_router(health_router)
+    app.include_router(memory_router)
+
+    return app
+
+
+@pytest.fixture()
+def app_with_mock_background_tasks(use_test_redis_connection):
+    """Create a test FastAPI app with routers and mocked background tasks"""
+    app = FastAPI()
+
+    # Include routers
+    app.include_router(health_router)
+    app.include_router(memory_router)
+
+    # Override the get_redis_conn function to return the test Redis connection
+    async def mock_get_redis_conn(*args, **kwargs):
+        return use_test_redis_connection
+
+    # Override the dependencies
+    from agent_memory_server.utils.redis import get_redis_conn
+
+    app.dependency_overrides[get_redis_conn] = mock_get_redis_conn
+
+    return app
+
+
+@pytest.fixture(autouse=True)
+def disable_auth_for_tests():
+    """Disable authentication for all tests"""
+    original_value = settings.disable_auth
+    settings.disable_auth = True
+    yield
+    settings.disable_auth = original_value
+
+
+@pytest.fixture()
+async def client(app):
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        yield client
+
+
+@pytest.fixture()
+async def client_with_mock_background_tasks(
+    app_with_mock_background_tasks, mock_background_tasks
+):
+    """Client with mocked background tasks - patches the HybridBackgroundTasks class"""
+    # Patch the HybridBackgroundTasks class to return our mock
+    # We need to patch it in multiple places since FastAPI creates instances directly
+    patches = [
+        mock.patch(
+            "agent_memory_server.api.HybridBackgroundTasks",
+            return_value=mock_background_tasks,
+        ),
+        mock.patch(
+            "agent_memory_server.dependencies.HybridBackgroundTasks",
+            return_value=mock_background_tasks,
+        ),
+        mock.patch("fastapi.BackgroundTasks", return_value=mock_background_tasks),
+    ]
+
+    with patches[0], patches[1], patches[2]:
+        async with AsyncClient(
+            transport=ASGITransport(app=app_with_mock_background_tasks),
+            base_url="http://test",
+        ) as client:
+            yield client
+
+
+@pytest.fixture()
+def mock_memory_vector_db():
+    """Create a mock memory vector database and patch get_memory_vector_db.
+
+    This fixture provides a MockMemoryVectorDatabase that doesn't require real
+    embeddings or API keys, suitable for unit tests that don't need actual
+    vector search functionality.
+
+    Usage:
+        def test_something(mock_memory_vector_db):
+            # mock_memory_vector_db is already patched as the global instance
+            # You can also access the instance directly:
+            mock_memory_vector_db.memories["id"] = some_memory
+    """
+    adapter = MockMemoryVectorDatabase()
+
+    async def mock_get_memory_vector_db():
+        return adapter
+
+    with (
+        patch(
+            "agent_memory_server.memory_vector_db_factory.get_memory_vector_db",
+            mock_get_memory_vector_db,
+        ),
+        patch(
+            "agent_memory_server.long_term_memory.get_memory_vector_db",
+            mock_get_memory_vector_db,
+        ),
+    ):
+        # Also reset the global state to None to force re-creation
+        import agent_memory_server.memory_vector_db_factory
+
+        original = agent_memory_server.memory_vector_db_factory._memory_vector_db
+        agent_memory_server.memory_vector_db_factory._memory_vector_db = None
+
+        yield adapter
+
+        # Restore original
+        agent_memory_server.memory_vector_db_factory._memory_vector_db = original
+
+
+class MockEmbeddings:
+    """Mock embeddings that return fixed-dimension vectors without API calls."""
+
+    def __init__(self, dimensions: int = 1536):
+        self.dimensions = dimensions
+        self._dimensions = dimensions
+        self.model = "mock-embedding-model"
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        """Return mock embeddings for documents."""
+        return [[0.1] * self.dimensions for _ in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        """Return mock embedding for a query."""
+        return [0.1] * self.dimensions
+
+    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
+        """Return mock embeddings for documents (async)."""
+        return [[0.1] * self.dimensions for _ in texts]
+
+    async def aembed_query(self, text: str) -> list[float]:
+        """Return mock embedding for a query (async)."""
+        return [0.1] * self.dimensions
+
+
+class MockMemoryVectorDatabase(MemoryVectorDatabase):
+    """Mock MemoryVectorDatabase for testing without real embeddings."""
+
+    def __init__(self):
+        self.memories: dict[str, MemoryRecord] = {}
+        self.embeddings = MockEmbeddings()
+
+    async def add_memories(self, memories: list[MemoryRecord]) -> list[str]:
+        """Add memories to the mock store."""
+        ids = []
+        for memory in memories:
+            self.memories[memory.id] = memory
+            ids.append(memory.id)
+        return ids
+
+    async def search_memories(
+        self,
+        query: str,
+        search_mode: Any = None,
+        hybrid_alpha: float = 0.7,
+        text_scorer: str = "BM25STD",
+        session_id: Any = None,
+        user_id: Any = None,
+        namespace: Any = None,
+        created_at: Any = None,
+        last_accessed: Any = None,
+        topics: Any = None,
+        entities: Any = None,
+        memory_type: Any = None,
+        extraction_strategy: Any = None,
+        event_date: Any = None,
+        memory_hash: Any = None,
+        id: Any = None,
+        discrete_memory_extracted: Any = None,
+        distance_threshold: float | None = None,
+        server_side_recency: bool | None = None,
+        recency_params: dict | None = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> MemoryRecordResults:
+        """Search memories in the mock store."""
+        results = []
+        for memory in list(self.memories.values()):
+            # Apply basic filters
+            if (
+                namespace
+                and hasattr(namespace, "eq")
+                and namespace.eq
+                and memory.namespace != namespace.eq
+            ):
+                continue
+            if (
+                user_id
+                and hasattr(user_id, "eq")
+                and user_id.eq
+                and memory.user_id != user_id.eq
+            ):
+                continue
+            if (
+                session_id
+                and hasattr(session_id, "eq")
+                and session_id.eq
+                and memory.session_id != session_id.eq
+            ):
+                continue
+            if (
+                memory_hash
+                and hasattr(memory_hash, "eq")
+                and memory_hash.eq
+                and memory.memory_hash != memory_hash.eq
+            ):
+                continue
+            if memory_type and hasattr(memory_type, "eq") and memory_type.eq:
+                mem_type_val = (
+                    memory.memory_type.value
+                    if hasattr(memory.memory_type, "value")
+                    else str(memory.memory_type)
+                )
+                if mem_type_val != memory_type.eq:
+                    continue
+            if (
+                extraction_strategy
+                and hasattr(extraction_strategy, "eq")
+                and extraction_strategy.eq
+                and memory.extraction_strategy != extraction_strategy.eq
+            ):
+                continue
+
+            result = MemoryRecordResult(
+                id=memory.id,
+                text=memory.text,
+                dist=0.1,
+                created_at=memory.created_at or datetime.now(UTC),
+                updated_at=memory.updated_at or datetime.now(UTC),
+                last_accessed=memory.last_accessed or datetime.now(UTC),
+                user_id=memory.user_id,
+                session_id=memory.session_id,
+                namespace=memory.namespace,
+                topics=memory.topics or [],
+                entities=memory.entities or [],
+                memory_hash=memory.memory_hash or "",
+                memory_type=memory.memory_type.value
+                if hasattr(memory.memory_type, "value")
+                else str(memory.memory_type),
+                persisted_at=memory.persisted_at,
+                extraction_strategy=memory.extraction_strategy,
+                extraction_strategy_config=memory.extraction_strategy_config,
+                metadata=memory.metadata,
+            )
+            results.append(result)
+
+        # Apply pagination
+        paginated = results[offset : offset + limit]
+        next_offset = offset + limit if len(results) > offset + limit else None
+
+        return MemoryRecordResults(
+            memories=paginated,
+            total=len(results),
+            next_offset=next_offset,
+        )
+
+    async def delete_memories(self, memory_ids: list[str]) -> int:
+        """Delete memories from the mock store."""
+        deleted = 0
+        for memory_id in memory_ids:
+            if memory_id in self.memories:
+                del self.memories[memory_id]
+                deleted += 1
+        return deleted
+
+    async def update_memories(self, memories: list[MemoryRecord]) -> int:
+        """Update memories in the mock store."""
+        updated = 0
+        for memory in memories:
+            self.memories[memory.id] = memory
+            updated += 1
+        return updated
+
+    async def count_memories(
+        self,
+        namespace: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+    ) -> int:
+        """Count memories in the mock store."""
+        count = 0
+        for memory in self.memories.values():
+            if namespace and memory.namespace != namespace:
+                continue
+            if user_id and memory.user_id != user_id:
+                continue
+            if session_id and memory.session_id != session_id:
+                continue
+            count += 1
+        return count
+
+    async def list_memories(
+        self,
+        session_id: Any = None,
+        user_id: Any = None,
+        namespace: Any = None,
+        created_at: Any = None,
+        last_accessed: Any = None,
+        topics: Any = None,
+        entities: Any = None,
+        memory_type: Any = None,
+        extraction_strategy: Any = None,
+        event_date: Any = None,
+        memory_hash: Any = None,
+        id: Any = None,
+        discrete_memory_extracted: Any = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> MemoryRecordResults:
+        """List memories in the mock store using filters without semantic search."""
+        results = []
+        for memory in list(self.memories.values()):
+            # Apply basic filters
+            if (
+                namespace
+                and hasattr(namespace, "eq")
+                and namespace.eq
+                and memory.namespace != namespace.eq
+            ):
+                continue
+            if (
+                user_id
+                and hasattr(user_id, "eq")
+                and user_id.eq
+                and memory.user_id != user_id.eq
+            ):
+                continue
+            if (
+                session_id
+                and hasattr(session_id, "eq")
+                and session_id.eq
+                and memory.session_id != session_id.eq
+            ):
+                continue
+            if (
+                memory_hash
+                and hasattr(memory_hash, "eq")
+                and memory_hash.eq
+                and memory.memory_hash != memory_hash.eq
+            ):
+                continue
+            if id and hasattr(id, "eq") and id.eq and memory.id != id.eq:
+                continue
+            if memory_type and hasattr(memory_type, "eq") and memory_type.eq:
+                mem_type_val = (
+                    memory.memory_type.value
+                    if hasattr(memory.memory_type, "value")
+                    else str(memory.memory_type)
+                )
+                if mem_type_val != memory_type.eq:
+                    continue
+            if (
+                extraction_strategy
+                and hasattr(extraction_strategy, "eq")
+                and extraction_strategy.eq
+                and memory.extraction_strategy != extraction_strategy.eq
+            ):
+                continue
+
+            result = MemoryRecordResult(
+                id=memory.id,
+                text=memory.text,
+                dist=0.0,  # No distance for filter-only queries
+                created_at=memory.created_at or datetime.now(UTC),
+                updated_at=memory.updated_at or datetime.now(UTC),
+                last_accessed=memory.last_accessed or datetime.now(UTC),
+                user_id=memory.user_id,
+                session_id=memory.session_id,
+                namespace=memory.namespace,
+                topics=memory.topics or [],
+                entities=memory.entities or [],
+                memory_hash=memory.memory_hash or "",
+                memory_type=memory.memory_type.value
+                if hasattr(memory.memory_type, "value")
+                else str(memory.memory_type),
+                persisted_at=memory.persisted_at,
+                extraction_strategy=memory.extraction_strategy,
+                extraction_strategy_config=memory.extraction_strategy_config,
+                metadata=memory.metadata,
+            )
+            results.append(result)
+
+        # Apply pagination
+        paginated = results[offset : offset + limit]
+        next_offset = offset + limit if len(results) > offset + limit else None
+
+        return MemoryRecordResults(
+            memories=paginated,
+            total=len(results),
+            next_offset=next_offset,
+        )

@@ -12,6 +12,9 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: V0
     steps:
     - uses: actions/checkout@v3
 
@@ -36,6 +39,9 @@ jobs:
     needs: lint
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: V0
     steps:
     - uses: actions/checkout@v4
 
@@ -68,6 +74,9 @@ jobs:
   test:
     needs: lint
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: V0
     strategy:
       fail-fast: false
       matrix:

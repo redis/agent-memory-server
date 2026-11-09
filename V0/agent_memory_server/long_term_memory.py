@@ -1,0 +1,2525 @@
+import hashlib
+import json
+import logging
+import numbers
+import re
+import time
+from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from docket import Timeout
+from docket.dependencies import Perpetual
+from redis.asyncio import Redis
+from redis.commands.core import HashDataPersistOptions
+from ulid import ULID
+
+from agent_memory_server.config import settings
+from agent_memory_server.dependencies import get_background_tasks
+from agent_memory_server.extraction import (
+    extract_memories_with_strategy,
+    handle_extraction,
+)
+from agent_memory_server.filters import (
+    CreatedAt,
+    Entities,
+    EventDate,
+    ExtractionStrategy,
+    LastAccessed,
+    MemoryHash,
+    MemoryType,
+    Namespace,
+    SessionId,
+    Topics,
+    UserId,
+)
+from agent_memory_server.llm import LLMClient, optimize_query_for_vector_search
+from agent_memory_server.memory_vector_db_factory import get_memory_vector_db
+from agent_memory_server.models import (
+    ExtractedMemoryRecord,
+    MemoryRecord,
+    MemoryRecordResult,
+    MemoryRecordResults,
+    MemoryStrategyConfig,
+    MemoryTypeEnum,
+    SearchModeEnum,
+)
+from agent_memory_server.utils.datetime import parse_iso8601_datetime
+from agent_memory_server.utils.keys import Keys
+from agent_memory_server.utils.recency import (
+    _days_between,
+    generate_memory_hash,
+    rerank_with_recency,
+    update_memory_hash_if_text_changed,
+)
+from agent_memory_server.utils.redis import get_redis_conn, redis_url_for_docket
+from agent_memory_server.utils.tag_codec import encode_tag_values, sanitize_tag_values
+
+
+# Track pending extraction tasks to prevent garbage collection
+# This is only used when running without Docket (asyncio mode)
+_pending_extraction_tasks: set = set()
+SEMANTIC_DEDUP_SEARCH_LIMIT = 10
+SEMANTIC_DEDUP_QUERY_LIMIT = SEMANTIC_DEDUP_SEARCH_LIMIT + 1
+
+
+def _parse_extraction_response_with_fallback(content: str, logger) -> dict:
+    """
+    Parse JSON response with fallback mechanisms for malformed responses.
+
+    Args:
+        content: The JSON content to parse
+        logger: Logger instance for error reporting
+
+    Returns:
+        Parsed JSON dictionary with 'memories' key
+
+    Raises:
+        json.JSONDecodeError: If all parsing attempts fail
+    """
+    # Try standard JSON parsing first
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        # Attempt to repair common JSON issues
+        logger.warning(
+            f"Initial JSON parsing failed, attempting repair on content: {content[:500]}..."
+        )
+
+        # Try to extract just the memories array if it exists
+        memories_match = re.search(r'"memories"\s*:\s*\[(.*?)\]', content, re.DOTALL)
+        if memories_match:
+            try:
+                # Try to reconstruct a valid JSON object
+                memories_json = '{"memories": [' + memories_match.group(1) + "]}"
+                extraction_result = json.loads(memories_json)
+                logger.info("Successfully repaired malformed JSON response")
+                return extraction_result
+            except json.JSONDecodeError:
+                logger.error("JSON repair attempt failed")
+                raise
+        else:
+            logger.error("Could not find memories array in malformed response")
+            raise
+
+
+# Prompt for extracting memories from messages in working memory context
+WORKING_MEMORY_EXTRACTION_PROMPT = """
+You are a memory extraction assistant. Your job is to analyze conversation
+messages and extract information that might be useful in future conversations.
+
+Extract two types of memories from the following message:
+1. EPISODIC: Experiences or events that have a time dimension.
+   (They MUST have a time dimension to be "episodic.")
+   Example: "User mentioned they visited Paris in August of 2025" or "User had trouble with the login process on 2025-01-15"
+
+2. SEMANTIC: User preferences, facts, or general knowledge about the agent's
+   environment that might be useful long-term.
+   Example: "User prefers dark mode UI" or "User works as a data scientist"
+
+For each memory, return a JSON object with the following fields:
+- type: str -- The memory type, either "episodic" or "semantic"
+- text: str -- The actual information to store
+- topics: list[str] -- Relevant topics for this memory
+- entities: list[str] -- Named entities mentioned
+- event_date: str | null -- For episodic memories, the date/time when the event occurred (ISO 8601 format), null for semantic memories
+
+IMPORTANT RULES:
+1. Only extract information that might be genuinely useful for future interactions.
+2. Do not extract procedural knowledge or instructions.
+3. If given `user_id`, focus on user-specific information, preferences, and facts.
+4. Return an empty list if no useful memories can be extracted.
+
+Message: {message}
+
+Return format:
+{{
+    "memories": [
+        {{
+            "type": "episodic",
+            "text": "...",
+            "topics": ["..."],
+            "entities": ["..."],
+            "event_date": "2024-01-15T14:30:00Z"
+        }},
+        {{
+            "type": "semantic",
+            "text": "...",
+            "topics": ["..."],
+            "entities": ["..."],
+            "event_date": null
+        }}
+    ]
+}}
+
+Extracted memories:
+"""
+
+
+logger = logging.getLogger(__name__)
+
+# Debounce configuration for thread-aware extraction (trailing-edge)
+# We use a "pending extraction" key to track when extraction should run
+EXTRACTION_PENDING_KEY_PREFIX = "extraction_pending"
+EXTRACTION_DEBOUNCE_KEY_PREFIX = "extraction_debounce"
+
+
+async def should_extract_session_thread(session_id: str, redis: Redis) -> bool:
+    """
+    Check if extraction should proceed based on debounce.
+
+    This checks if the post-extraction debounce key exists. After successful
+    extraction, we set this key to prevent immediate re-extraction even if
+    new messages arrive.
+
+    Args:
+        session_id: The session ID to check
+        redis: Redis client
+
+    Returns:
+        True if extraction should proceed, False if debounced
+    """
+    debounce_key = f"{EXTRACTION_DEBOUNCE_KEY_PREFIX}:{session_id}"
+
+    # Check if debounce key exists (set after successful extraction)
+    exists = await redis.exists(debounce_key)
+    if not exists:
+        logger.info(f"Extraction allowed for session {session_id} (no debounce key)")
+        return True
+
+    remaining_ttl = await redis.ttl(debounce_key)
+    logger.info(
+        f"Skipping thread-aware extraction for session {session_id} (debounced, {remaining_ttl}s remaining)"
+    )
+    return False
+
+
+async def set_extraction_debounce(session_id: str, redis: Redis) -> None:
+    """
+    Set the debounce key after successful extraction.
+
+    This should be called after extraction completes successfully to prevent
+    re-extraction for the debounce period.
+
+    Args:
+        session_id: The session ID to set debounce for
+        redis: Redis client
+    """
+    debounce_key = f"{EXTRACTION_DEBOUNCE_KEY_PREFIX}:{session_id}"
+    debounce_ttl = settings.extraction_debounce_seconds
+    await redis.setex(debounce_key, debounce_ttl, "extracted")
+    logger.info(f"Set extraction debounce for session {session_id} ({debounce_ttl}s)")
+
+
+async def schedule_trailing_extraction(
+    session_id: str,
+    namespace: str | None,
+    user_id: str | None,
+    redis: Redis,
+) -> None:
+    """
+    Schedule a trailing-edge debounced extraction.
+
+    This implements trailing-edge debounce:
+    1. Store a "pending extraction" timestamp in Redis
+    2. Schedule a Docket task to run after the debounce period
+    3. Each new message resets the timer by updating the pending timestamp
+    4. The scheduled task checks if it's still valid before running
+
+    Args:
+        session_id: The session ID to extract for
+        namespace: Optional namespace
+        user_id: Optional user ID
+        redis: Redis client
+    """
+    from datetime import timedelta
+
+    pending_key = f"{EXTRACTION_PENDING_KEY_PREFIX}:{session_id}"
+    debounce_seconds = settings.extraction_debounce_seconds
+
+    # Calculate when extraction should run (trailing edge)
+    extraction_time = datetime.now(UTC) + timedelta(seconds=debounce_seconds)
+    extraction_timestamp = extraction_time.isoformat()
+
+    # Store the pending extraction timestamp
+    # TTL is 2x debounce to ensure cleanup even if task fails
+    await redis.setex(pending_key, debounce_seconds * 2, extraction_timestamp)
+    logger.info(
+        f"Scheduled trailing extraction for session {session_id} at {extraction_timestamp}"
+    )
+
+    # Schedule the Docket task if enabled
+    if settings.use_docket:
+        from docket import Docket
+
+        try:
+            async with Docket(
+                name=settings.docket_name,
+                url=redis_url_for_docket(settings.redis_url),
+            ) as docket:
+                # Schedule with a unique key per session
+                # If there's already a pending task for this session, the new one
+                # will check the timestamp and skip if superseded
+                task_key = f"extraction:{session_id}:{extraction_timestamp}"
+                await docket.add(
+                    run_delayed_extraction,
+                    when=extraction_time,
+                    key=task_key,
+                )(
+                    session_id=session_id,
+                    namespace=namespace,
+                    user_id=user_id,
+                    scheduled_timestamp=extraction_timestamp,
+                )
+                logger.debug(f"Docket task scheduled with key {task_key}")
+        except Exception as e:
+            logger.error(f"Failed to schedule Docket extraction task: {e}")
+            # Fall back to immediate execution on next request
+    else:
+        # For asyncio backend, use asyncio.create_task with delay
+        import asyncio
+
+        async def delayed_extraction():
+            try:
+                await asyncio.sleep(debounce_seconds)
+                await run_delayed_extraction(
+                    session_id=session_id,
+                    namespace=namespace,
+                    user_id=user_id,
+                    scheduled_timestamp=extraction_timestamp,
+                )
+            finally:
+                # Remove task from tracking set when done
+                _pending_extraction_tasks.discard(asyncio.current_task())
+
+        # Track the task to prevent garbage collection
+        task = asyncio.create_task(delayed_extraction())
+        _pending_extraction_tasks.add(task)
+        logger.debug(
+            f"Scheduled asyncio extraction task for session {session_id} "
+            f"(delay: {debounce_seconds}s)"
+        )
+
+
+async def run_delayed_extraction(
+    session_id: str,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    scheduled_timestamp: str | None = None,
+) -> int:
+    """
+    Run the delayed extraction if this task is still valid.
+
+    This is called by Docket after the debounce period. It checks if the
+    scheduled_timestamp matches the current pending timestamp - if not,
+    this task was superseded by a newer one and should skip.
+
+    Args:
+        session_id: The session ID to extract for
+        namespace: Optional namespace
+        user_id: Optional user ID
+        scheduled_timestamp: The timestamp when this extraction was scheduled
+
+    Returns:
+        Number of memories extracted, or 0 if skipped
+    """
+    from agent_memory_server.utils.redis import get_redis_conn
+    from agent_memory_server.working_memory import (
+        get_working_memory,
+        set_working_memory,
+    )
+
+    redis = await get_redis_conn()
+    pending_key = f"{EXTRACTION_PENDING_KEY_PREFIX}:{session_id}"
+
+    # Check if this task is still valid (not superseded by a newer schedule)
+    current_pending = await redis.get(pending_key)
+    if current_pending:
+        current_pending = (
+            current_pending.decode("utf-8")
+            if isinstance(current_pending, bytes)
+            else current_pending
+        )
+
+    if scheduled_timestamp and current_pending != scheduled_timestamp:
+        logger.info(
+            f"Skipping extraction for session {session_id} - superseded by newer schedule "
+            f"(scheduled: {scheduled_timestamp}, current: {current_pending})"
+        )
+        return 0
+
+    # Check if we're still within the post-extraction debounce
+    if not await should_extract_session_thread(session_id, redis):
+        return 0
+
+    # Get working memory to extract from
+    working_memory = await get_working_memory(
+        session_id=session_id, namespace=namespace, user_id=user_id
+    )
+
+    if not working_memory or not working_memory.messages:
+        logger.info(f"No working memory to extract for session {session_id}")
+        await redis.delete(pending_key)
+        return 0
+
+    # Check for unextracted messages
+    unextracted_messages = [
+        msg for msg in working_memory.messages if msg.discrete_memory_extracted == "f"
+    ]
+
+    if not unextracted_messages:
+        logger.info(f"No unextracted messages for session {session_id}")
+        await redis.delete(pending_key)
+        return 0
+
+    logger.info(
+        f"Running trailing-edge extraction for session {session_id} "
+        f"({len(unextracted_messages)} unextracted messages)"
+    )
+
+    try:
+        extracted_memories = await extract_memories_from_session_thread(
+            session_id=session_id,
+            namespace=namespace,
+            user_id=user_id,
+        )
+
+        # Mark all messages as extracted
+        for message in working_memory.messages:
+            message.discrete_memory_extracted = "t"
+
+        # Persist the updated working memory
+        await set_working_memory(
+            working_memory=working_memory,
+            redis_client=redis,
+        )
+
+        # Set post-extraction debounce
+        await set_extraction_debounce(session_id, redis)
+
+        # Clear the pending key
+        await redis.delete(pending_key)
+
+        # Index the extracted memories
+        if extracted_memories:
+            await index_long_term_memories(
+                extracted_memories,
+                deduplicate=True,
+            )
+            logger.info(
+                f"Trailing extraction completed for session {session_id}: "
+                f"{len(extracted_memories)} memories extracted and indexed"
+            )
+
+        return len(extracted_memories)
+
+    except Exception as e:
+        logger.error(f"Error in trailing extraction for session {session_id}: {e}")
+        # Clear the pending key to allow retry on next message
+        await redis.delete(pending_key)
+        return 0
+
+
+def _build_thread_extraction_context(
+    working_memory: Any,
+) -> tuple[str, dict[str, Any]]:
+    conversation_messages = []
+    source_message_ids = []
+    message_context = []
+    created_at_values = []
+
+    for msg in working_memory.messages:
+        role_prefix = (
+            f"[{msg.role.upper()}]: " if hasattr(msg, "role") and msg.role else ""
+        )
+        conversation_messages.append(f"{role_prefix}{msg.content}")
+        source_message_ids.append(msg.id)
+        created_at_values.append(msg.created_at)
+        message_context.append(
+            {
+                "id": msg.id,
+                "role": msg.role,
+                "created_at": msg.created_at.isoformat(),
+            }
+        )
+
+    full_conversation = "\n".join(conversation_messages)
+    created_at_min = min(created_at_values) if created_at_values else None
+    created_at_max = max(created_at_values) if created_at_values else None
+
+    fingerprint_parts = [
+        "\x1f".join(
+            [
+                msg.id or "",
+                msg.created_at.isoformat() if msg.created_at else "",
+                msg.role or "",
+                msg.content or "",
+            ]
+        )
+        for msg in working_memory.messages
+    ]
+    source_message_fingerprint = hashlib.sha256(
+        "\x1e".join(fingerprint_parts).encode("utf-8")
+    ).hexdigest()
+
+    context: dict[str, Any] = {
+        "session_id": working_memory.session_id,
+        "namespace": working_memory.namespace,
+        "user_id": working_memory.user_id,
+        "message_count": len(working_memory.messages),
+        "source_message_ids": source_message_ids,
+        "messages": message_context,
+        "created_at_min": created_at_min.isoformat() if created_at_min else None,
+        "created_at_max": created_at_max.isoformat() if created_at_max else None,
+        "source_message_fingerprint": source_message_fingerprint,
+    }
+    return full_conversation, context
+
+
+def _thread_summary_memory_id(
+    *,
+    namespace: str | None,
+    user_id: str | None,
+    session_id: str,
+) -> str:
+    material = "|".join([namespace or "", user_id or "", session_id])
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
+    return f"thread_summary_{digest}"
+
+
+def _parse_optional_extracted_datetime(
+    memory_data: dict[str, Any], field_name: str, *, session_id: str
+) -> datetime | None:
+    raw_value = memory_data.get(field_name)
+    if raw_value is None:
+        return None
+    if isinstance(raw_value, datetime):
+        return raw_value
+    if isinstance(raw_value, str) and raw_value:
+        try:
+            return parse_iso8601_datetime(raw_value)
+        except ValueError:
+            logger.warning(
+                "Skipping invalid extracted %s %r for memory %r in session %s",
+                field_name,
+                raw_value,
+                memory_data.get("text"),
+                session_id,
+            )
+    return None
+
+
+async def _existing_summary_matches_source(
+    *,
+    memory_id: str,
+    summary_version: str,
+    source_message_fingerprint: str,
+) -> bool:
+    try:
+        from agent_memory_server.filters import Id
+
+        db = await get_memory_vector_db()
+        results = await db.list_memories(id=Id(eq=memory_id), limit=1)
+    except Exception:
+        logger.exception("Failed checking existing summary memory %s", memory_id)
+        return False
+
+    if not results.memories:
+        return False
+
+    metadata = results.memories[0].metadata or {}
+    return (
+        metadata.get("summary_version") == summary_version
+        and metadata.get("source_message_fingerprint") == source_message_fingerprint
+    )
+
+
+def _memory_data_to_record(
+    *,
+    memory_data: dict[str, Any],
+    strategy_config: MemoryStrategyConfig,
+    thread_context: dict[str, Any],
+    extraction_time: datetime,
+) -> MemoryRecord:
+    strategy_type = strategy_config.strategy
+    is_summary = strategy_type == "summary"
+    summary_version = str(
+        strategy_config.config.get("summary_version", "thread-summary-v1")
+    )
+
+    event_date = _parse_optional_extracted_datetime(
+        memory_data, "event_date", session_id=str(thread_context["session_id"])
+    )
+    created_at = (
+        _parse_optional_extracted_datetime(
+            memory_data, "created_at", session_id=str(thread_context["session_id"])
+        )
+        or extraction_time
+    )
+
+    topics = sanitize_tag_values(memory_data.get("topics", []))
+    if is_summary:
+        configured_topics = (
+            sanitize_tag_values(strategy_config.config.get("topics", [])) or []
+        )
+        topics = sorted({*(topics or []), *configured_topics, "thread-summary"})
+
+    metadata: dict[str, Any] = dict(memory_data.get("metadata") or {})
+    if is_summary:
+        metadata.update(
+            {
+                "source_session_id": thread_context.get("session_id"),
+                "message_count": thread_context.get("message_count"),
+                "source_message_ids": thread_context.get("source_message_ids", []),
+                "source_created_at_min": thread_context.get("created_at_min"),
+                "source_created_at_max": thread_context.get("created_at_max"),
+                "source_message_fingerprint": thread_context.get(
+                    "source_message_fingerprint"
+                ),
+                "summary_version": summary_version,
+            }
+        )
+
+    return MemoryRecord(
+        id=(
+            _thread_summary_memory_id(
+                namespace=thread_context.get("namespace"),
+                user_id=thread_context.get("user_id"),
+                session_id=str(thread_context["session_id"]),
+            )
+            if is_summary
+            else str(ULID())
+        ),
+        text=memory_data["text"],
+        memory_type=(
+            MemoryTypeEnum.SEMANTIC
+            if is_summary
+            else memory_data.get("type", "semantic")
+        ),
+        topics=topics,
+        entities=sanitize_tag_values(memory_data.get("entities", [])),
+        event_date=event_date,
+        session_id=thread_context.get("session_id"),
+        namespace=thread_context.get("namespace"),
+        user_id=thread_context.get("user_id"),
+        created_at=created_at,
+        extraction_strategy=strategy_type,
+        extraction_strategy_config=strategy_config.config,
+        extracted_from=(
+            thread_context.get("source_message_ids", [])
+            if is_summary
+            else memory_data.get("extracted_from")
+        ),
+        metadata=metadata,
+        discrete_memory_extracted="t",
+    )
+
+
+def _coalesce_summary_memory_data(
+    memories_data: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    valid_memories = [memory for memory in memories_data if memory.get("text")]
+    if len(valid_memories) <= 1:
+        return valid_memories
+
+    coalesced = dict(valid_memories[0])
+    coalesced["text"] = "\n\n".join(
+        str(memory["text"]).strip()
+        for memory in valid_memories
+        if str(memory.get("text", "")).strip()
+    )
+    coalesced["type"] = "semantic"
+    coalesced["topics"] = sorted(
+        {
+            topic
+            for memory in valid_memories
+            for topic in (sanitize_tag_values(memory.get("topics", [])) or [])
+        }
+    )
+    coalesced["entities"] = sorted(
+        {
+            entity
+            for memory in valid_memories
+            for entity in (sanitize_tag_values(memory.get("entities", [])) or [])
+        }
+    )
+
+    metadata: dict[str, Any] = {}
+    for memory in valid_memories:
+        if isinstance(memory.get("metadata"), dict):
+            metadata.update(memory["metadata"])
+    if metadata:
+        coalesced["metadata"] = metadata
+
+    return [coalesced]
+
+
+async def extract_memories_from_session_thread(
+    session_id: str,
+    namespace: str | None = None,
+    user_id: str | None = None,
+) -> list[MemoryRecord]:
+    """
+    Extract memories from the entire conversation thread in working memory.
+
+    This provides full conversational context for proper contextual grounding,
+    allowing pronouns and references to be resolved across the entire thread.
+
+    Args:
+        session_id: The session ID to extract memories from
+        namespace: Optional namespace for the memories
+        user_id: Optional user ID for the memories
+
+    Returns:
+        List of extracted memory records with proper contextual grounding
+    """
+    from agent_memory_server.working_memory import get_working_memory
+
+    # Get the complete working memory thread
+    working_memory = await get_working_memory(
+        session_id=session_id, namespace=namespace, user_id=user_id
+    )
+
+    if not working_memory or not working_memory.messages:
+        logger.info(f"No working memory messages found for session {session_id}")
+        return []
+
+    full_conversation, thread_context = _build_thread_extraction_context(working_memory)
+
+    logger.info(
+        f"Extracting memories from {len(working_memory.messages)} messages in session {session_id}"
+    )
+    logger.debug(
+        f"Full conversation context length: {len(full_conversation)} characters"
+    )
+
+    from agent_memory_server.memory_strategies import get_memory_strategy
+
+    strategy_config = working_memory.long_term_memory_strategy or MemoryStrategyConfig()
+    try:
+        if strategy_config.strategy == "summary":
+            summary_version = str(
+                strategy_config.config.get("summary_version", "thread-summary-v1")
+            )
+            summary_id = _thread_summary_memory_id(
+                namespace=working_memory.namespace,
+                user_id=working_memory.user_id,
+                session_id=working_memory.session_id,
+            )
+            if await _existing_summary_matches_source(
+                memory_id=summary_id,
+                summary_version=summary_version,
+                source_message_fingerprint=str(
+                    thread_context["source_message_fingerprint"]
+                ),
+            ):
+                logger.info(
+                    "Skipping unchanged summary extraction for session %s",
+                    session_id,
+                )
+                return []
+
+        strategy = get_memory_strategy(
+            strategy_config.strategy,
+            **strategy_config.config,
+        )
+        memories_data = await strategy.extract_memories(
+            full_conversation, context=thread_context
+        )
+
+        logger.info(
+            "Extracted %d memories from session thread %s using strategy %s",
+            len(memories_data or []),
+            session_id,
+            strategy_config.strategy,
+        )
+
+        valid_memories_data = [
+            memory_data
+            for memory_data in memories_data or []
+            if memory_data.get("text")
+        ]
+        if strategy_config.strategy == "summary":
+            valid_memories_data = _coalesce_summary_memory_data(valid_memories_data)
+
+        extraction_time = datetime.now(UTC)
+        return [
+            _memory_data_to_record(
+                memory_data=memory_data,
+                strategy_config=strategy_config,
+                thread_context=thread_context,
+                extraction_time=extraction_time,
+            )
+            for memory_data in valid_memories_data
+        ]
+    except Exception as e:
+        logger.error(f"Error extracting memories from session thread {session_id}: {e}")
+        return []
+
+
+async def extract_memory_structure(
+    memory: MemoryRecord,
+    timeout: Timeout = Timeout(timedelta(minutes=settings.llm_task_timeout_minutes)),
+):
+    redis = await get_redis_conn()
+
+    # Process messages for topic/entity extraction
+    topics, entities = await handle_extraction(memory.text)
+
+    merged_topics = memory.topics + topics if memory.topics else topics
+    merged_entities = memory.entities + entities if memory.entities else entities
+
+    merged_topics = sanitize_tag_values(merged_topics) or []
+    merged_entities = sanitize_tag_values(merged_entities) or []
+
+    # Guard: only update if the key still exists. A race between semantic
+    # deduplication (which deletes merged keys) and this background task
+    # can recreate deleted keys as orphaned hashes with only topics/entities.
+    # Use HSETEX with FXX to atomically update only if the fields already
+    # exist on the hash — a deleted key has no fields, so nothing is written.
+    key = Keys.memory_key(memory.id)
+    result = await redis.hsetex(
+        key,
+        mapping={
+            "topics": encode_tag_values(merged_topics),
+            "entities": encode_tag_values(merged_entities),
+        },
+        data_persist_option=HashDataPersistOptions.FXX,
+        keepttl=True,
+    )
+    if result == 0:
+        logger.info(f"Skipping topic/entity update for deleted memory {memory.id}")
+
+
+async def merge_memories_with_llm(
+    memories: list[MemoryRecord],
+) -> MemoryRecord:
+    """
+    Use an LLM to merge similar or duplicate memories.
+
+    Args:
+        memories: List of MemoryRecord objects to merge
+
+    Returns:
+        A merged memory
+    """
+    # If there's only one memory, just return it
+    if len(memories) == 1:
+        return memories[0]
+
+    user_ids = {memory.user_id for memory in memories if memory.user_id}
+
+    if len(user_ids) > 1:
+        raise ValueError("Cannot merge memories with different user IDs")
+
+        # Create a unified set of topics and entities
+    all_topics = set()
+    all_entities = set()
+
+    for memory in memories:
+        if memory.topics:
+            all_topics.update(memory.topics)
+
+        if memory.entities:
+            all_entities.update(memory.entities)
+
+    # Get the memory texts for LLM prompt
+    memory_texts = [m.text for m in memories]
+
+    # Construct the LLM prompt
+    instruction = """
+    You are a memory merging assistant. Your job is to merge similar or
+    duplicate memories.
+
+    You will be given a list of memories. You will need to merge them into a
+    single, coherent memory.
+    """
+    memory_list = "\n".join([f"{i}: {text}" for i, text in enumerate(memory_texts, 1)])
+
+    prompt = f"""
+    {instruction}
+
+    The memories:
+    {memory_list}
+
+    The merged memory:
+    """
+
+    model_name = settings.fast_model
+
+    response = await LLMClient.create_chat_completion(
+        model=model_name,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    # Extract the merged content
+    merged_text = response.content or ""
+
+    def coerce_to_float(m: MemoryRecord, key: str) -> float:
+        try:
+            val = getattr(m, key)
+        except AttributeError:
+            val = time.time()
+        if val is None:
+            return time.time()
+        if isinstance(val, datetime):
+            return float(val.timestamp())
+        return float(val)
+
+    # Use the oldest creation timestamp
+    created_at = min(coerce_to_float(m, "created_at") for m in memories)
+
+    # Use the most recent last_accessed timestamp
+    last_accessed = max(coerce_to_float(m, "last_accessed") for m in memories)
+
+    # Prefer non-empty namespace, user_id, session_id from memories
+    namespace = next((m.namespace for m in memories if m.namespace), None)
+    user_id = next((m.user_id for m in memories if m.user_id), None)
+    session_id = next((m.session_id for m in memories if m.session_id), None)
+
+    # Get the memory type from the first memory
+    memory_type = next((m.memory_type for m in memories if m.memory_type), "semantic")
+
+    # Create the merged memory
+    merged_memory = MemoryRecord(
+        text=merged_text.strip(),
+        id=str(ULID()),
+        user_id=user_id,
+        session_id=session_id,
+        namespace=namespace,
+        created_at=datetime.fromtimestamp(created_at, UTC),
+        last_accessed=datetime.fromtimestamp(last_accessed, UTC),
+        updated_at=datetime.now(UTC),
+        topics=sanitize_tag_values(list(all_topics)) if all_topics else None,
+        entities=sanitize_tag_values(list(all_entities)) if all_entities else None,
+        memory_type=MemoryTypeEnum(memory_type),
+        discrete_memory_extracted="t",
+    )
+
+    # Generate a new hash for the merged memory
+    merged_memory.memory_hash = generate_memory_hash(merged_memory)
+
+    return merged_memory
+
+
+async def compact_long_term_memories(
+    limit: int = 1000,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    redis_client: Redis | None = None,
+    vector_distance_threshold: float = 0.2,
+    compact_hash_duplicates: bool = True,
+    compact_semantic_duplicates: bool | None = None,
+    perpetual: Perpetual = Perpetual(
+        every=timedelta(minutes=settings.compaction_every_minutes), automatic=True
+    ),
+    timeout: Timeout = Timeout(timedelta(minutes=settings.llm_task_timeout_minutes)),
+) -> int:
+    """
+    Compact long-term memories by merging duplicates and semantically similar memories.
+
+    This function can identify and merge two types of duplicate memories:
+    1. Hash-based duplicates: Memories with identical content (using memory_hash)
+    2. Semantic duplicates: Memories with similar meaning but different text
+
+    Returns the count of remaining memories after compaction.
+    """
+    if compact_semantic_duplicates is None:
+        compact_semantic_duplicates = settings.compact_semantic_duplicates
+
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    logger.info(
+        f"Starting memory compaction: namespace={namespace}, "
+        f"user_id={user_id}, session_id={session_id}, "
+        f"hash_duplicates={compact_hash_duplicates}, "
+        f"semantic_duplicates={compact_semantic_duplicates}"
+    )
+
+    # Build filters for memory queries
+    filters = []
+    if namespace:
+        filters.append(f"@namespace:{{{namespace}}}")
+    if user_id:
+        filters.append(f"@user_id:{{{user_id}}}")
+    if session_id:
+        filters.append(f"@session_id:{{{session_id}}}")
+
+    filter_str = " ".join(filters) if filters else "*"
+
+    # Track metrics
+    memories_merged = 0
+    start_time = time.time()
+
+    # Step 1: Compact hash-based duplicates using Redis aggregation
+    if compact_hash_duplicates:
+        logger.info("Starting hash-based duplicate compaction")
+        try:
+            index_name = Keys.search_index_name()
+
+            # Create aggregation query to group by memory_hash and find duplicates
+            agg_query = [
+                "FT.AGGREGATE",
+                index_name,
+                filter_str,
+                "GROUPBY",
+                str(1),
+                "@memory_hash",
+                "REDUCE",
+                "COUNT",
+                str(0),
+                "AS",
+                "count",
+                "FILTER",
+                "@count>1",  # Only groups with more than 1 memory
+                "SORTBY",
+                str(2),
+                "@count",
+                "DESC",
+                "LIMIT",
+                str(0),
+                str(limit),
+            ]
+
+            # Execute aggregation to find duplicate groups
+            duplicate_groups = await redis_client.execute_command(*agg_query)
+
+            if duplicate_groups and duplicate_groups[0] > 0:
+                num_groups = duplicate_groups[0]
+                logger.info(
+                    f"Found {num_groups} groups with hash-based duplicates to process"
+                )
+
+                # Process each group of duplicates
+                for i in range(1, len(duplicate_groups), 2):
+                    try:
+                        # Get the hash and count from aggregation results
+                        group_data = duplicate_groups[i]
+                        memory_hash = None
+                        count = 0
+
+                        for j in range(0, len(group_data), 2):
+                            if group_data[j] == b"memory_hash":
+                                if group_data[j + 1] is not None:
+                                    memory_hash = group_data[j + 1].decode()
+                            elif group_data[j] == b"count":
+                                count = int(group_data[j + 1])
+
+                        if not memory_hash or count <= 1:
+                            continue
+
+                        # Find all memories with this hash
+                        # Use FT.SEARCH to find the actual memories with this hash
+                        # TODO: Use RedisVL index
+                        if filters:
+                            # Combine hash query with filters using boolean AND
+                            query_expr = f"(@memory_hash:{{{memory_hash}}}) ({' '.join(filters)})"
+                        else:
+                            query_expr = f"@memory_hash:{{{memory_hash}}}"
+
+                        search_results = await redis_client.execute_command(
+                            "FT.SEARCH",
+                            index_name,
+                            f"'{query_expr}'",
+                            "RETURN",
+                            "6",
+                            "id_",
+                            "text",
+                            "last_accessed",
+                            "created_at",
+                            "user_id",
+                            "session_id",
+                            "SORTBY",
+                            "last_accessed",
+                            "ASC",
+                        )
+
+                        if search_results and search_results[0] > 1:
+                            num_duplicates = search_results[0]
+
+                            # Keep the newest memory (last in sorted results)
+                            # and delete the rest
+                            memories_to_delete = []
+
+                            # Each memory result has: key + 6 field-value pairs = 13 elements
+                            # Keys are at positions: 1, 14, 27, ... (1 + n * 13)
+                            elements_per_memory = 1 + 6 * 2  # key + 6 field-value pairs
+                            for n in range(num_duplicates):
+                                key_index = 1 + n * elements_per_memory
+                                # Skip the last item (newest) which we'll keep
+                                if n < num_duplicates - 1 and key_index < len(
+                                    search_results
+                                ):
+                                    key = search_results[key_index]
+                                    if key is not None:
+                                        key_str = (
+                                            key.decode()
+                                            if isinstance(key, bytes)
+                                            else key
+                                        )
+                                        memories_to_delete.append(key_str)
+
+                            # Delete older duplicates
+                            if memories_to_delete:
+                                pipeline = redis_client.pipeline()
+                                for key in memories_to_delete:
+                                    pipeline.delete(key)
+
+                                await pipeline.execute()
+                                memories_merged += len(memories_to_delete)
+                                logger.info(
+                                    f"Deleted {len(memories_to_delete)} hash-based duplicates "
+                                    f"with hash {memory_hash}"
+                                )
+                    except Exception as e:
+                        logger.error(f"Error processing duplicate group: {e}")
+            else:
+                logger.info("No hash-based duplicates found")
+
+            logger.info(
+                f"Completed hash-based deduplication. Removed {memories_merged} duplicate memories."
+            )
+        except Exception as e:
+            logger.error(f"Error during hash-based duplicate compaction: {e}")
+
+    # Step 2: Compact semantic duplicates using vector search
+    semantic_memories_merged = 0
+    if compact_semantic_duplicates:
+        logger.info("Starting semantic duplicate compaction")
+        # Get the correct index name
+        index_name = Keys.search_index_name()
+        logger.info(f"Using index '{index_name}' for semantic duplicate compaction.")
+
+        # Get all memories using the memory vector database
+        try:
+            # Convert filters to database format
+            namespace_filter = None
+            user_id_filter = None
+            session_id_filter = None
+
+            if namespace:
+                from agent_memory_server.filters import Namespace
+
+                namespace_filter = Namespace(eq=namespace)
+            if user_id:
+                from agent_memory_server.filters import UserId
+
+                user_id_filter = UserId(eq=user_id)
+            if session_id:
+                from agent_memory_server.filters import SessionId
+
+                session_id_filter = SessionId(eq=session_id)
+
+            # Use memory vector database to get all memories using filter-only query
+            # (no embedding required)
+            db = await get_memory_vector_db()
+            search_result = await db.list_memories(
+                namespace=namespace_filter,
+                user_id=user_id_filter,
+                session_id=session_id_filter,
+                limit=limit,
+            )
+        except Exception as e:
+            logger.error(f"Error searching for memories: {e}")
+            search_result = None
+
+        if search_result and search_result.memories:
+            logger.info(
+                f"Found {search_result.total} memories to check for semantic duplicates"
+            )
+
+            # Process memories in batches to avoid overloading
+            batch_size = 50
+            processed_ids = set()  # Track which memories have been processed
+
+            memories_list = search_result.memories
+            for i in range(0, len(memories_list), batch_size):
+                batch = memories_list[i : i + batch_size]
+
+                for memory_result in batch:
+                    memory_id = memory_result.id
+
+                    # Skip if already processed
+                    if memory_id in processed_ids:
+                        continue
+
+                    # Convert MemoryRecordResult to MemoryRecord for deduplication
+                    memory_obj = MemoryRecord(
+                        id=memory_result.id,
+                        text=memory_result.text,
+                        user_id=memory_result.user_id,
+                        session_id=memory_result.session_id,
+                        namespace=memory_result.namespace,
+                        created_at=memory_result.created_at,
+                        last_accessed=memory_result.last_accessed,
+                        topics=memory_result.topics or [],
+                        entities=memory_result.entities or [],
+                        memory_type=memory_result.memory_type,  # type: ignore
+                        discrete_memory_extracted=memory_result.discrete_memory_extracted,  # type: ignore
+                    )
+
+                    # Add this memory to processed list BEFORE processing to prevent cycles
+                    processed_ids.add(memory_id)
+
+                    # Check for semantic duplicates
+                    (
+                        merged_memory,
+                        was_merged,
+                    ) = await deduplicate_by_semantic_search(
+                        memory=memory_obj,
+                        redis_client=redis_client,
+                        namespace=namespace,
+                        user_id=user_id,
+                        session_id=session_id,
+                        vector_distance_threshold=vector_distance_threshold,
+                    )
+
+                    if was_merged:
+                        semantic_memories_merged += 1
+                        # Delete the original memory using the database
+                        await db.delete_memories([memory_id])
+
+                        # Re-index the merged memory
+                        if merged_memory:
+                            await index_long_term_memories(
+                                [merged_memory],
+                                redis_client=redis_client,
+                                deduplicate=False,  # Already deduplicated
+                            )
+                            # Mark the merged memory as processed to prevent cycles
+                            processed_ids.add(merged_memory.id)
+        logger.info(
+            f"Completed semantic deduplication. Merged {semantic_memories_merged} memories."
+        )
+
+    # Get the count of remaining memories
+    total_memories = await count_long_term_memories(
+        namespace=namespace,
+        user_id=user_id,
+        session_id=session_id,
+        redis_client=redis_client,
+    )
+
+    end_time = time.time()
+    total_merged = memories_merged + semantic_memories_merged
+
+    logger.info(
+        f"Memory compaction completed in {end_time - start_time:.2f}s. "
+        f"Merged {total_merged} memories. "
+        f"{total_memories} memories remain."
+    )
+
+    return total_memories
+
+
+async def index_long_term_memories(
+    memories: list[MemoryRecord | ExtractedMemoryRecord],
+    redis_client: Redis | None = None,
+    deduplicate: bool = False,
+    vector_distance_threshold: float | None = None,
+) -> None:
+    """
+    Index long-term memories using the pluggable memory vector database.
+
+    Args:
+        memories: List of long-term memories to index
+        redis_client: Optional Redis client (kept for compatibility, may be unused depending on backend)
+        deduplicate: Whether to deduplicate memories before indexing
+        vector_distance_threshold: Threshold for semantic similarity.
+            If None, uses settings.deduplication_distance_threshold (default 0.35)
+
+    Note:
+        Breaking change in v0.x: The default threshold changed from 0.12 to 0.35
+        (via settings.deduplication_distance_threshold). The new threshold better
+        catches paraphrased content. To restore the old strict behavior, explicitly
+        pass vector_distance_threshold=0.12.
+    """
+    background_tasks = get_background_tasks()
+
+    # Filter out memories with empty text or id before processing
+    # Empty text causes OpenAI's embedding API to reject with "'$.input' is invalid"
+    valid_memories = []
+    for memory in memories:
+        if not memory.text:
+            logger.warning(
+                f"Skipping memory with empty text: id={memory.id}",
+            )
+            continue
+        if not memory.id:
+            logger.warning(
+                f"Skipping memory with empty id: text={memory.text[:50] if memory.text else ''}...",
+            )
+            continue
+        valid_memories.append(memory)
+
+    if not valid_memories:
+        logger.info("No valid memories to index (all had empty text or id)")
+        return
+
+    # Process memories for deduplication if requested
+    processed_memories = []
+    if deduplicate:
+        # Get Redis client for deduplication operations (still needed for existing dedup logic)
+        redis = redis_client or await get_redis_conn()
+
+        for memory in valid_memories:
+            current_memory = memory
+            was_deduplicated = False
+            is_summary_memory = current_memory.extraction_strategy == "summary"
+
+            # Check for id-based duplicates
+            if not was_deduplicated:
+                deduped_memory, was_overwrite = await deduplicate_by_id(
+                    memory=current_memory,
+                    redis_client=redis,
+                )
+                if was_overwrite:
+                    # This overwrote an existing memory with the same ID
+                    current_memory = deduped_memory or current_memory
+                    logger.info(f"Overwrote memory with ID {memory.id}")
+                else:
+                    current_memory = deduped_memory or current_memory
+
+            # Check for hash-based duplicates
+            if not was_deduplicated and not is_summary_memory:
+                deduped_memory, was_dup = await deduplicate_by_hash(
+                    memory=current_memory,
+                    redis_client=redis,
+                )
+                if was_dup:
+                    # This is a duplicate, skip it
+                    was_deduplicated = True
+                else:
+                    current_memory = deduped_memory or current_memory
+
+            # Check for semantic duplicates (respects compact_semantic_duplicates setting)
+            if (
+                not was_deduplicated
+                and not is_summary_memory
+                and settings.compact_semantic_duplicates
+            ):
+                deduped_memory, was_merged = await deduplicate_by_semantic_search(
+                    memory=current_memory,
+                    redis_client=redis,
+                    vector_distance_threshold=vector_distance_threshold,
+                )
+                if was_merged:
+                    current_memory = deduped_memory or current_memory
+
+            # Add the memory to be indexed if not a pure duplicate
+            if not was_deduplicated:
+                processed_memories.append(current_memory)
+    else:
+        processed_memories = valid_memories
+
+    # If all memories were duplicates, we're done
+    if not processed_memories:
+        logger.info("All memories were duplicates, nothing to index")
+        return
+
+    # Get the memory vector database and add memories
+    db = await get_memory_vector_db()
+
+    # Add memories to the database
+    try:
+        ids = await db.add_memories(processed_memories)
+        logger.info(f"Indexed {len(processed_memories)} memories with IDs: {ids}")
+    except Exception as e:
+        logger.error(f"Error indexing memories: {e}")
+        raise
+
+    # Schedule background tasks for topic/entity extraction
+    for memory in processed_memories:
+        background_tasks.add_task(extract_memory_structure, memory)
+
+    if settings.enable_discrete_memory_extraction:
+        needs_extraction = [
+            memory
+            for memory in processed_memories
+            if memory.discrete_memory_extracted == "f"
+        ]
+        # Extract discrete memories from the indexed messages and persist
+        # them as separate long-term memory records. This process also
+        # runs deduplication if requested.
+        background_tasks.add_task(
+            extract_memories_with_strategy,
+            memories=needs_extraction,
+            deduplicate=deduplicate,
+        )
+
+
+async def search_long_term_memories(
+    text: str,
+    search_mode: SearchModeEnum = SearchModeEnum.SEMANTIC,
+    hybrid_alpha: float = 0.7,
+    text_scorer: str = "BM25STD",
+    session_id: SessionId | None = None,
+    user_id: UserId | None = None,
+    namespace: Namespace | None = None,
+    created_at: CreatedAt | None = None,
+    last_accessed: LastAccessed | None = None,
+    topics: Topics | None = None,
+    entities: Entities | None = None,
+    distance_threshold: float | None = None,
+    memory_type: MemoryType | None = None,
+    extraction_strategy: ExtractionStrategy | None = None,
+    event_date: EventDate | None = None,
+    memory_hash: MemoryHash | None = None,
+    server_side_recency: bool | None = None,
+    recency_params: dict | None = None,
+    limit: int = 10,
+    offset: int = 0,
+    optimize_query: bool = False,
+) -> MemoryRecordResults:
+    """
+    Search for long-term memories using the pluggable memory vector database.
+
+    Args:
+        text: Query text used for semantic, keyword, or hybrid search
+        search_mode: Search strategy to use
+        hybrid_alpha: Weight assigned to vector similarity in hybrid search
+        text_scorer: Redis full-text scoring algorithm for keyword and hybrid
+            search. Defaults to BM25STD, a normalized BM25 variant that keeps
+            lexical scores on a stable scale for hybrid ranking. Keyword and
+            hybrid search disable Redis stopword filtering to avoid assuming a
+            single language, so callers should pre-filter obvious stopwords
+            when they have language-specific context.
+        session_id: Optional session ID filter
+        user_id: Optional user ID filter
+        namespace: Optional namespace filter
+        created_at: Optional created at filter
+        last_accessed: Optional last accessed filter
+        topics: Optional topics filter
+        entities: Optional entities filter
+        distance_threshold: Optional similarity threshold
+        memory_type: Optional memory type filter
+        extraction_strategy: Optional extraction strategy filter
+        event_date: Optional event date filter
+        memory_hash: Optional memory hash filter
+        limit: Maximum number of results
+        offset: Offset for pagination
+        optimize_query: Whether to optimize the query for vector search using a fast model (default: False)
+
+    Returns:
+        MemoryRecordResults containing matching memories
+    """
+    if distance_threshold is not None and search_mode != SearchModeEnum.SEMANTIC:
+        raise ValueError(
+            "distance_threshold is only supported for semantic search mode"
+        )
+
+    # If no query text is provided, perform a filter-only listing (no semantic search).
+    # This enables patterns like: "return all memories for this user/namespace".
+    if not (text or "").strip():
+        db = await get_memory_vector_db()
+        return await db.list_memories(
+            session_id=session_id,
+            user_id=user_id,
+            namespace=namespace,
+            created_at=created_at,
+            last_accessed=last_accessed,
+            topics=topics,
+            entities=entities,
+            memory_type=memory_type,
+            extraction_strategy=extraction_strategy,
+            event_date=event_date,
+            memory_hash=memory_hash,
+            limit=limit,
+            offset=offset,
+        )
+
+    # Optimize query only for semantic search; keyword and hybrid modes should
+    # preserve the literal text for lexical matching.
+    search_query = text
+    optimized_applied = False
+    if optimize_query and text and search_mode == SearchModeEnum.SEMANTIC:
+        search_query = await optimize_query_for_vector_search(text)
+        optimized_applied = True
+
+    # Debug: Log search input
+    optimized_display = repr(search_query) if optimized_applied else "N/A"
+    logger.debug(
+        f"[search_long_term_memories] INPUT - query: {text!r}, "
+        f"search_mode: {search_mode}, "
+        f"optimized_query: {optimized_display}, "
+        f"session_id: {session_id}, user_id: {user_id}, namespace: {namespace}, "
+        f"distance_threshold: {distance_threshold}, limit: {limit}"
+    )
+
+    # Get the memory vector database
+    db = await get_memory_vector_db()
+
+    # Delegate search to the database
+    results = await db.search_memories(
+        query=search_query,
+        search_mode=search_mode,
+        hybrid_alpha=hybrid_alpha,
+        text_scorer=text_scorer,
+        session_id=session_id,
+        user_id=user_id,
+        namespace=namespace,
+        created_at=created_at,
+        last_accessed=last_accessed,
+        topics=topics,
+        entities=entities,
+        memory_type=memory_type,
+        extraction_strategy=extraction_strategy,
+        event_date=event_date,
+        memory_hash=memory_hash,
+        distance_threshold=distance_threshold,
+        server_side_recency=server_side_recency,
+        recency_params=recency_params,
+        limit=limit,
+        offset=offset,
+    )
+
+    # If an optimized query with a strict distance threshold returns no results,
+    # retry once with the original query to preserve recall.
+    try:
+        if (
+            optimized_applied
+            and distance_threshold is not None
+            and results.total == 0
+            and search_query != text
+        ):
+            results = await db.search_memories(
+                query=text,
+                search_mode=search_mode,
+                hybrid_alpha=hybrid_alpha,
+                text_scorer=text_scorer,
+                session_id=session_id,
+                user_id=user_id,
+                namespace=namespace,
+                created_at=created_at,
+                last_accessed=last_accessed,
+                topics=topics,
+                entities=entities,
+                memory_type=memory_type,
+                extraction_strategy=extraction_strategy,
+                event_date=event_date,
+                memory_hash=memory_hash,
+                distance_threshold=distance_threshold,
+                server_side_recency=server_side_recency,
+                recency_params=recency_params,
+                limit=limit,
+                offset=offset,
+            )
+    except Exception:
+        # Best-effort fallback; return the original results on any error
+        pass
+
+    # Debug: Log search output
+    memory_previews = [
+        f"{m.id}: {m.text[:80]}..." if len(m.text) > 80 else f"{m.id}: {m.text}"
+        for m in results.memories[:5]  # Show first 5
+    ]
+    logger.debug(
+        f"[search_long_term_memories] OUTPUT - {results.total} results: {memory_previews}"
+    )
+
+    return results
+
+
+async def count_long_term_memories(
+    namespace: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    redis_client: Redis | None = None,
+) -> int:
+    """
+    Count the total number of long-term memories matching the given filters.
+
+    Uses the pluggable memory vector database instead of direct Redis calls.
+
+    Args:
+        namespace: Optional namespace filter
+        user_id: Optional user ID filter
+        session_id: Optional session ID filter
+        redis_client: Optional Redis client (for compatibility)
+
+    Returns:
+        Total count of memories matching filters
+    """
+    # Get the memory vector database
+    db = await get_memory_vector_db()
+
+    # Delegate to the database
+    return await db.count_memories(
+        namespace=namespace,
+        user_id=user_id,
+        session_id=session_id,
+    )
+
+
+async def deduplicate_by_hash(
+    memory: MemoryRecord,
+    redis_client: Redis | None = None,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+) -> tuple[MemoryRecord | None, bool]:
+    """
+    Check if a memory has hash-based duplicates and handle accordingly.
+
+    Memories have a hash generated from their text and metadata. If we
+    see the exact-same memory again, we ignore it.
+
+    Args:
+        memory: The memory to check for duplicates
+        redis_client: Optional Redis client
+        namespace: Optional namespace filter
+        user_id: Optional user ID filter
+        session_id: Optional session ID filter
+
+    Returns:
+        Tuple of (memory to save (if any), was_duplicate)
+    """
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    # Generate hash for the memory
+    memory_hash = generate_memory_hash(memory)
+
+    # Use memory vector database to search for memories with the same hash
+    # Build filter objects
+    namespace_filter = None
+    if namespace or memory.namespace:
+        namespace_filter = Namespace(eq=namespace or memory.namespace)
+
+    user_id_filter = None
+    if user_id or memory.user_id:
+        user_id_filter = UserId(eq=user_id or memory.user_id)
+
+    session_id_filter = None
+    if session_id or memory.session_id:
+        session_id_filter = SessionId(eq=session_id or memory.session_id)
+
+    # Create memory hash filter
+    memory_hash_filter = MemoryHash(eq=memory_hash)
+
+    # Use memory vector database to search for memories with the same hash
+    db = await get_memory_vector_db()
+
+    # Search for existing memories with the same hash using filter-only query
+    # (no embedding required)
+    results = await db.list_memories(
+        session_id=session_id_filter,
+        user_id=user_id_filter,
+        namespace=namespace_filter,
+        memory_hash=memory_hash_filter,
+        limit=1,  # We only need to know if one exists
+    )
+
+    if results.memories and len(results.memories) > 0:
+        # Found existing memory with the same hash
+        logger.info(f"Found existing memory with hash {memory_hash}")
+
+        # Update the last_accessed timestamp of the existing memory
+        existing_memory = results.memories[0]
+        if existing_memory.id:
+            # Use the memory key format to update last_accessed
+            existing_key = Keys.memory_key(existing_memory.id)
+            await redis_client.hset(
+                existing_key,
+                mapping={"last_accessed": str(int(datetime.now(UTC).timestamp()))},
+            )  # type: ignore
+
+            # Don't save this memory, it's a duplicate
+            return None, True
+    # No duplicates found, return the original memory
+    return memory, False
+
+
+async def deduplicate_by_id(
+    memory: MemoryRecord,
+    redis_client: Redis | None = None,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+) -> tuple[MemoryRecord | None, bool]:
+    """
+    Check if a memory with the same ID exists and deduplicate if found.
+
+    When two memories have the same ID, the most recent memory replaces the
+    oldest memory. (They are not merged.)
+
+    Args:
+        memory: The memory to check for ID duplicates
+        redis_client: Optional Redis client
+        namespace: Optional namespace filter
+        user_id: Optional user ID filter
+        session_id: Optional session ID filter
+
+    Returns:
+        Tuple of (memory to save (potentially updated), was_overwrite)
+    """
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    # If no id, can't deduplicate by id
+    if not memory.id:
+        return memory, False
+
+    # Use memory vector database to search for memories with the same id
+    # Build filter objects
+    namespace_filter = None
+    if namespace or memory.namespace:
+        from agent_memory_server.filters import Namespace
+
+        namespace_filter = Namespace(eq=namespace or memory.namespace)
+
+    user_id_filter = None
+    if user_id or memory.user_id:
+        from agent_memory_server.filters import UserId
+
+        user_id_filter = UserId(eq=user_id or memory.user_id)
+
+    session_id_filter = None
+    if session_id or memory.session_id:
+        from agent_memory_server.filters import SessionId
+
+        session_id_filter = SessionId(eq=session_id or memory.session_id)
+
+    # Create id filter
+    from agent_memory_server.filters import Id
+
+    id_filter = Id(eq=memory.id)
+
+    # Use memory vector database to search for memories with the same id
+    db = await get_memory_vector_db()
+
+    # Search for existing memories with the same id using filter-only query
+    # (no embedding required)
+    results = await db.list_memories(
+        session_id=session_id_filter,
+        user_id=user_id_filter,
+        namespace=namespace_filter,
+        id=id_filter,
+        limit=1,  # We only need to know if one exists
+    )
+
+    if results.memories and len(results.memories) > 0:
+        # Found existing memory with the same id
+        existing_memory = results.memories[0]
+        logger.info(f"Found existing memory with id {memory.id}, will overwrite")
+
+        # If the existing memory was already persisted, preserve that timestamp
+        if existing_memory.persisted_at:
+            memory.persisted_at = existing_memory.persisted_at
+
+        # Delete the existing memory using the database
+        if existing_memory.id:
+            await db.delete_memories([existing_memory.id])
+
+        # Return the memory to be saved (overwriting the existing one)
+        return memory, True
+
+    # No existing memory with this id found
+    return memory, False
+
+
+async def _semantic_merge_group_is_cohesive(
+    *,
+    db: Any,
+    memory: MemoryRecord,
+    candidate_memories: list[MemoryRecordResult],
+    namespace_filter: Namespace | None,
+    user_id_filter: UserId | None,
+    session_id_filter: SessionId | None,
+    vector_distance_threshold: float,
+) -> bool:
+    """Reject bridge memories and non-cohesive semantic merge groups."""
+
+    if not candidate_memories:
+        return True
+
+    candidate_ids = {candidate.id for candidate in candidate_memories if candidate.id}
+    # Once the merge group is already at the hard cap, extra neighbors can
+    # simply mean "there are more same-topic memories than we are willing to
+    # merge in one pass" rather than "this group is ambiguous".
+    merge_group_is_capped = len(candidate_memories) >= SEMANTIC_DEDUP_SEARCH_LIMIT
+
+    for candidate_memory in candidate_memories:
+        if not candidate_memory.text:
+            return False
+
+        search_result = await db.search_memories(
+            query=candidate_memory.text,
+            namespace=namespace_filter,
+            user_id=user_id_filter,
+            session_id=session_id_filter,
+            distance_threshold=vector_distance_threshold,
+            # During compaction the anchor memory is already indexed and can
+            # consume one search slot before we filter it out locally.
+            limit=SEMANTIC_DEDUP_QUERY_LIMIT,
+        )
+        related_ids = {
+            result.id
+            for result in (search_result.memories if search_result else [])
+            if result.id not in {candidate_memory.id, memory.id}
+        }
+        extra_ids = related_ids - candidate_ids
+        if extra_ids and not merge_group_is_capped:
+            logger.info(
+                "Skipping ambiguous semantic merge group for %s via %s; extra neighbors=%s",
+                memory.id,
+                candidate_memory.id,
+                sorted(extra_ids),
+            )
+            return False
+
+        missing_ids = candidate_ids - {candidate_memory.id} - related_ids
+        if missing_ids:
+            logger.info(
+                "Skipping non-cohesive semantic merge group for %s via %s; missing neighbors=%s",
+                memory.id,
+                candidate_memory.id,
+                sorted(missing_ids),
+            )
+            return False
+
+    return True
+
+
+async def deduplicate_by_semantic_search(
+    memory: MemoryRecord,
+    redis_client: Redis | None = None,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    vector_distance_threshold: float | None = None,
+) -> tuple[MemoryRecord | None, bool]:
+    """
+    Check if a memory has semantic duplicates and merge if found.
+
+    Unlike deduplicate_by_id, this function does not overwrite any existing
+    memories. Instead, all semantically similar duplicates are merged.
+
+    Uses vector similarity search to find semantically similar memories.
+    The distance threshold determines how similar memories must be to be
+    considered duplicates. A threshold of 0.35 works well for catching
+    paraphrased content while avoiding false positives.
+
+    Args:
+        memory: The memory to check for semantic duplicates
+        redis_client: Optional Redis client
+        namespace: Optional namespace filter
+        user_id: Optional user ID filter
+        session_id: Optional session ID filter
+        vector_distance_threshold: Distance threshold for semantic similarity.
+            If None, uses settings.deduplication_distance_threshold (default 0.35)
+
+    Returns:
+        Tuple of (memory to save (potentially merged), was_merged)
+    """
+    # Skip semantic deduplication for memories with empty text
+    # OpenAI's embedding API rejects empty strings with "'$.input' is invalid"
+    if not memory.text:
+        logger.debug(
+            "Skipping semantic deduplication for memory with empty text: memory_id=%s",
+            memory.id,
+        )
+        return memory, False
+
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    # Use memory vector database to find semantically similar memories
+    db = await get_memory_vector_db()
+
+    # Get threshold from settings if not provided
+    if vector_distance_threshold is None:
+        vector_distance_threshold = settings.deduplication_distance_threshold
+
+    # Convert filters to database format
+    namespace_filter = None
+    user_id_filter = None
+    session_id_filter = None
+
+    # TODO: Refactor to avoid inline imports (fix circular imports)
+    if namespace or memory.namespace:
+        from agent_memory_server.filters import Namespace
+
+        namespace_filter = Namespace(eq=namespace or memory.namespace)
+    if user_id or memory.user_id:
+        from agent_memory_server.filters import UserId
+
+        user_id_filter = UserId(eq=user_id or memory.user_id)
+    # Only filter by session_id if explicitly provided — do NOT fall back to
+    # memory.session_id.  Semantic dedup must search across sessions so that
+    # compaction can merge identical memories created in different sessions.
+    if session_id:
+        from agent_memory_server.filters import SessionId
+
+        session_id_filter = SessionId(eq=session_id)
+
+    # Use the memory vector database for semantic search
+    # TODO: Paginate through results?
+    search_result = await db.search_memories(
+        query=memory.text,  # Use memory text for semantic search
+        namespace=namespace_filter,
+        user_id=user_id_filter,
+        session_id=session_id_filter,
+        distance_threshold=vector_distance_threshold,
+        # Keep one extra slot so an already-indexed anchor memory does not
+        # reduce the number of semantic candidates we can evaluate.
+        limit=SEMANTIC_DEDUP_QUERY_LIMIT,
+    )
+
+    vector_search_result = search_result.memories if search_result else []
+
+    # Filter out the memory itself from the search results (avoid self-duplication)
+    vector_search_result = [m for m in vector_search_result if m.id != memory.id][
+        :SEMANTIC_DEDUP_SEARCH_LIMIT
+    ]
+
+    if vector_search_result and len(vector_search_result) > 0:
+        merge_group = [memory] + vector_search_result
+        if not await _semantic_merge_group_is_cohesive(
+            db=db,
+            memory=memory,
+            candidate_memories=vector_search_result,
+            namespace_filter=namespace_filter,
+            user_id_filter=user_id_filter,
+            session_id_filter=session_id_filter,
+            vector_distance_threshold=vector_distance_threshold,
+        ):
+            return memory, False
+
+        # Found semantically similar memories
+        similar_memory_ids = [memory.id for memory in vector_search_result]
+
+        # Merge the memories
+        merged_memory = await merge_memories_with_llm(
+            merge_group,
+        )
+
+        # Delete the similar memories using the database
+        if similar_memory_ids:
+            await db.delete_memories(similar_memory_ids)
+
+        logger.info(
+            f"Merged new memory with {len(similar_memory_ids)} semantic duplicates"
+        )
+        return merged_memory, True
+
+    # No similar memories found or error occurred
+    return memory, False
+
+
+async def promote_working_memory_to_long_term(
+    session_id: str,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    redis_client: Redis | None = None,
+) -> int:
+    """
+    Promote eligible working memory records to long-term storage.
+
+    This function:
+    1. Identifies memory records with no persisted_at from working memory
+    2. For message records, runs extraction to generate semantic/episodic memories
+    3. Uses id to detect and replace duplicates in long-term memory
+    4. Persists the record and stamps it with persisted_at = now()
+    5. Updates the working memory session store to reflect new timestamps
+
+    Args:
+        session_id: The session ID to promote memories from
+        namespace: Optional namespace for the session
+        user_id: Optional user ID for the session
+        redis_client: Optional Redis client to use
+
+    Returns:
+        Number of memories promoted to long-term storage
+    """
+
+    from agent_memory_server import working_memory
+    from agent_memory_server.utils.redis import get_redis_conn
+
+    redis = redis_client or await get_redis_conn()
+
+    # Get current working memory
+    current_working_memory = await working_memory.get_working_memory(
+        session_id=session_id,
+        namespace=namespace,
+        user_id=user_id,
+        redis_client=redis,
+    )
+
+    if not current_working_memory:
+        logger.debug(f"No working memory found for session {session_id}")
+        return 0
+
+    logger.info("Promoting memories to long-term storage...")
+
+    promoted_count = 0
+    updated_memories = []
+
+    # Thread-aware discrete memory extraction with trailing-edge debouncing
+    # Instead of extracting immediately, we schedule extraction to run after
+    # a period of inactivity. Each new message resets the timer.
+    unextracted_messages = [
+        message
+        for message in current_working_memory.messages
+        if message.discrete_memory_extracted == "f"
+    ]
+
+    if settings.enable_discrete_memory_extraction and unextracted_messages:
+        # Check if we're not in post-extraction debounce
+        if await should_extract_session_thread(session_id, redis):
+            if settings.use_docket:
+                # When using Docket, schedule via the queue for worker processing
+                await schedule_trailing_extraction(
+                    session_id=session_id,
+                    namespace=namespace,
+                    user_id=user_id,
+                    redis=redis,
+                )
+            else:
+                # When running in-process (no worker), run extraction inline
+                # with a short debounce sleep. This is already in a background
+                # task so the sleep won't block the HTTP response.
+                import asyncio
+
+                debounce = settings.extraction_debounce_seconds
+                logger.info(
+                    f"Running inline extraction for session {session_id} "
+                    f"(debounce: {debounce}s)"
+                )
+                await asyncio.sleep(debounce)
+                extraction_count = await run_delayed_extraction(
+                    session_id=session_id,
+                    namespace=namespace,
+                    user_id=user_id,
+                )
+                logger.info(
+                    f"Inline extraction completed for session {session_id}: "
+                    f"{extraction_count} memories extracted"
+                )
+        else:
+            logger.info(
+                f"Skipping extraction scheduling for session {session_id} - in post-extraction debounce"
+            )
+
+    # Process existing memories for promotion (extracted memories are handled by the delayed task)
+    all_memories_to_process = list(current_working_memory.memories)
+
+    for memory in all_memories_to_process:
+        if memory.persisted_at is None:
+            # This memory needs to be promoted
+
+            # Check for id-based duplicates and handle accordingly
+            deduped_memory, was_overwrite = await deduplicate_by_id(
+                memory=memory,
+                redis_client=redis,
+            )
+
+            # Set persisted_at timestamp
+            current_memory = deduped_memory or memory
+            current_memory.persisted_at = datetime.now(UTC)
+
+            # Set extraction strategy configuration from working memory
+            current_memory.extraction_strategy = (
+                current_working_memory.long_term_memory_strategy.strategy
+            )
+            current_memory.extraction_strategy_config = (
+                current_working_memory.long_term_memory_strategy.config
+            )
+
+            # Index the memory in long-term storage
+            # Fix for Issue #110 - this path previously bypassed deduplication
+            await index_long_term_memories(
+                [current_memory],
+                redis_client=redis,
+                deduplicate=True,  # Enable hash and semantic deduplication
+            )
+
+            promoted_count += 1
+            updated_memories.append(current_memory)
+
+            if was_overwrite:
+                logger.info(f"Overwrote existing memory with id {memory.id}")
+            else:
+                logger.info(f"Promoted new memory with id {memory.id}")
+        else:
+            # This memory is already persisted, keep as-is
+            updated_memories.append(memory)
+
+    count_persisted_messages = 0
+    message_records_to_index = []
+
+    # Process unpersisted messages if configured to do so
+    if settings.index_all_messages_in_long_term_memory:
+        updated_messages = []
+        for msg in current_working_memory.messages:
+            if msg.persisted_at is None:
+                # Skip messages with empty or None content
+                if not msg.content or not msg.content.strip():
+                    logger.warning(f"Skipping message with empty content: {msg.id}")
+                    updated_messages.append(msg)
+                    continue
+
+                # Generate ID if not present (backward compatibility)
+                if not msg.id:
+                    msg.id = str(ULID())
+
+                memory_record = MemoryRecord(
+                    id=msg.id,
+                    session_id=session_id,
+                    text=f"{msg.role}: {msg.content}",
+                    namespace=namespace,
+                    user_id=current_working_memory.user_id,
+                    persisted_at=None,
+                    created_at=msg.created_at,
+                    memory_type=MemoryTypeEnum.MESSAGE,
+                )
+
+                # Apply same deduplication logic as structured memories
+                deduped_memory, was_overwrite = await deduplicate_by_id(
+                    memory=memory_record,
+                    redis_client=redis,
+                )
+
+                # Set persisted_at timestamp
+                current_memory = deduped_memory or memory_record
+                current_memory.persisted_at = datetime.now(UTC)
+
+                # Set extraction strategy configuration from working memory
+                current_memory.extraction_strategy = "message"
+                current_memory.extraction_strategy_config = {}
+
+                # Collect memory record for batch indexing
+                message_records_to_index.append(current_memory)
+
+                # Update message with persisted_at timestamp
+                msg.persisted_at = current_memory.persisted_at
+                promoted_count += 1
+
+                if was_overwrite:
+                    logger.info(
+                        f"Overwrote existing long-term message memory with ID {msg.id}"
+                    )
+                else:
+                    logger.info(
+                        f"Promoted new long-term message memory with ID {msg.id}"
+                    )
+
+            updated_messages.append(msg)
+
+        # Batch index all new memory records for messages
+        # Fix for Issue #110 - this path previously bypassed deduplication
+        if message_records_to_index:
+            count_persisted_messages = len(message_records_to_index)
+            await index_long_term_memories(
+                message_records_to_index,
+                redis_client=redis,
+                deduplicate=True,  # Enable hash and semantic deduplication
+            )
+    else:
+        count_persisted_messages = 0
+        updated_messages = current_working_memory.messages
+
+    # Update working memory with the new persisted_at timestamps
+    # Note: Extraction now happens asynchronously via trailing-edge debounce
+    if promoted_count > 0 or count_persisted_messages > 0:
+        updated_working_memory = current_working_memory.model_copy()
+        updated_working_memory.memories = updated_memories
+        updated_working_memory.messages = updated_messages
+        updated_working_memory.updated_at = datetime.now(UTC)
+
+        await working_memory.set_working_memory(
+            working_memory=updated_working_memory,
+            redis_client=redis,
+        )
+
+        logger.info(
+            f"Successfully promoted {promoted_count} memories and {len(message_records_to_index)} messages to long-term storage"
+        )
+
+    return promoted_count
+
+
+async def delete_long_term_memories(
+    ids: list[str],
+) -> int:
+    """
+    Delete long-term memories by ID.
+    """
+    db = await get_memory_vector_db()
+    return await db.delete_memories(ids)
+
+
+async def delete_invalid_memories(
+    redis_client: Redis | None = None,
+) -> int:
+    """
+    Delete corrupted memory records from Redis.
+
+    Corrupted records are those that:
+    1. Have empty key ID components (keys like "prefix:" or "prefix: ")
+    2. Are missing required fields (like 'text')
+
+    These records cannot be properly searched or deleted by ID, so they need
+    to be cleaned up directly via Redis key operations.
+
+    Args:
+        redis_client: Optional Redis client
+
+    Returns:
+        Number of memories deleted
+    """
+    if not redis_client:
+        redis_client = await get_redis_conn()
+
+    prefix = settings.redisvl_index_prefix
+
+    deleted_count = 0
+    cursor = 0
+
+    # Scan for all memory keys
+    while True:
+        cursor, keys = await redis_client.scan(
+            cursor=cursor, match=f"{prefix}:*", count=1000
+        )
+
+        for key in keys:
+            key_str = key.decode("utf-8") if isinstance(key, bytes) else key
+            should_delete = False
+
+            # Check 1: Empty ID in key name
+            id_part = key_str[len(prefix) + 1 :]  # +1 for the colon
+            if not id_part or not id_part.strip():
+                should_delete = True
+                logger.info(f"Found invalid memory with empty key ID: {key_str}")
+            else:
+                # Check 2: Missing required 'text' field
+                data = await redis_client.hgetall(key)
+                text_field = data.get(b"text") or data.get("text")
+                if text_field is None:
+                    should_delete = True
+                    logger.info(f"Found invalid memory missing 'text' field: {key_str}")
+
+            if should_delete:
+                await redis_client.delete(key)
+                deleted_count += 1
+
+        if cursor == 0:
+            break
+
+    if deleted_count > 0:
+        logger.info(f"Deleted {deleted_count} corrupted memory records")
+
+    return deleted_count
+
+
+async def get_long_term_memory_by_id(memory_id: str) -> MemoryRecord | None:
+    """
+    Get a single long-term memory by its ID.
+
+    Args:
+        memory_id: The ID of the memory to retrieve
+
+    Returns:
+        MemoryRecord if found, None if not found
+    """
+    from agent_memory_server.filters import Id
+
+    db = await get_memory_vector_db()
+
+    # Search for the memory by ID using filter-only query (no embedding required)
+    results = await db.list_memories(
+        limit=1,
+        id=Id(eq=memory_id),
+    )
+
+    if results.memories:
+        return results.memories[0]
+    return None
+
+
+async def update_long_term_memory(
+    memory_id: str,
+    updates: dict[str, Any],
+) -> MemoryRecord | None:
+    """
+    Update a long-term memory by ID.
+
+    Args:
+        memory_id: The ID of the memory to update
+        updates: Dictionary of fields to update
+
+    Returns:
+        Updated MemoryRecord if found and updated, None if not found
+
+    Raises:
+        ValueError: If the update contains invalid fields
+    """
+    # First, get the existing memory
+    existing_memory = await get_long_term_memory_by_id(memory_id)
+    if not existing_memory:
+        return None
+
+    # Valid fields that can be updated
+    updatable_fields = {
+        "text",
+        "topics",
+        "entities",
+        "memory_type",
+        "namespace",
+        "user_id",
+        "session_id",
+        "event_date",
+        "pinned",
+    }
+
+    # Validate update fields
+    invalid_fields = set(updates.keys()) - updatable_fields
+    if invalid_fields:
+        raise ValueError(
+            f"Cannot update fields: {invalid_fields}. Valid fields: {updatable_fields}"
+        )
+
+    # Create updated memory record using efficient model_copy and hash helper
+    base_updates = {**updates, "updated_at": datetime.now(UTC)}
+    update_dict = update_memory_hash_if_text_changed(existing_memory, base_updates)
+    updated_memory = existing_memory.model_copy(update=update_dict)
+
+    # Update in the database
+    db = await get_memory_vector_db()
+    await db.update_memories([updated_memory])
+
+    return updated_memory
+
+
+def _is_numeric(value: Any) -> bool:
+    """Check if a value is numeric (int, float, or other number type)."""
+    return isinstance(value, numbers.Number)
+
+
+def select_ids_for_forgetting(
+    results: Iterable[MemoryRecordResult],
+    *,
+    policy: dict,
+    now: datetime,
+    pinned_ids: set[str] | None = None,
+) -> list[str]:
+    """Select IDs for deletion based on TTL, inactivity and budget policies.
+
+    Policy keys:
+      - max_age_days: float | None
+      - max_inactive_days: float | None
+      - budget: int | None (keep top N by recency score)
+      - memory_type_allowlist: set[str] | list[str] | None (only consider these types for deletion)
+      - hard_age_multiplier: float (default 12.0) - multiplier for max_age_days to determine extremely old items
+    """
+    pinned_ids = pinned_ids or set()
+    max_age_days = policy.get("max_age_days")
+    max_inactive_days = policy.get("max_inactive_days")
+    hard_age_multiplier = float(policy.get("hard_age_multiplier", 12.0))
+    budget = policy.get("budget")
+    allowlist = policy.get("memory_type_allowlist")
+    if allowlist is not None and not isinstance(allowlist, set):
+        allowlist = set(allowlist)
+
+    to_delete: set[str] = set()
+    eligible_for_budget: list[MemoryRecordResult] = []
+
+    for mem in results:
+        if not mem.id or mem.id in pinned_ids or getattr(mem, "pinned", False):
+            continue
+
+        # If allowlist provided, only consider those types for deletion
+        mem_type_value = (
+            mem.memory_type.value
+            if isinstance(mem.memory_type, MemoryTypeEnum)
+            else mem.memory_type
+        )
+        if allowlist is not None and mem_type_value not in allowlist:
+            # Not eligible for deletion under current policy
+            continue
+
+        age_days = _days_between(now, mem.created_at)
+        inactive_days = _days_between(now, mem.last_accessed)
+
+        # Combined TTL/inactivity policy:
+        # - If both thresholds are set, prefer not to delete recently accessed
+        #   items unless they are extremely old.
+        # - Extremely old: age > max_age_days * hard_age_multiplier (default 12x)
+        if _is_numeric(max_age_days) and _is_numeric(max_inactive_days):
+            if age_days > float(max_age_days) * hard_age_multiplier:
+                to_delete.add(mem.id)
+                continue
+            if age_days > float(max_age_days) and inactive_days > float(
+                max_inactive_days
+            ):
+                to_delete.add(mem.id)
+                continue
+        else:
+            ttl_hit = _is_numeric(max_age_days) and age_days > float(max_age_days)
+            inactivity_hit = _is_numeric(max_inactive_days) and (
+                inactive_days > float(max_inactive_days)
+            )
+            if ttl_hit or inactivity_hit:
+                to_delete.add(mem.id)
+                continue
+
+        # Eligible for budget consideration
+        eligible_for_budget.append(mem)
+
+    # Budget-based pruning (keep top N by recency among eligible)
+    if isinstance(budget, int) and budget >= 0 and budget < len(eligible_for_budget):
+        params = {
+            "semantic_weight": 0.0,  # budget considers only recency
+            "recency_weight": 1.0,
+            "freshness_weight": 0.6,
+            "novelty_weight": 0.4,
+            "half_life_last_access_days": 7.0,
+            "half_life_created_days": 30.0,
+        }
+        ranked = rerank_with_recency(eligible_for_budget, now=now, params=params)
+        keep_ids = {mem.id for mem in ranked[:budget]}
+        for mem in eligible_for_budget:
+            if mem.id not in keep_ids:
+                to_delete.add(mem.id)
+
+    return list(to_delete)
+
+
+async def update_last_accessed(
+    ids: list[str],
+    *,
+    redis_client: Redis | None = None,
+    min_interval_seconds: int = 900,
+) -> int:
+    """Rate-limited update of last_accessed for a list of memory IDs.
+
+    Returns the number of records updated.
+    """
+    if not ids:
+        return 0
+
+    redis = redis_client or await get_redis_conn()
+    now_ts = int(datetime.now(UTC).timestamp())
+
+    # Batch read existing last_accessed
+    keys = [Keys.memory_key(mid) for mid in ids]
+    pipeline = redis.pipeline()
+    for key in keys:
+        pipeline.hget(key, "last_accessed")
+    current_vals = await pipeline.execute()
+
+    # Decide which to update and whether to increment access_count
+    to_update: list[tuple[str, int]] = []
+    incr_keys: list[str] = []
+    for key, val in zip(keys, current_vals, strict=False):
+        try:
+            last_ts = int(val) if val is not None else 0
+        except (TypeError, ValueError):
+            last_ts = 0
+        if now_ts - last_ts >= min_interval_seconds:
+            to_update.append((key, now_ts))
+            incr_keys.append(key)
+
+    if not to_update:
+        return 0
+
+    pipeline2 = redis.pipeline()
+    for key, ts in to_update:
+        pipeline2.hset(key, mapping={"last_accessed": str(ts)})
+        pipeline2.hincrby(key, "access_count", 1)
+    await pipeline2.execute()
+    return len(to_update)
+
+
+async def forget_long_term_memories(
+    policy: dict,
+    *,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    limit: int = 1000,
+    dry_run: bool = True,
+    pinned_ids: list[str] | None = None,
+) -> dict:
+    """Select and delete long-term memories according to policy.
+
+    Uses the memory vector database to fetch candidates (empty query + filters),
+    then applies `select_ids_for_forgetting` locally and deletes matching memories.
+    """
+    db = await get_memory_vector_db()
+
+    # Build filters
+    namespace_filter = Namespace(eq=namespace) if namespace else None
+    user_id_filter = UserId(eq=user_id) if user_id else None
+    session_id_filter = SessionId(eq=session_id) if session_id else None
+
+    # Fetch candidates using filter-only query (no embedding required)
+    results = await db.list_memories(
+        namespace=namespace_filter,
+        user_id=user_id_filter,
+        session_id=session_id_filter,
+        limit=limit,
+    )
+
+    now = datetime.now(UTC)
+    candidate_results = results.memories or []
+
+    # Select IDs for deletion using policy
+    to_delete_ids = select_ids_for_forgetting(
+        candidate_results,
+        policy=policy,
+        now=now,
+        pinned_ids=set(pinned_ids) if pinned_ids else None,
+    )
+
+    deleted = 0
+    if to_delete_ids and not dry_run:
+        deleted = await db.delete_memories(to_delete_ids)
+
+    return {
+        "scanned": len(candidate_results),
+        "deleted": deleted if not dry_run else len(to_delete_ids),
+        "deleted_ids": to_delete_ids,
+        "dry_run": dry_run,
+    }
+
+
+async def periodic_forget_long_term_memories(
+    *,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    limit: int = 1000,
+    dry_run: bool = False,
+    perpetual: Perpetual = Perpetual(
+        every=timedelta(minutes=settings.forgetting_every_minutes), automatic=True
+    ),
+) -> dict:
+    """Periodic forgetting using defaults from settings.
+
+    This function can be registered with Docket and will run automatically
+    according to the `perpetual` schedule when a worker is active.
+    """
+    # Build default policy from settings
+    policy: dict[str, object] = {
+        "max_age_days": settings.forgetting_max_age_days,
+        "max_inactive_days": settings.forgetting_max_inactive_days,
+        "budget": settings.forgetting_budget_keep_top_n,
+        "memory_type_allowlist": None,
+    }
+
+    # If feature disabled, no-op
+    if not settings.forgetting_enabled:
+        logger.info("Forgetting is disabled; skipping periodic run")
+        return {"scanned": 0, "deleted": 0, "deleted_ids": [], "dry_run": True}
+
+    return await forget_long_term_memories(
+        policy,
+        namespace=namespace,
+        user_id=user_id,
+        session_id=session_id,
+        limit=limit,
+        dry_run=dry_run,
+    )
