@@ -1,8 +1,10 @@
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any
 
 import ulid
+from fastapi import HTTPException
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP as _FastMCPBase
@@ -17,6 +19,7 @@ from agent_memory_server.api import (
     search_long_term_memory as core_search_long_term_memory,
     update_long_term_memory as core_update_long_term_memory,
 )
+from agent_memory_server.auth import verify_jwt
 from agent_memory_server.config import settings
 from agent_memory_server.dependencies import get_background_tasks
 from agent_memory_server.filters import (
@@ -251,10 +254,8 @@ class JWTTokenVerifier(TokenVerifier):
     """Verify JWT tokens from Hydra using the existing auth module."""
 
     async def verify_token(self, token: str) -> AccessToken | None:
-        from agent_memory_server.auth import verify_jwt
-
         try:
-            user_info = verify_jwt(token)
+            user_info = await asyncio.to_thread(verify_jwt, token)
             scopes = user_info.scope.split() if user_info.scope else []
             return AccessToken(
                 token=token,
@@ -262,14 +263,18 @@ class JWTTokenVerifier(TokenVerifier):
                 scopes=scopes,
                 expires_at=user_info.exp,
             )
-        except Exception:
-            return None
+        except HTTPException as exc:
+            if exc.status_code == 401:
+                logger.info("JWT verification rejected token: %s", exc.detail)
+                return None
+            raise
 
 
 def _build_mcp_auth_kwargs() -> dict[str, Any]:
     """Build auth kwargs for FastMCP if OAuth2 is configured."""
     if (
-        settings.auth_mode != "oauth2"
+        settings.disable_auth
+        or settings.auth_mode != "oauth2"
         or not settings.oauth2_issuer_url
         or not settings.oauth2_resource_host
     ):

@@ -3,7 +3,7 @@ import sys
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from agent_memory_server import __version__
 from agent_memory_server.api import router as memory_router
@@ -130,13 +130,18 @@ app.include_router(health_router)
 app.include_router(memory_router)
 
 
-@app.get("/.well-known/oauth-authorization-server")
-async def oauth_authorization_server_metadata():
+@app.get("/.well-known/oauth-protected-resource")
+async def oauth_protected_resource_metadata():
     """RFC 9728 Protected Resource Metadata for MCP OIDC discovery."""
-    if not settings.oauth2_issuer_url:
-        return {"error": "OIDC not configured"}
+    if (
+        settings.disable_auth
+        or settings.auth_mode != "oauth2"
+        or not settings.oauth2_issuer_url
+        or not settings.oauth2_resource_host
+    ):
+        raise HTTPException(status_code=404, detail="OIDC not configured")
     return {
-        "resource": f"https://{settings.oauth2_resource_host or 'localhost'}",
+        "resource": f"https://{settings.oauth2_resource_host}",
         "authorization_servers": [settings.oauth2_issuer_url],
     }
 
