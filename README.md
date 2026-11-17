@@ -1,6 +1,6 @@
 # Agent Memory Server
 
-> \[\!IMPORTANT\] **For new agent memory projects on Redis, use [Redis Agent Memory](https://redis.io/agent-memory/) in [Redis Iris](https://redis.io/iris/).** It is the supported, maintained product. It runs as a managed service on Redis Cloud or self-managed on your own Kubernetes cluster.  
+> **For new agent memory projects on Redis, use [Redis Agent Memory](https://redis.io/agent-memory/) in [Redis Iris](https://redis.io/iris/).** It is the supported, maintained product. It runs as a managed service on Redis Cloud or self-managed on your own Kubernetes cluster.  
 >   
 > This repository holds the original open source Agent Memory Server (in [`V0/`](./V0/)), the research that shaped Redis Agent Memory. Agent Memory Server is deprecated and is not the supported production path.
 
