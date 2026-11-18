@@ -583,7 +583,7 @@ async def search_long_term_memory(
         extraction_strategy: Filter by extraction strategy
         event_date: Filter by event date (for episodic memories)
         distance_threshold: Distance threshold for semantic search
-        limit: Maximum number of results
+        limit: Maximum number of results (1-100)
         offset: Offset for pagination
         optimize_query: Whether to optimize the query for semantic (vector) search only; ignored for keyword and hybrid modes (default: False - LLMs typically provide already optimized queries)
         recency_boost: Enable recency-aware re-ranking (defaults to enabled if None)
@@ -608,32 +608,36 @@ async def search_long_term_memory(
             "distance_threshold is only supported for semantic search mode"
         )
 
+    # Build the request outside the try block so invalid parameters (e.g. a
+    # limit above the maximum) surface as a tool error instead of being
+    # indistinguishable from an empty result set.
+    payload = SearchRequest(
+        text=text,
+        search_mode=search_mode,
+        session_id=session_id,
+        namespace=namespace,
+        topics=topics,
+        entities=entities,
+        created_at=created_at,
+        last_accessed=last_accessed,
+        user_id=user_id,
+        memory_type=memory_type,
+        extraction_strategy=extraction_strategy,
+        event_date=event_date,
+        distance_threshold=distance_threshold,
+        limit=limit,
+        offset=offset,
+        recency_boost=recency_boost,
+        recency_semantic_weight=recency_semantic_weight,
+        recency_recency_weight=recency_recency_weight,
+        recency_freshness_weight=recency_freshness_weight,
+        recency_novelty_weight=recency_novelty_weight,
+        recency_half_life_last_access_days=recency_half_life_last_access_days,
+        recency_half_life_created_days=recency_half_life_created_days,
+        server_side_recency=server_side_recency,
+    )
+
     try:
-        payload = SearchRequest(
-            text=text,
-            search_mode=search_mode,
-            session_id=session_id,
-            namespace=namespace,
-            topics=topics,
-            entities=entities,
-            created_at=created_at,
-            last_accessed=last_accessed,
-            user_id=user_id,
-            memory_type=memory_type,
-            extraction_strategy=extraction_strategy,
-            event_date=event_date,
-            distance_threshold=distance_threshold,
-            limit=limit,
-            offset=offset,
-            recency_boost=recency_boost,
-            recency_semantic_weight=recency_semantic_weight,
-            recency_recency_weight=recency_recency_weight,
-            recency_freshness_weight=recency_freshness_weight,
-            recency_novelty_weight=recency_novelty_weight,
-            recency_half_life_last_access_days=recency_half_life_last_access_days,
-            recency_half_life_created_days=recency_half_life_created_days,
-            server_side_recency=server_side_recency,
-        )
         # Create a background tasks instance for the MCP call
         from agent_memory_server.dependencies import HybridBackgroundTasks
 

@@ -976,6 +976,18 @@ class TestSearchEndpoint:
         mock_search.assert_not_called()
 
     @patch("agent_memory_server.api.long_term_memory.search_long_term_memories")
+    @pytest.mark.asyncio
+    async def test_search_rejects_limit_above_maximum(self, mock_search, client):
+        """A limit above 100 is a client error, not an empty result set."""
+        payload = {"text": "preference", "limit": 101}
+
+        response = await client.post("/v1/long-term-memory/search", json=payload)
+
+        assert response.status_code == 422
+        assert response.json()["detail"][0]["loc"] == ["body", "limit"]
+        mock_search.assert_not_called()
+
+    @patch("agent_memory_server.api.long_term_memory.search_long_term_memories")
     @pytest.mark.parametrize("search_mode", ["keyword", "hybrid"])
     @pytest.mark.asyncio
     async def test_search_skips_soft_filter_fallback_for_nonsemantic_modes(

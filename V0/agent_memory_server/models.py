@@ -788,7 +788,7 @@ class SearchRequest(BaseModel):
         default=10,
         ge=1,
         le=100,
-        description="Optional limit on the number of results",
+        description="Max number of results (1-100; larger values are rejected)",
     )
     offset: int = Field(
         default=0,

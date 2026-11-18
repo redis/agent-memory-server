@@ -645,7 +645,7 @@ Payload for long-term memory search
 | `memory_type` | MemoryType \| null | No | Optional memory type to filter by |
 | `event_date` | EventDate \| null | No | Optional event date to filter by (for episodic memories) |
 | `extraction_strategy` | ExtractionStrategy \| null | No | Optional extraction strategy to filter by |
-| `limit` | integer | No | Optional limit on the number of results |
+| `limit` | integer | No | Max number of results (1-100; larger values are rejected) |
 | `offset` | integer | No | Optional offset |
 | `recency_boost` | boolean \| null | No | Enable recency-aware re-ranking (defaults to enabled if None |
 | `recency_semantic_weight` | number \| null | No | Weight for semantic similarity |
